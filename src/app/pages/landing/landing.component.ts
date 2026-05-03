@@ -1,6 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { ChiaWasmService } from '../../services/chia-wasm.service';
 
 @Component({
   selector: 'pp-landing',
@@ -9,8 +10,21 @@ import { RouterLink } from '@angular/router';
   template: `
     <section class="container-p pt-24 pb-16">
       <div class="max-w-3xl">
-        <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-4">
-          Populis Protocol · Testnet 11
+        <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-4 flex items-center gap-3">
+          <span>Populis Protocol · Testnet 11</span>
+          <span
+            class="inline-flex items-center gap-1.5 normal-case tracking-normal text-[0.65rem]"
+            [class.text-brand]="wasmStatus().ok"
+            [class.text-amber-400]="!wasmStatus().ok"
+            [title]="wasmStatus().details"
+          >
+            <span
+              class="inline-block w-1.5 h-1.5 rounded-full"
+              [class.bg-brand]="wasmStatus().ok"
+              [class.bg-amber-400]="!wasmStatus().ok"
+            ></span>
+            {{ wasmStatus().ok ? 'WASM ready' : 'WASM offline' }}
+          </span>
         </div>
         <h1 class="text-5xl md:text-7xl leading-[1.02] tracking-tight">
           The members-only on-chain
@@ -60,4 +74,17 @@ import { RouterLink } from '@angular/router';
     </section>
   `,
 })
-export class LandingComponent {}
+export class LandingComponent {
+  private readonly chiaWasm = inject(ChiaWasmService);
+
+  /**
+   * Surface the WASM smoke-test result as a banner indicator so devs
+   * can verify the chia-wallet-sdk-wasm bootstrap without opening
+   * DevTools.  Re-evaluates whenever the ready signal flips.
+   */
+  readonly wasmStatus = computed(() => {
+    // Touch the ready signal so the computed re-runs.
+    void this.chiaWasm.ready();
+    return this.chiaWasm.smokeTest();
+  });
+}

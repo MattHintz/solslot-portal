@@ -30,6 +30,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "**/*.wasm",
+                "input": "src/assets/chia_wasm",
+                "output": "/assets/chia_wasm"
               }
             ],
             "styles": [
@@ -91,6 +96,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "**/*.wasm",
+                "input": "src/assets/chia_wasm",
+                "output": "/assets/chia_wasm"
               }
             ],
             "styles": [

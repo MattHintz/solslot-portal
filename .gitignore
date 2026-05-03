@@ -38,6 +38,11 @@ testem.log
 /typings
 __screenshots__/
 
+# Chia WASM binary — auto-copied from node_modules/chia-wallet-sdk-wasm
+# by scripts/copy-chia-wasm.mjs (postinstall).  5.4MB, no value in
+# tracking in git since `npm install` regenerates it identically.
+/src/assets/chia_wasm/*.wasm
+
 # System files
 .DS_Store
 Thumbs.db
