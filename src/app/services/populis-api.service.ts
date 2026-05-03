@@ -92,11 +92,95 @@ export interface ProtocolInfo {
   eip712_domain: {
     name: string;
     version: string;
-    chain_id: number;
+    /**
+     * camelCase to match the API's actual JSON shape (the API uses
+     * Pydantic alias mode for EIP-712 fields so the on-the-wire key
+     * matches the EIP-712 spec exactly).  Before the A.x type refresh
+     * this was incorrectly typed as ``chain_id``; no callers were
+     * actually reading it so the fix is a pure correctness change.
+     */
+    chainId: number;
   };
   eip712_typehash_string: string;
   faucet_address: string | null;
   faucet_balance_mojos: number | null;
+
+  // ── Genesis-deploy state ─────────────────────────────────────────────
+  /** True after /admin/deploy/protocol has written a manifest. */
+  deployed?: boolean;
+  /**
+   * Full deployment manifest (populated when ``deployed`` is true).
+   * Contains all four Phase-A launcher coin ids + puzzle hashes from
+   * the atomic deploy.  Shape mirrors ``populis_protocol`` ProtocolDeploymentPlan.
+   */
+  deployment_manifest?: {
+    pool_launcher_id?: string;
+    did_launcher_id?: string;
+    tracker_launcher_id?: string;
+    pgt_tail_hash?: string;
+    pgt_full_puzhash?: string;
+    pool_full_puzhash?: string;
+    did_full_puzhash?: string;
+    tracker_full_puzhash?: string;
+    [key: string]: unknown;
+  } | null;
+
+  // ── A.3 protocol-config singleton fields ─────────────────────────────
+  /**
+   * Deterministic hash of (pool_launcher_id, governance_launcher_id,
+   * network, protocol_config_version).  When the operator has launched
+   * the on-chain singleton, the CREATE_PUZZLE_ANNOUNCEMENT it emits on
+   * every update spend carries this exact same hash — frontends can
+   * therefore independently verify the operator's published config
+   * against on-chain state by walking the singleton lineage on
+   * coinset.org and comparing.  ``null`` until both pool + governance
+   * launchers are configured.  See SECURITY.md §A.3.
+   */
+  protocol_config_hash?: string | null;
+
+  /**
+   * Launcher coin id of the on-chain protocol-config singleton, when
+   * the operator has set ``POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID``.
+   * Until Phase 1.5 lands the singleton-lineage indexer, this field
+   * is informational: clients can use it to locate the singleton on
+   * coinset.org and verify the published content_hash themselves.
+   */
+  protocol_config_launcher_id?: string | null;
+
+  /**
+   * Monotonically increasing version stamped into the singleton's
+   * curried state.  Bumped by the operator on every config update.
+   */
+  protocol_config_version?: number;
+
+  // ── A.4 property-registry singleton fields ───────────────────────────
+  /**
+   * Launcher coin id of the on-chain property-registry singleton.
+   * Off-chain consumers walk this singleton's lineage on coinset.org
+   * to discover registered property ids — each registration spend
+   * emits a CREATE_PUZZLE_ANNOUNCEMENT carrying the canonical id.
+   * ``null`` until the operator opts in.  See SECURITY.md §A.4.
+   */
+  property_registry_launcher_id?: string | null;
+
+  /**
+   * Tree hash of the uncurried ``property_registry_inner.clsp`` mod
+   * — clients use this to verify they're reading the canonical puzzle
+   * on-chain (rather than a malicious lookalike).  Static across the
+   * deployment; only changes if the puzzle source itself is upgraded.
+   */
+  property_registry_mod_hash?: string | null;
+
+  // ── A.1 mint-proposal singleton fields ───────────────────────────────
+  /**
+   * Tree hash of the uncurried ``mint_proposal_inner.clsp`` mod;
+   * exposed so clients can identify mint-proposal singletons on
+   * coinset.org by uncurrying their inner reveal and comparing this
+   * value.  Each individual proposal has its own launcher_id (not
+   * exposed here — that's per-proposal, not protocol-level).
+   * See SECURITY.md §A.1.
+   */
+  mint_proposal_mod_hash?: string | null;
 }
 
 export interface ChallengeResponse {
