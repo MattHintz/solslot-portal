@@ -115,6 +115,61 @@ export class CoinsetService {
     );
     return res.coin_records ?? [];
   }
+
+  /**
+   * Fetch the puzzle reveal + solution that consumed a previously-spent
+   * coin.  Used by ChiaSingletonReaderService to replay the most recent
+   * state transition of an on-chain singleton.
+   *
+   * The block height parameter is required by coinset.org's RPC because
+   * spend records are indexed by the consuming block, not by coin id;
+   * callers obtain it from `coin_record.spent_block_index`.
+   *
+   * Returns null on 404 or if the coin has not actually been spent (the
+   * common cause is passing the wrong height).
+   */
+  async getPuzzleAndSolution(
+    coinId: string,
+    height: number,
+  ): Promise<PuzzleAndSolution | null> {
+    const body = {
+      coin_id: normalizeHex(coinId),
+      height,
+    };
+    const res = await firstValueFrom(
+      this.http.post<{
+        coin_solution: PuzzleAndSolutionRaw | null;
+        success: boolean;
+      }>(`${this.base}/get_puzzle_and_solution`, body)
+    );
+    const cs = res.coin_solution;
+    if (!cs) return null;
+    return {
+      coin: cs.coin,
+      puzzleReveal: normalizeHex(cs.puzzle_reveal),
+      solution: normalizeHex(cs.solution),
+    };
+  }
+}
+
+/**
+ * Decoded `coin_solution` field returned by coinset.org's
+ * `/get_puzzle_and_solution`.  The wire format uses snake_case;
+ * we normalise to camelCase + drop the 0x prefix-sensitivity inside
+ * the service before exposing to callers.
+ */
+export interface PuzzleAndSolution {
+  coin: { parent_coin_info: string; puzzle_hash: string; amount: number };
+  /** Hex-encoded serialized CLVM Program (the puzzle that ran). */
+  puzzleReveal: string;
+  /** Hex-encoded serialized CLVM Program (the solution it ran with). */
+  solution: string;
+}
+
+interface PuzzleAndSolutionRaw {
+  coin: { parent_coin_info: string; puzzle_hash: string; amount: number };
+  puzzle_reveal: string;
+  solution: string;
 }
 
 export interface CoinRecord {
