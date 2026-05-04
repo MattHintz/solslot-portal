@@ -4,11 +4,21 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 /**
- * Direct read-only client for coinset.org's Chia full-node RPC.
+ * Direct read/write client for coinset.org's Chia full-node RPC.
  *
- * Writes (push_tx) are routed through the Populis API instead — we want a
- * single place to retry / backoff / log broadcasts, and browsers shouldn't
- * exhaust coinset.org's public rate limit with every user click.
+ * Reads (lineage walks, coin lookups) are the daily-driver use case.
+ *
+ * Writes (``push_tx``) were originally routed through the Populis API,
+ * but that creates a censorship vector for trust-minimised flows like
+ * the v2 admin-authority lifecycle (Phase 9-Hermes-D).  Solslot's
+ * frontend (research/solslot-frontend/slui/src/app/services/chia-aggregator.service.ts)
+ * proves direct browser → coinset push works in production; we adopt
+ * the same pattern for v2 launches + rotations so admins can submit
+ * spend bundles even when Populis is offline or compromised.
+ *
+ * For non-trust-critical writes (vault registration, mint proposals)
+ * the API path is still preferred for rate-limit + audit-log
+ * convenience.
  *
  * API docs: https://docs.coinset.org
  */
@@ -150,6 +160,75 @@ export class CoinsetService {
       solution: normalizeHex(cs.solution),
     };
   }
+
+  /**
+   * Broadcast a signed spend bundle directly to coinset.org.
+   *
+   * This is the trust-minimised submission path for the v2 admin-authority
+   * lifecycle: launches + rotations don't depend on the Populis API
+   * being reachable.  Mirrors solslot's
+   * ``ChiaAggregatorService.pushTransaction`` pattern.
+   *
+   * **Wire format.** coinset.org's ``/push_tx`` accepts:
+   * ```json
+   * {
+   *   "spend_bundle": {
+   *     "coin_spends": [{ coin, puzzle_reveal, solution }, ...],
+   *     "aggregated_signature": "0x..."
+   *   }
+   * }
+   * ```
+   *
+   * **Response shape.** ``{ success, status?, error? }`` where
+   * ``status`` is one of ``SUCCESS``, ``PENDING``, ``FAILED``.  Note
+   * that ``success: true`` only means the node *accepted* the bundle
+   * — it doesn't guarantee mempool inclusion.  Callers monitoring
+   * for confirmation should poll ``getCoinRecordByName`` on a
+   * resulting coin id.
+   *
+   * @param spendBundle The signed bundle (coin spends + aggregated sig).
+   * @returns The node's response.  ``success: false`` is surfaced as a
+   *   thrown error so the caller doesn't accidentally treat a rejected
+   *   submission as accepted.
+   */
+  async pushTransaction(spendBundle: PushTxSpendBundle): Promise<PushTxResponse> {
+    // Wire format: snake_case + bare hex (no 0x prefix on the signature
+    // or coin_spends fields).  coinset.org accepts either, but stripping
+    // is safer + matches what solslot's chia-aggregator does.
+    const wireBundle = {
+      coin_spends: spendBundle.coinSpends.map((cs) => ({
+        coin: {
+          parent_coin_info: stripHexPrefix(cs.coin.parentCoinInfo),
+          puzzle_hash: stripHexPrefix(cs.coin.puzzleHash),
+          amount:
+            typeof cs.coin.amount === 'bigint'
+              ? Number(cs.coin.amount)
+              : cs.coin.amount,
+        },
+        puzzle_reveal: stripHexPrefix(cs.puzzleReveal),
+        solution: stripHexPrefix(cs.solution),
+      })),
+      aggregated_signature: stripHexPrefix(spendBundle.aggregatedSignature),
+    };
+    const body = { spend_bundle: wireBundle };
+
+    const res = await firstValueFrom(
+      this.http.post<PushTxResponseRaw>(`${this.base}/push_tx`, body),
+    );
+
+    if (!res.success) {
+      // coinset.org returns a structured error here — surface it
+      // verbatim so operators can debug bundle issues offline.
+      throw new Error(
+        `pushTransaction rejected: ${res.error ?? res.status ?? 'unknown'}`,
+      );
+    }
+
+    return {
+      success: true,
+      status: res.status ?? null,
+    };
+  }
 }
 
 /**
@@ -192,4 +271,46 @@ export interface BlockchainState {
 
 function normalizeHex(s: string): string {
   return s.startsWith('0x') ? s : '0x' + s;
+}
+
+function stripHexPrefix(s: string): string {
+  return s.startsWith('0x') || s.startsWith('0X') ? s.slice(2) : s;
+}
+
+/**
+ * Spend bundle ready to submit to ``/push_tx``.  Identical shape to
+ * the ``SignedSpendBundle`` produced by ``ChiaWalletService.signSpendBundle``,
+ * but defined here independently so coinset.service.ts has no
+ * cross-service runtime dependency.
+ */
+export interface PushTxSpendBundle {
+  coinSpends: ReadonlyArray<{
+    coin: {
+      parentCoinInfo: string;
+      puzzleHash: string;
+      amount: number | bigint;
+    };
+    /** Hex-encoded CLVM puzzle reveal (with or without 0x prefix). */
+    puzzleReveal: string;
+    /** Hex-encoded CLVM solution (with or without 0x prefix). */
+    solution: string;
+  }>;
+  /** 0x-prefixed (or bare) 96-byte BLS aggregated signature. */
+  aggregatedSignature: string;
+}
+
+/** Normalised response from ``/push_tx``.  ``success: false`` is
+ * surfaced as a thrown error from ``pushTransaction``. */
+export interface PushTxResponse {
+  success: true;
+  /** ``SUCCESS`` (mempool-accepted), ``PENDING`` (waiting on resources),
+   * or null when the node didn't surface a status field. */
+  status: string | null;
+}
+
+/** Raw wire shape of coinset.org's ``/push_tx`` reply. */
+interface PushTxResponseRaw {
+  success: boolean;
+  status?: string;
+  error?: string;
 }

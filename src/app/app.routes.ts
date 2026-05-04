@@ -77,6 +77,23 @@ export const routes: Routes = [
     title: 'Trust Roots · Populis',
   },
   {
+    // Phase 9-Hermes-D D-2.4: launch-v2 wizard.
+    // Computes every deterministic output of a v2 admin-authority
+    // genesis launch from operator inputs (parent coin id + admin
+    // records + MIPS root).  Preview-only for now — actual on-chain
+    // submission lands in D-2.5/D-2.6.
+    path: 'admin/launch-authority-v2',
+    canActivate: [
+      (route, state) =>
+        import('./services/admin-auth.guard').then((m) => m.adminAuthGuard(route, state)),
+    ],
+    loadComponent: () =>
+      import(
+        './pages/admin/launch-authority-v2/launch-authority-v2.component'
+      ).then((m) => m.LaunchAuthorityV2Component),
+    title: 'Launch Authority v2 · Populis',
+  },
+  {
     path: 'admin/mint/:id',
     canActivate: [
       (route, state) =>

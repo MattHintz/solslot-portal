@@ -68,6 +68,9 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
           <a routerLink="/admin/trust-roots" class="btn btn--ghost">
             Trust roots
           </a>
+          <a routerLink="/admin/launch-authority-v2" class="btn btn--ghost">
+            Launch authority v2
+          </a>
           <a routerLink="/admin/mint/new" class="btn btn--primary">
             + New mint proposal
           </a>
