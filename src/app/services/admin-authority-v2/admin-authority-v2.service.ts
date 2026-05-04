@@ -1,6 +1,12 @@
 import { Injectable, inject } from '@angular/core';
 
 import { ChiaWasmService } from '../chia-wasm.service';
+import {
+  ChiaWalletService,
+  SignedSpendBundle,
+  UnsignedCoinSpend,
+} from '../chia-wallet.service';
+import { CoinsetService, PushTxResponse } from '../coinset.service';
 import { ADMIN_AUTHORITY_V2_INNER_PUZZLE_HEX } from './admin-authority-v2.puzzle-hex';
 
 /**
@@ -32,6 +38,8 @@ import { ADMIN_AUTHORITY_V2_INNER_PUZZLE_HEX } from './admin-authority-v2.puzzle
 @Injectable({ providedIn: 'root' })
 export class AdminAuthorityV2Service {
   private readonly wasm = inject(ChiaWasmService);
+  private readonly chiaWallet = inject(ChiaWalletService);
+  private readonly coinset = inject(CoinsetService);
 
   /**
    * Empty-list tree-hash sentinel.  Equals ``sha256tree(())`` and is
@@ -327,6 +335,222 @@ export class AdminAuthorityV2Service {
     };
   }
 
+  /**
+   * Construct the unsigned CoinSpend that spends the launcher coin
+   * to create the eve coin.  The launcher uses the standard chia
+   * ``singleton_launcher.clsp`` puzzle which is permissionless —
+   * no signature is needed, anyone can spend it once it exists.
+   *
+   * The launcher coin must already exist on chain (created by the
+   * funding-coin spend the wallet signed via ``chiaWallet.transfer``).
+   * This helper produces the second half of the spend bundle.
+   *
+   * @param args.parentCoinId The funding coin's id (= launcher coin's
+   *   parent_coin_info).  Comes from ``findLauncherParentCoinId``
+   *   after parsing the wallet's transfer response.
+   * @param args.eveFullPuzzleHash The eve coin's full puzzle hash
+   *   (as returned by ``computeLaunchOutputs``).
+   * @param args.eveAmount Eve coin amount (typically 1 mojo).
+   * @returns Unsigned CoinSpend ready to combine with the wallet's
+   *   signed funding spend in a complete spend bundle.
+   */
+  buildLauncherCoinSpend(args: {
+    parentCoinId: string;
+    eveFullPuzzleHash: string;
+    eveAmount?: number | bigint;
+  }): UnsignedCoinSpend {
+    const eveAmount = BigInt(args.eveAmount ?? AdminAuthorityV2Service.DEFAULT_EVE_AMOUNT);
+    const sdk = this.sdk();
+    if (!sdk.Constants?.singletonLauncher) {
+      throw new Error(
+        'buildLauncherCoinSpend: chia-wallet-sdk-wasm Constants.singletonLauncher missing',
+      );
+    }
+
+    // Launcher coin's puzzle reveal is just the standard chia
+    // singleton_launcher bytecode — no curry needed.  We grab the
+    // serialized form directly from the WASM SDK.
+    const launcherPuzzleBytes = sdk.Constants.singletonLauncher();
+
+    // Launcher solution: (eve_full_ph eve_amount key_value_list).
+    // Same shape as in computeLaunchOutputs; rebuild it here so the
+    // CoinSpend's solution is freshly serialised in this Clvm instance.
+    const clvm = this.clvm();
+    const launcherSolution = clvm.list([
+      clvm.atom(hexToBytes(args.eveFullPuzzleHash)),
+      clvm.int(eveAmount),
+      clvm.nil(),
+    ]);
+    const launcherSolutionBytes = launcherSolution.serialize();
+
+    return {
+      coin: {
+        parentCoinInfo: args.parentCoinId,
+        puzzleHash: AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH,
+        amount: 1n, // launcher coin is always 1 mojo
+      },
+      puzzleReveal: bytesToHexPrefixed(launcherPuzzleBytes),
+      solution: bytesToHexPrefixed(launcherSolutionBytes),
+    };
+  }
+
+  /**
+   * Find which coin spend in a wallet-returned bundle creates the
+   * launcher coin (puzzle_hash = SINGLETON_LAUNCHER_HASH, amount = 1).
+   *
+   * The wallet's ``transfer`` result may include change spends and
+   * other side outputs.  We need to identify which specific coin's
+   * spend produced the launcher so we can compute the launcher's
+   * parent (= that coin's id).
+   *
+   * Algorithm: deserialise + run each coinSpend's puzzle with its
+   * solution, scan emitted CREATE_COIN conditions for one that
+   * creates ``(SINGLETON_LAUNCHER_HASH, 1)``.  The producing coin's
+   * id is what we want.
+   *
+   * @returns The coin id (hex) of the funding coin whose spend
+   *   created the launcher.  Throws if no coinSpend in the bundle
+   *   creates a launcher coin (i.e. the wallet didn't honour the
+   *   transfer to SINGLETON_LAUNCHER_HASH).
+   */
+  findLauncherParentCoinId(
+    coinSpends: ReadonlyArray<UnsignedCoinSpend>,
+  ): string {
+    const sdk = this.sdk();
+    if (!sdk.Coin || !sdk.Clvm) {
+      throw new Error(
+        'findLauncherParentCoinId: chia-wallet-sdk-wasm Clvm/Coin missing',
+      );
+    }
+    const targetHashHex = AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH.toLowerCase();
+    const targetHashBytes = hexToBytes(targetHashHex);
+
+    for (const cs of coinSpends) {
+      const clvm = new sdk.Clvm();
+      let conditions;
+      try {
+        const puzzle = clvm.deserialize(hexToBytes(cs.puzzleReveal));
+        const solution = clvm.deserialize(hexToBytes(cs.solution));
+        // High cost cap; we just need the conditions, not a tight
+        // mempool-mode replay.  ``puzzle.run`` returns a ProgramOutput.
+        const output = (puzzle as unknown as { run: (s: ProgramShape, c: number, m: boolean) => { value: ProgramShape } })
+          .run(solution, 11_000_000, false);
+        conditions = output.value;
+      } catch {
+        // If a coin spend's puzzle/solution can't be replayed (rare
+        // for standard wallet spends), skip it; another spend in the
+        // bundle may still produce the launcher.
+        continue;
+      }
+
+      const condArray = (conditions as unknown as { toList: () => ProgramShape[] }).toList();
+      for (const cond of condArray) {
+        const condList = (cond as unknown as { toList: () => ProgramShape[] }).toList();
+        if (condList.length < 3) continue;
+        // CREATE_COIN opcode = 51 (0x33).
+        const opcode = (condList[0] as unknown as { toAtom: () => Uint8Array }).toAtom();
+        if (opcode.length !== 1 || opcode[0] !== 51) continue;
+        const ph = (condList[1] as unknown as { toAtom: () => Uint8Array }).toAtom();
+        const amountBytes = (condList[2] as unknown as { toAtom: () => Uint8Array }).toAtom();
+        // Match (SINGLETON_LAUNCHER_HASH, 1).  CLVM amount=1 is encoded as a single 0x01 byte.
+        if (
+          ph.length === targetHashBytes.length &&
+          ph.every((b, i) => b === targetHashBytes[i]) &&
+          amountBytes.length === 1 &&
+          amountBytes[0] === 1
+        ) {
+          // This coin spend created the launcher; return its coin id.
+          const coin = new sdk.Coin(
+            hexToBytes(cs.coin.parentCoinInfo),
+            hexToBytes(cs.coin.puzzleHash),
+            BigInt(typeof cs.coin.amount === 'bigint' ? cs.coin.amount : cs.coin.amount),
+          );
+          return bytesToHexPrefixed(coin.coinId());
+        }
+      }
+    }
+
+    throw new Error(
+      'findLauncherParentCoinId: no coin spend in the bundle creates a ' +
+        '(SINGLETON_LAUNCHER_HASH, 1) coin.  Did the wallet honour the ' +
+        'transfer target?',
+    );
+  }
+
+  /**
+   * Full genesis launch orchestration: ask the wallet to fund the
+   * launcher, find the funding coin id from its response, build the
+   * launcher's CoinSpend, combine, push to coinset.
+   *
+   * Returns the launcher_id (= singleton's permanent identifier) plus
+   * the full LaunchOutputs and the coinset response.  The wizard
+   * displays the launcher_id and starts polling
+   * ``coinset.getCoinRecordByName(launcherId)`` for confirmation.
+   *
+   * **Failure modes (all surface as thrown errors):**
+   * * Wallet not connected → "wallet not connected".
+   * * Wallet auto-broadcasts → actionable message about needing
+   *   sign-and-return mode.
+   * * Wallet rejects the transfer → user-rejection error verbatim.
+   * * Wallet doesn't actually fund the launcher → clear message
+   *   from ``findLauncherParentCoinId``.
+   * * coinset rejects the bundle → ``pushTransaction`` throws with
+   *   the node's error message.
+   */
+  async submitLaunch(args: {
+    eveInnerPuzzleHash: string;
+    eveAmount?: number | bigint;
+  }): Promise<{
+    launcherId: string;
+    launchOutputs: LaunchOutputs;
+    pushResponse: PushTxResponse;
+    fullSpendBundle: SignedSpendBundle;
+  }> {
+    // 1. Ask the wallet to fund the launcher coin.  Returns a signed
+    // bundle WITHOUT auto-broadcasting (parseTransferResult enforces
+    // this contract).
+    const transferResult = await this.chiaWallet.transfer({
+      targetPuzzleHash: AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH,
+      amount: 1,
+    });
+
+    // 2. Find which spend in the result created the launcher coin.
+    // Its source coin's id is the launcher's parent_coin_info.
+    const fundingCoinId = this.findLauncherParentCoinId(transferResult.coinSpends);
+
+    // 3. Now we know the parent → derive every launch output.
+    const launchOutputs = this.computeLaunchOutputs({
+      parentCoinId: fundingCoinId,
+      eveInnerPuzzleHash: args.eveInnerPuzzleHash,
+      eveAmount: args.eveAmount,
+    });
+
+    // 4. Build the launcher's permissionless coin spend.
+    const launcherSpend = this.buildLauncherCoinSpend({
+      parentCoinId: fundingCoinId,
+      eveFullPuzzleHash: launchOutputs.eveFullPuzzleHash,
+      eveAmount: args.eveAmount,
+    });
+
+    // 5. Combine wallet's signed funding spend + our launcher spend
+    // into one bundle.  The aggregated_signature only covers the
+    // funding spend's AGG_SIGs; the launcher spend has none.
+    const fullSpendBundle: SignedSpendBundle = {
+      coinSpends: [...transferResult.coinSpends, launcherSpend],
+      aggregatedSignature: transferResult.aggregatedSignature,
+    };
+
+    // 6. Push the combined bundle to coinset.org.
+    const pushResponse = await this.coinset.pushTransaction(fullSpendBundle);
+
+    return {
+      launcherId: launchOutputs.launcherId,
+      launchOutputs,
+      pushResponse,
+      fullSpendBundle,
+    };
+  }
+
   // ───────────────────────────────────────────────────────────────────
   // Internal helpers — curry-and-treehash math.
   //
@@ -616,6 +840,8 @@ interface ClvmShape {
 interface ProgramShape {
   treeHash(): Uint8Array;
   curry(args: ProgramShape[]): ProgramShape;
+  /** Serialize the program back to CLVM bytecode (for spend reveals/solutions). */
+  serialize(): Uint8Array;
 }
 
 interface CoinShape {
@@ -628,6 +854,16 @@ interface CoinShape {
 interface SdkShape {
   Clvm?: new () => ClvmShape;
   Coin?: new (parent: Uint8Array, puzzleHash: Uint8Array, amount: bigint) => CoinShape;
+  /**
+   * Static-only namespace exposing canonical chia constants.  In WASM 0.33
+   * this lives at ``ChiaSDK.Constants`` (NOT ``ChiaSDK.Program``).
+   */
+  Constants?: {
+    /** Serialized chia singleton_launcher.clsp bytecode. */
+    singletonLauncher?: () => Uint8Array;
+    /** Tree hash of singleton_launcher.clsp. */
+    singletonLauncherHash?: () => Uint8Array;
+  };
   treeHashAtom?: (atom: Uint8Array) => Uint8Array;
   treeHashPair?: (first: Uint8Array, rest: Uint8Array) => Uint8Array;
 }

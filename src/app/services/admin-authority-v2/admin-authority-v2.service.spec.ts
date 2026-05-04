@@ -15,6 +15,8 @@
  *      and re-test.
  */
 import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 
 import { ChiaWasmService } from '../chia-wasm.service';
 import {
@@ -146,7 +148,9 @@ describe('AdminAuthorityV2Service', () => {
   });
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
     const wasmService = TestBed.inject(ChiaWasmService);
     // Force the wasm service to re-probe now that the test setup
     // has populated window.ChiaSDK.
@@ -305,6 +309,60 @@ describe('AdminAuthorityV2Service', () => {
           .withContext(`singleton_full_puzzle_hash[${c.label}]`)
           .toBe(c.expected);
       });
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // buildLauncherCoinSpend (D-2.6)
+  // ───────────────────────────────────────────────────────────────────
+  describe('buildLauncherCoinSpend', () => {
+    const PARENT = '0x' + 'aa'.repeat(32);
+    const EVE_FULL_PH = '0x' + 'cd'.repeat(32);
+
+    it('shapes the CoinSpend with the launcher hash + 1 mojo', () => {
+      const spend = service.buildLauncherCoinSpend({
+        parentCoinId: PARENT,
+        eveFullPuzzleHash: EVE_FULL_PH,
+      });
+      expect(spend.coin.parentCoinInfo).toBe(PARENT);
+      expect(spend.coin.puzzleHash).toBe(
+        AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH,
+      );
+      expect(spend.coin.amount).toBe(1n);
+      // Puzzle reveal is the standard chia singleton_launcher bytecode;
+      // a non-trivial-length hex string is enough to catch empty/wrong
+      // results without pinning the exact bytecode (which lives in
+      // chia-wallet-sdk-wasm and may change across SDK releases).
+      expect(spend.puzzleReveal.startsWith('0x')).toBe(true);
+      expect(spend.puzzleReveal.length).toBeGreaterThan(10);
+      expect(spend.solution.startsWith('0x')).toBe(true);
+    });
+
+    it('produces deterministic output for same inputs', () => {
+      const a = service.buildLauncherCoinSpend({
+        parentCoinId: PARENT,
+        eveFullPuzzleHash: EVE_FULL_PH,
+      });
+      const b = service.buildLauncherCoinSpend({
+        parentCoinId: PARENT,
+        eveFullPuzzleHash: EVE_FULL_PH,
+      });
+      expect(a).toEqual(b);
+    });
+
+    it('different eve_full_puzzle_hash → different solution (same puzzle reveal)', () => {
+      const a = service.buildLauncherCoinSpend({
+        parentCoinId: PARENT,
+        eveFullPuzzleHash: '0x' + '11'.repeat(32),
+      });
+      const b = service.buildLauncherCoinSpend({
+        parentCoinId: PARENT,
+        eveFullPuzzleHash: '0x' + '22'.repeat(32),
+      });
+      // Puzzle reveal is the standard launcher — same for both.
+      expect(a.puzzleReveal).toBe(b.puzzleReveal);
+      // Solution carries the eve full puzzle hash, so it differs.
+      expect(a.solution).not.toBe(b.solution);
     });
   });
 
