@@ -179,6 +179,102 @@ export class ChiaWalletService {
     throw new Error(`signSpendBundle: unsupported connection: ${state.connection}`);
   }
 
+  /**
+   * Ask the connected wallet to send ``amount`` mojos to ``targetPuzzleHash``
+   * and return the SIGNED spend bundle without auto-broadcasting it.
+   *
+   * **Why not just signCoinSpends?**  Constructing the funding coin
+   * spend ourselves requires synthetic-key derivation from the
+   * operator's master pubkey + the standard p2_delegated puzzle
+   * reveal — both ~1-day implementation chunks per wallet variant
+   * (Goby v0.x / Sage / chia-blockchain wallet).  The wallet's
+   * native ``transfer`` (Goby) / ``chia_send`` (Sage) RPCs do all
+   * that lifting internally; we just need them to RETURN the signed
+   * bundle rather than auto-broadcast.
+   *
+   * **Auto-broadcast detection.**  Some wallet builds auto-broadcast
+   * the funding spend without giving us a chance to combine it with
+   * our launcher spend.  ``parseTransferResult`` detects this and
+   * surfaces an actionable error so the operator can use a CLI
+   * fallback or a wallet that supports the manual flow.
+   *
+   * Currently undocumented in CHIP-0002; we pull the specific
+   * method names from the same conventions Goby and Sage use for
+   * ``transfer`` in their respective dApp-bridge implementations.
+   *
+   * @param targetPuzzleHash 0x-prefixed 32-byte hex (where the mojos go).
+   * @param amount Mojos to send (1 for a singleton launcher coin).
+   * @returns The signed spend bundle ready to combine with our
+   *   launcher spend before pushing to coinset.
+   */
+  async transfer(args: {
+    targetPuzzleHash: string;
+    amount: number | bigint;
+  }): Promise<SignedSpendBundle> {
+    const state = this._state();
+    if (state.kind !== 'connected') {
+      throw new Error('transfer: wallet not connected');
+    }
+    const amountNum =
+      typeof args.amount === 'bigint' ? Number(args.amount) : args.amount;
+    if (amountNum < 1) {
+      throw new Error('transfer: amount must be >= 1 mojo');
+    }
+    const targetHashBare = stripHexPrefix(args.targetPuzzleHash);
+
+    if (state.connection === 'goby') {
+      return this.invokeTransfer(
+        (window as WindowWithChia).chia,
+        ['transfer'],
+        // Goby's transfer wire format takes amount as number + a
+        // "to" address that's typically bech32m, but most builds also
+        // accept raw puzzle hashes as a fallback.  We pass the
+        // hex puzzle hash directly; if the wallet rejects, the
+        // operator will see "invalid recipient" and can fall back
+        // to CLI.
+        { to: targetHashBare, amount: amountNum },
+      );
+    }
+
+    if (state.connection === 'sage') {
+      return this.invokeTransfer(
+        (window as WindowWithChia).sage,
+        ['chia_send', 'chip0002_send'],
+        { recipient: targetHashBare, amount: amountNum },
+      );
+    }
+
+    throw new Error(`transfer: unsupported connection: ${state.connection}`);
+  }
+
+  /** Try each method name in order; return the first successful transfer result. */
+  private async invokeTransfer(
+    wallet: ChiaInjected | undefined,
+    methods: ReadonlyArray<string>,
+    params: unknown,
+  ): Promise<SignedSpendBundle> {
+    if (!wallet) {
+      throw new Error('transfer: wallet bridge no longer available');
+    }
+    let lastError: unknown = null;
+    for (const method of methods) {
+      try {
+        const result = await wallet.request({ method, params });
+        return parseTransferResult(result);
+      } catch (err: unknown) {
+        if (isMethodNotSupportedError(err)) {
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error(
+      `transfer: wallet rejected all method names tried (${methods.join(', ')}). ` +
+        `Last error: ${formatErrorMessage(lastError)}`,
+    );
+  }
+
   /** Try each method name in order; return the first successful result. */
   private async invokeSignCoinSpends(
     wallet: ChiaInjected | undefined,
@@ -337,6 +433,51 @@ function parseSignCoinSpendsResult(raw: unknown): SignedSpendBundle {
     coinSpends: (spends ?? []).map(parseWireCoinSpend),
     aggregatedSignature: normalizeHex(sig),
   };
+}
+
+/**
+ * Decode the wallet's ``transfer``/``chia_send`` reply.  Same defensive
+ * normalisation as ``parseSignCoinSpendsResult`` but with stricter
+ * checking that we got a full signed bundle (not just a transaction id).
+ *
+ * Reasons to reject auto-broadcast:
+ * * Genesis launch needs the funding spend to be combined with the
+ *   launcher spend in the SAME spend bundle (atomicity — without it
+ *   the launcher coin briefly exists as a permissionless 1-mojo coin
+ *   that any observer can spend).
+ * * If the wallet auto-broadcasts, we can't tack on the launcher spend
+ *   afterward — it'd be a separate transaction that the network might
+ *   reject if a competing claim landed first.
+ */
+function parseTransferResult(raw: unknown): SignedSpendBundle {
+  if (raw === null || typeof raw !== 'object') {
+    throw new Error(
+      `transfer: wallet returned unexpected shape: ${JSON.stringify(raw)}`,
+    );
+  }
+  const obj = raw as Record<string, unknown>;
+
+  // Detect the auto-broadcast case: wallet broadcasted itself and only
+  // gave us a tx id.  Surface a clear error so the operator can
+  // configure their wallet for the manual flow.
+  if (
+    !obj['spendBundle'] &&
+    !obj['spend_bundle'] &&
+    !obj['coinSpends'] &&
+    !obj['coin_spends'] &&
+    (obj['transactionId'] || obj['txId'] || obj['transaction_id'])
+  ) {
+    throw new Error(
+      'transfer: wallet auto-broadcasted the funding spend instead of ' +
+        'returning the signed bundle.  Genesis launch requires atomicity ' +
+        '(funding + launcher spends in one bundle), so this path cannot be ' +
+        'used.  Configure your wallet to support manual sign-and-return, ' +
+        'or use a wallet that exposes signCoinSpends directly.',
+    );
+  }
+
+  // Reuse the signCoinSpends parser for the happy path.
+  return parseSignCoinSpendsResult(raw);
 }
 
 function parseWireCoinSpend(raw: unknown): UnsignedCoinSpend {

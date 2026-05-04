@@ -1,12 +1,13 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { PopulisApiService } from '../../services/populis-api.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'pp-footer',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink],
   template: `
     <footer class="mt-24 border-t border-[var(--border)] bg-[rgba(0,0,0,0.25)]">
       <div class="container-p py-10 grid gap-6 md:grid-cols-3">
@@ -32,6 +33,11 @@ import { environment } from '../../../environments/environment';
           <p class="text-xs text-text-muted leading-relaxed">
             Populis Protocol &copy; 2026 Matthew S. Hintz. All rights reserved.
             Testnet build. Not an offer of securities. No guarantees.
+          </p>
+          <p class="mt-3 text-[0.65rem] text-text-muted">
+            <a routerLink="/admin/login" class="hover:text-brand transition mono">
+              admin desk →
+            </a>
           </p>
         </div>
       </div>

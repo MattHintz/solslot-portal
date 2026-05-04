@@ -252,6 +252,92 @@ describe('ChiaWalletService.signSpendBundle', () => {
   // Wire format
   // ───────────────────────────────────────────────────────────────────
 
+  // ───────────────────────────────────────────────────────────────────
+  // transfer (D-2.6)
+  // ───────────────────────────────────────────────────────────────────
+
+  describe('transfer', () => {
+    it('Goby: calls "transfer" with stripped puzzle hash + numeric amount', async () => {
+      setConnectedState('goby');
+      const mock = installMockWallet('chia', (method, params) => {
+        expect(method).toBe('transfer');
+        const p = params as { to: string; amount: number };
+        expect(p.to).toBe('aa'.repeat(32));
+        expect(p.to.startsWith('0x'))
+          .withContext('hex prefix should be stripped')
+          .toBe(false);
+        expect(p.amount).toBe(1);
+        // Return shape matches Goby's manual-sign mode.
+        return {
+          signature: SAMPLE_SIG,
+          spendBundle: { coin_spends: [] },
+        };
+      });
+      cleanup.push(mock.uninstall);
+
+      const result = await service.transfer({
+        targetPuzzleHash: '0x' + 'aa'.repeat(32),
+        amount: 1,
+      });
+      expect(result.aggregatedSignature).toBe(SAMPLE_SIG);
+    });
+
+    it('Sage: tries chia_send first, falls back to chip0002_send', async () => {
+      setConnectedState('sage');
+      const mock = installMockWallet('sage', (method) => {
+        if (method === 'chia_send') {
+          const e = new Error('Unknown method');
+          (e as unknown as { code: number }).code = -32601;
+          return e;
+        }
+        expect(method).toBe('chip0002_send');
+        return { aggregatedSignature: SAMPLE_SIG, coinSpends: [] };
+      });
+      cleanup.push(mock.uninstall);
+
+      const result = await service.transfer({
+        targetPuzzleHash: 'bb'.repeat(32), // bare hex (no 0x) also accepted
+        amount: 1n,
+      });
+      expect(result.aggregatedSignature).toBe(SAMPLE_SIG);
+      expect(mock.calls.length).toBe(2);
+    });
+
+    it('rejects auto-broadcast (wallet returned only a tx id)', async () => {
+      setConnectedState('goby');
+      const mock = installMockWallet('chia', () => ({
+        transactionId: '0x' + 'de'.repeat(32),
+      }));
+      cleanup.push(mock.uninstall);
+
+      await expectAsync(
+        service.transfer({
+          targetPuzzleHash: '0x' + 'aa'.repeat(32),
+          amount: 1,
+        }),
+      ).toBeRejectedWithError(/auto-broadcasted/);
+    });
+
+    it('throws on amount < 1', async () => {
+      setConnectedState('goby');
+      await expectAsync(
+        service.transfer({
+          targetPuzzleHash: '0x' + 'aa'.repeat(32),
+          amount: 0,
+        }),
+      ).toBeRejectedWithError(/>= 1 mojo/);
+    });
+
+    it('throws when not connected', async () => {
+      await expectAsync(
+        service.transfer({
+          targetPuzzleHash: '0x' + 'aa'.repeat(32),
+          amount: 1,
+        }),
+      ).toBeRejectedWithError(/not connected/);
+    });
+  });
+
   it('strips 0x prefix and uses snake_case in wire format', async () => {
     setConnectedState('goby');
     const mock = installMockWallet('chia', () => ({
