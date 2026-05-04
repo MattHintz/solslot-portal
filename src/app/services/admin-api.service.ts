@@ -65,6 +65,47 @@ export class AdminApiService {
     );
   }
 
+  /**
+   * Read the on-chain admin-authority singleton snapshot (A.2).
+   *
+   * Public — no JWT required.  Returns a deterministic state hash so
+   * third parties can independently verify against on-chain state by
+   * walking the singleton lineage on coinset.org (the Trust Roots
+   * page does exactly this via {@link ChiaSingletonReaderService}).
+   *
+   * Per POP-CANON-021, the response includes ``phase``, ``gating_source``,
+   * and ``informational_only`` disclaimers so consumers can tell
+   * in-band that the published state is NOT the request-time gating
+   * source today (Phase 2.5 deferred).
+   */
+  async getAuthority(): Promise<AdminAuthorityResponse> {
+    return firstValueFrom(
+      this.http.get<AdminAuthorityResponse>(`${this.base}/admin/auth/authority`),
+    );
+  }
+
+  /**
+   * GET /admin/auth/authority_v2 (Phase 9-Hermes-C transparency endpoint).
+   *
+   * Returns the on-chain v2 admin-authority singleton's published state:
+   * the MIPS root, admins-list hash, pending-ops-list hash, monotonic
+   * version, and a derived state_hash.  The singleton is a thin shim
+   * delegating to a CHIP-0043 MIPS m-of-n quorum where each admin slot
+   * is itself a OneOfN of personal auth methods (BLS, EIP-712 / MetaMask,
+   * passkey, ...).
+   *
+   * Public + unauthenticated by design (matches v1's transparency
+   * surface).  Includes the ``phase``, ``gating_source``, and
+   * ``informational_only`` disclaimers so consumers can tell in-band
+   * that the v2 surface is informational-only until the migration's
+   * Phase 4 cuts gating-source over to v2's MIPS quorum.
+   */
+  async getAuthorityV2(): Promise<AdminAuthorityV2Response> {
+    return firstValueFrom(
+      this.http.get<AdminAuthorityV2Response>(`${this.base}/admin/auth/authority_v2`),
+    );
+  }
+
   // ── /admin/mint/* (admin JWT required) ───────────────────────────────────
   /** Create a DRAFT mint proposal owned by the JWT subject. */
   async proposeMint(
@@ -176,6 +217,111 @@ export interface AdminLoginResponse {
   expires_at: number;
   /** Lowercase 0x-hex address — the JWT's `sub` claim. */
   owner: string;
+}
+
+/**
+ * Response shape of `GET /admin/auth/authority` (A.2 transparency endpoint).
+ *
+ * Mirrors the dict returned by `populis_api/admin_auth.py:admin_authority`.
+ * Includes the POP-CANON-021 phase disclaimers (`phase`, `gating_source`,
+ * `informational_only`) so consumers can tell in-band that the published
+ * BLS quorum state is NOT the request-time gating source today.
+ */
+export interface AdminAuthorityResponse {
+  /** True iff `POPULIS_PROTOCOL_ADMIN_AUTHORITY_PUBKEYS` is non-empty. */
+  enabled: boolean;
+  /** Coin id (0x-hex bytes32) of the on-chain singleton, when configured. */
+  launcher_id: string | null;
+  /**
+   * sha256 of each allowlisted BLS pubkey (saves bandwidth + adds privacy
+   * vs. publishing full 48-byte pubkeys).  The Trust Roots page can
+   * recompute these client-side after fetching the on-chain state.
+   */
+  allowlist_pubkey_hashes: string[] | null;
+  /** Minimum signatures required for a rotation spend. */
+  quorum_m: number | null;
+  /** Monotonic version stamped into the singleton's curried state. */
+  authority_version: number | null;
+  /**
+   * sha256tree(allowlist, quorum_m, authority_version).  Each rotation
+   * signer commits to this value via AGG_SIG_ME, and the puzzle emits
+   * CREATE_PUZZLE_ANNOUNCEMENT(0x50 || state_hash) on every spend.
+   * Trust Roots verification: replay the latest spend on chain via
+   * ChiaSingletonReaderService and compare its 0x50-prefixed
+   * announcement body against this hash.  Match → published state
+   * agrees with on-chain state.  Mismatch → operator drift.
+   */
+  state_hash: string | null;
+  /** POP-CANON-021 disclaimer: see populis_api/admin_auth.py:admin_authority. */
+  phase: '2-informational-only' | string;
+  gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST' | string;
+  informational_only: boolean;
+}
+
+/**
+ * Response shape of `GET /admin/auth/authority_v2` (Phase 9-Hermes-C).
+ *
+ * Mirrors the dict returned by
+ * `populis_api/admin_authority_v2.py:build_admin_authority_v2_snapshot`.
+ *
+ * Unlike v1 (which publishes the full BLS allowlist), v2 publishes only
+ * sha256tree HASHES of the admins list and the pending-ops list.  Each
+ * admin record is `(admin_id . OneOfN-tree-hash)` so individual auth
+ * methods (BLS / EIP-712 pubkeys / passkey credentials) stay private
+ * unless the operator chooses to surface them off-chain.  The singleton
+ * commits to these hashes via CREATE_PUZZLE_ANNOUNCEMENT(0x50 || state_hash).
+ *
+ * Trust Roots verification flow:
+ *   1. Read /admin/auth/authority_v2 → claimed state_hash.
+ *   2. Walk the singleton lineage from launcher_id forward.
+ *   3. Replay the latest spend in WASM and read its
+ *      PROTOCOL_PREFIX-prefixed announcement body.
+ *   4. Compare the announcement body to the claimed state_hash.
+ *      Match → published state agrees with on-chain state.
+ *      Mismatch → operator drift (or staged migration).
+ */
+export interface AdminAuthorityV2Response {
+  /** True iff at least one v2 setting (launcher_id) is configured. */
+  enabled: boolean;
+  /** Coin id (0x-hex bytes32) of the on-chain v2 singleton. */
+  launcher_id: string | null;
+  /** sha256tree of the curried MIPS m_of_n + per-admin OneOfN structure. */
+  mips_root_hash: string | null;
+  /** sha256tree of the flat `((admin_id . OneOfN-hash) ...)` admins list. */
+  admins_hash: string | null;
+  /**
+   * sha256tree of the flat `((op_kind . pending_op_state) ...)` pending-ops
+   * list.  An empty list hashes to a known sentinel
+   * (``populis_puzzles.admin_authority_v2_driver.EMPTY_LIST_HASH``).
+   */
+  pending_ops_hash: string | null;
+  /** Monotonic version stamped into the singleton's curried state. */
+  authority_version: number | null;
+  /**
+   * sha256tree(mips_root_hash, admins_hash, pending_ops_hash, authority_version).
+   * This is the value the singleton emits as
+   * CREATE_PUZZLE_ANNOUNCEMENT(0x50 || state_hash) on every spend; the
+   * driver helper `compute_state_hash` produces the same value off-chain.
+   */
+  state_hash: string | null;
+  /**
+   * Migration phase indicator:
+   *   '1-not-deployed'         — operator hasn't launched v2 yet.
+   *   '2-informational-only'   — v2 on-chain but admin desk still gated
+   *                              by v1 BLS allowlist (current state).
+   *   '3-migration-in-progress' — v1 has emitted MIGRATED_TO_V2.
+   *   '4-gating-source'        — admin desk authenticates via v2's MIPS quorum.
+   */
+  phase:
+    | '1-not-deployed'
+    | '2-informational-only'
+    | '3-migration-in-progress'
+    | '4-gating-source'
+    | string;
+  /** Always 'POPULIS_ADMIN_PUBKEY_ALLOWLIST' until phase 4. */
+  gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST' | string;
+  /** True until phase 4 cuts gating-source over to v2's MIPS quorum. */
+  informational_only: boolean;
 }
 
 export interface AdminRefreshResponse {

@@ -64,9 +64,14 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
           </p>
         </div>
 
-        <a routerLink="/admin/mint/new" class="btn btn--primary">
-          + New mint proposal
-        </a>
+        <div class="flex flex-wrap items-center gap-3">
+          <a routerLink="/admin/trust-roots" class="btn btn--ghost">
+            Trust roots
+          </a>
+          <a routerLink="/admin/mint/new" class="btn btn--primary">
+            + New mint proposal
+          </a>
+        </div>
       </header>
 
       <div class="mt-10 flex flex-wrap gap-2">

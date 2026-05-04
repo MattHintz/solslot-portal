@@ -62,6 +62,21 @@ export const routes: Routes = [
     title: 'New Mint Proposal · Populis',
   },
   {
+    // Trust Roots admin page (Phase 3): surfaces /protocol +
+    // /admin/auth/authority and verifies them against on-chain
+    // state via ChiaSingletonReaderService.
+    path: 'admin/trust-roots',
+    canActivate: [
+      (route, state) =>
+        import('./services/admin-auth.guard').then((m) => m.adminAuthGuard(route, state)),
+    ],
+    loadComponent: () =>
+      import('./pages/admin/trust-roots/trust-roots.component').then(
+        (m) => m.TrustRootsComponent,
+      ),
+    title: 'Trust Roots · Populis',
+  },
+  {
     path: 'admin/mint/:id',
     canActivate: [
       (route, state) =>
