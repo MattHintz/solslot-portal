@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { adminAuthGuard } from './services/admin-auth.guard';
 
 export const routes: Routes = [
   {
@@ -37,12 +38,10 @@ export const routes: Routes = [
   },
   {
     path: 'admin',
-    canActivate: [
-      // The guard pushes the original URL into ?returnTo= so users land
-      // back on their target page after signing in.
-      (route, state) =>
-        import('./services/admin-auth.guard').then((m) => m.adminAuthGuard(route, state)),
-    ],
+    // The guard pushes the original URL into ?returnTo= so users land
+    // back on their target page after signing in.  Static-imported so
+    // inject() inside the guard runs in a valid injection context.
+    canActivate: [adminAuthGuard],
     loadComponent: () =>
       import('./pages/admin/dashboard/admin-dashboard.component').then(
         (m) => m.AdminDashboardComponent,
@@ -51,10 +50,7 @@ export const routes: Routes = [
   },
   {
     path: 'admin/mint/new',
-    canActivate: [
-      (route, state) =>
-        import('./services/admin-auth.guard').then((m) => m.adminAuthGuard(route, state)),
-    ],
+    canActivate: [adminAuthGuard],
     loadComponent: () =>
       import('./pages/admin/mint-new/mint-new.component').then(
         (m) => m.MintNewComponent,
@@ -66,10 +62,7 @@ export const routes: Routes = [
     // /admin/auth/authority and verifies them against on-chain
     // state via ChiaSingletonReaderService.
     path: 'admin/trust-roots',
-    canActivate: [
-      (route, state) =>
-        import('./services/admin-auth.guard').then((m) => m.adminAuthGuard(route, state)),
-    ],
+    canActivate: [adminAuthGuard],
     loadComponent: () =>
       import('./pages/admin/trust-roots/trust-roots.component').then(
         (m) => m.TrustRootsComponent,
@@ -83,10 +76,7 @@ export const routes: Routes = [
     // records + MIPS root).  Preview-only for now — actual on-chain
     // submission lands in D-2.5/D-2.6.
     path: 'admin/launch-authority-v2',
-    canActivate: [
-      (route, state) =>
-        import('./services/admin-auth.guard').then((m) => m.adminAuthGuard(route, state)),
-    ],
+    canActivate: [adminAuthGuard],
     loadComponent: () =>
       import(
         './pages/admin/launch-authority-v2/launch-authority-v2.component'
@@ -95,10 +85,7 @@ export const routes: Routes = [
   },
   {
     path: 'admin/mint/:id',
-    canActivate: [
-      (route, state) =>
-        import('./services/admin-auth.guard').then((m) => m.adminAuthGuard(route, state)),
-    ],
+    canActivate: [adminAuthGuard],
     loadComponent: () =>
       import('./pages/admin/mint-detail/mint-detail.component').then(
         (m) => m.MintDetailComponent,
