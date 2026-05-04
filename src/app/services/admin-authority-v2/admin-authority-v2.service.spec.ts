@@ -58,6 +58,24 @@ interface InnerPuzzleInputFixture {
   pgt_governance_puzzle_hash?: string;
 }
 
+interface SingletonFullInputFixture {
+  launcher_id: string;
+  inner_puzzle_hash: string;
+}
+
+interface LaunchInputFixture {
+  parent_coin_id: string;
+  eve_inner_puzzle_hash: string;
+  eve_amount: number;
+}
+
+interface LaunchExpectedFixture {
+  launcher_id: string;
+  eve_full_puzzle_hash: string;
+  launcher_announcement_message: string;
+  launcher_announcement_id: string;
+}
+
 interface FixtureFile {
   constants: {
     mod_hash: string;
@@ -67,6 +85,8 @@ interface FixtureFile {
     default_cooldown_blocks: number;
     default_recovery_timeout_blocks: number;
     default_pgt_governance_puzzle_hash: string;
+    singleton_mod_hash: string;
+    singleton_launcher_hash: string;
   };
   state_hash: FixtureCase<{
     mips_root_hash: string;
@@ -77,6 +97,8 @@ interface FixtureFile {
   admins_hash: FixtureCase<AdminInputFixture[]>[];
   pending_ops_hash: FixtureCase<PendingOpInputFixture[]>[];
   inner_puzzle_hash: FixtureCase<InnerPuzzleInputFixture>[];
+  singleton_full_puzzle_hash: FixtureCase<SingletonFullInputFixture>[];
+  launch_outputs: FixtureCase<LaunchInputFixture, LaunchExpectedFixture>[];
 }
 
 const fixtures = fixturesJson as FixtureFile;
@@ -246,6 +268,83 @@ describe('AdminAuthorityV2Service', () => {
           }),
         );
         expect(got).withContext(`inner_puzzle_hash[${c.label}]`).toBe(c.expected);
+      });
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Singleton constants
+  // ───────────────────────────────────────────────────────────────────
+  describe('singleton constants', () => {
+    it('SINGLETON_MOD_HASH matches the canonical Chia value', () => {
+      expect(AdminAuthorityV2Service.SINGLETON_MOD_HASH).toBe(
+        fixtures.constants.singleton_mod_hash,
+      );
+    });
+
+    it('SINGLETON_LAUNCHER_HASH matches the canonical Chia value', () => {
+      expect(AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH).toBe(
+        fixtures.constants.singleton_launcher_hash,
+      );
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // singletonFullPuzzleHash
+  // ───────────────────────────────────────────────────────────────────
+  describe('singletonFullPuzzleHash', () => {
+    fixtures.singleton_full_puzzle_hash.forEach((c) => {
+      it(`matches puzzle_for_singleton for case "${c.label}"`, () => {
+        const got = bytesToHexPrefixed(
+          service.singletonFullPuzzleHash(
+            c.input.launcher_id,
+            c.input.inner_puzzle_hash,
+          ),
+        );
+        expect(got)
+          .withContext(`singleton_full_puzzle_hash[${c.label}]`)
+          .toBe(c.expected);
+      });
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // computeLaunchOutputs
+  // ───────────────────────────────────────────────────────────────────
+  describe('computeLaunchOutputs', () => {
+    fixtures.launch_outputs.forEach((c) => {
+      it(`matches Python for case "${c.label}"`, () => {
+        const got = service.computeLaunchOutputs({
+          parentCoinId: c.input.parent_coin_id,
+          eveInnerPuzzleHash: c.input.eve_inner_puzzle_hash,
+          eveAmount: c.input.eve_amount,
+        });
+        // Each output field is independently asserted so a single
+        // divergence (e.g. wrong launcher coinId computation) surfaces
+        // a precise failure message.
+        expect(got.launcherId)
+          .withContext(`launch_outputs[${c.label}].launcherId`)
+          .toBe(c.expected.launcher_id);
+        expect(got.eveFullPuzzleHash)
+          .withContext(`launch_outputs[${c.label}].eveFullPuzzleHash`)
+          .toBe(c.expected.eve_full_puzzle_hash);
+        expect(got.launcherAnnouncementMessage)
+          .withContext(`launch_outputs[${c.label}].launcherAnnouncementMessage`)
+          .toBe(c.expected.launcher_announcement_message);
+        expect(got.launcherAnnouncementId)
+          .withContext(`launch_outputs[${c.label}].launcherAnnouncementId`)
+          .toBe(c.expected.launcher_announcement_id);
+
+        // Sanity checks on coin shapes (not in fixture but derivable).
+        expect(got.launcherCoin.parentCoinInfo).toBe(c.input.parent_coin_id);
+        expect(got.launcherCoin.puzzleHash).toBe(
+          AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH,
+        );
+        expect(got.launcherCoin.amount).toBe(1n);
+        expect(got.eveCoin.parentCoinInfo).toBe(got.launcherId);
+        expect(got.eveCoin.puzzleHash).toBe(got.eveFullPuzzleHash);
+        expect(got.eveCoin.amount).toBe(BigInt(c.input.eve_amount));
+        expect(got.eveInnerPuzzleHash).toBe(c.input.eve_inner_puzzle_hash);
       });
     });
   });

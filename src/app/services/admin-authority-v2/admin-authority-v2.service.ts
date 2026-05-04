@@ -43,6 +43,32 @@ export class AdminAuthorityV2Service {
     '0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a';
 
   /**
+   * Tree hash of ``singleton_top_layer_v1_1.clsp`` from chia-blockchain.
+   * The v2 admin-authority singleton wraps its inner puzzle in this
+   * standard top layer.  Pinned in the cross-repo fixture at
+   * ``constants.singleton_mod_hash`` so any drift in the chia ecosystem
+   * surfaces immediately as a Karma test failure.
+   */
+  static readonly SINGLETON_MOD_HASH =
+    '0x7faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9f';
+
+  /**
+   * Tree hash of ``singleton_launcher.clsp``.  This is the puzzle hash
+   * the launcher coin lives at — its solution-of-3 emits a CREATE_COIN
+   * for the eve coin + a CREATE_PUZZLE_ANNOUNCEMENT.  Pinned in the
+   * cross-repo fixture at ``constants.singleton_launcher_hash``.
+   */
+  static readonly SINGLETON_LAUNCHER_HASH =
+    '0xeff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9';
+
+  /**
+   * Default eve-coin amount for a fresh singleton launch.  Singletons
+   * by convention hold 1 mojo (must be odd) — the value is irrelevant
+   * to the singleton's identity, only the launcher coin's id matters.
+   */
+  static readonly DEFAULT_EVE_AMOUNT = 1n;
+
+  /**
    * Default protocol-policy values mirroring the Python driver.
    * Operators can override at deployment time; these match the
    * design doc's recommended defaults.
@@ -181,13 +207,223 @@ export class AdminAuthorityV2Service {
   }
 
   /**
+   * Tree hash of the singleton wrapper around an inner puzzle.
+   * Equivalent to ``puzzle_for_singleton(launcherId, inner).tree_hash()``
+   * where ``inner.tree_hash() === innerPuzzleHash``.
+   *
+   * Implemented via the standard chia ``curry_and_treehash`` formula
+   * applied to ``SINGLETON_MOD_HASH`` with two args:
+   *
+   *   1. ``SINGLETON_STRUCT(launcher_id) = (MOD_HASH . (LAUNCHER_ID . LAUNCHER_HASH))``
+   *   2. The inner puzzle hash itself
+   *
+   * Cross-checked against ``puzzle_for_singleton`` in
+   * ``populis_protocol/tests/test_admin_authority_v2_launch.py``.
+   *
+   * @param launcherId 0x-prefixed 32-byte hex (the singleton's permanent identifier).
+   * @param innerPuzzleHash 0x-prefixed 32-byte hex (sha256tree of the v2 inner puzzle).
+   */
+  singletonFullPuzzleHash(launcherId: string, innerPuzzleHash: string): Uint8Array {
+    const launcherIdBytes = hexToBytes(launcherId);
+    const innerHashBytes = hexToBytes(innerPuzzleHash);
+
+    const structHash = this.singletonStructHash(launcherIdBytes);
+    const modHashBytes = hexToBytes(AdminAuthorityV2Service.SINGLETON_MOD_HASH);
+    const quotedMod = this.treeHashPair(this.qKwTreeHash(), modHashBytes);
+
+    return this.curryAndTreeHash(quotedMod, [structHash, innerHashBytes]);
+  }
+
+  /**
+   * Compute every deterministic output of a v2 admin-authority launch.
+   *
+   * Mirrors ``populis_protocol.populis_puzzles.admin_authority_v2_driver.compute_launch_outputs``
+   * byte-for-byte (validated by the cross-repo fixture).  Returns the
+   * launcher coin, eve coin, and announcement values the portal needs
+   * to construct a full launch spend bundle.
+   *
+   * No signatures or chain reads are performed — every output is a
+   * pure function of the inputs.
+   */
+  computeLaunchOutputs(args: {
+    parentCoinId: string;
+    eveInnerPuzzleHash: string;
+    eveAmount?: number | bigint;
+  }): LaunchOutputs {
+    const eveAmount = BigInt(args.eveAmount ?? AdminAuthorityV2Service.DEFAULT_EVE_AMOUNT);
+    const sdk = this.sdk();
+    if (!sdk.Coin) {
+      throw new Error(
+        'AdminAuthorityV2Service.computeLaunchOutputs: chia-wallet-sdk-wasm Coin class missing.',
+      );
+    }
+
+    const parentCoinIdBytes = hexToBytes(args.parentCoinId);
+    const launcherCoin = new sdk.Coin(
+      parentCoinIdBytes,
+      hexToBytes(AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH),
+      1n, // launcher coin is always 1 mojo (odd) per chia singleton convention
+    );
+    const launcherIdBytes = launcherCoin.coinId();
+    const launcherIdHex = bytesToHexPrefixed(launcherIdBytes);
+
+    const eveFullPuzzleHashBytes = this.singletonFullPuzzleHash(
+      launcherIdHex,
+      args.eveInnerPuzzleHash,
+    );
+
+    const eveCoin = new sdk.Coin(
+      launcherIdBytes,
+      eveFullPuzzleHashBytes,
+      eveAmount,
+    );
+
+    // Build the launcher solution program: (eve_full_ph eve_amount key_value_list).
+    // Using Clvm.list to ensure the same CLVM list encoding the launcher
+    // puzzle expects (right-nested cons cells terminated by nil).
+    const clvm = this.clvm();
+    const launcherSolution = clvm.list([
+      clvm.atom(eveFullPuzzleHashBytes),
+      clvm.int(eveAmount),
+      clvm.nil(),
+    ]);
+    const launcherAnnouncementMessage = launcherSolution.treeHash();
+
+    // Standard chia announcement-id formula: sha256(coin_id || message).
+    // We compute this client-side via the WebCrypto-equivalent SubtleCrypto
+    // is not available synchronously in WASM contexts, so we use a tiny
+    // helper that imports a small sha256 implementation via the WASM
+    // tree-hash primitives.  treeHashAtom(arg) = sha256(0x01 || arg) so
+    // we can't reuse it directly for raw concatenation hashing; instead
+    // we use the WASM SDK's ``Coin.coinId`` formula equivalent: a fresh
+    // sha256 over the concatenation.  We build it via Clvm by creating
+    // an atom of the concatenated bytes and noting that tree_hash of an
+    // atom = sha256(0x01 || bytes).  That's NOT what we want (we want
+    // raw sha256), so we go through SubtleCrypto for the announcement id.
+    // Browsers + Karma both expose ``crypto.subtle``.
+    const announcementInput = new Uint8Array(
+      launcherIdBytes.length + launcherAnnouncementMessage.length,
+    );
+    announcementInput.set(launcherIdBytes, 0);
+    announcementInput.set(launcherAnnouncementMessage, launcherIdBytes.length);
+    const launcherAnnouncementId = sha256Sync(announcementInput);
+
+    return {
+      launcherId: launcherIdHex,
+      launcherCoin: {
+        parentCoinInfo: bytesToHexPrefixed(launcherCoin.parentCoinInfo),
+        puzzleHash: bytesToHexPrefixed(launcherCoin.puzzleHash),
+        amount: launcherCoin.amount,
+      },
+      eveInnerPuzzleHash: args.eveInnerPuzzleHash,
+      eveFullPuzzleHash: bytesToHexPrefixed(eveFullPuzzleHashBytes),
+      eveCoin: {
+        parentCoinInfo: bytesToHexPrefixed(eveCoin.parentCoinInfo),
+        puzzleHash: bytesToHexPrefixed(eveCoin.puzzleHash),
+        amount: eveCoin.amount,
+      },
+      launcherAnnouncementMessage: bytesToHexPrefixed(launcherAnnouncementMessage),
+      launcherAnnouncementId: bytesToHexPrefixed(launcherAnnouncementId),
+    };
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // Internal helpers — curry-and-treehash math.
+  //
+  // These reproduce ``chia.wallet.util.curry_and_treehash`` in TS.  The
+  // formula (from Chia source) is:
+  //
+  //   curry_and_treehash(quoted_mod, *args) =
+  //     pair(A_KW, pair(quoted_mod, pair(curried_values_tree_hash(args), NIL)))
+  //
+  //   curried_values_tree_hash([])       = ONE_TREEHASH
+  //   curried_values_tree_hash([a, ...]) =
+  //     pair(C_KW, pair(pair(Q_KW, a), pair(curried_values_tree_hash([...]), NIL)))
+  //
+  // We use ``treeHashPair`` from chia-wallet-sdk-wasm rather than
+  // computing sha256 manually so the implementation shares the exact
+  // hashing primitive used by every other Chia tooling.
+  // ───────────────────────────────────────────────────────────────────
+
+  private singletonStructHash(launcherIdBytes: Uint8Array): Uint8Array {
+    // SINGLETON_STRUCT = (MOD_HASH . (LAUNCHER_ID . LAUNCHER_HASH))
+    // sha256tree of a cons cell = treeHashPair(treeHash(left), treeHash(right))
+    const launcherHashBytes = hexToBytes(AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH);
+    const modHashBytes = hexToBytes(AdminAuthorityV2Service.SINGLETON_MOD_HASH);
+    const innerPair = this.treeHashPair(
+      this.treeHashAtom(launcherIdBytes),
+      this.treeHashAtom(launcherHashBytes),
+    );
+    return this.treeHashPair(this.treeHashAtom(modHashBytes), innerPair);
+  }
+
+  private curryAndTreeHash(quotedMod: Uint8Array, args: Uint8Array[]): Uint8Array {
+    return this.treeHashPair(
+      this.aKwTreeHash(),
+      this.treeHashPair(
+        quotedMod,
+        this.treeHashPair(this.curriedValuesTreeHash(args), this.nilTreeHash()),
+      ),
+    );
+  }
+
+  private curriedValuesTreeHash(args: Uint8Array[]): Uint8Array {
+    if (args.length === 0) {
+      return this.qKwTreeHash(); // ONE_TREEHASH = treeHashAtom([1])
+    }
+    const [first, ...rest] = args;
+    return this.treeHashPair(
+      this.cKwTreeHash(),
+      this.treeHashPair(
+        this.treeHashPair(this.qKwTreeHash(), first),
+        this.treeHashPair(this.curriedValuesTreeHash(rest), this.nilTreeHash()),
+      ),
+    );
+  }
+
+  // Memoised single-byte tree hashes (computed once per service lifetime).
+  private _qKw?: Uint8Array; // treeHashAtom([1]) — 'q' opcode tree hash
+  private _aKw?: Uint8Array; // treeHashAtom([2]) — 'a' opcode tree hash
+  private _cKw?: Uint8Array; // treeHashAtom([4]) — 'c' opcode tree hash
+  private _nil?: Uint8Array; // treeHashAtom([])  — nil tree hash
+
+  private qKwTreeHash(): Uint8Array {
+    return (this._qKw ??= this.treeHashAtom(new Uint8Array([0x01])));
+  }
+  private aKwTreeHash(): Uint8Array {
+    return (this._aKw ??= this.treeHashAtom(new Uint8Array([0x02])));
+  }
+  private cKwTreeHash(): Uint8Array {
+    return (this._cKw ??= this.treeHashAtom(new Uint8Array([0x04])));
+  }
+  private nilTreeHash(): Uint8Array {
+    return (this._nil ??= this.treeHashAtom(new Uint8Array(0)));
+  }
+
+  private treeHashAtom(bytes: Uint8Array): Uint8Array {
+    const sdk = this.sdk();
+    if (!sdk.treeHashAtom) {
+      throw new Error('chia-wallet-sdk-wasm missing treeHashAtom export');
+    }
+    return sdk.treeHashAtom(bytes);
+  }
+
+  private treeHashPair(first: Uint8Array, rest: Uint8Array): Uint8Array {
+    const sdk = this.sdk();
+    if (!sdk.treeHashPair) {
+      throw new Error('chia-wallet-sdk-wasm missing treeHashPair export');
+    }
+    return sdk.treeHashPair(first, rest);
+  }
+
+  /**
    * Lazy WASM Clvm accessor.  Throws a clear error if the SDK isn't
    * loaded yet — callers should wait for ``ChiaWasmService.ready()``
    * before invoking the hash helpers.
    */
   private clvm(): ClvmShape {
-    const sdk = this.wasm.sdk() as { Clvm?: new () => ClvmShape };
-    if (!sdk?.Clvm) {
+    const sdk = this.sdk();
+    if (!sdk.Clvm) {
       throw new Error(
         'AdminAuthorityV2Service: chia-wallet-sdk-wasm not loaded yet. ' +
           'Await ChiaWasmService.ready() before calling hash helpers.',
@@ -195,6 +431,95 @@ export class AdminAuthorityV2Service {
     }
     return new sdk.Clvm();
   }
+
+  /** Returns the raw WASM SDK namespace (the contents of `window.ChiaSDK`). */
+  private sdk(): SdkShape {
+    return this.wasm.sdk() as SdkShape;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Synchronous SHA-256 used for the launcher-announcement id.  The Web
+// Crypto API only exposes async ``crypto.subtle.digest``, but we need
+// sync semantics so ``computeLaunchOutputs`` doesn't poison its callers
+// with promises.  Implements FIPS 180-4 SHA-256 in pure JS — small
+// (~80 LOC equivalent) and fully synchronous.  Used only for
+// ``sha256(launcher_id || message)``; everything else flows through
+// the WASM tree-hash primitives.
+// ─────────────────────────────────────────────────────────────────────────
+
+const SHA256_K = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+  0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+  0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+  0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+  0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+  0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+  0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+  0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+
+function sha256Sync(message: Uint8Array): Uint8Array {
+  const ml = message.length;
+  const padded = new Uint8Array(Math.ceil((ml + 9) / 64) * 64);
+  padded.set(message);
+  padded[ml] = 0x80;
+  const bits = BigInt(ml) * 8n;
+  for (let i = 0; i < 8; i++) {
+    padded[padded.length - 1 - i] = Number((bits >> BigInt(i * 8)) & 0xffn);
+  }
+
+  const H = new Uint32Array([
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c,
+    0x1f83d9ab, 0x5be0cd19,
+  ]);
+
+  const W = new Uint32Array(64);
+  for (let chunk = 0; chunk < padded.length; chunk += 64) {
+    for (let i = 0; i < 16; i++) {
+      W[i] =
+        (padded[chunk + i * 4] << 24) |
+        (padded[chunk + i * 4 + 1] << 16) |
+        (padded[chunk + i * 4 + 2] << 8) |
+        padded[chunk + i * 4 + 3];
+    }
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(W[i - 15], 7) ^ rotr(W[i - 15], 18) ^ (W[i - 15] >>> 3);
+      const s1 = rotr(W[i - 2], 17) ^ rotr(W[i - 2], 19) ^ (W[i - 2] >>> 10);
+      W[i] = (W[i - 16] + s0 + W[i - 7] + s1) | 0;
+    }
+    let [a, b, c, d, e, f, g, h] = H;
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + SHA256_K[i] + W[i]) | 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0;
+      d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0;
+    H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0;
+    H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+  }
+
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 8; i++) {
+    out[i * 4] = (H[i] >>> 24) & 0xff;
+    out[i * 4 + 1] = (H[i] >>> 16) & 0xff;
+    out[i * 4 + 2] = (H[i] >>> 8) & 0xff;
+    out[i * 4 + 3] = H[i] & 0xff;
+  }
+  return out;
+}
+
+function rotr(x: number, n: number): number {
+  return ((x >>> n) | (x << (32 - n))) | 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -215,6 +540,44 @@ export interface AdminRecord {
   leaves: ReadonlyArray<string>;
   /** KEY_REMOVE_QUORUM threshold within this admin's leaves (1 ≤ m_within ≤ leaves.length). */
   mWithin: number | bigint;
+}
+
+/**
+ * Coin tuple — mirrors WASM ``Coin`` but as plain JSON-friendly fields
+ * so the launch-outputs result can be passed through Angular signals
+ * + JSON pipes without holding a reference to the WASM heap.
+ */
+export interface CoinTuple {
+  /** 0x-prefixed 32-byte hex of the coin's parent's coin id. */
+  parentCoinInfo: string;
+  /** 0x-prefixed 32-byte hex of the coin's puzzle hash. */
+  puzzleHash: string;
+  /** Mojos held by the coin (always 1 for v2 launcher / eve). */
+  amount: bigint;
+}
+
+/**
+ * Deterministic outputs of a v2 admin-authority launch.  Mirror of the
+ * Python ``LaunchOutputs`` dataclass (sans the raw ``launcher_solution``
+ * Program — the portal rebuilds that lazily when it actually needs to
+ * construct the launcher CoinSpend).
+ *
+ * Every field is hex-encoded for JSON/signal serialisability.  The
+ * launcher coin's ``coinId`` (= ``launcherId``) is the singleton's
+ * permanent identifier.
+ */
+export interface LaunchOutputs {
+  launcherId: string;
+  launcherCoin: CoinTuple;
+  eveInnerPuzzleHash: string;
+  eveFullPuzzleHash: string;
+  eveCoin: CoinTuple;
+  /** sha256tree of the launcher solution — body of the launcher's
+   * CREATE_PUZZLE_ANNOUNCEMENT. */
+  launcherAnnouncementMessage: string;
+  /** sha256(launcherId || announcementMessage) — the value that
+   * ASSERT_PUZZLE_ANNOUNCEMENT consumers index by. */
+  launcherAnnouncementId: string;
 }
 
 /**
@@ -246,11 +609,27 @@ interface ClvmShape {
   atom(value: Uint8Array): ProgramShape;
   int(value: bigint): ProgramShape;
   list(values: ProgramShape[]): ProgramShape;
+  pair(first: ProgramShape, rest: ProgramShape): ProgramShape;
+  nil(): ProgramShape;
 }
 
 interface ProgramShape {
   treeHash(): Uint8Array;
   curry(args: ProgramShape[]): ProgramShape;
+}
+
+interface CoinShape {
+  parentCoinInfo: Uint8Array;
+  puzzleHash: Uint8Array;
+  amount: bigint;
+  coinId(): Uint8Array;
+}
+
+interface SdkShape {
+  Clvm?: new () => ClvmShape;
+  Coin?: new (parent: Uint8Array, puzzleHash: Uint8Array, amount: bigint) => CoinShape;
+  treeHashAtom?: (atom: Uint8Array) => Uint8Array;
+  treeHashPair?: (first: Uint8Array, rest: Uint8Array) => Uint8Array;
 }
 
 /**
