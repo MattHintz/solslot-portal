@@ -1,0 +1,181 @@
+{
+  "constants": {
+    "mod_hash": "0xaee60ab7431aa9abab461146ca3c29a5cbe6b0d0ffac444a79335dbd83ba76e7",
+    "empty_list_hash": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+    "default_max_admins": 25,
+    "default_max_keys_per_admin": 10,
+    "default_cooldown_blocks": 1024,
+    "default_recovery_timeout_blocks": 5040,
+    "default_pgt_governance_puzzle_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "state_hash": [
+    {
+      "label": "fresh-launch-default",
+      "input": {
+        "mips_root_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "admins_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "pending_ops_hash": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+        "authority_version": 1
+      },
+      "expected": "0x3134b0e5f413e3bfc8e6e1a771bf369fd810779be5e7ff736f7eef229206c984"
+    },
+    {
+      "label": "version-bumped",
+      "input": {
+        "mips_root_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "admins_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "pending_ops_hash": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+        "authority_version": 7
+      },
+      "expected": "0xfdb505be7a117652db0aa57922d9ac8548559228037c382bb04e4a63ffbe59c4"
+    },
+    {
+      "label": "with-pending-op",
+      "input": {
+        "mips_root_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "admins_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "pending_ops_hash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "authority_version": 1
+      },
+      "expected": "0xf8827d19143dbbb20b9935b12b18afd9fb3e5d70f0a409663f8afc287cfcaa43"
+    },
+    {
+      "label": "swapped-mips-and-admins",
+      "input": {
+        "mips_root_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "admins_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "pending_ops_hash": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+        "authority_version": 1
+      },
+      "expected": "0x5b81c047551e874453660f9ad871a59a9ec4576a9e3a0f259d68dfca57bd725a"
+    },
+    {
+      "label": "all-distinct-fields",
+      "input": {
+        "mips_root_hash": "0x4444444444444444444444444444444444444444444444444444444444444444",
+        "admins_hash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "pending_ops_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "authority_version": 99
+      },
+      "expected": "0x883df93589a28f12e5c950dccb5d9a30916dc7568bfbc42a9a5745f223fd6f07"
+    }
+  ],
+  "admins_hash": [
+    {
+      "label": "empty",
+      "input": [],
+      "expected": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
+    },
+    {
+      "label": "single-one-leaf",
+      "input": [
+        {
+          "admin_idx": 0,
+          "leaves": [
+            "0x1111111111111111111111111111111111111111111111111111111111111111"
+          ],
+          "m_within": 1
+        }
+      ],
+      "expected": "0xa6e089268049e9ebdbeb13867e6d30f9576f2b26bd7f2030aeb710c9859b07f0"
+    },
+    {
+      "label": "two-with-two-leaves",
+      "input": [
+        {
+          "admin_idx": 0,
+          "leaves": [
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222"
+          ],
+          "m_within": 2
+        },
+        {
+          "admin_idx": 1,
+          "leaves": [
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444"
+          ],
+          "m_within": 1
+        }
+      ],
+      "expected": "0x449a70d2098d10d070fefbcb42fb968d13b30291862f1153d68be7421f655544"
+    }
+  ],
+  "pending_ops_hash": [
+    {
+      "label": "empty",
+      "input": [],
+      "expected": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
+    },
+    {
+      "label": "single-add",
+      "input": [
+        {
+          "admin_idx": 0,
+          "op_kind": 1,
+          "target_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+          "activates_at": 1024
+        }
+      ],
+      "expected": "0xa0d5b1459702eecd2a18d6b6296f6e87023c5400149cb9ca84ab536c964cc8aa"
+    },
+    {
+      "label": "single-remove",
+      "input": [
+        {
+          "admin_idx": 2,
+          "op_kind": 2,
+          "target_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+          "activates_at": 5040
+        }
+      ],
+      "expected": "0x8613c08e9f263e9b3a66818e5d96d34c368e5f51d8d80b2f27960ba81a838133"
+    },
+    {
+      "label": "mixed-add-and-remove",
+      "input": [
+        {
+          "admin_idx": 0,
+          "op_kind": 1,
+          "target_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+          "activates_at": 1024
+        },
+        {
+          "admin_idx": 1,
+          "op_kind": 2,
+          "target_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+          "activates_at": 2048
+        }
+      ],
+      "expected": "0x84486f18e37aa0df885ae482cee6c37417843e32a046e85193a64cfb886fe30b"
+    }
+  ],
+  "inner_puzzle_hash": [
+    {
+      "label": "default-policy-fresh-launch",
+      "input": {
+        "mips_root_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "admins_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "pending_ops_hash": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+        "authority_version": 1
+      },
+      "expected": "0x9e5ac7becdcff752ff986817cca6af880950bac944ea302f876156d96d62c672"
+    },
+    {
+      "label": "custom-policy-with-pending-op",
+      "input": {
+        "mips_root_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "admins_hash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "pending_ops_hash": "0x4444444444444444444444444444444444444444444444444444444444444444",
+        "authority_version": 42,
+        "max_admins": 7,
+        "max_keys_per_admin": 5,
+        "cooldown_blocks": 100,
+        "recovery_timeout_blocks": 1000,
+        "pgt_governance_puzzle_hash": "0x1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "0x91222ec972de36b2adfdd13726b8d2ca36f891b621308da0412e346be9df5f92"
+    }
+  ]
+}
