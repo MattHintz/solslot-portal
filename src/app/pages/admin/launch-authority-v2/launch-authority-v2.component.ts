@@ -17,6 +17,7 @@ import {
   LaunchOutputs,
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
+import { ChiaWalletService } from '../../../services/chia-wallet.service';
 
 /**
  * Launch Authority v2 admin page (Phase 9-Hermes-D D-2.4).
@@ -43,6 +44,25 @@ import { ChiaWasmService } from '../../../services/chia-wasm.service';
  * The "Submit on chain" path lights up in D-2.5 + D-2.6 once the
  * funding-coin construction lands.
  */
+
+/**
+ * State machine for the on-chain submit flow.
+ *
+ *   idle      — user hasn't clicked submit yet (or already-completed
+ *               result was cleared).
+ *   signing   — waiting for wallet to sign the funding transfer.
+ *   pushing   — wallet signed; pushing combined bundle to coinset.
+ *   submitted — coinset accepted the bundle; launcher_id is known.
+ *   error     — any step failed; user can retry.
+ */
+type SubmitState =
+  | { kind: 'idle' }
+  | { kind: 'signing' }
+  | { kind: 'pushing' }
+  | { kind: 'submitted'; launcherId: string; statusFromCoinset: string | null }
+  | { kind: 'error'; message: string };
+
+
 @Component({
   selector: 'pp-launch-authority-v2',
   standalone: true,
@@ -212,21 +232,80 @@ import { ChiaWasmService } from '../../../services/chia-wasm.service';
             </dl>
 
             <div class="mt-5 flex flex-wrap items-center gap-3">
-              <button type="button" class="btn btn--primary" (click)="copyJson()">
+              <button type="button" class="btn btn--ghost" (click)="copyJson()">
                 Copy launch instructions (JSON)
               </button>
               <button
                 type="button"
-                class="btn btn--ghost"
-                title="On-chain submission lands in D-2.6 (testnet11 dry-run)"
-                disabled
+                class="btn btn--primary"
+                [disabled]="!walletConnected() || submitState().kind === 'signing' || submitState().kind === 'pushing'"
+                (click)="submitOnChain()"
               >
-                Submit on chain (TODO — D-2.6)
+                @switch (submitState().kind) {
+                  @case ('signing') { Waiting for wallet… }
+                  @case ('pushing') { Pushing to coinset… }
+                  @case ('submitted') { Re-submit }
+                  @default { Submit on chain }
+                }
               </button>
+              @if (!walletConnected()) {
+                <span class="text-xs text-text-muted">
+                  Connect Goby/Sage from the admin desk before submitting.
+                </span>
+              }
               @if (copyConfirmation(); as msg) {
                 <span class="text-xs text-text-muted">{{ msg }}</span>
               }
             </div>
+
+            @switch (submitState().kind) {
+              @case ('submitted') {
+                @if (submittedView(); as s) {
+                  <div class="card mt-4 border border-green-500/40 bg-green-500/10">
+                    <h3 class="font-display text-xl">✓ Launch submitted</h3>
+                    <p class="text-xs text-text-muted mt-1">
+                      coinset.org accepted the spend bundle.  Confirmation
+                      typically takes 1–2 blocks (~30s on mainnet).  Poll
+                      <code>/get_coin_record_by_name</code> on the launcher
+                      id to monitor.
+                    </p>
+                    <dl class="mt-3 space-y-2 text-sm">
+                      <div>
+                        <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                          Launcher id (= singleton's identity)
+                        </dt>
+                        <dd class="mono text-xs break-all mt-1">{{ s.launcherId }}</dd>
+                      </div>
+                      <div>
+                        <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                          coinset status
+                        </dt>
+                        <dd class="mono text-xs mt-1">{{ s.statusFromCoinset || '—' }}</dd>
+                      </div>
+                    </dl>
+                    <p class="mt-3 text-xs text-text-muted">
+                      Configure
+                      <code>POPULIS_PROTOCOL_ADMIN_AUTHORITY_V2_LAUNCHER_ID</code>
+                      = <span class="mono">{{ s.launcherId }}</span> in your
+                      Populis API env to surface this singleton on
+                      <code>/admin/auth/authority_v2</code>.
+                    </p>
+                  </div>
+                }
+              }
+              @case ('error') {
+                @if (errorView(); as e) {
+                  <div class="card mt-4 border border-red-500/40 bg-red-500/10">
+                    <h3 class="font-display text-xl">Submit failed</h3>
+                    <p class="text-sm break-words mt-1">{{ e.message }}</p>
+                    <p class="text-xs text-text-muted mt-2">
+                      Click "Submit on chain" to retry, or copy the JSON
+                      instructions and finish via the Python CLI.
+                    </p>
+                  </div>
+                }
+              }
+            }
 
             <details class="mt-5">
               <summary class="text-xs text-text-muted cursor-pointer">
@@ -267,6 +346,7 @@ import { ChiaWasmService } from '../../../services/chia-wasm.service';
 export class LaunchAuthorityV2Component {
   private readonly v2 = inject(AdminAuthorityV2Service);
   private readonly wasm = inject(ChiaWasmService);
+  private readonly chiaWallet = inject(ChiaWalletService);
 
   // ─── Form state ────────────────────────────────────────────────────
   readonly parentCoinIdInput = signal('');
@@ -278,6 +358,27 @@ export class LaunchAuthorityV2Component {
   // ─── Derived state ─────────────────────────────────────────────────
   readonly chiaWasmReady = computed(() => this.wasm.ready());
   readonly copyConfirmation = signal<string | null>(null);
+  readonly submitState = signal<SubmitState>({ kind: 'idle' });
+  readonly walletConnected = computed(() => this.chiaWallet.isConnected());
+
+  /**
+   * Narrowed view of submitState when the kind is 'submitted'.
+   * Angular templates can't narrow discriminated unions directly via
+   * @switch — TS strict-templates rejects ``submitState().launcherId``
+   * inside the @case('submitted') branch — so we expose typed
+   * helpers per-state.
+   */
+  readonly submittedView = computed(() => {
+    const s = this.submitState();
+    return s.kind === 'submitted'
+      ? { launcherId: s.launcherId, statusFromCoinset: s.statusFromCoinset }
+      : null;
+  });
+
+  readonly errorView = computed(() => {
+    const s = this.submitState();
+    return s.kind === 'error' ? { message: s.message } : null;
+  });
 
   /**
    * Parse the admin-records textarea into typed AdminRecord objects,
@@ -472,6 +573,96 @@ export class LaunchAuthorityV2Component {
       this.copyConfirmation.set('Copy failed — select + copy manually below.');
     }
   }
+
+  /**
+   * Submit the launch on chain via the WASM-first flow:
+   * 1. Compute eve_inner_puzzle_hash from current form state.
+   * 2. Delegate to AdminAuthorityV2Service.submitLaunch which:
+   *    a. Asks the connected wallet to fund the launcher coin.
+   *    b. Combines wallet's signed funding spend with our launcher
+   *       spend into one bundle.
+   *    c. Pushes to coinset.org directly (no Populis API in path).
+   * 3. Display launcher_id + status.
+   *
+   * Drives the ``submitState`` signal so the UI can show progress
+   * indicators and surface errors actionably.
+   */
+  async submitOnChain(): Promise<void> {
+    if (this.submitState().kind === 'signing' || this.submitState().kind === 'pushing') {
+      return;  // Already in flight; ignore double-clicks.
+    }
+    if (!this.walletConnected()) {
+      this.submitState.set({
+        kind: 'error',
+        message: 'Wallet not connected.  Connect Goby or Sage from the admin desk first.',
+      });
+      return;
+    }
+
+    // Compute the eve inner puzzle hash from the form's current state.
+    // We need MIPS root + admins hash + version (NOT parent coin id —
+    // the wallet picks that for us, so the form's parentCoinIdInput
+    // is ignored here).
+    const mips = this.mipsRootHashInput();
+    const admins = this.adminsHash();
+    if (!mips || !admins) {
+      this.submitState.set({
+        kind: 'error',
+        message: 'Form is incomplete.  Fill MIPS root hash + admin records first.',
+      });
+      return;
+    }
+    let eveInnerPuzzleHash: string;
+    try {
+      eveInnerPuzzleHash = bytesToHexPrefixed(
+        this.v2.makeInnerPuzzleHash({
+          mipsRootHash: mips,
+          adminsHash: admins,
+          authorityVersion: this.authorityVersionInput(),
+        }),
+      );
+    } catch (e) {
+      this.submitState.set({
+        kind: 'error',
+        message: 'Could not compute inner puzzle hash: ' + formatError(e),
+      });
+      return;
+    }
+
+    this.submitState.set({ kind: 'signing' });
+    try {
+      // submitLaunch internally:
+      //   1. wallet.transfer(SINGLETON_LAUNCHER_HASH, 1)  ← signing phase
+      //   2. findLauncherParentCoinId
+      //   3. computeLaunchOutputs
+      //   4. buildLauncherCoinSpend
+      //   5. coinset.pushTransaction                       ← pushing phase
+      // We can't observe phase 1 → 5 transitions from here without
+      // refactoring submitLaunch into smaller chunks; for the first
+      // cut we just hold 'signing' through the whole thing.  D-2.6
+      // part 3 polish can split into finer states.
+      const result = await this.v2.submitLaunch({
+        eveInnerPuzzleHash,
+        eveAmount: this.eveAmountInput(),
+      });
+      this.submitState.set({
+        kind: 'submitted',
+        launcherId: result.launcherId,
+        statusFromCoinset: result.pushResponse.status,
+      });
+    } catch (e) {
+      this.submitState.set({
+        kind: 'error',
+        message: formatError(e),
+      });
+    }
+  }
+}
+
+function formatError(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'string') return e;
+  return String(e);
 }
 
 /**
