@@ -121,6 +121,14 @@ describe('AdminAuthorityV2Service', () => {
     // This avoids the ESM-WASM import path that would require
     // zoneless Angular and lets the spec run under the standard
     // Zone.js-based test harness.
+    //
+    // We guard on existing ``window.ChiaSDK`` so the wasm is only
+    // instantiated once across the karma session — running
+    // ``__wbg_set_wasm`` twice (once per spec) corrupts memory because
+    // the bg.js module is a singleton across imports.
+    if ((window as unknown as { ChiaSDK?: unknown }).ChiaSDK) {
+      return;
+    }
 
     // @ts-ignore — deep-import path; types come from chia_wallet_sdk_wasm.d.ts.
     const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');

@@ -17,9 +17,9 @@ import {
   LaunchOutputs,
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import {
-  AdminApiService,
-  ComputeLeafHashResponse,
-} from '../../../services/admin-api.service';
+  Eip712LeafHash,
+  Eip712LeafHashService,
+} from '../../../services/eip712-leaf-hash.service';
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
@@ -416,7 +416,7 @@ export class LaunchAuthorityV2Component {
   private readonly wasm = inject(ChiaWasmService);
   private readonly chiaWallet = inject(ChiaWalletService);
   private readonly evmWallet = inject(EvmWalletService);
-  private readonly adminApi = inject(AdminApiService);
+  private readonly eip712Leaf = inject(Eip712LeafHashService);
 
   // ─── Form state ────────────────────────────────────────────────────
   readonly parentCoinIdInput = signal('');
@@ -429,7 +429,7 @@ export class LaunchAuthorityV2Component {
   /** Captured leaf metadata when the operator opted to use their
    * connected EVM wallet as admin[0].  Drives both the textarea
    * pre-fill and the admin_records.json download. */
-  readonly firstAdminLeaf = signal<ComputeLeafHashResponse | null>(null);
+  readonly firstAdminLeaf = signal<Eip712LeafHash | null>(null);
   /** Resolved EVM address that was probed; `null` until first probe
    * completes successfully. */
   readonly firstAdminAddress = signal<string | null>(null);
@@ -665,10 +665,12 @@ export class LaunchAuthorityV2Component {
     try {
       const { pubkey, address } = await this.evmWallet.recoverFirstAdminPubkey();
       const network = environment.chiaNetwork;
-      const resp = await this.adminApi.computeEip712LeafHash({
-        secp256k1_pubkey: pubkey,
-        network,
-      });
+      // Compute the leaf hash entirely in-browser via the
+      // chia-wallet-sdk WASM (Eip712LeafHashService) — no API
+      // round-trip.  Cross-verified against populis_protocol's
+      // ``compute_eip712_member_leaf_hash`` Python helper, which uses
+      // ``chia.wallet.util.curry_and_treehash`` semantics.
+      const resp = this.eip712Leaf.compute(pubkey, network);
       this.firstAdminLeaf.set(resp);
       this.firstAdminAddress.set(address);
 
