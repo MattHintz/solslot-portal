@@ -303,6 +303,63 @@ export class EvmWalletService {
     const uncompressedHex = SigningKey.recoverPublicKey(digest, signature);
     return compressSecp256k1Pubkey(uncompressedHex);
   }
+
+  /**
+   * Sign a deterministic EIP-712 probe and return the recovered
+   * compressed secp256k1 pubkey.  Used by the launch-authority-v2
+   * wizard to populate an admin record's leaf metadata when the
+   * operator opts to be the genesis admin.
+   *
+   * The probe is structurally distinct from the admin sign-in
+   * challenge (different ``primaryType``) so a wallet pop-up can't
+   * confuse the two — but uses the same chainId=1 binding so it
+   * works under the existing wallet-side Populis domain trust.
+   *
+   * The signature is NEVER submitted on chain or to the API — it's
+   * consumed locally for pubkey recovery only.
+   */
+  async recoverFirstAdminPubkey(): Promise<{
+    pubkey: string;
+    address: string;
+  }> {
+    const address = this.address();
+    if (!address) {
+      throw new Error('No wallet connected — connect first.');
+    }
+
+    // Build the probe.  ``timestamp`` makes the digest unique per
+    // call so a previously-signed probe can't be replayed; the
+    // wallet still shows a single-shot signature prompt.
+    const probe: Eip712TypedData = {
+      domain: {
+        name: 'Populis Admin Records Probe',
+        version: '1',
+        chainId: environment.eip712ChainId,
+      },
+      types: {
+        EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+        ],
+        AdminRecordsProbe: [
+          { name: 'address', type: 'address' },
+          { name: 'purpose', type: 'string' },
+          { name: 'timestamp', type: 'uint256' },
+        ],
+      },
+      primaryType: 'AdminRecordsProbe',
+      message: {
+        address,
+        purpose: 'Recover compressed secp256k1 pubkey for admin records',
+        timestamp: Math.floor(Date.now() / 1000),
+      },
+    };
+
+    const signature = await this.signTypedData(probe);
+    const pubkey = this.recoverCompressedPubkey(probe, signature);
+    return { pubkey, address };
+  }
 }
 
 export type EvmState =

@@ -106,6 +106,31 @@ export class AdminApiService {
     );
   }
 
+  /**
+   * Compute the canonical Eip712Member leaf hash for an operator's
+   * pubkey via the API's deterministic helper (Phase 2.5c).
+   *
+   * Used by the launch-authority-v2 wizard to populate an admin
+   * record's ``leaf_hash`` field when the operator opts to use their
+   * connected EVM wallet as the genesis admin.  Goes through the API
+   * because chia-wallet-sdk-wasm 0.33 doesn't yet expose the
+   * Eip712Member puzzle bytecode (PR #396 adds it but isn't
+   * released).  Anyone can call this endpoint — no auth required.
+   *
+   * The response carries every curry arg the records JSON needs, so
+   * callers can copy it whole into ``leaves[i]`` without re-deriving.
+   */
+  async computeEip712LeafHash(
+    body: ComputeLeafHashRequest,
+  ): Promise<ComputeLeafHashResponse> {
+    return firstValueFrom(
+      this.http.post<ComputeLeafHashResponse>(
+        `${this.base}/admin/auth/eip712/compute_leaf_hash`,
+        body,
+      ),
+    );
+  }
+
   // ── /admin/mint/* (admin JWT required) ───────────────────────────────────
   /** Create a DRAFT mint proposal owned by the JWT subject. */
   async proposeMint(
@@ -327,6 +352,39 @@ export interface AdminAuthorityV2Response {
 export interface AdminRefreshResponse {
   jwt: string;
   expires_at: number;
+}
+
+/**
+ * Request shape for ``POST /admin/auth/eip712/compute_leaf_hash``.
+ *
+ * ``network`` is optional — when omitted the API uses its configured
+ * ``POPULIS_NETWORK``.  Pass it explicitly when you want the wizard's
+ * leaf hash to bind to a specific network regardless of API config.
+ */
+export interface ComputeLeafHashRequest {
+  /** 0x-prefixed 33-byte compressed secp256k1 pubkey. */
+  secp256k1_pubkey: string;
+  network?: 'testnet11' | 'mainnet';
+}
+
+/**
+ * Response shape for ``POST /admin/auth/eip712/compute_leaf_hash``.
+ *
+ * The full curry args are echoed back so callers can copy the entire
+ * response into the admin records JSON's ``leaves[i]`` block without
+ * re-deriving anything.
+ */
+export interface ComputeLeafHashResponse {
+  /** 0x-prefixed 32-byte tree hash of the curried Eip712Member puzzle. */
+  leaf_hash: string;
+  /** Echoed pubkey, lowercased + 0x-prefixed. */
+  secp256k1_pubkey: string;
+  /** 0x-prefixed 32-byte CHIP-0037 type hash (constant). */
+  type_hash: string;
+  /** 0x-prefixed 34-byte 0x1901 || domain_separator. */
+  prefix_and_domain_separator: string;
+  /** Echoes the network whose domain separator was used. */
+  network: 'testnet11' | 'mainnet';
 }
 
 export interface ProposeMintRequest {

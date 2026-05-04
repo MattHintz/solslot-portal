@@ -16,8 +16,14 @@ import {
   bytesToHexPrefixed,
   LaunchOutputs,
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
+import {
+  AdminApiService,
+  ComputeLeafHashResponse,
+} from '../../../services/admin-api.service';
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
+import { EvmWalletService } from '../../../services/evm-wallet.service';
+import { environment } from '../../../../environments/environment';
 
 /**
  * Launch Authority v2 admin page (Phase 9-Hermes-D D-2.4).
@@ -134,8 +140,23 @@ type SubmitState =
             </label>
 
             <label class="block">
-              <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Admin records (one per line)
+              <div class="flex items-baseline justify-between gap-2 flex-wrap">
+                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                  Admin records (one per line)
+                </div>
+                <button
+                  type="button"
+                  class="btn btn--ghost text-[0.6rem] py-1 px-2"
+                  [disabled]="recoveringFirstAdmin()"
+                  (click)="recoverFirstAdminFromWallet()"
+                  title="Sign a probe with your connected EVM wallet, recover its pubkey, ask the API for the canonical leaf hash, and pre-fill the textarea below as a single-admin (m_within=1) record."
+                >
+                  @if (recoveringFirstAdmin()) {
+                    Recovering…
+                  } @else {
+                    Use my connected wallet as first admin
+                  }
+                </button>
               </div>
               <textarea
                 class="input mt-1 w-full mono text-xs"
@@ -149,6 +170,28 @@ type SubmitState =
                 separate them with commas inside the leaf field, e.g.
                 <code>0 0xa1...,0xa2... 2</code>.
               </p>
+              @if (firstAdminLeaf(); as leaf) {
+                <div class="mt-2 rounded-card border border-green-500/30 bg-green-500/5 p-2">
+                  <div class="mono text-[0.6rem] uppercase tracking-[0.18em] text-green-400">
+                    ✓ First admin recovered
+                  </div>
+                  <dl class="mt-1 grid grid-cols-[max-content_1fr] gap-x-2 gap-y-0.5 text-[0.65rem]">
+                    <dt class="text-text-muted">EVM:</dt>
+                    <dd class="mono break-all">{{ firstAdminAddress() }}</dd>
+                    <dt class="text-text-muted">Pubkey:</dt>
+                    <dd class="mono break-all">{{ leaf.secp256k1_pubkey }}</dd>
+                    <dt class="text-text-muted">Leaf hash:</dt>
+                    <dd class="mono break-all">{{ leaf.leaf_hash }}</dd>
+                    <dt class="text-text-muted">Network:</dt>
+                    <dd class="mono">{{ leaf.network }}</dd>
+                  </dl>
+                </div>
+              }
+              @if (firstAdminError(); as err) {
+                <div class="mt-2 rounded-card border border-red-500/40 bg-red-500/10 p-2 text-[0.65rem] text-red-300">
+                  <strong>Recovery failed.</strong> {{ err }}
+                </div>
+              }
             </label>
 
             <div class="grid grid-cols-2 gap-4">
@@ -290,6 +333,31 @@ type SubmitState =
                       Populis API env to surface this singleton on
                       <code>/admin/auth/authority_v2</code>.
                     </p>
+
+                    @if (firstAdminLeaf()) {
+                      <div class="mt-4 pt-3 border-t border-green-500/20">
+                        <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                          Phase 2.5b: download admin records
+                        </div>
+                        <p class="text-xs text-text-muted mt-1">
+                          The API needs an expanded form of these admin
+                          records (with EVM addresses + curry args, not
+                          just leaf hashes) to gate the admin desk via
+                          the on-chain singleton instead of
+                          <code>POPULIS_ADMIN_PUBKEY_ALLOWLIST</code>.
+                          Download the file below and set
+                          <code>POPULIS_ADMIN_RECORDS_PATH</code> in your
+                          API env.
+                        </p>
+                        <button
+                          type="button"
+                          class="btn btn--primary mt-2"
+                          (click)="downloadAdminRecordsJson()"
+                        >
+                          Download admin_records.json
+                        </button>
+                      </div>
+                    }
                   </div>
                 }
               }
@@ -347,6 +415,8 @@ export class LaunchAuthorityV2Component {
   private readonly v2 = inject(AdminAuthorityV2Service);
   private readonly wasm = inject(ChiaWasmService);
   private readonly chiaWallet = inject(ChiaWalletService);
+  private readonly evmWallet = inject(EvmWalletService);
+  private readonly adminApi = inject(AdminApiService);
 
   // ─── Form state ────────────────────────────────────────────────────
   readonly parentCoinIdInput = signal('');
@@ -354,6 +424,20 @@ export class LaunchAuthorityV2Component {
   readonly adminRecordsInput = signal('');
   readonly authorityVersionInput = signal(1);
   readonly eveAmountInput = signal(1);
+
+  // ─── Phase 2.5a: first-admin auto-fill ─────────────────────────────
+  /** Captured leaf metadata when the operator opted to use their
+   * connected EVM wallet as admin[0].  Drives both the textarea
+   * pre-fill and the admin_records.json download. */
+  readonly firstAdminLeaf = signal<ComputeLeafHashResponse | null>(null);
+  /** Resolved EVM address that was probed; `null` until first probe
+   * completes successfully. */
+  readonly firstAdminAddress = signal<string | null>(null);
+  /** True while the wallet probe + API roundtrip are in flight. */
+  readonly recoveringFirstAdmin = signal(false);
+  /** Last error from the recovery flow (wallet rejection, API
+   * failure, etc.).  Cleared when a fresh attempt starts. */
+  readonly firstAdminError = signal<string | null>(null);
 
   // ─── Derived state ─────────────────────────────────────────────────
   readonly chiaWasmReady = computed(() => this.wasm.ready());
@@ -561,6 +645,98 @@ export class LaunchAuthorityV2Component {
       const t = setTimeout(() => this.copyConfirmation.set(null), 3000);
       onCleanup(() => clearTimeout(t));
     });
+  }
+
+  /**
+   * Phase 2.5a: ask the operator's connected EVM wallet to sign a
+   * deterministic probe, recover their compressed secp256k1 pubkey,
+   * call the API to compute the canonical Eip712Member leaf hash,
+   * and pre-fill the admin records textarea with a single-admin
+   * record using that leaf.
+   *
+   * The full leaf metadata (curry args + EVM address) is also saved
+   * to {@link firstAdminLeaf} so we can emit the API-ready
+   * admin_records.json file after a successful launch.
+   */
+  async recoverFirstAdminFromWallet(): Promise<void> {
+    if (this.recoveringFirstAdmin()) return;
+    this.firstAdminError.set(null);
+    this.recoveringFirstAdmin.set(true);
+    try {
+      const { pubkey, address } = await this.evmWallet.recoverFirstAdminPubkey();
+      const network = environment.chiaNetwork;
+      const resp = await this.adminApi.computeEip712LeafHash({
+        secp256k1_pubkey: pubkey,
+        network,
+      });
+      this.firstAdminLeaf.set(resp);
+      this.firstAdminAddress.set(address);
+
+      // Fill the wizard's textarea with the canonical record.  Each
+      // line is `admin_idx leaf_hash m_within`; for a single admin
+      // with one leaf and m_within=1 we get just one line.
+      this.adminRecordsInput.set(`0 ${resp.leaf_hash} 1`);
+    } catch (e) {
+      this.firstAdminError.set(formatError(e));
+    } finally {
+      this.recoveringFirstAdmin.set(false);
+    }
+  }
+
+  /**
+   * Build the operator-supplied admin records JSON for the API to
+   * load on boot (``POPULIS_ADMIN_RECORDS_PATH``).  Schema matches
+   * ``populis_api/admin_records.py``'s ``AdminRecordsConfig``.
+   *
+   * Returns null when the operator hasn't recovered their EVM wallet
+   * yet (no ``firstAdminLeaf``) OR the launch hasn't been submitted
+   * (no ``launcherId``); both are required for the JSON to be
+   * useful.
+   */
+  buildAdminRecordsJson(): string | null {
+    const leaf = this.firstAdminLeaf();
+    const evm = this.firstAdminAddress();
+    const submitted = this.submittedView();
+    if (!leaf || !evm || !submitted) return null;
+    const config = {
+      version: 1,
+      launcher_id: submitted.launcherId,
+      admin_records: [
+        {
+          admin_idx: 0,
+          m_within: 1,
+          leaves: [
+            {
+              kind: 'eip712_member',
+              leaf_hash: leaf.leaf_hash,
+              evm_address: evm.toLowerCase(),
+              secp256k1_pubkey: leaf.secp256k1_pubkey,
+              type_hash: leaf.type_hash,
+              prefix_and_domain_separator: leaf.prefix_and_domain_separator,
+            },
+          ],
+        },
+      ],
+    };
+    return JSON.stringify(config, null, 2);
+  }
+
+  /**
+   * Trigger a browser download of the API-ready admin_records.json
+   * file.  Called from the success card after a successful launch.
+   */
+  downloadAdminRecordsJson(): void {
+    const json = this.buildAdminRecordsJson();
+    if (!json) return;
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'admin_records.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   async copyJson(): Promise<void> {
