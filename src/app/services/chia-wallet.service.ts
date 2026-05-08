@@ -1,4 +1,7 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
+
+import { ChiaWasmService } from './chia-wasm.service';
+import { environment } from '../../environments/environment';
 
 /**
  * Chia wallet service.
@@ -16,6 +19,7 @@ import { Injectable, signal, computed } from '@angular/core';
  */
 @Injectable({ providedIn: 'root' })
 export class ChiaWalletService {
+  private readonly chiaWasm = inject(ChiaWasmService);
   private readonly _state = signal<ChiaState>({ kind: 'disconnected' });
   readonly state = this._state.asReadonly();
 
@@ -165,6 +169,7 @@ export class ChiaWalletService {
         (window as WindowWithChia).chia,
         ['signCoinSpends', 'chip0002_signCoinSpends'],
         wireSpends,
+        coinSpends,
       );
     }
 
@@ -173,6 +178,7 @@ export class ChiaWalletService {
         (window as WindowWithChia).sage,
         ['chip0002_signCoinSpends', 'chia_signCoinSpends'],
         wireSpends,
+        coinSpends,
       );
     }
 
@@ -223,16 +229,27 @@ export class ChiaWalletService {
     const targetHashBare = stripHexPrefix(args.targetPuzzleHash);
 
     if (state.connection === 'goby') {
+      // Goby's ``transfer`` wire format strictly requires:
+      //   * ``to``: **bech32m** address (NOT hex).  Goby rejects hex
+      //     with "invalid recipient" — we explicitly encode here.
+      //   * ``assetId``: empty string for native XCH; 64-char hex for
+      //     CAT.  Goby rejects payloads without this field with
+      //     "Invalid assetId" (code 4000) even when sending XCH.
+      //   * ``waitForConfirmation``: ``false`` so Goby returns the
+      //     signed bundle instead of auto-broadcasting (we need to
+      //     combine it with our launcher spend before submission).
+      const toBech32 = this.encodePuzzleHashAsBech32(targetHashBare);
       return this.invokeTransfer(
         (window as WindowWithChia).chia,
         ['transfer'],
-        // Goby's transfer wire format takes amount as number + a
-        // "to" address that's typically bech32m, but most builds also
-        // accept raw puzzle hashes as a fallback.  We pass the
-        // hex puzzle hash directly; if the wallet rejects, the
-        // operator will see "invalid recipient" and can fall back
-        // to CLI.
-        { to: targetHashBare, amount: amountNum },
+        {
+          to: toBech32,
+          amount: amountNum,
+          assetId: '',
+          fee: 0,
+          memos: [],
+          waitForConfirmation: false,
+        },
       );
     }
 
@@ -245,6 +262,146 @@ export class ChiaWalletService {
     }
 
     throw new Error(`transfer: unsupported connection: ${state.connection}`);
+  }
+
+  /**
+   * Encode a 32-byte hex puzzle hash as a bech32m address using the
+   * WASM ``Address`` constructor.
+   *
+   * The HRP is selected from ``environment.chiaNetwork``:
+   *   * ``testnet11`` → ``txch``
+   *   * ``mainnet``   → ``xch``
+   *
+   * Used by the Goby transfer path because Goby's ``transfer`` RPC
+   * rejects raw hex with "invalid recipient" / "Invalid assetId"
+   * errors.  Sage's ``chia_send`` accepts both, so this helper is
+   * Goby-only for now.
+   *
+   * Throws if WASM isn't ready or the input isn't 64 hex chars.
+   */
+  private encodePuzzleHashAsBech32(puzzleHashHex: string): string {
+    const sdk = this.chiaWasm.sdk();
+    const AddressCtor = sdk['Address'] as
+      | (new (puzzleHash: Uint8Array, prefix: string) => { encode: () => string })
+      | undefined;
+    if (typeof AddressCtor !== 'function') {
+      throw new Error(
+        'transfer: WASM Address constructor unavailable — cannot encode ' +
+          'recipient as bech32 for Goby.  Check ChiaWasmService.ready().',
+      );
+    }
+    const stripped = puzzleHashHex.startsWith('0x')
+      ? puzzleHashHex.slice(2)
+      : puzzleHashHex;
+    if (!/^[0-9a-fA-F]{64}$/.test(stripped)) {
+      throw new Error(
+        `transfer: targetPuzzleHash must be 32 bytes hex, got: ${puzzleHashHex}`,
+      );
+    }
+    const bytes = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
+      bytes[i] = parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
+    }
+    const prefix = environment.chiaNetwork === 'mainnet' ? 'xch' : 'txch';
+    return new AddressCtor(bytes, prefix).encode();
+  }
+
+  /**
+   * Ask the connected wallet for its current receive address (bech32m
+   * ``txch1...`` / ``xch1...``).
+   *
+   * **Why this exists.** Phase 9-Hermes-D's launch wizard needs the
+   * operator's wallet address so it can query coinset.org for an
+   * unspent coin to use as the funding-coin id in the deterministic
+   * preview.  Without this RPC we'd ask the operator to copy-paste
+   * a coin id out of their wallet UI manually.
+   *
+   * **Method naming defence.** Goby exposes ``getCurrentAddress`` on
+   * ``window.chia.request``.  Sage exposes ``chia_getCurrentAddress``
+   * (and possibly ``chip0002_getCurrentAddress`` in newer builds).
+   * Mirrors the fallback pattern used by ``transfer`` and
+   * ``signSpendBundle`` so we stay resilient to wallet renames.
+   *
+   * **Return shape.** Both wallets return either a bare bech32 string
+   * or ``{ address: string }``; we normalise to the bare string and
+   * surface a clear error on anything else.
+   *
+   * @returns Bech32m-encoded receive address (``txch1...`` on testnet11,
+   *   ``xch1...`` on mainnet).
+   */
+  async getCurrentAddress(): Promise<string> {
+    const state = this._state();
+    if (state.kind !== 'connected') {
+      throw new Error('getCurrentAddress: wallet not connected');
+    }
+
+    if (state.connection === 'goby') {
+      const goby = (window as WindowWithChia).chia;
+      // Goby exposes the current address as a *property*
+      // (``chia.selectedAddress``), not via an RPC method —
+      // ``getCurrentAddress`` returns "method doesn't have
+      // corresponding handler" (code 4004).  Mirror solslot's
+      // pattern: read the property if populated, otherwise prime it
+      // by calling ``getPublicKeys`` (which Goby populates the
+      // address as a side effect of) and read again.
+      if (goby?.selectedAddress) {
+        return goby.selectedAddress;
+      }
+      try {
+        await goby?.request({ method: 'getPublicKeys', params: { limit: 1 } });
+      } catch (err) {
+        throw new Error(
+          `getCurrentAddress: getPublicKeys failed (needed to populate ` +
+            `chia.selectedAddress): ${formatErrorMessage(err)}`,
+        );
+      }
+      if (goby?.selectedAddress) {
+        return goby.selectedAddress;
+      }
+      // Last resort: try the RPC.  Newer Goby builds may add it; the
+      // bare ``chia_getCurrentAddress`` is the most likely name since
+      // it's what WalletConnect uses.
+      return this.invokeGetAddress(
+        goby,
+        ['chia_getCurrentAddress', 'getCurrentAddress'],
+      );
+    }
+
+    if (state.connection === 'sage') {
+      return this.invokeGetAddress(
+        (window as WindowWithChia).sage,
+        ['chia_getCurrentAddress', 'chip0002_getCurrentAddress'],
+      );
+    }
+
+    throw new Error(`getCurrentAddress: unsupported connection: ${state.connection}`);
+  }
+
+  /** Try each method name in order; return the first successful address. */
+  private async invokeGetAddress(
+    wallet: ChiaInjected | undefined,
+    methods: ReadonlyArray<string>,
+  ): Promise<string> {
+    if (!wallet) {
+      throw new Error('getCurrentAddress: wallet bridge no longer available');
+    }
+    let lastError: unknown = null;
+    for (const method of methods) {
+      try {
+        const result = await wallet.request({ method, params: {} });
+        return parseGetAddressResult(result);
+      } catch (err: unknown) {
+        if (isMethodNotSupportedError(err)) {
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error(
+      `getCurrentAddress: wallet rejected all method names tried (${methods.join(', ')}). ` +
+        `Last error: ${formatErrorMessage(lastError)}`,
+    );
   }
 
   /** Try each method name in order; return the first successful transfer result. */
@@ -275,11 +432,26 @@ export class ChiaWalletService {
     );
   }
 
-  /** Try each method name in order; return the first successful result. */
+  /**
+   * Try each method name in order; return the first successful result.
+   *
+   * **Goby's wire contract (per docs.goby.app/methods).**  Goby's
+   * ``signCoinSpends`` returns ``Promise<string>`` — JUST the
+   * aggregated signature, not the echoed coin spends.  When the
+   * parser detects this string-only shape it returns
+   * ``{ coinSpends: [], aggregatedSignature: ... }`` — but the caller
+   * needs the spends to combine with downstream spends + serialise
+   * for ``push_tx``.  We fix this here by reusing the
+   * ``inputCoinSpends`` we just sent to the wallet (the wallet
+   * cryptographically commits to those exact spends via the
+   * aggregated signature; substituting any other spends would
+   * invalidate the bundle anyway).
+   */
   private async invokeSignCoinSpends(
     wallet: ChiaInjected | undefined,
     methods: ReadonlyArray<string>,
     wireSpends: ReadonlyArray<unknown>,
+    inputCoinSpends: ReadonlyArray<UnsignedCoinSpend>,
   ): Promise<SignedSpendBundle> {
     if (!wallet) {
       throw new Error('signSpendBundle: wallet bridge no longer available');
@@ -291,7 +463,18 @@ export class ChiaWalletService {
           method,
           params: { coinSpends: wireSpends },
         });
-        return parseSignCoinSpendsResult(result);
+        const parsed = parseSignCoinSpendsResult(result);
+        // String-only / no-spend replies (Goby's documented shape) get
+        // their coin spends populated from what we sent in.  The
+        // signature commits to these specific spends, so this is safe
+        // and saves us a round-trip serialisation.
+        if (parsed.coinSpends.length === 0 && inputCoinSpends.length > 0) {
+          return {
+            coinSpends: [...inputCoinSpends],
+            aggregatedSignature: parsed.aggregatedSignature,
+          };
+        }
+        return parsed;
       } catch (err: unknown) {
         // Method-not-supported errors typically come back with a code
         // like 4200 or a message containing "method"/"unsupported".
@@ -320,6 +503,20 @@ export type ChiaState =
 
 interface ChiaInjected {
   request: (args: { method: string; params?: unknown }) => Promise<unknown>;
+  /**
+   * Goby exposes the connected wallet's current receive address as a
+   * **property** on ``window.chia``, not via an RPC method.  Populated
+   * after ``getPublicKeys`` (or ``connect``) succeeds.  Format is
+   * bech32m (``txch1...`` / ``xch1...``).  Sage does NOT expose this
+   * property — it requires the ``chia_getCurrentAddress`` RPC.
+   *
+   * Reference: solslot's
+   * ``research/solslot-frontend/slui/src/app/components/connect-wallet-modal/connect-wallet-modal.component.ts:317``
+   * uses ``chia.selectedAddress`` directly after a successful
+   * ``getPublicKeys`` round-trip.
+   */
+  selectedAddress?: string;
+  isGoby?: boolean;
 }
 
 interface WindowWithChia extends Window {
@@ -478,6 +675,53 @@ function parseTransferResult(raw: unknown): SignedSpendBundle {
 
   // Reuse the signCoinSpends parser for the happy path.
   return parseSignCoinSpendsResult(raw);
+}
+
+/**
+ * Decode the wallet's ``getCurrentAddress`` reply.
+ *
+ * Wallets in the wild return the address in two distinct formats:
+ *
+ *   * **Bech32m** — ``txch1...`` (testnet11) / ``xch1...`` (mainnet).
+ *     Sage's ``chia_getCurrentAddress`` RPC returns this.
+ *   * **Hex puzzle hash** — 64 hex chars (optionally ``0x``-prefixed).
+ *     Some Goby builds expose this via the ``selectedAddress``
+ *     property + RPC fallback.
+ *
+ * Both are valid; downstream consumers (e.g.
+ * ``WalletCoinPickerService.normalizeWalletAddress``) decide whether
+ * to bech32-decode or hex-decode based on the prefix.
+ *
+ * Reply shape: bare string OR ``{ address: "..." }`` / ``{ addr: "..." }``.
+ */
+function parseGetAddressResult(raw: unknown): string {
+  let addr: string | null = null;
+  if (typeof raw === 'string') {
+    addr = raw;
+  } else if (raw !== null && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    const candidate = obj['address'] ?? obj['addr'];
+    if (typeof candidate === 'string') {
+      addr = candidate;
+    }
+  }
+  if (!addr) {
+    throw new Error(
+      `getCurrentAddress: wallet returned unexpected shape: ${JSON.stringify(raw)}`,
+    );
+  }
+  const trimmed = addr.trim();
+  const lower = trimmed.toLowerCase();
+  const isBech32 = lower.startsWith('xch1') || lower.startsWith('txch1');
+  const stripped = lower.startsWith('0x') ? lower.slice(2) : lower;
+  const isHex32 = /^[0-9a-f]{64}$/.test(stripped);
+  if (!isBech32 && !isHex32) {
+    throw new Error(
+      `getCurrentAddress: expected xch1/txch1 bech32 address or 64-char ` +
+        `hex puzzle hash, got: ${addr}`,
+    );
+  }
+  return trimmed;
 }
 
 function parseWireCoinSpend(raw: unknown): UnsignedCoinSpend {

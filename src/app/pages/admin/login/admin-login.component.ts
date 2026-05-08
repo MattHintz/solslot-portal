@@ -3,24 +3,30 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
+import { AdminWalletAuthService } from '../../../services/admin-wallet-auth.service';
 import { formatError } from '../../../utils/format-error';
 
 /**
- * Admin desk sign-in page.
+ * Admin desk sign-in page (Phase 9-Hermes-D wallet-signed auth).
  *
  * Flow:
  *   1. User connects an EVM wallet (injected or WalletConnect v2).
- *   2. User clicks "Sign in as Admin" — the page calls
- *      {@link AdminSessionService.login} which:
- *        a. requests an EIP-712 challenge,
- *        b. asks the wallet to sign it,
- *        c. submits the signature to `/admin/auth/login`,
- *        d. seeds the persistent session.
+ *   2. User clicks "Sign in as Admin".  The page:
+ *        a. Builds a ``PopulisAdminLogin`` EIP-712 envelope via
+ *           {@link AdminWalletAuthService.buildLoginTypedData} (fresh
+ *           nonce, 12h expiry, chainId-bound).
+ *        b. Asks the wallet to sign it (no API call).
+ *        c. Recovers the 33-byte compressed secp256k1 pubkey via
+ *           {@link EvmWalletService.recoverCompressedPubkey}.
+ *        d. Hands the bundle to {@link AdminSessionService.loginWithWallet}
+ *           which checks pubkey membership (MIPS root match for the
+ *           on-chain v2 quorum, or env pubkey allowlist as a
+ *           fallback) and persists the session.
  *   3. The user is redirected to `?returnTo=...` or `/admin`.
  *
- * The 403 case (signer not in `POPULIS_ADMIN_PUBKEY_ALLOWLIST`) surfaces
- * verbatim from the backend's error detail — operators will see it as
- * "Subject 0x… is not in the admin allowlist."
+ * No backend involvement.  Membership failures are surfaced from the
+ * verifier's typed reason code so the page can render targeted help
+ * (e.g., ``no-admins-configured`` → "ask the operator to update env").
  */
 @Component({
   selector: 'pp-admin-login',
@@ -33,10 +39,11 @@ import { formatError } from '../../../utils/format-error';
       </div>
       <h1 class="font-display text-4xl md:text-5xl">Sign in.</h1>
       <p class="mt-4 text-text-muted max-w-xl">
-        Authenticate with the EVM key whose pubkey is on the
-        <code class="mono text-xs">POPULIS_ADMIN_PUBKEY_ALLOWLIST</code>.
-        The signed challenge is bound to the chain id and to this site's
-        EIP-712 domain &mdash; nothing is broadcast on chain.
+        Authenticate with the EVM key whose pubkey is in the on-chain
+        admin authority's MIPS quorum (or, fallback, the portal's
+        env pubkey allowlist).  The signed envelope is bound to this
+        chain id and to this site's EIP-712 domain &mdash; nothing is
+        broadcast on chain and nothing reaches an API server.
       </p>
 
       <div class="mt-10 card">
@@ -121,6 +128,7 @@ import { formatError } from '../../../utils/format-error';
 export class AdminLoginComponent {
   private readonly evm = inject(EvmWalletService);
   private readonly session = inject(AdminSessionService);
+  private readonly walletAuth = inject(AdminWalletAuthService);
   private readonly router = inject(Router);
   private readonly activatedRoute = inject(ActivatedRoute);
 
@@ -172,23 +180,32 @@ export class AdminLoginComponent {
   }
 
   async signIn(): Promise<void> {
-    const owner = this.walletAddress();
-    if (!owner) {
+    const address = this.walletAddress();
+    if (!address) {
       this.error.set('Connect an EVM wallet first.');
       return;
     }
     this.error.set(null);
     this.busy.set(true);
     try {
-      this.status.set('Requesting challenge from /admin/auth/challenge…');
-      await this.session.login({
-        owner,
-        authType: 'evm',
-        sign: async (typedData) => {
-          this.status.set('Awaiting wallet signature…');
-          return this.evm.signTypedData(typedData);
-        },
+      this.status.set('Building login envelope…');
+      const expiresAt = this.walletAuth.defaultExpiresAt();
+      const nonce = this.walletAuth.newNonce();
+      const typedData = this.walletAuth.buildLoginTypedData(expiresAt, nonce);
+
+      this.status.set('Awaiting wallet signature…');
+      const signature = await this.evm.signTypedData(typedData);
+
+      this.status.set('Recovering pubkey + verifying admin membership…');
+      const pubkey = this.evm.recoverCompressedPubkey(typedData, signature);
+      await this.session.loginWithWallet({
+        address,
+        pubkey,
+        expiresAt,
+        signature,
+        typedData,
       });
+
       this.status.set('Signed in. Redirecting…');
       await this.router.navigate([this.targetUrl()]);
     } catch (e) {

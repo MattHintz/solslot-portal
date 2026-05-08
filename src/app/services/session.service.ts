@@ -1,5 +1,5 @@
 import { Injectable, inject, signal, effect } from '@angular/core';
-import { PopulisApiService, VaultState } from './populis-api.service';
+import { VaultState } from './populis-api.service';
 import { VaultDiscoveryService } from './vault-discovery.service';
 
 const STORAGE_KEY = 'populis_session_v1';
@@ -8,12 +8,22 @@ const STORAGE_KEY = 'populis_session_v1';
  * Persists the user's last-known vault binding across page reloads.
  *
  * We store only public data (launcher id + address) — signatures are never
- * retained.  On refresh, we try chain discovery first (no backend needed),
- * falling back to the backend only for richer data (balance/deeds aggregation).
+ * retained.  On refresh, we walk chain via {@link VaultDiscoveryService}
+ * to recover the live state coin; the Populis API is no longer consulted
+ * (Phase 9-Hermes-D follow-up: only coinset + the faucet remain as
+ * backend dependencies, and the faucet is funding-only).
+ *
+ * **Migration note.** Prior to the Hermes-D API-removal pass, this
+ * service consulted ``PopulisApiService.getVaultState`` to enrich the
+ * synthesized state with XCH balance + deed-list aggregation.  Today
+ * those fields are returned as zeros / empty arrays; chain-aware
+ * enrichment (querying coinset.org for unspent coins under
+ * ``p2_vault_puzhash`` and walking the property-registry singleton
+ * for held deeds) lands in a follow-up commit.  See ``vault-state``
+ * TODOs below.
  */
 @Injectable({ providedIn: 'root' })
 export class SessionService {
-  private readonly api = inject(PopulisApiService);
   private readonly discovery = inject(VaultDiscoveryService);
 
   readonly session = signal<PersistedSession | null>(this.load());
@@ -70,68 +80,58 @@ export class SessionService {
   }
 
   /**
-   * Refresh vault state — chain-first, backend-fallback.
+   * Refresh vault state from chain alone.
    *
-   * Strategy:
-   *   1. Walk chain from the launcher id to find the current state coin.
-   *      This is the source of truth and works even if the backend is down.
-   *   2. Try to enrich with backend data (balance, deeds) — but if the
-   *      backend doesn't know this launcher (e.g. its in-memory registry
-   *      was wiped on restart), keep the chain-only minimal state.
+   * Walks the singleton lineage forward from the launcher id to locate
+   * the live state coin via {@link VaultDiscoveryService}.  Returns
+   * ``null`` if the launcher is not on chain (i.e. registration is still
+   * in mempool or the launcher id is wrong).
+   *
+   * **Migration note (Phase 9-Hermes-D follow-up).**  The previous
+   * implementation also called ``PopulisApiService.getVaultState`` to
+   * enrich the chain-only state with XCH balance + deed list.  That
+   * dependency has been removed; the synthesized state now ships with
+   * zeroed ``balance.xch_mojos`` and empty ``balance.deeds`` until the
+   * chain-aware enrichment lands (TODO):
+   *
+   *   * **XCH balance** — query
+   *     ``CoinsetService.getCoinRecordsByPuzzleHash(p2VaultPuzhash)``
+   *     and sum the ``amount`` fields of unspent records.
+   *   * **Deeds list** — walk the property-registry singleton lineage
+   *     to enumerate deed launchers, filter to those whose current
+   *     state coin's puzzle hash equals ``p2VaultPuzhash``.
+   *   * **p2_vault_puzhash** — derive client-side via a TS port of
+   *     ``populis_protocol.populis_puzzles.vault_driver.puzzle_for_p2_vault``
+   *     (same currying pattern AdminAuthorityV2Service uses).
    */
   async refreshVault(): Promise<VaultState | null> {
     const s = this.session();
     if (!s?.vaultLauncherId) return null;
 
-    // Step 1: chain-only walk for the live state coin.
     const onChain = await this.discovery.refreshFromLauncherId(s.vaultLauncherId);
-
-    // Step 2: try the backend for richer data; fall back to chain-only on 404.
-    let backendState: VaultState | null = null;
-    try {
-      backendState = await this.api.getVaultState(s.vaultLauncherId);
-    } catch (e: unknown) {
-      const msg = (e as { status?: number; message?: string })?.message ?? '';
-      const status = (e as { status?: number })?.status;
-      if (status !== 404 && !msg.includes('404')) {
-        throw e;
-      }
-      // 404 is expected when the backend's in-memory registry doesn't know
-      // this vault (chain-discovered vaults, or after a backend restart).
+    if (!onChain) {
+      // Launcher not on chain (registration mempool-only, or wrong id).
+      return null;
     }
 
-    if (backendState) {
-      // Backend knows the vault — prefer its enriched view (balance, deeds).
-      // But if chain reports a newer state coin, prefer the chain's coin id.
-      if (onChain && onChain.currentCoinId !== backendState.current_coin_id) {
-        backendState = { ...backendState, current_coin_id: onChain.currentCoinId };
-      }
-      this.vault.set(backendState);
-      return backendState;
-    }
-
-    if (onChain) {
-      // Chain-only fallback: synthesize a minimal VaultState.  Balance and
-      // deeds are zero — surfacing them would require additional chain
-      // queries (p2_vault holdings) which can be added later.
-      const synthesized: VaultState = {
-        vault_launcher_id: onChain.vaultLauncherId,
-        vault_full_puzhash: onChain.vaultFullPuzhash,
-        p2_vault_puzhash: '',  // TODO: derive client-side from launcher id
-        auth_type: s.authType,
-        owner_address: s.authType === 'evm' ? s.address : null,
-        owner_pubkey: s.compressedPubkey ?? '',
-        confirmed: onChain.confirmed,
-        confirmed_block_index: onChain.confirmedBlockIndex,
-        current_coin_id: onChain.currentCoinId,
-        balance: { xch_mojos: 0, deeds: [] },
-      };
-      this.vault.set(synthesized);
-      return synthesized;
-    }
-
-    // Neither backend nor chain know about this launcher — vault doesn't exist.
-    return null;
+    const synthesized: VaultState = {
+      vault_launcher_id: onChain.vaultLauncherId,
+      vault_full_puzhash: onChain.vaultFullPuzhash,
+      // TODO(Phase 9-Hermes-D follow-up): derive client-side via TS port
+      // of ``puzzle_for_p2_vault`` (curry of p2_vault.clsp with launcher id).
+      p2_vault_puzhash: '',
+      auth_type: s.authType,
+      owner_address: s.authType === 'evm' ? s.address : null,
+      owner_pubkey: s.compressedPubkey ?? '',
+      confirmed: onChain.confirmed,
+      confirmed_block_index: onChain.confirmedBlockIndex,
+      current_coin_id: onChain.currentCoinId,
+      // TODO(Phase 9-Hermes-D follow-up): chain-aware balance + deed
+      // enrichment via coinset queries (see class-level docstring).
+      balance: { xch_mojos: 0, deeds: [] },
+    };
+    this.vault.set(synthesized);
+    return synthesized;
   }
 }
 

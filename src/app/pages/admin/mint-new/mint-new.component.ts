@@ -2,10 +2,8 @@ import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import {
-  AdminApiService,
-  ProposeMintRequest,
-} from '../../../services/admin-api.service';
+import { ProposeMintRequest } from '../../../services/admin-api.service';
+import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { formatError } from '../../../utils/format-error';
 
@@ -243,7 +241,7 @@ import { formatError } from '../../../utils/format-error';
   ],
 })
 export class MintNewComponent {
-  private readonly api = inject(AdminApiService);
+  private readonly drafts = inject(MintDraftStorageService);
   private readonly session = inject(AdminSessionService);
   private readonly router = inject(Router);
 
@@ -287,8 +285,12 @@ export class MintNewComponent {
 
     this.busy.set(true);
     try {
-      const jwt = this.session.requireJwt();
-      const proposal = await this.api.proposeMint(jwt, body);
+      // requireSession throws if the wallet-signed admin credential
+      // has expired between route activation and form submission.
+      // The admin guard already gates the page, so this is purely a
+      // belt-and-suspenders check for stale tabs.
+      const sess = this.session.requireSession();
+      const proposal = this.drafts.create(body, sess.address);
       await this.router.navigate(['/admin/mint', proposal.id]);
     } catch (e) {
       this.error.set(formatError(e));

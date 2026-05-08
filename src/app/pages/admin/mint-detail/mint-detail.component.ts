@@ -1,10 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import {
-  AdminApiService,
-  MintProposalResponse,
-} from '../../../services/admin-api.service';
+import { MintProposalResponse } from '../../../services/admin-api.service';
+import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { formatError } from '../../../utils/format-error';
 
@@ -274,7 +272,7 @@ import { formatError } from '../../../utils/format-error';
   ],
 })
 export class MintDetailComponent {
-  private readonly api = inject(AdminApiService);
+  private readonly drafts = inject(MintDraftStorageService);
   private readonly session = inject(AdminSessionService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -301,21 +299,35 @@ export class MintDetailComponent {
     void this.reload();
   }
 
+  /**
+   * Load the proposal from browser localStorage.  ``async`` is kept
+   * for signature back-compat with template ``await``-callers; the
+   * underlying storage read is synchronous.  Phase B2 will extend
+   * this to walk chain for ``PROPOSED+`` state when the proposal
+   * has been submitted on chain.
+   */
   async reload(): Promise<void> {
     const id = this.proposalId();
     if (!id) {
       this.loadError.set('Missing proposal id in route.');
       return;
     }
-    const jwt = this.session.jwt();
-    if (!jwt) {
+    if (!this.session.isAuthenticated()) {
       this.loadError.set('Not authenticated.');
       return;
     }
     this.loadError.set(null);
     this.loading.set(true);
     try {
-      const p = await this.api.getMintProposal(jwt, id);
+      const p = this.drafts.get(id);
+      if (!p) {
+        this.loadError.set(
+          `Proposal ${id} not found in this browser's local drafts.  ` +
+            'Drafts are scoped per-browser; ask the admin who created ' +
+            'it for an export, or recreate it here.',
+        );
+        return;
+      }
       this.proposal.set(p);
     } catch (e) {
       this.loadError.set(formatError(e));
@@ -326,14 +338,13 @@ export class MintDetailComponent {
 
   async cancel(): Promise<void> {
     const id = this.proposalId();
-    const jwt = this.session.jwt();
-    if (!id || !jwt) return;
+    if (!id || !this.session.isAuthenticated()) return;
     if (!confirm('Cancel this DRAFT mint proposal?  This is permanent.')) return;
     this.actionError.set(null);
     this.busy.set(true);
     try {
-      const updated = await this.api.cancelMintProposal(jwt, id);
-      this.proposal.set(updated);
+      const updated = this.drafts.cancel(id);
+      if (updated) this.proposal.set(updated);
     } catch (e) {
       this.actionError.set(formatError(e));
     } finally {

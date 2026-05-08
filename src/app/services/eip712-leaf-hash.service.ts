@@ -181,4 +181,118 @@ export class Eip712LeafHashService {
       network,
     };
   }
+
+  /**
+   * Compute the ``MIPS_ROOT_HASH`` for a 1-of-1 controller quorum
+   * whose sole member is an EIP-712 admin.
+   *
+   * Two shapes are supported:
+   *
+   * * ``mode: 'bare'`` — ``MIPS_ROOT_HASH`` = the bare ``Eip712Member``
+   *   tree hash (no MIPS wrapper).  This is the simplest possible
+   *   controller: spending it requires only the EIP-712 envelope; no
+   *   ``index_wrapper`` / ``m_of_n`` outer dispatch.  Matches the
+   *   pattern in
+   *   ``populis_protocol/tests/test_admin_authority_v2.py:1530-1542``
+   *   (see comment "In production this would be wrapped in MIPS m_of_n;
+   *   for this test we use it directly as if it were a 1-of-1 quorum").
+   *
+   *   On-chain this works because ``admin_authority_v2_inner.clsp``'s
+   *   MIPS layer evaluates whatever puzzle hashes to ``MIPS_ROOT_HASH``
+   *   as the controller — a bare ``Eip712Member`` returns
+   *   ``ASSERT_MY_COIN_ID`` which is enough to satisfy the dispatcher.
+   *   It's "degenerate" in that you can never grow this controller into
+   *   a larger quorum (it's not a quorum; it's a single member); for
+   *   that you'd re-launch with a real ``m_of_n``.
+   *
+   * * ``mode: 'mofn1of1'`` — ``MIPS_ROOT_HASH`` =
+   *   ``mOfNHash(MemberConfig{topLevel: true}, 1,
+   *              [eip712MemberHash(MemberConfig{nonce: 0}, ...)])``.
+   *   This is the production-shaped 1-of-1: a real CHIP-0043 quorum
+   *   tree wrapping a single index-wrapped EIP-712 member.  Spending
+   *   it requires the ``m_of_n`` puzzle reveal + the wrapped member
+   *   reveal + the EIP-712 envelope.  Worth the extra wrapping when
+   *   you want the option to grow the quorum later (add more
+   *   members + bump ``m`` without re-launching the singleton).
+   *
+   * Both shapes pin the same admin pubkey to the controller seat, so
+   * either can be paired with the same admin records.  The wizard
+   * default is ``mofn1of1`` because it demos the full WASM binding
+   * stack (``mOfNHash`` + ``eip712MemberHash`` + ``MemberConfig``) and
+   * matches what real production launches will use; the bare mode is
+   * exposed as an option for users who want the smallest possible
+   * controller.
+   *
+   * @param secp256k1Pubkey 0x-prefixed (or bare) hex of the 33-byte
+   *   compressed secp256k1 pubkey of the sole admin/controller.
+   * @param network ``"testnet11"`` | ``"mainnet"``.
+   * @param mode ``"bare"`` | ``"mofn1of1"`` (default ``"mofn1of1"``).
+   */
+  computeMipsRoot1Of1(
+    secp256k1Pubkey: string,
+    network: 'testnet11' | 'mainnet',
+    mode: 'bare' | 'mofn1of1' = 'mofn1of1',
+  ): { mips_root_hash: string; shape: 'bare' | 'mofn1of1' } {
+    if (mode === 'bare') {
+      // Trivial case: MIPS root is just the bare Eip712Member curry hash.
+      const { leaf_hash } = this.compute(secp256k1Pubkey, network);
+      return { mips_root_hash: leaf_hash, shape: 'bare' };
+    }
+
+    // Real m_of_n(1, [wrapped_member]) path — exercises the full
+    // CHIP-0043 quorum stack.
+    const sdk = this.chiaWasm.sdk();
+    const MemberConfigClass = sdk['MemberConfig'] as
+      | { new (): { topLevel: boolean; nonce: number; restrictions: unknown[] } }
+      | undefined;
+    const eip712MemberHashFn = sdk['eip712MemberHash'] as
+      | ((config: unknown, genesis: Uint8Array, pubkey: unknown) => Uint8Array)
+      | undefined;
+    const mOfNHashFn = sdk['mOfNHash'] as
+      | ((config: unknown, required: number, items: Uint8Array[]) => Uint8Array)
+      | undefined;
+    const K1PublicKeyClass = sdk['K1PublicKey'] as
+      | { fromBytes: (bytes: Uint8Array) => unknown }
+      | undefined;
+    if (
+      typeof MemberConfigClass !== 'function' ||
+      typeof eip712MemberHashFn !== 'function' ||
+      typeof mOfNHashFn !== 'function' ||
+      typeof K1PublicKeyClass?.fromBytes !== 'function'
+    ) {
+      throw new Error(
+        'chia-wallet-sdk-wasm is missing m_of_n helpers. ' +
+          'Required exports: MemberConfig, eip712MemberHash, ' +
+          'mOfNHash, K1PublicKey.fromBytes.',
+      );
+    }
+
+    const pubkeyBytes = hexToBytes(secp256k1Pubkey);
+    if (pubkeyBytes.length !== 33) {
+      throw new Error(
+        `secp256k1_pubkey must be 33 bytes (compressed), got ${pubkeyBytes.length}`,
+      );
+    }
+    const genesis = genesisChallengeFor(network);
+    const k1 = K1PublicKeyClass.fromBytes(pubkeyBytes);
+
+    // Member-level config: the EIP-712 leaf is a CHILD inside the
+    // quorum tree, so ``topLevel: false``.  Default nonce + zero
+    // restrictions are the simplest valid shape.
+    const memberConfig = new MemberConfigClass();
+    memberConfig.topLevel = false;
+    memberConfig.nonce = 0;
+    memberConfig.restrictions = [];
+    const wrappedMemberHash = eip712MemberHashFn(memberConfig, genesis, k1);
+
+    // Quorum-level config: the m_of_n IS the top-level controller, so
+    // ``topLevel: true``.
+    const quorumConfig = new MemberConfigClass();
+    quorumConfig.topLevel = true;
+    quorumConfig.nonce = 0;
+    quorumConfig.restrictions = [];
+    const mipsRoot = mOfNHashFn(quorumConfig, 1, [wrappedMemberHash]);
+
+    return { mips_root_hash: bytesToHex(mipsRoot), shape: 'mofn1of1' };
+  }
 }

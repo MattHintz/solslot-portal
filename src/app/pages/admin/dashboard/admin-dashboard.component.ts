@@ -2,11 +2,10 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import {
-  AdminApiService,
-  MintProposalListResponse,
   MintProposalResponse,
   MintProposalState,
 } from '../../../services/admin-api.service';
+import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { formatError } from '../../../utils/format-error';
 
@@ -229,7 +228,7 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
   ],
 })
 export class AdminDashboardComponent {
-  private readonly api = inject(AdminApiService);
+  private readonly drafts = inject(MintDraftStorageService);
   private readonly session = inject(AdminSessionService);
 
   readonly stateOptions = STATE_OPTIONS;
@@ -258,27 +257,42 @@ export class AdminDashboardComponent {
     void this.reload();
   }
 
+  /**
+   * Load mint proposals from browser localStorage.
+   *
+   * **Scope.** Phase B1 surfaces only DRAFT/CANCELED proposals
+   * (the ones that live in localStorage).  Once a draft is submitted
+   * on chain (Phase B2), its state advances to PROPOSED+ and the
+   * data source becomes the proposal-tracker singleton lineage on
+   * coinset; the dashboard will then merge both sources for the
+   * full per-admin view.
+   *
+   * **Owner filter.**  ``'mine'`` filters to the current admin's
+   * subject; ``'all'`` shows every draft in this browser (across
+   * past admin sessions).  Cross-admin visibility lives on the
+   * committee desk (chain-only reads in Phase B2).
+   */
   async reload(): Promise<void> {
-    const jwt = this.session.jwt();
-    if (!jwt) {
-      // Guard should prevent this; defend against direct service use anyway.
+    if (!this.session.isAuthenticated()) {
+      // Admin guard should prevent this; defend against direct service use.
       this.error.set('Not authenticated.');
       return;
     }
     this.error.set(null);
     this.loading.set(true);
     try {
-      const opts: Parameters<AdminApiService['listMintProposals']>[1] = {
-        limit: 50,
-      };
+      const ownerFilter =
+        this.ownerFilter() === 'mine' ? this.subject() ?? null : null;
+      let proposals = this.drafts.list(ownerFilter);
       const stateFilter = this.stateFilter();
-      if (stateFilter !== 'all') opts.state = stateFilter;
-      if (this.ownerFilter() === 'mine') {
-        opts.owner = this.subject() ?? undefined;
+      if (stateFilter !== 'all') {
+        proposals = proposals.filter((p) => p.state === stateFilter);
       }
-      const resp: MintProposalListResponse = await this.api.listMintProposals(jwt, opts);
-      this.proposals.set(resp.proposals);
-      this.total.set(resp.count);
+      // Cap at 50 to match the previous API limit — keeps UI
+      // pagination semantics identical for back-compat.
+      const limited = proposals.slice(0, 50);
+      this.proposals.set(limited);
+      this.total.set(proposals.length);
     } catch (e) {
       this.error.set(formatError(e));
     } finally {

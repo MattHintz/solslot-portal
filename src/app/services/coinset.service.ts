@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 
@@ -192,29 +192,58 @@ export class CoinsetService {
    *   submission as accepted.
    */
   async pushTransaction(spendBundle: PushTxSpendBundle): Promise<PushTxResponse> {
-    // Wire format: snake_case + bare hex (no 0x prefix on the signature
-    // or coin_spends fields).  coinset.org accepts either, but stripping
-    // is safer + matches what solslot's chia-aggregator does.
+    // Wire format: snake_case fields + ``0x``-prefixed hex on every
+    // bytes field.  coinset.org's full-node proxy validates with a
+    // strict ``bytes32.from_hexstr(..., assert_prefix=True)`` check
+    // that rejects bare hex with "bytes object is expected to start
+    // with 0x".  Matches solslot's wire format in
+    // ``research/solslot-frontend/slui/src/app/services/chia-wallet.service.ts:2937``.
     const wireBundle = {
       coin_spends: spendBundle.coinSpends.map((cs) => ({
         coin: {
-          parent_coin_info: stripHexPrefix(cs.coin.parentCoinInfo),
-          puzzle_hash: stripHexPrefix(cs.coin.puzzleHash),
+          parent_coin_info: normalizeHex(cs.coin.parentCoinInfo),
+          puzzle_hash: normalizeHex(cs.coin.puzzleHash),
           amount:
             typeof cs.coin.amount === 'bigint'
               ? Number(cs.coin.amount)
               : cs.coin.amount,
         },
-        puzzle_reveal: stripHexPrefix(cs.puzzleReveal),
-        solution: stripHexPrefix(cs.solution),
+        puzzle_reveal: normalizeHex(cs.puzzleReveal),
+        solution: normalizeHex(cs.solution),
       })),
-      aggregated_signature: stripHexPrefix(spendBundle.aggregatedSignature),
+      aggregated_signature: normalizeHex(spendBundle.aggregatedSignature),
     };
     const body = { spend_bundle: wireBundle };
 
-    const res = await firstValueFrom(
-      this.http.post<PushTxResponseRaw>(`${this.base}/push_tx`, body),
-    );
+    let res: PushTxResponseRaw;
+    try {
+      res = await firstValueFrom(
+        this.http.post<PushTxResponseRaw>(`${this.base}/push_tx`, body),
+      );
+    } catch (err) {
+      // coinset.org returns its rejection reasons in the HTTP body
+      // even on 4xx responses — Angular's HttpClient buries those
+      // in ``HttpErrorResponse.error``.  Surface the body verbatim
+      // (incl. the bundle we sent) so operators can diagnose without
+      // diving into network tab.
+      if (err instanceof HttpErrorResponse) {
+        const node = extractCoinsetError(err.error);
+        const detail =
+          node ?? (typeof err.error === 'string' ? err.error : err.message);
+        // Echo the failed bundle to the console so operators can
+        // pipe it into ``chia rpc full_node push_tx`` for offline
+        // debugging.  Don't include this in the thrown message —
+        // bundles are huge — but a single console.error is harmless.
+        console.error('[CoinsetService] push_tx rejected with status', err.status, {
+          coinsetError: detail,
+          bundle: wireBundle,
+        });
+        throw new Error(
+          `pushTransaction rejected (HTTP ${err.status}): ${detail}`,
+        );
+      }
+      throw err;
+    }
 
     if (!res.success) {
       // coinset.org returns a structured error here — surface it
@@ -275,6 +304,38 @@ function normalizeHex(s: string): string {
 
 function stripHexPrefix(s: string): string {
   return s.startsWith('0x') || s.startsWith('0X') ? s.slice(2) : s;
+}
+
+/**
+ * Coinset.org wraps its full-node rejection messages in slightly
+ * different shapes depending on the endpoint — sometimes
+ * ``{ error: "..." }``, sometimes ``{ message: "..." }``,
+ * sometimes the raw full-node error like ``{ status: "FAILED",
+ * error: "ASSERT_..." }``.  Walk the most common keys and fall back
+ * to the JSON dump.
+ */
+function extractCoinsetError(body: unknown): string | null {
+  if (body == null) return null;
+  if (typeof body === 'string') return body;
+  if (typeof body === 'object') {
+    const obj = body as Record<string, unknown>;
+    const candidates = [
+      obj['error'],
+      obj['message'],
+      obj['detail'],
+      obj['reason'],
+      obj['status'],
+    ];
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.length > 0) return c;
+    }
+    try {
+      return JSON.stringify(obj);
+    } catch {
+      return null;
+    }
+  }
+  return String(body);
 }
 
 /**

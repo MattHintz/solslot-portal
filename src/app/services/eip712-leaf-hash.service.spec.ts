@@ -200,6 +200,115 @@ describe('Eip712LeafHashService', () => {
       expect(withPrefix.leaf_hash).toBe(withoutPrefix.leaf_hash);
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────
+  // MIPS root computation (1-of-1 controller).
+  //
+  // These tests exercise the new ``computeMipsRoot1Of1`` helper that
+  // wraps an EIP-712 admin into a CHIP-0043 ``m_of_n`` quorum tree
+  // entirely in-browser via WASM (using the ``mOfNHash`` +
+  // ``eip712MemberHash`` + ``MemberConfig`` bindings landed in chia-
+  // wallet-sdk PR #396).
+  //
+  // The ``bare`` mode is mechanically equal to ``compute().leaf_hash``
+  // (degenerate "MIPS root = bare member") so it has a tight invariant
+  // we can pin precisely.  The ``mofn1of1`` mode produces a different
+  // hash (real wrapped quorum) and we pin it loosely (different from
+  // bare, deterministic, byte-shaped) — the absolute value depends on
+  // wasm-bindgen serialization details we don't want to over-couple to.
+  // ────────────────────────────────────────────────────────────────────
+
+  describe('computeMipsRoot1Of1', () => {
+    it('bare mode returns the same hash as compute().leaf_hash', () => {
+      const leaf = service.compute(FIXTURE_PUBKEY, 'testnet11');
+      const root = service.computeMipsRoot1Of1(
+        FIXTURE_PUBKEY,
+        'testnet11',
+        'bare',
+      );
+      expect(root.shape).toBe('bare');
+      expect(root.mips_root_hash).toBe(leaf.leaf_hash);
+    });
+
+    it('mofn1of1 mode returns a hash distinct from bare', () => {
+      const bare = service.computeMipsRoot1Of1(
+        FIXTURE_PUBKEY,
+        'testnet11',
+        'bare',
+      );
+      const wrapped = service.computeMipsRoot1Of1(
+        FIXTURE_PUBKEY,
+        'testnet11',
+        'mofn1of1',
+      );
+      expect(wrapped.shape).toBe('mofn1of1');
+      expect(wrapped.mips_root_hash.length).toBe(2 + 64);  // 0x + 32 bytes
+      expect(wrapped.mips_root_hash).not.toBe(bare.mips_root_hash);
+    });
+
+    it('mofn1of1 mode is deterministic across calls', () => {
+      const a = service.computeMipsRoot1Of1(
+        FIXTURE_PUBKEY,
+        'testnet11',
+        'mofn1of1',
+      );
+      const b = service.computeMipsRoot1Of1(
+        FIXTURE_PUBKEY,
+        'testnet11',
+        'mofn1of1',
+      );
+      expect(a.mips_root_hash).toBe(b.mips_root_hash);
+    });
+
+    it('mofn1of1 mode produces different hashes on different networks', () => {
+      const t11 = service.computeMipsRoot1Of1(
+        FIXTURE_PUBKEY,
+        'testnet11',
+        'mofn1of1',
+      );
+      const main = service.computeMipsRoot1Of1(
+        FIXTURE_PUBKEY,
+        'mainnet',
+        'mofn1of1',
+      );
+      expect(t11.mips_root_hash).not.toBe(main.mips_root_hash);
+    });
+
+    it('mofn1of1 mode produces different hashes for different pubkeys', () => {
+      const a = service.computeMipsRoot1Of1(
+        FIXTURE_PUBKEY,
+        'testnet11',
+        'mofn1of1',
+      );
+      const b = service.computeMipsRoot1Of1(
+        '0x03' + 'aa'.repeat(32),
+        'testnet11',
+        'mofn1of1',
+      );
+      expect(a.mips_root_hash).not.toBe(b.mips_root_hash);
+    });
+
+    it('default mode is mofn1of1 (production-shaped)', () => {
+      const explicit = service.computeMipsRoot1Of1(
+        FIXTURE_PUBKEY,
+        'testnet11',
+        'mofn1of1',
+      );
+      const defaulted = service.computeMipsRoot1Of1(FIXTURE_PUBKEY, 'testnet11');
+      expect(defaulted.shape).toBe('mofn1of1');
+      expect(defaulted.mips_root_hash).toBe(explicit.mips_root_hash);
+    });
+
+    it('rejects pubkeys that are not 33 bytes', () => {
+      expect(() =>
+        service.computeMipsRoot1Of1(
+          '0x02' + 'aa'.repeat(31),
+          'testnet11',
+          'mofn1of1',
+        ),
+      ).toThrowError(/33 bytes/);
+    });
+  });
 });
 
 function hexToBytes(hex: string): Uint8Array {

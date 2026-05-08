@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { PopulisApiService } from '../../services/populis-api.service';
+import { CoinsetService, BlockchainState } from '../../services/coinset.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -18,7 +18,7 @@ import { environment } from '../../../environments/environment';
           </p>
           <p class="mt-4 mono text-[0.7rem] text-text-muted">
             Network: <span class="text-text">{{ network }}</span><br />
-            API: <span class="text-text">{{ apiHealth() ?? '…' }}</span>
+            Chain: <span class="text-text">{{ chainHealth() ?? '…' }}</span>
           </p>
         </div>
         <div>
@@ -45,15 +45,24 @@ import { environment } from '../../../environments/environment';
   `,
 })
 export class FooterComponent {
-  private readonly api = inject(PopulisApiService);
+  private readonly coinset = inject(CoinsetService);
   readonly network = environment.chiaNetwork;
-  readonly apiHealth = (() => {
+  /**
+   * Footer chain-state pill.  Hits coinset.org's
+   * ``get_blockchain_state`` (the same RPC the portal uses for every
+   * other on-chain read) and surfaces the current peak height as a
+   * liveness signal.  Replaces the previous Populis-API ``/health``
+   * probe (Phase 9-Hermes-D follow-up: only coinset + the faucet
+   * remain as backend dependencies).
+   */
+  readonly chainHealth = (() => {
     let value: string | null = null;
     const sig = () => value;
-    this.api
-      .health()
-      .then((h) => {
-        value = `ok · peak ${h.peak_height ?? '?'}`;
+    this.coinset
+      .getBlockchainState()
+      .then((s: BlockchainState) => {
+        const peakHeight = s?.peak?.height ?? null;
+        value = peakHeight !== null ? `ok · peak ${peakHeight}` : 'syncing';
       })
       .catch(() => {
         value = 'offline';

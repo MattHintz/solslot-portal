@@ -25,6 +25,40 @@ import {
   SignedSpendBundle,
   UnsignedCoinSpend,
 } from './chia-wallet.service';
+import { ChiaWasmService } from './chia-wasm.service';
+
+/**
+ * Stub WASM SDK that exposes just enough of the ``Address``
+ * constructor for the transfer-flow specs to exercise the
+ * hex→bech32 encoding path.  Returns a deterministic
+ * ``txch1<hex>`` string so tests can assert the recipient format
+ * without depending on real bech32m checksum logic.
+ */
+function makeWasmStub(): Partial<ChiaWasmService> {
+  // The transfer flow only uses ``sdk()``, never ``ready``, so we
+  // narrow the stub to that surface and cast through ``unknown`` to
+  // satisfy ``Partial<ChiaWasmService>``.  A real ``ready`` signal
+  // here would require importing Angular's signal API into specs.
+  return {
+    sdk: () =>
+      ({
+        Address: class {
+          private readonly puzzleHash: Uint8Array;
+          private readonly prefix: string;
+          constructor(puzzleHash: Uint8Array, prefix: string) {
+            this.puzzleHash = puzzleHash;
+            this.prefix = prefix;
+          }
+          encode(): string {
+            const hex = Array.from(this.puzzleHash, (b) =>
+              b.toString(16).padStart(2, '0'),
+            ).join('');
+            return `${this.prefix}1${hex}`;
+          }
+        },
+      }) as unknown as ReturnType<ChiaWasmService['sdk']>,
+  };
+}
 
 interface MockedWalletCall {
   method: string;
@@ -83,7 +117,9 @@ describe('ChiaWalletService.signSpendBundle', () => {
   let cleanup: Array<() => void> = [];
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({
+      providers: [{ provide: ChiaWasmService, useValue: makeWasmStub() }],
+    });
     service = TestBed.inject(ChiaWalletService);
     cleanup = [];
   });
@@ -173,14 +209,18 @@ describe('ChiaWalletService.signSpendBundle', () => {
     expect(result.coinSpends.length).toBe(1);
   });
 
-  it('accepts a string-only signature (older wallet formats)', async () => {
+  it('accepts a string-only signature (Goby docs.goby.app/methods shape)', async () => {
+    // Goby's signCoinSpends returns Promise<string> per the docs —
+    // we populate coinSpends from the input array since the
+    // signature commits to those exact spends anyway.
     setConnectedState('goby');
     const mock = installMockWallet('chia', () => SAMPLE_SIG);
     cleanup.push(mock.uninstall);
 
     const result = await service.signSpendBundle(SAMPLE_COIN_SPENDS);
     expect(result.aggregatedSignature).toBe(SAMPLE_SIG);
-    expect(result.coinSpends).toEqual([]);
+    expect(result.coinSpends.length).toBe(1);
+    expect(result.coinSpends[0]).toEqual(SAMPLE_COIN_SPENDS[0]);
   });
 
   // ───────────────────────────────────────────────────────────────────
@@ -257,17 +297,32 @@ describe('ChiaWalletService.signSpendBundle', () => {
   // ───────────────────────────────────────────────────────────────────
 
   describe('transfer', () => {
-    it('Goby: calls "transfer" with stripped puzzle hash + numeric amount', async () => {
+    it('Goby: calls "transfer" with bech32 to + assetId + waitForConfirmation=false', async () => {
       setConnectedState('goby');
       const mock = installMockWallet('chia', (method, params) => {
         expect(method).toBe('transfer');
-        const p = params as { to: string; amount: number };
-        expect(p.to).toBe('aa'.repeat(32));
-        expect(p.to.startsWith('0x'))
-          .withContext('hex prefix should be stripped')
+        const p = params as {
+          to: string;
+          amount: number;
+          assetId: string;
+          fee: number;
+          memos: unknown[];
+          waitForConfirmation: boolean;
+        };
+        // Recipient must be bech32 (testnet11 prefix), not raw hex —
+        // Goby rejects hex with "Invalid assetId" (code 4000) /
+        // "invalid recipient".  Our stub encodes 32 bytes of 0xaa as
+        // ``txch1<hex>``.
+        expect(p.to).toBe('txch1' + 'aa'.repeat(32));
+        // Empty assetId means native XCH.  Goby requires this field
+        // to be present even when sending XCH.
+        expect(p.assetId).toBe('');
+        expect(p.fee).toBe(0);
+        expect(p.memos).toEqual([]);
+        expect(p.waitForConfirmation)
+          .withContext('must be false so Goby returns the signed bundle')
           .toBe(false);
         expect(p.amount).toBe(1);
-        // Return shape matches Goby's manual-sign mode.
         return {
           signature: SAMPLE_SIG,
           spendBundle: { coin_spends: [] },
@@ -369,5 +424,228 @@ describe('ChiaWalletService.signSpendBundle', () => {
       .toBe(1);
     expect(params.coinSpends[0].puzzle_reveal).toBe('ff01ff80');
     expect(params.coinSpends[0].solution).toBe('ff8080');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// getCurrentAddress
+//
+// Goby exposes the address as a *property* (``window.chia.selectedAddress``)
+// not via an RPC method.  Sage exposes it via ``chia_getCurrentAddress``
+// RPC.  These specs pin both code paths so we don't accidentally regress
+// to "RPC-only" assumptions.
+//
+// Reference: solslot's
+// ``research/solslot-frontend/slui/src/app/components/connect-wallet-modal/connect-wallet-modal.component.ts:317``
+// uses ``chia.selectedAddress`` directly after ``getPublicKeys`` succeeds.
+// ─────────────────────────────────────────────────────────────────────
+
+describe('ChiaWalletService.getCurrentAddress', () => {
+  let service: ChiaWalletService;
+  let cleanup: Array<() => void> = [];
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(ChiaWalletService);
+    cleanup = [];
+  });
+
+  afterEach(() => {
+    cleanup.forEach((fn) => fn());
+    cleanup = [];
+    service.disconnect();
+  });
+
+  function setConnected(connection: 'goby' | 'sage'): void {
+    const internal = service as unknown as {
+      _state: { set: (s: unknown) => void };
+    };
+    internal._state.set({
+      kind: 'connected',
+      pubkey: '0x' + 'cc'.repeat(48),
+      connection,
+    });
+  }
+
+  /**
+   * Install a Goby-flavoured mock that exposes ``selectedAddress`` as a
+   * property + a stub ``request`` that records calls and either returns
+   * a pre-set ``getPublicKeys`` reply OR throws "method unsupported".
+   */
+  function installGobyMock(args: {
+    initialSelectedAddress?: string;
+    selectedAddressAfterGetPublicKeys?: string;
+    getPublicKeysFails?: boolean;
+    rpcGetCurrentAddressReply?: string | object;
+  }): { calls: MockedWalletCall[]; uninstall: () => void } {
+    const calls: MockedWalletCall[] = [];
+    const w = window as unknown as Record<string, unknown>;
+    const previous = w['chia'];
+    const mock: Record<string, unknown> = {
+      isGoby: true,
+      selectedAddress: args.initialSelectedAddress,
+      request: async ({ method, params }: { method: string; params?: unknown }) => {
+        calls.push({ method, params });
+        if (method === 'getPublicKeys') {
+          if (args.getPublicKeysFails) {
+            throw { code: 4001, message: 'User rejected' };
+          }
+          if (args.selectedAddressAfterGetPublicKeys !== undefined) {
+            mock['selectedAddress'] = args.selectedAddressAfterGetPublicKeys;
+          }
+          return ['0x' + 'aa'.repeat(48)];
+        }
+        if (
+          method === 'chia_getCurrentAddress' ||
+          method === 'getCurrentAddress'
+        ) {
+          if (args.rpcGetCurrentAddressReply !== undefined) {
+            return args.rpcGetCurrentAddressReply;
+          }
+          throw { code: 4004, message: "method doesn't have corresponding handler" };
+        }
+        throw { code: 4004, message: `unknown method: ${method}` };
+      },
+    };
+    w['chia'] = mock;
+    return {
+      calls,
+      uninstall: () => {
+        if (previous === undefined) delete w['chia'];
+        else w['chia'] = previous;
+      },
+    };
+  }
+
+  it('Goby: reads selectedAddress property when already populated (no RPC)', async () => {
+    setConnected('goby');
+    const mock = installGobyMock({
+      initialSelectedAddress: 'txch1abc',
+    });
+    cleanup.push(mock.uninstall);
+
+    const addr = await service.getCurrentAddress();
+
+    expect(addr).toBe('txch1abc');
+    expect(mock.calls.length)
+      .withContext('Should NOT call request if selectedAddress is already set')
+      .toBe(0);
+  });
+
+  it('Goby: primes selectedAddress via getPublicKeys when initially empty', async () => {
+    setConnected('goby');
+    const mock = installGobyMock({
+      initialSelectedAddress: undefined,
+      selectedAddressAfterGetPublicKeys: 'txch1xyz',
+    });
+    cleanup.push(mock.uninstall);
+
+    const addr = await service.getCurrentAddress();
+
+    expect(addr).toBe('txch1xyz');
+    expect(mock.calls.length).toBe(1);
+    expect(mock.calls[0].method).toBe('getPublicKeys');
+  });
+
+  it('Goby: surfaces a clear error when getPublicKeys is rejected', async () => {
+    setConnected('goby');
+    const mock = installGobyMock({
+      initialSelectedAddress: undefined,
+      getPublicKeysFails: true,
+    });
+    cleanup.push(mock.uninstall);
+
+    await expectAsync(service.getCurrentAddress()).toBeRejectedWithError(
+      /getPublicKeys failed.*User rejected/,
+    );
+  });
+
+  it('Goby: falls back to RPC when selectedAddress remains empty after getPublicKeys', async () => {
+    setConnected('goby');
+    const mock = installGobyMock({
+      initialSelectedAddress: undefined,
+      selectedAddressAfterGetPublicKeys: undefined, // RPC fallback path
+      rpcGetCurrentAddressReply: 'txch1rpcfallback',
+    });
+    cleanup.push(mock.uninstall);
+
+    const addr = await service.getCurrentAddress();
+
+    expect(addr).toBe('txch1rpcfallback');
+    const methods = mock.calls.map((c) => c.method);
+    expect(methods).toContain('getPublicKeys');
+    expect(methods.some((m) => m.includes('getCurrentAddress'))).toBe(true);
+  });
+
+  it('Sage: uses chia_getCurrentAddress RPC and accepts string reply', async () => {
+    setConnected('sage');
+    const mock = installMockWallet('sage', (method) => {
+      if (method === 'chia_getCurrentAddress') return 'txch1sage';
+      throw { code: 4004, message: 'unknown' };
+    });
+    cleanup.push(mock.uninstall);
+
+    const addr = await service.getCurrentAddress();
+    expect(addr).toBe('txch1sage');
+    expect(mock.calls[0].method).toBe('chia_getCurrentAddress');
+  });
+
+  it('Sage: accepts {address: ...} object reply shape', async () => {
+    setConnected('sage');
+    const mock = installMockWallet('sage', (method) => {
+      if (method === 'chia_getCurrentAddress') {
+        return { address: 'txch1objshape' };
+      }
+      throw { code: 4004, message: 'unknown' };
+    });
+    cleanup.push(mock.uninstall);
+
+    const addr = await service.getCurrentAddress();
+    expect(addr).toBe('txch1objshape');
+  });
+
+  it('throws when not connected', async () => {
+    await expectAsync(service.getCurrentAddress()).toBeRejectedWithError(
+      /not connected/,
+    );
+  });
+
+  it('rejects non-Chia bech32 HRPs (e.g. eth1, btc1)', async () => {
+    setConnected('sage');
+    const mock = installMockWallet('sage', () => 'eth1notchia');
+    cleanup.push(mock.uninstall);
+
+    await expectAsync(service.getCurrentAddress()).toBeRejectedWithError(
+      /xch1\/txch1 bech32 address/,
+    );
+  });
+
+  it('accepts mainnet xch1 prefix', async () => {
+    setConnected('sage');
+    const mock = installMockWallet('sage', () => 'xch1mainnet');
+    cleanup.push(mock.uninstall);
+
+    const addr = await service.getCurrentAddress();
+    expect(addr).toBe('xch1mainnet');
+  });
+
+  it('accepts a 64-char hex puzzle hash (Goby selectedAddress format)', async () => {
+    setConnected('goby');
+    const mock = installGobyMock({
+      initialSelectedAddress: 'ab'.repeat(32), // 64 hex chars, no prefix
+    });
+    cleanup.push(mock.uninstall);
+
+    const addr = await service.getCurrentAddress();
+    expect(addr).toBe('ab'.repeat(32));
+  });
+
+  it('accepts a 0x-prefixed hex puzzle hash via Sage RPC', async () => {
+    setConnected('sage');
+    const mock = installMockWallet('sage', () => '0x' + 'cd'.repeat(32));
+    cleanup.push(mock.uninstall);
+
+    const addr = await service.getCurrentAddress();
+    expect(addr).toBe('0x' + 'cd'.repeat(32));
   });
 });

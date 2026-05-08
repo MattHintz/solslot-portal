@@ -7,6 +7,7 @@ import {
   UnsignedCoinSpend,
 } from '../chia-wallet.service';
 import { CoinsetService, PushTxResponse } from '../coinset.service';
+import { WalletCoinPickerService } from '../wallet-coin-picker.service';
 import { ADMIN_AUTHORITY_V2_INNER_PUZZLE_HEX } from './admin-authority-v2.puzzle-hex';
 
 /**
@@ -40,6 +41,7 @@ export class AdminAuthorityV2Service {
   private readonly wasm = inject(ChiaWasmService);
   private readonly chiaWallet = inject(ChiaWalletService);
   private readonly coinset = inject(CoinsetService);
+  private readonly coinPicker = inject(WalletCoinPickerService);
 
   /**
    * Empty-list tree-hash sentinel.  Equals ``sha256tree(())`` and is
@@ -497,6 +499,133 @@ export class AdminAuthorityV2Service {
    * * coinset rejects the bundle → ``pushTransaction`` throws with
    *   the node's error message.
    */
+  /**
+   * Build a funding-coin spend client-side via WASM and ask the
+   * connected wallet to sign it via the CHIP-0002 ``signCoinSpends``
+   * RPC.  Returns the resulting signed bundle (single coin spend +
+   * aggregated signature).
+   *
+   * This replaces the older ``ChiaWalletService.transfer`` flow,
+   * which Goby's documented ``transfer`` schema can't satisfy:
+   * Goby always auto-broadcasts, returns just a transaction id, and
+   * doesn't expose a ``waitForConfirmation: false`` knob.
+   * ``signCoinSpends`` is the canonical wallet-agnostic path
+   * (Goby + Sage both implement it).
+   *
+   * **Pipeline:**
+   *
+   *   1. Pick the largest unspent coin under the wallet's first
+   *      receive address via {@link WalletCoinPickerService}.
+   *   2. Fetch the full coin record from coinset (we need
+   *      ``parent_coin_info`` + the actual on-chain ``puzzle_hash``
+   *      + the full ``amount`` to compute change).
+   *   3. Build a delegated spend with ``CREATE_COIN(target, amount)``
+   *      and (if needed) ``CREATE_COIN(change_address, change)``.
+   *   4. Wrap in ``standardSpend`` curried with the wallet's
+   *      synthetic public key (Goby/Sage's ``getPublicKeys`` returns
+   *      synthetic keys per CHIP-0002).
+   *   5. Use the WASM ``Clvm`` to materialise the spend's puzzle
+   *      reveal + solution as serialised bytes.
+   *   6. Convert to wire format (hex) and call
+   *      ``ChiaWalletService.signSpendBundle`` which routes through
+   *      the wallet's CHIP-0002 ``signCoinSpends``.
+   *
+   * The returned ``aggregatedSignature`` is a 96-byte BLS signature
+   * over all the ``AGG_SIG_ME`` conditions in the spend (the
+   * standard puzzle's signature requirement).
+   *
+   * @returns Signed bundle: one coin spend + aggregated signature.
+   */
+  private async buildAndSignFundingSpend(args: {
+    targetPuzzleHash: string;
+    amount: bigint;
+  }): Promise<SignedSpendBundle> {
+    const sdk = this.sdk();
+    if (!sdk.Clvm || !sdk.Coin || !sdk.PublicKey) {
+      throw new Error(
+        'buildAndSignFundingSpend: chia-wallet-sdk-wasm is missing ' +
+          'Clvm/Coin/PublicKey exports — cannot construct funding spend.',
+      );
+    }
+
+    // 1. Pick a coin via the wallet bridge + coinset.
+    const pick = await this.coinPicker.pickLargestUnspentCoinId();
+
+    // 2. Fetch the full coin record (need parent_coin_info + amount).
+    const record = await this.coinset.getCoinRecordByName(pick.coinId);
+    if (!record) {
+      throw new Error(
+        `buildAndSignFundingSpend: coin ${pick.coinId} not found on chain. ` +
+          'It may have been spent between the pick and the submit. Retry.',
+      );
+    }
+    const coinAmount = BigInt(record.coin.amount);
+    const sendAmount = args.amount;
+    if (coinAmount < sendAmount) {
+      throw new Error(
+        `buildAndSignFundingSpend: picked coin holds only ${coinAmount} ` +
+          `mojos, but funding requires ${sendAmount}. Top up the wallet.`,
+      );
+    }
+    const changeAmount = coinAmount - sendAmount;
+
+    // 3-5. Build the spend via WASM.
+    const clvm = new sdk.Clvm();
+    const launcherPhBytes = hexToBytes(args.targetPuzzleHash);
+    const changePhBytes = hexToBytes(pick.puzzleHash);
+
+    const conditions = [clvm.createCoin(launcherPhBytes, sendAmount, undefined)];
+    if (changeAmount > 0n) {
+      conditions.push(clvm.createCoin(changePhBytes, changeAmount, undefined));
+    }
+    const innerSpend = clvm.delegatedSpend(conditions);
+
+    // Wallet pubkey is already synthetic — Goby/Sage's getPublicKeys
+    // returns synthetic keys per CHIP-0002.  Strip the 0x prefix.
+    const pubkeyHex = this.chiaWallet.pubkey();
+    if (!pubkeyHex) {
+      throw new Error('buildAndSignFundingSpend: wallet not connected');
+    }
+    const syntheticKey = sdk.PublicKey.fromBytes(hexToBytes(pubkeyHex));
+
+    // Build the source coin object + spend it as a standard coin.
+    const sourceCoin = new sdk.Coin(
+      hexToBytes(record.coin.parent_coin_info),
+      hexToBytes(record.coin.puzzle_hash),
+      coinAmount,
+    );
+    clvm.spendStandardCoin(sourceCoin, syntheticKey, innerSpend);
+
+    // 6. Extract the resulting CoinSpend and convert to our wire
+    // format.  ``coinSpends()`` returns everything spent through this
+    // Clvm instance — for our case that's exactly one entry.
+    const coinSpends = clvm.coinSpends();
+    if (coinSpends.length !== 1) {
+      throw new Error(
+        `buildAndSignFundingSpend: expected 1 coin spend, got ` +
+          `${coinSpends.length}`,
+      );
+    }
+    const cs = coinSpends[0];
+    const unsigned: UnsignedCoinSpend[] = [
+      {
+        coin: {
+          parentCoinInfo: bytesToHexPrefixed(cs.coin.parentCoinInfo),
+          puzzleHash: bytesToHexPrefixed(cs.coin.puzzleHash),
+          amount: cs.coin.amount,
+        },
+        puzzleReveal: bytesToHexPrefixed(cs.puzzleReveal),
+        solution: bytesToHexPrefixed(cs.solution),
+      },
+    ];
+
+    // Hand off to wallet for signing.  The wallet signs all
+    // AGG_SIG_ME conditions in the inner solution and returns the
+    // aggregated 96-byte BLS signature.  We get back the same coin
+    // spends (echoed) + the signature.
+    return await this.chiaWallet.signSpendBundle(unsigned);
+  }
+
   async submitLaunch(args: {
     eveInnerPuzzleHash: string;
     eveAmount?: number | bigint;
@@ -506,17 +635,31 @@ export class AdminAuthorityV2Service {
     pushResponse: PushTxResponse;
     fullSpendBundle: SignedSpendBundle;
   }> {
-    // 1. Ask the wallet to fund the launcher coin.  Returns a signed
-    // bundle WITHOUT auto-broadcasting (parseTransferResult enforces
-    // this contract).
-    const transferResult = await this.chiaWallet.transfer({
+    // 1. Build the funding-coin spend client-side via WASM, then ask
+    // the wallet to sign it via the CHIP-0002 ``signCoinSpends`` RPC.
+    //
+    // We DO NOT use Goby's deprecated ``transfer`` RPC here because:
+    //   * It always auto-broadcasts (no ``waitForConfirmation`` field
+    //     in the documented schema).
+    //   * It only returns ``{ id: string }`` — a transaction id, not
+    //     the signed spend bundle we'd need to combine with our
+    //     launcher spend before broadcasting.
+    //   * Goby v1.0+ rejects calls without an ``assetId`` field with
+    //     "Invalid assetId" (code 4000) and the bundle is internally
+    //     rebroadcast through a different path that 400s on
+    //     non-standard puzzle hashes (the singleton launcher).
+    //
+    // ``signCoinSpends`` is the canonical CHIP-0002 path: we provide
+    // the unsigned coin spend, the wallet returns just the
+    // aggregated signature (no broadcast).
+    const fundingResult = await this.buildAndSignFundingSpend({
       targetPuzzleHash: AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH,
-      amount: 1,
+      amount: 1n,
     });
 
     // 2. Find which spend in the result created the launcher coin.
     // Its source coin's id is the launcher's parent_coin_info.
-    const fundingCoinId = this.findLauncherParentCoinId(transferResult.coinSpends);
+    const fundingCoinId = this.findLauncherParentCoinId(fundingResult.coinSpends);
 
     // 3. Now we know the parent → derive every launch output.
     const launchOutputs = this.computeLaunchOutputs({
@@ -536,8 +679,8 @@ export class AdminAuthorityV2Service {
     // into one bundle.  The aggregated_signature only covers the
     // funding spend's AGG_SIGs; the launcher spend has none.
     const fullSpendBundle: SignedSpendBundle = {
-      coinSpends: [...transferResult.coinSpends, launcherSpend],
-      aggregatedSignature: transferResult.aggregatedSignature,
+      coinSpends: [...fundingResult.coinSpends, launcherSpend],
+      aggregatedSignature: fundingResult.aggregatedSignature,
     };
 
     // 6. Push the combined bundle to coinset.org.
@@ -835,6 +978,23 @@ interface ClvmShape {
   list(values: ProgramShape[]): ProgramShape;
   pair(first: ProgramShape, rest: ProgramShape): ProgramShape;
   nil(): ProgramShape;
+  // ── Standard-spend construction (CHIP-0002 signCoinSpends path) ──
+  /** Build a standard-puzzle CREATE_COIN condition. */
+  createCoin(
+    puzzleHash: Uint8Array,
+    amount: bigint,
+    memos?: ProgramShape | undefined,
+  ): ProgramShape;
+  /** Wrap conditions into a delegated-spend (puzzle + solution). */
+  delegatedSpend(conditions: ProgramShape[]): SpendShape;
+  /** Add a CHIP-0002 standard-puzzle spend for ``coin`` to this Clvm. */
+  spendStandardCoin(
+    coin: CoinShape,
+    syntheticKey: PublicKeyShape,
+    spend: SpendShape,
+  ): void;
+  /** Retrieve all coin spends accumulated in this Clvm instance. */
+  coinSpends(): CoinSpendShape[];
 }
 
 interface ProgramShape {
@@ -851,9 +1011,33 @@ interface CoinShape {
   coinId(): Uint8Array;
 }
 
+/** Loose shape for a WASM ``Spend`` (puzzle + solution program pair). */
+interface SpendShape {
+  puzzle: ProgramShape;
+  solution: ProgramShape;
+}
+
+/** Loose shape for the WASM ``CoinSpend`` returned by ``Clvm.coinSpends()``. */
+interface CoinSpendShape {
+  coin: CoinShape;
+  puzzleReveal: Uint8Array;
+  solution: Uint8Array;
+}
+
+/** Loose shape for the WASM ``PublicKey`` (G1 BLS public key). */
+interface PublicKeyShape {
+  toBytes(): Uint8Array;
+}
+
+interface PublicKeyCtor {
+  fromBytes(bytes: Uint8Array): PublicKeyShape;
+}
+
 interface SdkShape {
   Clvm?: new () => ClvmShape;
   Coin?: new (parent: Uint8Array, puzzleHash: Uint8Array, amount: bigint) => CoinShape;
+  /** Static ``PublicKey.fromBytes`` constructor (CHIP-0002 synthetic keys are 48-byte G1 elements). */
+  PublicKey?: PublicKeyCtor;
   /**
    * Static-only namespace exposing canonical chia constants.  In WASM 0.33
    * this lives at ``ChiaSDK.Constants`` (NOT ``ChiaSDK.Program``).

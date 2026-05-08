@@ -2,14 +2,11 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import {
-  AdminApiService,
   AdminAuthorityResponse,
   AdminAuthorityV2Response,
 } from '../../../services/admin-api.service';
-import {
-  PopulisApiService,
-  ProtocolInfo,
-} from '../../../services/populis-api.service';
+import { ProtocolInfo } from '../../../services/populis-api.service';
+import { OnChainStateService } from '../../../services/on-chain-state.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import {
   ChiaSingletonReaderService,
@@ -530,8 +527,7 @@ type VerifyStatus =
   ],
 })
 export class TrustRootsComponent {
-  private readonly admin = inject(AdminApiService);
-  private readonly api = inject(PopulisApiService);
+  private readonly onChain = inject(OnChainStateService);
   private readonly session = inject(AdminSessionService);
   private readonly singleton = inject(ChiaSingletonReaderService);
   private readonly wasm = inject(ChiaWasmService);
@@ -551,67 +547,74 @@ export class TrustRootsComponent {
     void this.loadInitial();
   }
 
+  /**
+   * Load each singleton's on-chain state via {@link OnChainStateService}.
+   *
+   * Post-Hermes-D: there's no API to fail any more — the data is
+   * sourced from build-time env constants (launcher_ids, mod_hashes)
+   * plus on-chain singleton replays.  The shim swallows per-singleton
+   * read failures and surfaces them as null fields, so a single bad
+   * coinset response no longer hides the rest of the page.  Card-level
+   * status badges still call {@link runVerification} (the old
+   * "verify" button) which surfaces walking/replay errors per card.
+   */
   private async loadInitial(): Promise<void> {
-    try {
-      // ``authV2`` is best-effort: v2 is a Phase 9-Hermes-C addition,
-      // so older API deployments may not expose ``/admin/auth/authority_v2``
-      // yet.  We surface a fetch failure as 'error' on its card only,
-      // not as a fatal that hides v1 + protocol data.
-      const [auth, proto, authV2] = await Promise.all([
-        this.admin.getAuthority(),
-        this.api.getProtocolInfo(),
-        this.admin
-          .getAuthorityV2()
-          .catch((e: unknown) => ({ __error: formatError(e) }) as const),
-      ]);
-      this.authority.set(auth);
-      this.protocol.set(proto);
+    const [auth, proto, authV2] = await Promise.all([
+      this.onChain.getAuthority(),
+      this.onChain.getProtocolInfo(),
+      this.onChain.getAuthorityV2(),
+    ]);
+    this.authority.set(auth);
+    this.protocol.set(proto);
+    this.authorityV2.set(authV2);
 
-      if ('__error' in authV2) {
-        this.adminAuthorityV2Status.set({ kind: 'error', message: authV2.__error });
-      } else {
-        this.authorityV2.set(authV2);
-        if (!authV2.launcher_id) {
-          this.adminAuthorityV2Status.set({ kind: 'not-configured' });
-        }
-      }
-
-      if (!auth.launcher_id) {
-        this.adminAuthorityStatus.set({ kind: 'not-configured' });
-      }
-      if (!proto.protocol_config_launcher_id) {
-        this.protocolConfigStatus.set({ kind: 'not-configured' });
-      }
-      if (!proto.property_registry_launcher_id) {
-        this.propertyRegistryStatus.set({ kind: 'not-configured' });
-      }
-    } catch (e) {
-      const msg = formatError(e);
-      this.adminAuthorityStatus.set({ kind: 'error', message: msg });
-      this.adminAuthorityV2Status.set({ kind: 'error', message: msg });
-      this.protocolConfigStatus.set({ kind: 'error', message: msg });
-      this.propertyRegistryStatus.set({ kind: 'error', message: msg });
+    if (!auth.launcher_id) {
+      this.adminAuthorityStatus.set({ kind: 'not-configured' });
+    }
+    if (!authV2.launcher_id) {
+      this.adminAuthorityV2Status.set({ kind: 'not-configured' });
+    }
+    if (!proto.protocol_config_launcher_id) {
+      this.protocolConfigStatus.set({ kind: 'not-configured' });
+    }
+    if (!proto.property_registry_launcher_id) {
+      this.propertyRegistryStatus.set({ kind: 'not-configured' });
     }
   }
 
+  /**
+   * Walk the v1 admin-authority singleton lineage and surface its
+   * latest on-chain state hash.  Post-Hermes-D ``state_hash`` may be
+   * null on first paint (the OnChainStateService shim returns null
+   * when WASM isn't ready yet); the walk re-derives it from chain so
+   * the button always works once the launcher is configured.
+   */
   async verifyAdminAuthority(): Promise<void> {
     const launcher = this.authority()?.launcher_id;
-    const claimed = this.authority()?.state_hash;
-    if (!launcher || !claimed) return;
+    if (!launcher) return;
+    const claimed = this.authority()?.state_hash ?? null;
     await this.runVerification(launcher, claimed, this.adminAuthorityStatus);
   }
 
+  /**
+   * Walk the v2 admin-authority singleton lineage; semantics match
+   * {@link verifyAdminAuthority}.
+   */
   async verifyAdminAuthorityV2(): Promise<void> {
     const launcher = this.authorityV2()?.launcher_id;
-    const claimed = this.authorityV2()?.state_hash;
-    if (!launcher || !claimed) return;
+    if (!launcher) return;
+    const claimed = this.authorityV2()?.state_hash ?? null;
     await this.runVerification(launcher, claimed, this.adminAuthorityV2Status);
   }
 
+  /**
+   * Walk the protocol-config singleton lineage; semantics match
+   * {@link verifyAdminAuthority}.
+   */
   async verifyProtocolConfig(): Promise<void> {
     const launcher = this.protocol()?.protocol_config_launcher_id;
-    const claimed = this.protocol()?.protocol_config_hash;
-    if (!launcher || !claimed) return;
+    if (!launcher) return;
+    const claimed = this.protocol()?.protocol_config_hash ?? null;
     await this.runVerification(launcher, claimed, this.protocolConfigStatus);
   }
 

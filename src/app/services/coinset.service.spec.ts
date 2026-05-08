@@ -75,17 +75,17 @@ describe('CoinsetService.pushTransaction', () => {
     expect(body.spend_bundle).toBeDefined();
 
     const cs = body.spend_bundle.coin_spends[0];
-    expect(cs.coin.parent_coin_info).toBe('aa'.repeat(32));
+    expect(cs.coin.parent_coin_info).toBe('0x' + 'aa'.repeat(32));
     expect(cs.coin.parent_coin_info.startsWith('0x'))
-      .withContext('hex prefix should be stripped before submission')
-      .toBe(false);
-    expect(cs.coin.puzzle_hash).toBe('bb'.repeat(32));
+      .withContext('coinset.org requires 0x prefix on bytes fields')
+      .toBe(true);
+    expect(cs.coin.puzzle_hash).toBe('0x' + 'bb'.repeat(32));
     expect(cs.coin.amount).toBe(1);
-    expect(cs.puzzle_reveal).toBe('ff01ff80');
-    expect(cs.solution).toBe('ff8080');
+    expect(cs.puzzle_reveal).toBe('0xff01ff80');
+    expect(cs.solution).toBe('0xff8080');
 
-    expect(body.spend_bundle.aggregated_signature).toBe('cc'.repeat(96));
-    expect(body.spend_bundle.aggregated_signature.startsWith('0x')).toBe(false);
+    expect(body.spend_bundle.aggregated_signature).toBe('0x' + 'cc'.repeat(96));
+    expect(body.spend_bundle.aggregated_signature.startsWith('0x')).toBe(true);
 
     req.flush({ success: true, status: 'SUCCESS' });
     const result = await promise;

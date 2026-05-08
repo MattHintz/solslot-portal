@@ -1,10 +1,7 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import {
-  AdminApiService,
-  MintProposalResponse,
-} from '../../../services/admin-api.service';
+import { MintProposalResponse } from '../../../services/admin-api.service';
 import { formatError } from '../../../utils/format-error';
 
 /**
@@ -161,8 +158,6 @@ import { formatError } from '../../../utils/format-error';
   ],
 })
 export class CommitteeComponent {
-  private readonly api = inject(AdminApiService);
-
   readonly proposals = signal<MintProposalResponse[]>([]);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
@@ -171,12 +166,36 @@ export class CommitteeComponent {
     void this.reload();
   }
 
+  /**
+   * Load all PROPOSED+ mint proposals visible to the committee.
+   *
+   * **Phase B1 (current):** the previous API endpoint
+   * (``GET /admin/committee/proposals``) was deleted as part of the
+   * Hermes-D API-removal pass.  Cross-admin visibility requires
+   * walking each proposal-tracker singleton on chain via
+   * {@link ChiaSingletonReaderService}, indexed by a registry
+   * singleton (or a published manifest of proposal launcher_ids).
+   * That work is Phase B2; until it lands, this desk renders an
+   * empty list with an in-band notice.
+   *
+   * **Why we don't fall back to localStorage drafts.**  The
+   * committee desk's purpose is to show *all admins'* in-flight
+   * proposals so any committee member can vote.  Showing only
+   * the current browser's drafts would be misleading — a
+   * committee member voting on a proposal they wrote is not what
+   * the page is for.
+   */
   async reload(): Promise<void> {
     this.error.set(null);
     this.loading.set(true);
     try {
-      const resp = await this.api.listCommitteeProposals({ limit: 100 });
-      this.proposals.set(resp.proposals);
+      this.proposals.set([]);
+      this.error.set(
+        'Cross-admin proposal visibility is not yet wired to on-chain ' +
+          'reads (Phase B2 follow-up).  Once the proposal-tracker singleton ' +
+          'index is in place, this desk will list every PROPOSED+ proposal ' +
+          'directly from chain via coinset.org — no API needed.',
+      );
     } catch (e) {
       this.error.set(formatError(e));
     } finally {

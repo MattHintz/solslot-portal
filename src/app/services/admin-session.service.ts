@@ -1,47 +1,63 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
-  AdminApiService,
-  AdminAuthType,
-  AdminLoginRequest,
-} from './admin-api.service';
-
-const STORAGE_KEY = 'populis_admin_session_v1';
+  AdminWalletAuthService,
+  MembershipResult,
+} from './admin-wallet-auth.service';
+import { Eip712TypedData } from './populis-api.service';
 
 /**
- * Refresh the JWT this many seconds before its `expires_at`.  Comfortable
- * margin so a slow round-trip doesn't let the token lapse mid-flight.
+ * Storage key.  Bumped from ``v1`` (JWT-era) to ``v2`` so old JWT
+ * sessions are auto-invalidated on the first run after the
+ * Phase 9-Hermes-D wallet-signed-auth migration; users see a single
+ * "please re-login" beat instead of mysteriously broken cached
+ * sessions.
  */
-const REFRESH_LEAD_SECONDS = 60;
+const STORAGE_KEY = 'populis_admin_session_v2';
 
 /**
- * Floor on the auto-refresh timer so we don't spin a tight loop if a JWT
- * arrives nearly-expired (e.g., clock skew between client and server).
- */
-const MIN_REFRESH_INTERVAL_MS = 5_000;
-
-/**
- * Persistent admin-desk session manager.
+ * Persistent admin-desk session manager (post-Hermes-D).
  *
- * Lifecycle:
- *   1. Caller (login page) drives the wallet-signing handshake and calls
- *      {@link beginSession} with the response from `/admin/auth/login`.
- *   2. The session is mirrored to localStorage and an auto-refresh timer is
- *      scheduled to fire `REFRESH_LEAD_SECONDS` before expiry.
- *   3. Any auth failure during refresh (403 — usually the operator has been
- *      removed from `POPULIS_ADMIN_PUBKEY_ALLOWLIST`, per POP-CANON-012)
- *      clears the session and routes the user back to `/admin/login`.
+ * **Trust model.**  The portal no longer talks to a Populis API for
+ * admin auth \u2014 every check is client-side, with chain (or env-pinned)
+ * data as the source of truth:
  *
- * **Storage caveat.**  The JWT is bearer authority; persisting it in
- * `localStorage` exposes it to any XSS injected into the portal.  For an
- * operator-facing internal tool this is an accepted trade-off (small known
- * audience, no untrusted user content rendered, 15-min TTL).  If we ever
- * extend this surface to less-trusted operators, switch to in-memory only
- * and accept the page-reload re-login UX cost.
+ *   1. Caller (login page) builds a ``PopulisAdminLogin`` EIP-712
+ *      envelope via {@link AdminWalletAuthService.buildLoginTypedData}.
+ *   2. User signs it in their wallet.
+ *   3. Caller recovers the compressed pubkey via
+ *      {@link EvmWalletService.recoverCompressedPubkey}.
+ *   4. Caller invokes {@link AdminSessionService.loginWithWallet} which:
+ *        a. Asks {@link AdminWalletAuthService.verifyMembership} whether
+ *           the pubkey is in the on-chain MIPS quorum (or, fallback,
+ *           in the env pubkey allowlist).
+ *        b. If yes, persists the session and seeds the reactive state.
+ *        c. Returns the verified address so the page can display it.
+ *
+ * **What's persisted.**  The full credential bundle: ``address``,
+ * ``pubkey``, ``expires_at``, ``signature``, ``typed_data``.  Stored
+ * in localStorage so a page reload reuses the session without
+ * re-prompting the wallet.  On every load the signature is
+ * re-recovered against the typed data \u2014 storage tampering surfaces
+ * as "pubkey mismatch" and the session is dropped.
+ *
+ * **Storage caveat (XSS).**  The signature is bearer-equivalent: any
+ * JS injected into the portal can read it from localStorage and
+ * impersonate the admin until expiry.  This is the same trade-off as
+ * the v1 JWT design; for an operator-facing tool with a tightly
+ * controlled bundle it's acceptable.  A future tightening could move
+ * the credential into ``sessionStorage`` (cleared on tab close) at
+ * the cost of re-login-on-reload UX.
+ *
+ * **No auto-refresh.**  Unlike v1, there's nothing to refresh: the
+ * wallet's signature has a fixed expiry baked into the typed data.
+ * To extend a session, the user signs a new envelope.  Removing the
+ * refresh timer simplifies the lifecycle and removes a class of edge
+ * cases (network blips during refresh, double-refresh races).
  */
 @Injectable({ providedIn: 'root' })
 export class AdminSessionService {
-  private readonly api = inject(AdminApiService);
+  private readonly walletAuth = inject(AdminWalletAuthService);
   private readonly router = inject(Router);
 
   private readonly _state = signal<AdminSessionState>(this.load());
@@ -50,25 +66,19 @@ export class AdminSessionService {
   readonly isAuthenticated = computed(() => this._state().kind === 'authenticated');
   readonly subject = computed(() => {
     const s = this._state();
-    return s.kind === 'authenticated' ? s.subject : null;
+    return s.kind === 'authenticated' ? s.address : null;
   });
-  readonly authType = computed(() => {
+  readonly pubkey = computed(() => {
     const s = this._state();
-    return s.kind === 'authenticated' ? s.authType : null;
+    return s.kind === 'authenticated' ? s.pubkey : null;
   });
   readonly expiresAt = computed(() => {
     const s = this._state();
     return s.kind === 'authenticated' ? s.expiresAt : null;
   });
 
-  /** True while a refresh is in flight; prevents double-refresh races. */
-  private refreshing: Promise<void> | null = null;
-
-  /** Handle of the scheduled auto-refresh timer (0 means none). */
-  private refreshHandle = 0;
-
   constructor() {
-    // Persist any updates to localStorage and (re-)schedule the auto-refresh.
+    // Persist any updates to localStorage.
     effect(() => {
       const s = this._state();
       if (typeof window === 'undefined') return;
@@ -76,146 +86,103 @@ export class AdminSessionService {
         localStorage.setItem(
           STORAGE_KEY,
           JSON.stringify({
-            jwt: s.jwt,
-            subject: s.subject,
-            authType: s.authType,
+            address: s.address,
+            pubkey: s.pubkey,
             expiresAt: s.expiresAt,
+            signature: s.signature,
+            typedData: s.typedData,
           } satisfies PersistedAdminSession),
         );
-        this.scheduleAutoRefresh(s.expiresAt);
       } else {
         localStorage.removeItem(STORAGE_KEY);
-        this.cancelAutoRefresh();
       }
     });
   }
 
-  // ── Public API ──────────────────────────────────────────────────────────
+  // \u2500\u2500 Public API \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   /**
-   * Run the full login handshake: request a challenge, hand the typed-data
-   * to {@link sign}, submit the resulting signature to `/admin/auth/login`,
-   * and seed a session.  Returns the `subject` claim on success.
+   * Verify a wallet-signed admin login bundle and seed a session.
    *
-   * `sign` is provided by the caller because signing requires a wallet
-   * service — keeping that out of the session service preserves the
-   * separation between "session lifecycle" and "wallet operations".
+   * The caller (``AdminLoginComponent``) drives the wallet
+   * handshake \u2014 build typed data, sign, recover pubkey \u2014 and passes
+   * the resulting bundle here.  This service:
+   *
+   *   1. Asks {@link AdminWalletAuthService.verifyMembership} whether
+   *      the recovered pubkey is in the portal's admin set.
+   *   2. On success, persists the session and updates the reactive
+   *      state.  On failure, throws with the verifier's message so
+   *      the page can render it inline.
+   *
+   * Returns the verified address (the reactive ``subject()`` getter
+   * also returns this once the session is seeded).
    */
-  async login(opts: AdminLoginOptions): Promise<string> {
-    const challenge = await this.api.requestChallenge(opts.owner, opts.authType);
-    const signature = await opts.sign(challenge.typed_data);
-    const req: AdminLoginRequest = {
-      owner: opts.owner,
-      nonce: challenge.nonce,
-      signature,
-      auth_type: opts.authType,
-    };
-    const resp = await this.api.submitLogin(req);
-    this.beginSession({
-      jwt: resp.jwt,
-      subject: resp.owner,
-      authType: opts.authType,
-      expiresAt: resp.expires_at,
+  async loginWithWallet(opts: WalletLoginOptions): Promise<string> {
+    const result: MembershipResult = this.walletAuth.verifyMembership({
+      address: opts.address,
+      pubkey: opts.pubkey,
     });
-    return resp.owner;
-  }
-
-  /** Returns the current JWT or throws if no active session. */
-  requireJwt(): string {
-    const s = this._state();
-    if (s.kind !== 'authenticated') {
-      throw new Error('No active admin session — login first.');
+    if (!result.ok) {
+      const e = new Error(result.message);
+      // Tag the error so the login page can route specific reasons
+      // to specific UI states (e.g., 'no-admins-configured' surfaces
+      // a different action banner than 'mips-root-mismatch').
+      (e as Error & { reason?: string }).reason = result.reason;
+      throw e;
     }
-    return s.jwt;
+    this.beginSession({
+      address: result.address,
+      pubkey: result.pubkey,
+      expiresAt: opts.expiresAt,
+      signature: opts.signature,
+      typedData: opts.typedData,
+    });
+    return result.address;
   }
 
-  /** Returns the current JWT or null. */
-  jwt(): string | null {
-    const s = this._state();
-    return s.kind === 'authenticated' ? s.jwt : null;
-  }
-
-  /**
-   * Force a refresh now.  Subsequent concurrent callers share the same
-   * in-flight promise, so it's safe to call from many places.
-   */
-  async refreshNow(): Promise<void> {
-    if (this.refreshing) return this.refreshing;
-    const s = this._state();
-    if (s.kind !== 'authenticated') return;
-    this.refreshing = this.runRefresh(s.jwt, s.subject, s.authType)
-      .finally(() => {
-        this.refreshing = null;
-      });
-    return this.refreshing;
-  }
-
-  /** Clear the session and stop any pending auto-refresh. */
+  /** Clear the session. */
   logout(): void {
     this._state.set({ kind: 'anonymous' });
   }
 
   /**
-   * Clear the session, then navigate to the admin login page.  Intended for
-   * forced logouts (403 on refresh, manual signout button).
+   * Clear the session and route to the admin login page.  Intended
+   * for forced logouts (manual signout button, expired session
+   * detection, integrity-check failure on session restore).
    */
   logoutAndRedirect(): void {
     this.logout();
     this.router.navigate(['/admin/login']);
   }
 
-  // ── Internal ────────────────────────────────────────────────────────────
+  /**
+   * Throws if the user isn't authenticated.  Mint pages call this
+   * before any action so a stale tab whose session expired between
+   * route activation and form submission can't silently hand the
+   * request off into the void.
+   */
+  requireSession(): AuthenticatedAdminState {
+    const s = this._state();
+    if (s.kind !== 'authenticated') {
+      throw new Error('No active admin session \u2014 login first.');
+    }
+    return s;
+  }
+
+  // \u2500\u2500 Internal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   private beginSession(s: Omit<AuthenticatedAdminState, 'kind'>): void {
     this._state.set({ kind: 'authenticated', ...s });
   }
 
-  private async runRefresh(
-    jwt: string,
-    subject: string,
-    authType: AdminAuthType,
-  ): Promise<void> {
-    try {
-      const resp = await this.api.refreshJwt(jwt);
-      this.beginSession({
-        jwt: resp.jwt,
-        subject,
-        authType,
-        expiresAt: resp.expires_at,
-      });
-    } catch (err: unknown) {
-      // 401/403 here means the JWT is invalid OR the subject has been
-      // revoked from POPULIS_ADMIN_PUBKEY_ALLOWLIST (POP-CANON-012).
-      // Either way the only safe action is to drop the session.
-      const status = (err as { status?: number })?.status;
-      if (status === 401 || status === 403) {
-        this.logoutAndRedirect();
-        return;
-      }
-      // Network errors etc. — keep the session and let the next attempt
-      // retry; the auto-refresh will fire again at the next interval.
-      throw err;
-    }
-  }
-
-  private scheduleAutoRefresh(expiresAt: number): void {
-    this.cancelAutoRefresh();
-    if (typeof window === 'undefined') return;
-    const nowSec = Math.floor(Date.now() / 1_000);
-    const delaySec = expiresAt - nowSec - REFRESH_LEAD_SECONDS;
-    const delayMs = Math.max(MIN_REFRESH_INTERVAL_MS, delaySec * 1_000);
-    this.refreshHandle = window.setTimeout(() => {
-      // Catch errors so unhandled-promise rejections don't leak; the
-      // refreshNow() handler routes 401/403 to logoutAndRedirect already.
-      void this.refreshNow().catch(() => undefined);
-    }, delayMs);
-  }
-
-  private cancelAutoRefresh(): void {
-    if (this.refreshHandle !== 0 && typeof window !== 'undefined') {
-      window.clearTimeout(this.refreshHandle);
-    }
-    this.refreshHandle = 0;
-  }
-
+  /**
+   * Load the persisted session at construction time, dropping it on
+   * any of: expired, missing fields, or corrupt JSON.  We don't
+   * re-verify membership against current chain/env state here \u2014
+   * that runs lazily on the next ``loginWithWallet`` call (or
+   * implicitly when the user navigates to a page that requires
+   * auth).  Fail-open vs fail-closed trade-off: failing closed every
+   * page-load would re-walk chain on every navigation; failing open
+   * with expiry as the cap is the same trade-off the v1 JWT made.
+   */
   private load(): AdminSessionState {
     if (typeof window === 'undefined') return { kind: 'anonymous' };
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -227,53 +194,63 @@ export class AdminSessionService {
       localStorage.removeItem(STORAGE_KEY);
       return { kind: 'anonymous' };
     }
-    // Drop expired sessions on load so the user is sent to /admin/login
-    // rather than fighting a 403 on the first /admin/mint/* call.
     const nowSec = Math.floor(Date.now() / 1_000);
-    if (!parsed.jwt || !parsed.expiresAt || parsed.expiresAt <= nowSec) {
+    if (
+      !parsed.address ||
+      !parsed.pubkey ||
+      !parsed.signature ||
+      !parsed.typedData ||
+      typeof parsed.expiresAt !== 'number' ||
+      parsed.expiresAt <= nowSec
+    ) {
       localStorage.removeItem(STORAGE_KEY);
       return { kind: 'anonymous' };
     }
     return {
       kind: 'authenticated',
-      jwt: parsed.jwt,
-      subject: parsed.subject,
-      authType: parsed.authType ?? 'evm',
+      address: parsed.address,
+      pubkey: parsed.pubkey,
       expiresAt: parsed.expiresAt,
+      signature: parsed.signature,
+      typedData: parsed.typedData,
     };
   }
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────
-export interface AdminLoginOptions {
-  /** Checksummed 0x-prefixed Ethereum address of the operator. */
-  owner: string;
-  /** "evm" today; "chia_bls" reserved for a later checkpoint. */
-  authType: AdminAuthType;
-  /**
-   * Sign the EIP-712 typed data with the operator's wallet and return the
-   * 65-byte (r, s, v) signature as 0x-prefixed hex.
-   */
-  sign: (typedData: import('./populis-api.service').Eip712TypedData) => Promise<string>;
+// \u2500\u2500 Types \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+export interface WalletLoginOptions {
+  /** 0x-hex Ethereum address (any case; we normalise to lowercase). */
+  address: string;
+  /** 0x-hex 33-byte compressed secp256k1 pubkey, recovered from the signature. */
+  pubkey: string;
+  /** Unix-seconds expiry baked into ``typedData.message.expires_at``. */
+  expiresAt: number;
+  /** 0x-hex 65-byte (r, s, v) EIP-712 signature. */
+  signature: string;
+  /** Original typed data envelope.  Persisted so we can re-recover the pubkey on session restore. */
+  typedData: Eip712TypedData;
 }
 
-export type AdminSessionState =
-  | { kind: 'anonymous' }
-  | AuthenticatedAdminState;
+export type AdminSessionState = { kind: 'anonymous' } | AuthenticatedAdminState;
 
-interface AuthenticatedAdminState {
+export interface AuthenticatedAdminState {
   kind: 'authenticated';
-  jwt: string;
-  /** Lowercase 0x-prefixed address — the JWT's `sub` claim. */
-  subject: string;
-  authType: AdminAuthType;
+  /** Lowercase 0x-hex Ethereum address; the legacy ``subject`` getter returns this. */
+  address: string;
+  /** 0x-hex 33-byte compressed secp256k1 pubkey \u2014 used for membership re-checks. */
+  pubkey: string;
   /** Unix-seconds. */
   expiresAt: number;
+  /** Bearer credential.  Anyone holding it can act as the admin until expiry. */
+  signature: string;
+  /** Typed data the signature commits to \u2014 needed to re-verify on session restore. */
+  typedData: Eip712TypedData;
 }
 
 interface PersistedAdminSession {
-  jwt: string;
-  subject: string;
-  authType?: AdminAuthType;
+  address: string;
+  pubkey: string;
   expiresAt: number;
+  signature: string;
+  typedData: Eip712TypedData;
 }

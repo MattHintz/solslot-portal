@@ -4,29 +4,47 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 /**
- * HTTP client for the Populis FastAPI backend.
+ * HTTP client for the Populis faucet API — the single remaining
+ * backend dependency after the Phase 9-Hermes-D API-removal pass.
  *
- * The backend is the single source of truth for:
- *   - secp256k1 pubkey recovery from signed EIP-712 messages
- *   - Vault launcher bundle assembly (driven by populis_puzzles.vault_driver)
- *   - Faucet-funded launcher payments on testnet11
- *   - push_tx broadcasting (with retries) to coinset.org
- *   - Vault state aggregation (coin records, deeds, offers)
+ * **Scope.**  This service handles *only* faucet-funded vault
+ * registration, where the backend's role is to (a) issue an
+ * EIP-712 challenge bound to a real chain id and faucet-controlled
+ * domain, (b) sign a launcher coin spend out of the faucet's hot
+ * wallet, and (c) broadcast it to coinset.  Without the faucet,
+ * onboarding requires the user to fund their own launcher coin —
+ * a non-starter for a public testnet onramp.
+ *
+ * **Out of scope.**  Admin auth (→ ``AdminWalletAuthService``),
+ * mint proposal lifecycle (→ ``MintDraftStorageService``), trust
+ * roots (→ ``OnChainStateService``), vault state reads (→
+ * ``VaultDiscoveryService`` + ``ChiaSingletonReaderService``), and
+ * arbitrary push_tx broadcasting (→ ``CoinsetService.pushTransaction``)
+ * all moved to client-side WASM + direct coinset.org reads.
+ *
+ * The class name retains ``Populis`` (rather than the more accurate
+ * ``Faucet``) to avoid a wider rename across the wizard
+ * components; only the env field renamed to ``faucetApi``.
  */
 @Injectable({ providedIn: 'root' })
 export class PopulisApiService {
   private readonly http = inject(HttpClient);
-  private readonly base = environment.populisApi;
+  private readonly base = environment.faucetApi;
 
-  /** Health check.  Returns `{ ok: true, network: "testnet11" }` when up. */
-  async health(): Promise<HealthResponse> {
-    return firstValueFrom(this.http.get<HealthResponse>(`${this.base}/health`));
-  }
+  // NOTE: ``health()`` was removed in the Phase 9-Hermes-D follow-up.
+  // The footer's chain-state pill now hits coinset.org's
+  // ``get_blockchain_state`` directly (see ``FooterComponent``); we
+  // don't need an API liveness probe because every API call site that
+  // remains is faucet-related and surfaces its own errors.
 
-  /** Protocol-wide parameters (pool launcher id, governance id, etc.). */
-  async getProtocolInfo(): Promise<ProtocolInfo> {
-    return firstValueFrom(this.http.get<ProtocolInfo>(`${this.base}/protocol`));
-  }
+  // NOTE: ``getProtocolInfo`` was removed in the Phase 9-Hermes-D
+  // API-removal pass.  Operator-config singleton coordinates
+  // (launcher_ids, mod_hashes, EIP-712 domain) are now embedded at
+  // build time in ``environment.populisProtocol``, and dynamic
+  // fields like ``protocol_config_hash`` are derived on chain via
+  // ``OnChainStateService.getProtocolInfo`` (singleton replay through
+  // coinset.org).  The ``ProtocolInfo`` interface remains here as a
+  // shared response shape used by the on-chain shim.
 
   /** Request a short-lived challenge nonce to be signed by the user's wallet. */
   async requestChallenge(address: string, authType: AuthType): Promise<ChallengeResponse> {
@@ -61,19 +79,14 @@ export class PopulisApiService {
     );
   }
 
-  /** Poll vault confirmation + state (balance, deeds). */
-  async getVaultState(launcherId: string): Promise<VaultState> {
-    return firstValueFrom(
-      this.http.get<VaultState>(`${this.base}/vault/${launcherId}`)
-    );
-  }
-
-  /** Look up a vault by the owner EVM address. */
-  async findVaultByEvmAddress(address: string): Promise<VaultState | null> {
-    return firstValueFrom(
-      this.http.get<VaultState | null>(`${this.base}/vault/by-evm/${address}`)
-    );
-  }
+  // NOTE: ``getVaultState`` and ``findVaultByEvmAddress`` were removed in
+  // the Phase 9-Hermes-D follow-up that pulled vault state reads off the
+  // API entirely.  All vault discovery + lineage walking now happens
+  // client-side via ``VaultDiscoveryService`` (CHIP-22 hint scan against
+  // coinset.org) and ``ChiaSingletonReaderService.walkLineage``.  The
+  // ``VaultState`` interface remains here for transient back-compat with
+  // ``SessionService`` until a follow-up commit moves it to a shared
+  // ``models/`` location and deletes the rest of this file's read API.
 }
 
 export type AuthType = 'evm' | 'chia_bls' | 'passkey';

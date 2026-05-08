@@ -33,13 +33,31 @@ import { App } from './app/app';
 // assume the SDK is ready when it asks for it via ChiaWasmService.
 // ─────────────────────────────────────────────────────────────────────────
 
-// @ts-ignore — deep-import path; types come from chia_wallet_sdk_wasm.d.ts.
-import * as wasmExports from 'chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js';
-
 const WASM_URL = '/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm';
 
 async function initializeChiaWasm(): Promise<void> {
   try {
+    // Dynamic import (NOT static `import * as`).  Static namespace
+    // imports of the wasm-bindgen JS glue let esbuild tree-shake any
+    // export that isn't referenced by name from app code — including
+    // the auto-generated `__wbindgen_closure_wrapper<N>` callbacks
+    // whose ids change every rebuild of the underlying Rust crate.
+    // When the WASM module then asks for those callbacks at
+    // ``WebAssembly.instantiate`` time (passing ``wasmExports`` as
+    // ``./chia_wallet_sdk_wasm_bg.js``), instantiation fails with
+    // ``LinkError: function import requires a callable`` because the
+    // tree-shaker dropped them.
+    //
+    // Dynamic imports are evaluated at runtime, so esbuild can't prove
+    // any export is unused → all exports are preserved.  This makes
+    // the bootstrap robust against arbitrary local rebuilds of the
+    // chia-wallet-sdk-wasm package (which we do for upstream-PR
+    // verification or local feature development).
+    //
+    // Cost: a single extra microtask before fetch starts; negligible.
+    // @ts-ignore — deep-import path; types come from chia_wallet_sdk_wasm.d.ts.
+    const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
+
     const response = await fetch(WASM_URL);
     if (!response.ok) {
       throw new Error(
@@ -55,7 +73,8 @@ async function initializeChiaWasm(): Promise<void> {
       './chia_wallet_sdk_wasm_bg.js': wasmExports as unknown as WebAssembly.ModuleImports,
     });
 
-    const setWasm = (wasmExports as any).__wbg_set_wasm;
+    const setWasm = (wasmExports as { __wbg_set_wasm?: (w: WebAssembly.Exports) => void })
+      .__wbg_set_wasm;
     if (typeof setWasm !== 'function') {
       throw new Error(
         '[main] chia_wallet_sdk_wasm_bg.js is missing __wbg_set_wasm. ' +
@@ -64,7 +83,7 @@ async function initializeChiaWasm(): Promise<void> {
     }
     setWasm(result.instance.exports);
 
-    (window as any).ChiaSDK = wasmExports;
+    (window as unknown as { ChiaSDK: unknown }).ChiaSDK = wasmExports;
     console.info('[main] Chia WASM ready.');
   } catch (err) {
     console.error('[main] Chia WASM init failed:', err);

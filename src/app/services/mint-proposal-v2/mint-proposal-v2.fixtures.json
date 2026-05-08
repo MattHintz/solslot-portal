@@ -1,0 +1,133 @@
+{
+  "constants": {
+    "mod_hash": "0x1d3838f04de2d8b864c0b96f7f14d7fc8ec6bd39940806e2fa4087b520138517",
+    "state_draft": 1,
+    "state_approved": 2,
+    "state_cancelled": 3,
+    "transition_approve": 97,
+    "transition_cancel": 99
+  },
+  "proposal_data_hash": [
+    {
+      "input": {
+        "property_id_canon": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "par_value_mojos": 100000,
+        "royalty_bps": 250,
+        "quorum_threshold": 1000000
+      },
+      "expected": "0x3f889d775bf627a3f5c02333a42bc23702ccf12841f05c02b3daa63221bb8d5c"
+    },
+    {
+      "input": {
+        "property_id_canon": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "par_value_mojos": 500000,
+        "royalty_bps": 500,
+        "quorum_threshold": 2000000
+      },
+      "expected": "0xab416c3d491c16a075edfea7ca18eb0efa3c9a6de1dd77a24e1d10ac65c4549d"
+    },
+    {
+      "input": {
+        "property_id_canon": "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "par_value_mojos": 1,
+        "royalty_bps": 0,
+        "quorum_threshold": 0
+      },
+      "expected": "0x3c8f06bca792e8092df239c0ff82acb7eb36350198f8c07e1b1afd7da92596e2"
+    }
+  ],
+  "binding_hash": [
+    {
+      "input": {
+        "transition_case": 97,
+        "new_state_version": 1,
+        "proposal_data_hash": "0x3f889d775bf627a3f5c02333a42bc23702ccf12841f05c02b3daa63221bb8d5c"
+      },
+      "expected": "0xe22c849a3f60e0eba69f8fac9e317acb9364e842a4c39af1478528a0eb82a31b"
+    },
+    {
+      "input": {
+        "transition_case": 99,
+        "new_state_version": 1,
+        "proposal_data_hash": "0x3f889d775bf627a3f5c02333a42bc23702ccf12841f05c02b3daa63221bb8d5c"
+      },
+      "expected": "0x782345d7e379cb0c28fa7579b1bd96bbba83a9c2557622926f45fedf5fc649b3"
+    },
+    {
+      "input": {
+        "transition_case": 97,
+        "new_state_version": 2,
+        "proposal_data_hash": "0x3f889d775bf627a3f5c02333a42bc23702ccf12841f05c02b3daa63221bb8d5c"
+      },
+      "expected": "0xefaa3a7095ecebca18a1b28a5a6cc0acd821d5005cdfd092217d2976867258ae"
+    },
+    {
+      "input": {
+        "transition_case": 97,
+        "new_state_version": 1,
+        "proposal_data_hash": "0xab416c3d491c16a075edfea7ca18eb0efa3c9a6de1dd77a24e1d10ac65c4549d"
+      },
+      "expected": "0xdbc9c1ab6d829306b7d9789a5ee84fa27e0ff8c945d8314d1b2aea07f84d34e7"
+    }
+  ],
+  "transition_message": [
+    {
+      "input": {
+        "transition_case": 97,
+        "new_state": 2,
+        "new_state_version": 1
+      },
+      "expected": "0xcb42edfe1e3d55c382f6b19c652d371b549aa0cef42e915dd5b1cbbc861c4574"
+    },
+    {
+      "input": {
+        "transition_case": 99,
+        "new_state": 3,
+        "new_state_version": 1
+      },
+      "expected": "0x9eebf7852ea0edf7c576527faf2b8aad9d12fc1e3456cea9f38130540b8044d3"
+    }
+  ],
+  "inner_puzzle_hash": [
+    {
+      "input": {
+        "owner_member_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gov_member_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "proposal_data_hash": "0x3f889d775bf627a3f5c02333a42bc23702ccf12841f05c02b3daa63221bb8d5c",
+        "proposal_state": 1,
+        "state_version": 0
+      },
+      "expected": "0xecb77b720df7f052cce0ae49c1f9bbd16f7a61cea12ccf4657c8b3554871bfe2"
+    },
+    {
+      "input": {
+        "owner_member_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gov_member_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "proposal_data_hash": "0x3f889d775bf627a3f5c02333a42bc23702ccf12841f05c02b3daa63221bb8d5c",
+        "proposal_state": 2,
+        "state_version": 1
+      },
+      "expected": "0x69ea09d1949d5336646c7bd44767481cb17e2473d3b12785e8a1121de9942992"
+    },
+    {
+      "input": {
+        "owner_member_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gov_member_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "proposal_data_hash": "0x3f889d775bf627a3f5c02333a42bc23702ccf12841f05c02b3daa63221bb8d5c",
+        "proposal_state": 3,
+        "state_version": 1
+      },
+      "expected": "0x7a01286022a12e81685fec79a0842816245f7f79e9a1b132a4b3c943455b1b0a"
+    },
+    {
+      "input": {
+        "owner_member_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gov_member_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "proposal_data_hash": "0xab416c3d491c16a075edfea7ca18eb0efa3c9a6de1dd77a24e1d10ac65c4549d",
+        "proposal_state": 1,
+        "state_version": 0
+      },
+      "expected": "0x932b9975712e6379960b060105afdb8ea9bb18d1ff276ca2b91efcfe7d1fa3ae"
+    }
+  ]
+}

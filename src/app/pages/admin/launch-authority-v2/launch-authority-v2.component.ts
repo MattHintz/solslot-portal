@@ -23,6 +23,7 @@ import {
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
+import { WalletCoinPickerService } from '../../../services/wallet-coin-picker.service';
 import { environment } from '../../../../environments/environment';
 
 /**
@@ -107,24 +108,120 @@ type SubmitState =
             happens on every keystroke; results below update live.
           </p>
 
+          @if (!walletConnected()) {
+            <div class="mt-4 rounded-card border border-yellow-500/40 bg-yellow-500/10 p-3">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="text-xs">
+                  <strong>No Chia wallet connected.</strong>
+                  Connect Goby or Sage to enable
+                  <em>Fetch from wallet</em> and on-chain submission.
+                  ({{ chiaWallet.hasGoby() ? 'Goby detected' : 'Goby missing' }} ·
+                  {{ chiaWallet.hasSage() ? 'Sage detected' : 'Sage missing' }})
+                </div>
+                <div class="flex gap-2">
+                  @if (chiaWallet.hasGoby()) {
+                    <button
+                      type="button"
+                      class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                      [disabled]="connectingChia()"
+                      (click)="connectChia('goby')"
+                    >
+                      @if (connectingChia() === 'goby') {
+                        Connecting…
+                      } @else {
+                        Connect Goby
+                      }
+                    </button>
+                  }
+                  @if (chiaWallet.hasSage()) {
+                    <button
+                      type="button"
+                      class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                      [disabled]="connectingChia()"
+                      (click)="connectChia('sage')"
+                    >
+                      @if (connectingChia() === 'sage') {
+                        Connecting…
+                      } @else {
+                        Connect Sage
+                      }
+                    </button>
+                  }
+                </div>
+              </div>
+              @if (chiaConnectError(); as err) {
+                <p class="mono text-[0.6rem] text-red-300 mt-2">
+                  <strong>Connect failed.</strong> {{ err }}
+                </p>
+              }
+            </div>
+          } @else {
+            <div class="mt-4 rounded-card border border-emerald-500/30 bg-emerald-500/5 p-2 text-[0.7rem]">
+              <span class="text-emerald-400">✓ Chia wallet connected</span>
+              ({{ chiaWallet.connectionKind() }}).
+              Pubkey:
+              <code class="break-all">{{ chiaWallet.pubkey() }}</code>
+            </div>
+          }
+
           <div class="mt-6 grid gap-4">
-            <label class="block">
-              <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Funding coin id (the coin you're spending to create the launcher)
+            <div class="block">
+              <div class="flex items-baseline justify-between gap-2 flex-wrap">
+                <label for="funding-coin-id-input" class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted cursor-pointer">
+                  Funding coin id (the coin you're spending to create the launcher)
+                </label>
+                <button
+                  type="button"
+                  class="btn btn--ghost text-[0.6rem] py-1 px-2 relative z-10"
+                  [disabled]="fetchingFundingCoinId() || !walletConnected() || !chiaWasmReady()"
+                  (click)="fetchFundingCoinIdFromWallet()"
+                  title="Ask your connected Chia wallet (Goby/Sage) for its receive address, query coinset.org for unspent coins under that address, and auto-fill this field with the largest one. Used only for the deterministic preview — at submit time the wallet picks its own coin."
+                >
+                  @if (fetchingFundingCoinId()) {
+                    Fetching…
+                  } @else {
+                    Fetch from wallet
+                  }
+                </button>
               </div>
               <input
+                id="funding-coin-id-input"
                 type="text"
                 class="input mt-1 w-full mono text-xs"
                 placeholder="0x… (32 bytes)"
                 [(ngModel)]="parentCoinIdInput"
               />
-            </label>
+              @if (fundingCoinPick(); as p) {
+                <p class="mono text-[0.6rem] text-emerald-400 mt-1 break-all">
+                  ✓ Picked from
+                  <code>{{ p.address }}</code>
+                  (<code>{{ p.amountTxch }}</code> TXCH)
+                </p>
+              }
+              @if (fundingCoinError(); as err) {
+                <p class="mono text-[0.6rem] text-red-300 mt-1">
+                  <strong>Wallet pick failed.</strong> {{ err }}
+                </p>
+              }
+            </div>
 
-            <label class="block">
-              <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                MIPS root hash (sha256tree of the m_of_n quorum tree)
+            <div class="block">
+              <div class="flex items-baseline justify-between gap-2 flex-wrap">
+                <label for="mips-root-hash-input" class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted cursor-pointer">
+                  MIPS root hash (sha256tree of the m_of_n quorum tree)
+                </label>
+                <button
+                  type="button"
+                  class="btn btn--ghost text-[0.6rem] py-1 px-2 relative z-10"
+                  [disabled]="!firstAdminLeaf() || !chiaWasmReady()"
+                  (click)="useFirstAdminAsController()"
+                  title="Compute MIPS root for a real CHIP-0043 1-of-1 quorum where the recovered first admin is the sole controller. Uses mOfNHash(config, 1, [eip712MemberHash(...)]) entirely in-browser via WASM — no API call."
+                >
+                  Use my admin as 1-of-1 controller
+                </button>
               </div>
               <input
+                id="mips-root-hash-input"
                 type="text"
                 class="input mt-1 w-full mono text-xs"
                 placeholder="0x… (32 bytes)"
@@ -133,20 +230,34 @@ type SubmitState =
               <p class="text-[0.6rem] text-text-muted mt-1">
                 Computed off-chain via chia-wallet-sdk's
                 <code>mOfNHash(config, m, [eip712MemberHash(...), ...])</code>.
-                Bundled WASM 0.33 doesn't yet expose
-                <code>eip712MemberHash</code> (pending PR #396); use the
-                Python driver or wait for the next SDK release.
+                For a 1-of-1 controller (single admin signs both rotation
+                and ops), click the button above after recovering your
+                first admin — we'll fill this in via WASM.  For richer
+                quorums (multiple controllers, BLS / passkey mixes,
+                restrictions), compose the tree off-chain with the
+                <code>chia-wallet-sdk</code> CLI / npm SDK.
               </p>
-            </label>
+              @if (mipsRootShape(); as shape) {
+                <p class="mono text-[0.6rem] text-emerald-400 mt-1">
+                  ✓ Computed via WASM (shape:
+                  <code>{{ shape }}</code>)
+                </p>
+              }
+              @if (mipsRootError(); as err) {
+                <p class="mono text-[0.6rem] text-red-300 mt-1">
+                  <strong>MIPS root compute failed.</strong> {{ err }}
+                </p>
+              }
+            </div>
 
-            <label class="block">
+            <div class="block">
               <div class="flex items-baseline justify-between gap-2 flex-wrap">
-                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                <label for="admin-records-textarea" class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted cursor-pointer">
                   Admin records (one per line)
-                </div>
+                </label>
                 <button
                   type="button"
-                  class="btn btn--ghost text-[0.6rem] py-1 px-2"
+                  class="btn btn--ghost text-[0.6rem] py-1 px-2 relative z-10"
                   [disabled]="recoveringFirstAdmin()"
                   (click)="recoverFirstAdminFromWallet()"
                   title="Sign a probe with your connected EVM wallet, recover its pubkey, ask the API for the canonical leaf hash, and pre-fill the textarea below as a single-admin (m_within=1) record."
@@ -159,6 +270,7 @@ type SubmitState =
                 </button>
               </div>
               <textarea
+                id="admin-records-textarea"
                 class="input mt-1 w-full mono text-xs"
                 rows="4"
                 placeholder="admin_idx leaf_hash m_within (space-separated, e.g. '0 0xab... 1')"
@@ -192,7 +304,7 @@ type SubmitState =
                   <strong>Recovery failed.</strong> {{ err }}
                 </div>
               }
-            </label>
+            </div>
 
             <div class="grid grid-cols-2 gap-4">
               <label class="block">
@@ -414,9 +526,12 @@ type SubmitState =
 export class LaunchAuthorityV2Component {
   private readonly v2 = inject(AdminAuthorityV2Service);
   private readonly wasm = inject(ChiaWasmService);
-  private readonly chiaWallet = inject(ChiaWalletService);
+  // Public so the template can read isConnected/pubkey/connectionKind
+  // and call hasGoby()/hasSage() for the inline connect banner.
+  readonly chiaWallet = inject(ChiaWalletService);
   private readonly evmWallet = inject(EvmWalletService);
   private readonly eip712Leaf = inject(Eip712LeafHashService);
+  private readonly coinPicker = inject(WalletCoinPickerService);
 
   // ─── Form state ────────────────────────────────────────────────────
   readonly parentCoinIdInput = signal('');
@@ -438,6 +553,40 @@ export class LaunchAuthorityV2Component {
   /** Last error from the recovery flow (wallet rejection, API
    * failure, etc.).  Cleared when a fresh attempt starts. */
   readonly firstAdminError = signal<string | null>(null);
+
+  // ─── Phase 2.5b: MIPS root auto-fill ───────────────────────────────
+  /** When non-null, indicates that {@link mipsRootHashInput} was
+   * populated via {@link useFirstAdminAsController}.  The value
+   * (``'bare'`` | ``'mofn1of1'``) tells the user which CHIP-0043
+   * shape we built for them — surfaces in the UI as a confirmation
+   * line. */
+  readonly mipsRootShape = signal<'bare' | 'mofn1of1' | null>(null);
+  /** Last error from the MIPS-root computation flow.  Cleared when
+   * a fresh attempt starts or the input is manually edited. */
+  readonly mipsRootError = signal<string | null>(null);
+
+  // ─── Phase 2.5c: funding coin id auto-fill ─────────────────────────
+  /** Set when {@link parentCoinIdInput} was populated via
+   * {@link fetchFundingCoinIdFromWallet}.  Holds the receive address
+   * + chosen amount so the UI can show "✓ Picked from txch1... (N
+   * TXCH)" as confirmation. */
+  readonly fundingCoinPick = signal<{ address: string; amountTxch: string } | null>(
+    null,
+  );
+  /** Last error from the funding-coin pick flow.  Cleared when a
+   * fresh attempt starts. */
+  readonly fundingCoinError = signal<string | null>(null);
+  /** True while the wallet probe + coinset query are in flight. */
+  readonly fetchingFundingCoinId = signal(false);
+
+  // ─── Phase 2.5d: inline Chia wallet connect ────────────────────────
+  /** Set to ``'goby'`` or ``'sage'`` while a connect call is in
+   * flight; ``null`` otherwise.  Used by the connect banner to
+   * disable both buttons + show "Connecting…" on the active one. */
+  readonly connectingChia = signal<'goby' | 'sage' | null>(null);
+  /** Last error from the inline connect flow.  Cleared on the next
+   * attempt. */
+  readonly chiaConnectError = signal<string | null>(null);
 
   // ─── Derived state ─────────────────────────────────────────────────
   readonly chiaWasmReady = computed(() => this.wasm.ready());
@@ -686,6 +835,149 @@ export class LaunchAuthorityV2Component {
   }
 
   /**
+   * Phase 2.5d: connect to Goby or Sage directly from the wizard
+   * banner so the operator doesn't have to navigate to ``/connect``
+   * just to enable the Chia-wallet-gated buttons (Fetch from wallet,
+   * Submit on chain).
+   *
+   * Calls into the existing ``ChiaWalletService.connectGoby`` /
+   * ``connectSage`` flow — same code path as ``/connect``, just
+   * without the post-connect router navigation.  After a successful
+   * connect, ``walletConnected()`` flips to true and Angular's signal
+   * graph re-renders the banner as the green "connected" state +
+   * enables all the gated buttons.
+   *
+   * @param kind ``'goby'`` (browser extension) or ``'sage'``
+   *   (Sage Wallet bridge).  Only buttons whose wallet is detected
+   *   are rendered, so we don't expose a "missing wallet" error
+   *   path here — the connect call would surface that anyway.
+   */
+  async connectChia(kind: 'goby' | 'sage'): Promise<void> {
+    if (this.connectingChia()) return;
+    this.chiaConnectError.set(null);
+    this.connectingChia.set(kind);
+    try {
+      if (kind === 'goby') {
+        await this.chiaWallet.connectGoby();
+      } else {
+        await this.chiaWallet.connectSage();
+      }
+    } catch (e) {
+      this.chiaConnectError.set(formatError(e));
+    } finally {
+      this.connectingChia.set(null);
+    }
+  }
+
+  /**
+   * Phase 2.5c: ask the connected Chia wallet for its receive
+   * address, query coinset.org for unspent coins under that puzzle
+   * hash, and pre-fill the {@link parentCoinIdInput} with the
+   * largest-amount coin's id.
+   *
+   * **What this is for.** The funding coin id is curried into the
+   * launcher coin name, so it's part of the deterministic
+   * ``launcher_id`` preview.  Without a real coin id the wizard can
+   * only show "shape-correct" outputs that won't match what shows up
+   * on chain.  With one, the previewed ``launcher_id`` is the value
+   * the operator will literally see post-launch (assuming the
+   * wallet picks the same coin at submit time, which it usually
+   * does — wallets prefer the largest unspent coin too).
+   *
+   * **What this is NOT for.** It's not a coin lock / reservation.
+   * The wallet may spend the picked coin between now and Submit
+   * (e.g. on a competing tx); the wallet picks its own coin at
+   * sign time anyway, per
+   * ``ChiaWalletService.transfer``.  This helper is purely a UX
+   * convenience so the operator doesn't have to manually copy a
+   * coin id out of their wallet UI.
+   *
+   * Errors surface in {@link fundingCoinError} (cleared on the
+   * next attempt).  Pre-conditions: connected Chia wallet + WASM
+   * ready (button is gated on both).
+   */
+  async fetchFundingCoinIdFromWallet(): Promise<void> {
+    if (this.fetchingFundingCoinId()) return;
+    this.fundingCoinError.set(null);
+    this.fetchingFundingCoinId.set(true);
+    try {
+      const pick = await this.coinPicker.pickLargestUnspentCoinId();
+      this.parentCoinIdInput.set(pick.coinId);
+      // Convert mojos → TXCH/XCH (1 XCH = 1e12 mojos).  Use
+      // BigInt-safe formatting; show 4 decimals to match what most
+      // wallet UIs surface for receive-address balances.
+      const mojosPerXch = 1_000_000_000_000n;
+      const whole = pick.amount / mojosPerXch;
+      const frac = pick.amount % mojosPerXch;
+      const fracStr = frac
+        .toString()
+        .padStart(12, '0')
+        .slice(0, 4)
+        .replace(/0+$/, '');
+      const amountTxch =
+        fracStr.length > 0 ? `${whole}.${fracStr}` : `${whole}`;
+      this.fundingCoinPick.set({ address: pick.address, amountTxch });
+    } catch (e) {
+      this.fundingCoinError.set(formatError(e));
+      this.fundingCoinPick.set(null);
+    } finally {
+      this.fetchingFundingCoinId.set(false);
+    }
+  }
+
+  /**
+   * Phase 2.5b: build a CHIP-0043 1-of-1 ``m_of_n`` quorum where the
+   * recovered first admin's EIP-712 member is the sole controller,
+   * compute its tree hash entirely in-browser via WASM, and pre-fill
+   * the {@link mipsRootHashInput} field.
+   *
+   * Pre-condition: {@link firstAdminLeaf} must already be set (i.e.,
+   * the operator clicked "Use my connected wallet as first admin"
+   * first).  The button is gated on ``firstAdminLeaf() !== null``,
+   * but we re-check defensively in case the signal cleared between
+   * the click and the await.
+   *
+   * Uses the production-shaped ``mofn1of1`` mode by default — a real
+   * ``mOfNHash(MemberConfig{topLevel: true}, 1,
+   * [eip712MemberHash(MemberConfig{topLevel: false}, ...)])`` —
+   * because:
+   *
+   *   1. It's what production launches will use (so the previewed
+   *      ``launcher_id`` reflects what the operator will actually
+   *      see on chain).
+   *   2. It exercises the full CHIP-0043 stack via the new WASM
+   *      bindings landed in PR #396 (``mOfNHash`` +
+   *      ``eip712MemberHash`` + ``MemberConfig``), proving the
+   *      bindings work end-to-end without any API call.
+   *
+   * Operators who want the smallest possible controller (degenerate
+   * "MIPS root = bare member") can skip this button and paste the
+   * recovered ``leaf_hash`` directly into the field — that matches
+   * the test fixture pattern in
+   * ``populis_protocol/tests/test_admin_authority_v2.py:1530-1542``.
+   */
+  useFirstAdminAsController(): void {
+    this.mipsRootError.set(null);
+    const leaf = this.firstAdminLeaf();
+    if (!leaf) {
+      this.mipsRootError.set('Recover your first admin first.');
+      return;
+    }
+    try {
+      const result = this.eip712Leaf.computeMipsRoot1Of1(
+        leaf.secp256k1_pubkey,
+        leaf.network,
+        'mofn1of1',
+      );
+      this.mipsRootHashInput.set(result.mips_root_hash);
+      this.mipsRootShape.set(result.shape);
+    } catch (e) {
+      this.mipsRootError.set(formatError(e));
+      this.mipsRootShape.set(null);
+    }
+  }
+
+  /**
    * Build the operator-supplied admin records JSON for the API to
    * load on boot (``POPULIS_ADMIN_RECORDS_PATH``).  Schema matches
    * ``populis_api/admin_records.py``'s ``AdminRecordsConfig``.
@@ -840,6 +1132,23 @@ export class LaunchAuthorityV2Component {
 function formatError(e: unknown): string {
   if (e instanceof Error) return e.message;
   if (typeof e === 'string') return e;
+  if (e && typeof e === 'object') {
+    // Wallet bridges (Goby / Sage / WalletConnect) typically reject
+    // with plain objects like ``{ code: 4004, message: "..." }`` rather
+    // than Error instances.  Walking the common keys gives operators
+    // an actionable string instead of "[object Object]".
+    const obj = e as Record<string, unknown>;
+    const msg = obj['message'] ?? obj['error'] ?? obj['reason'];
+    if (typeof msg === 'string' && msg.length > 0) {
+      const code = obj['code'];
+      return code != null ? `${msg} (code ${String(code)})` : msg;
+    }
+    try {
+      return JSON.stringify(e);
+    } catch {
+      // Cyclic / non-serialisable — fall through.
+    }
+  }
   return String(e);
 }
 
