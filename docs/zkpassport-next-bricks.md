@@ -181,6 +181,7 @@ Output:
 
 - When a deed purchase/accept-offer flow exists, automatically inject stored proof params from the confirmed enrollment.
 - Do not repeat zkPassport verification for every deed purchase.
+- Current planning handoff: `ZkPassportAcceptOfferProofService` is the required portal boundary for future accept-offer spend builders. New purchase code must call `withProofParams` or `buildWithProof` instead of reading `ZkPassportProofStoreService` directly.
 
 Acceptance:
 
@@ -191,4 +192,32 @@ Commit style:
 
 ```text
 vault: include confirmed zkPassport proof in offers
+```
+
+## Brick 16 — Accept-offer builder integration plan
+
+Repo: `populis_portal`.
+
+Output:
+
+- Add the first portal-side deed purchase / accept-offer builder seam, even if the visible marketplace UI remains minimal.
+- Inject `ZkPassportAcceptOfferProofService` into that builder/controller and require confirmed proof params before any spend package is built.
+- Pass exactly these proof fields into the accept-offer spend inputs:
+  - `identityAttestRoot`
+  - `attestationLeafHash`
+  - `attestationProof`
+- Surface `ZkPassportEnrollmentRequiredError` as an enrollment-required UI state with a route/action back to the vault zkPassport enrollment card.
+- Keep KYC reuse strict: do not launch zkPassport verification from purchase flow unless the user explicitly follows the enrollment-required action.
+
+Acceptance:
+
+- Unit tests prove the accept-offer builder is not called when the proof is missing.
+- Unit tests prove the builder receives the stored proof fields through `ZkPassportAcceptOfferProofService`.
+- Component tests prove the purchase flow shows a clear enrollment-required state rather than a generic error.
+- No purchase code imports `ZkPassportProofStoreService` directly.
+
+Commit style:
+
+```text
+vault: wire zkPassport proof into accept-offer builder
 ```
