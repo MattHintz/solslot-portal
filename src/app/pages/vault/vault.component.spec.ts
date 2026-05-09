@@ -99,6 +99,10 @@ describe('VaultComponent zkPassport enrollment preview', () => {
     component.buildEnrollmentPreview();
     component.markEnrollmentSubmitPending();
     expect(component.enrollmentStatus()).toBe('submit_pending');
+    const stored = JSON.parse(
+      localStorage.getItem('populis_zkpassport_proofs_v1') ?? '{}',
+    ) as Record<string, unknown>;
+    expect(stored[VAULT_LAUNCHER_ID]).toBeTruthy();
   });
 
   it('rejects preview building before the current vault coin is known', () => {

@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { sha256 } from 'ethers';
 import { SessionService } from '../../services/session.service';
 import { ZkPassportAttestationService } from '../../services/zkpassport-attestation.service';
+import { ZkPassportProofStoreService } from '../../services/zkpassport-proof-store.service';
 import { bytesToHex, coinId, hexToBytes } from '../../utils/chia-hash';
 
 /** Polling cadence while the vault is still unconfirmed.  Testnet11 blocks
@@ -330,6 +331,7 @@ interface ZkPassportEnrollmentPreview {
 export class VaultComponent implements OnDestroy {
   readonly session = inject(SessionService);
   private readonly zkPassport = inject(ZkPassportAttestationService);
+  private readonly proofStore = inject(ZkPassportProofStoreService);
   readonly refreshing = signal(false);
   readonly enrollmentStatus = signal<EnrollmentStatus>('idle');
   readonly enrollmentError = signal<string | null>(null);
@@ -475,9 +477,21 @@ export class VaultComponent implements OnDestroy {
   }
 
   markEnrollmentSubmitPending(): void {
-    if (this.enrollmentPreview()) {
-      this.enrollmentStatus.set('submit_pending');
+    const preview = this.enrollmentPreview();
+    if (!preview) {
+      return;
     }
+    this.proofStore.save({
+      vaultLauncherId: preview.vaultLauncherId,
+      vaultSubscope: preview.vaultSubscope,
+      identityAttestRoot: preview.newIdentityAttestRoot,
+      attestationLeafHash: preview.attestationLeafHash,
+      attestationProof: preview.attestationProof,
+      bridgePolicyHash: preview.bridgePolicyHash,
+      bridgeMessage: preview.bridgeMessage,
+      enrolledAt: Math.floor(Date.now() / 1000),
+    });
+    this.enrollmentStatus.set('submit_pending');
   }
 
   private async refresh(): Promise<void> {
