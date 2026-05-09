@@ -1,32 +1,26 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
 
+import { ZkPassportAcceptOfferProofService } from './zkpassport-accept-offer-proof.service';
 import {
-  VaultAcceptOfferProofParams,
-  ZkPassportAcceptOfferProofService,
-} from './zkpassport-accept-offer-proof.service';
+  VaultAcceptOfferBuildRequest,
+  VaultAcceptOfferBuilderInput,
+  VaultAcceptOfferSpendPackage,
+  VaultAcceptOfferSpendService,
+} from './vault-accept-offer-spend.service';
 
-export interface VaultAcceptOfferBuildRequest {
-  vaultLauncherId: string;
-  deedLauncherId: string;
-  tokenAmount: number;
-  poolInnerPuzzleHash: string;
-  currentTimestamp: number;
-  signatureData?: string | null;
-}
+export type {
+  CoinWithIdInput,
+  ChainVaultAcceptOfferBuildRequest,
+  VaultAcceptOfferAttestationProof,
+  VaultAcceptOfferBuildRequest,
+  VaultAcceptOfferBuilderInput,
+  VaultAcceptOfferInnerSolutionInput,
+  VaultAcceptOfferInnerSolutionVector,
+  VaultAcceptOfferLineageProof,
+  VaultAcceptOfferSpendPackage,
+} from './vault-accept-offer-spend.service';
 
-export interface VaultAcceptOfferBuilderInput
-  extends VaultAcceptOfferBuildRequest,
-    VaultAcceptOfferProofParams {
-  signatureData: string | null;
-}
-
-export interface VaultAcceptOfferUnsignedPlaceholder {
-  state: 'AOSP:PROOF_READY';
-  unsignedSpendPackage: null;
-  builderInput: VaultAcceptOfferBuilderInput;
-}
-
-export type VaultAcceptOfferBuildResult = VaultAcceptOfferUnsignedPlaceholder;
+export type VaultAcceptOfferBuildResult = VaultAcceptOfferSpendPackage;
 
 export type VaultAcceptOfferLowerBuilder = (
   input: VaultAcceptOfferBuilderInput,
@@ -36,11 +30,10 @@ export const VAULT_ACCEPT_OFFER_LOWER_BUILDER = new InjectionToken<VaultAcceptOf
   'VAULT_ACCEPT_OFFER_LOWER_BUILDER',
   {
     providedIn: 'root',
-    factory: () => (input) => ({
-      state: 'AOSP:PROOF_READY',
-      unsignedSpendPackage: null,
-      builderInput: input,
-    }),
+    factory: () => {
+      const spendService = inject(VaultAcceptOfferSpendService);
+      return (input) => spendService.buildResolved(input);
+    },
   },
 );
 
