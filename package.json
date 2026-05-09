@@ -1,6 +1,7 @@
 {
   "name": "populis-portal",
   "version": "0.0.0",
+  "description": "Angular WASM-first Populis portal for vault registration, browser-local admin drafts, trust-root reads, and admin-authority-v2 launch via coinset.org",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
