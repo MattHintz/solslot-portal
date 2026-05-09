@@ -13,6 +13,10 @@ This scaffold continues from the committed portal checkpoints:
 - The portal builds the Chia vault spend client-side, Samuel-style, with WASM/CLVM helpers.
 - The user explicitly signs/authorizes the vault enrollment spend with the vault auth method they chose: EVM, Chia BLS, or passkey.
 - The portal pushes the signed bundle directly to coinset only after user confirmation.
+- Target architecture is all on-chain + frontend: zkPassport verifier contract, Warp message delivery, Chia vault singleton spend, and Angular polling/signing. The normal user path should not depend on a Populis backend.
+- Solslot references:
+  - `research/solslot-omnichain`: EVM contract calls `IPortal.messageToll()` and `IPortal.sendMessage(bytes3 destinationChain, bytes32 destination, bytes32[] contents)` after collecting exact toll.
+  - `research/solslot-samuel`: Chia-side drivers load CLVM hex, curry singleton puzzles, build `CoinSpend`s, aggregate signatures, and push bundles.
 
 ## Brick 9 — EVM zkPassport attestation contract surface
 
@@ -22,6 +26,7 @@ Output:
 
 - Minimal Solidity verifier/adapter contract that accepts zkPassport `compressed-evm` proof output.
 - Bind the proof to the Populis vault using zkPassport `custom_data = vault:<launcher_id>` or equivalent canonical binding.
+- Use the zkPassport Solidity verifier as the only proof-verification dependency; after verification, all downstream state moves by EVM events/Warp messages and frontend polling.
 - Emit a canonical event containing only commitment data needed by the Chia side:
   - vault launcher id
   - scoped nullifier
@@ -53,6 +58,17 @@ Output:
 - Wire the EVM attestation event into the Warp/omnichain send path.
 - Define the canonical Chia bridge message payload matching `computeAttestationBridgeMessage`.
 - Publish the bridge policy hash as a deploy-time constant the portal can pin.
+- Follow the Solslot `IPortal` pattern:
+  - read `messageToll()`
+  - require the user transaction to pay the exact toll
+  - call `sendMessage("xch", destinationPuzzle, contents)`
+  - set `destinationPuzzle` to the Chia-side bridge/message puzzle that will create the coin announcement consumed by the vault `'z'` spend.
+- Encode `contents` as fixed `bytes32[]` commitments, not raw proof/PII:
+  - vault launcher id
+  - new identity attestation root
+  - bridge policy hash
+  - scoped nullifier or attestation leaf hash
+  - proof timestamp / policy version if needed for replay checks
 
 Acceptance:
 
