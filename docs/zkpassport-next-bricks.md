@@ -1,5 +1,7 @@
 # zkPassport next bricks
 
+For the broader core-up admin/governance/member path from mint proposals to offer generation and gated acceptance, see `core-up-offer-acceptance-roadmap.md`.
+
 This scaffold continues from the committed portal checkpoints:
 
 - Brick 7: `1854f6f vault: wire zkPassport enrollment preview`
