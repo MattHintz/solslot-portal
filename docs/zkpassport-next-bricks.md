@@ -13,10 +13,18 @@ This scaffold continues from the committed portal checkpoints:
 - The portal builds the Chia vault spend client-side, Samuel-style, with WASM/CLVM helpers.
 - The user explicitly signs/authorizes the vault enrollment spend with the vault auth method they chose: EVM, Chia BLS, or passkey.
 - The portal pushes the signed bundle directly to coinset only after user confirmation.
-- Target architecture is all on-chain + frontend: zkPassport verifier contract, Warp message delivery, Chia vault singleton spend, and Angular polling/signing. The normal user path should not depend on a Populis backend.
+- Target architecture is all on-chain + frontend: zkPassport verifier event contract, frontend-relayed Chia validator/member bridge coin, Chia vault singleton spend, and Angular polling/signing. The normal user path should not depend on a Populis backend.
 - Solslot references:
-  - `research/solslot-omnichain`: EVM contract calls `IPortal.messageToll()` and `IPortal.sendMessage(bytes3 destinationChain, bytes32 destination, bytes32[] contents)` after collecting exact toll.
+  - `research/solslot-omnichain`: useful Warp/omnichain reference only; not required by the primary frontend-relayed validator bridge.
   - `research/solslot-samuel`: Chia-side drivers load CLVM hex, curry singleton puzzles, build `CoinSpend`s, aggregate signatures, and push bundles.
+- Bridge trust root is not browser state. The frontend may poll, assemble, relay, and submit, but the Chia bridge puzzle must enforce validator/member quorum signatures cryptographically.
+
+## Audit release gates
+
+- F-13: Vault identity enrollment must require current-owner authorization before the identity path ships.
+- F-14: Passkey vault launch must reject compressed secp256r1 owner keys before passkey vaults ship.
+- F-03 and F-11 remain portal launch-path blockers for mint draft canonicalisation and Chia amount precision.
+- F-12, F-15, F-16, F-17, and F-18 remain API/admin launch-path blockers outside this bridge brick.
 
 ## Brick 9 — EVM zkPassport attestation contract surface
 
@@ -26,7 +34,7 @@ Output:
 
 - Minimal Solidity verifier/adapter contract that accepts zkPassport `compressed-evm` proof output.
 - Bind the proof to the Populis vault using zkPassport `custom_data = vault:<launcher_id>` or equivalent canonical binding.
-- Use the zkPassport Solidity verifier as the only proof-verification dependency; after verification, all downstream state moves by EVM events/Warp messages and frontend polling.
+- Use the zkPassport Solidity verifier as the only proof-verification dependency; after verification, all downstream state moves by EVM events, frontend polling, Chia validator/member signatures, and Chia spends.
 - Emit a canonical event containing only commitment data needed by the Chia side:
   - vault launcher id
   - scoped nullifier
@@ -35,7 +43,7 @@ Output:
   - service subscope hash
   - proof timestamp
   - attestation root or leaf commitment
-  - bridge policy/message fields needed by Warp
+  - bridge policy/message fields validators must sign
 - No passport plaintext, no disclosed PII.
 
 Acceptance:
@@ -49,36 +57,32 @@ Commit style:
 zkpassport: add EVM attestation contract scaffold
 ```
 
-## Brick 10 — Warp / bridge message adapter
+## Brick 10 — Chia validator/member bridge puzzle
 
-Repo: contract workspace and/or protocol docs.
+Repo: `populis_protocol`.
 
 Output:
 
-- Wire the EVM attestation event into the Warp/omnichain send path.
-- Define the canonical Chia bridge message payload matching `computeAttestationBridgeMessage`.
-- Publish the bridge policy hash as a deploy-time constant the portal can pin.
-- Follow the Solslot `IPortal` pattern:
-  - read `messageToll()`
-  - require the user transaction to pay the exact toll
-  - call `sendMessage("xch", destinationPuzzle, contents)`
-  - set `destinationPuzzle` to the Chia-side bridge/message puzzle that will create the coin announcement consumed by the vault `'z'` spend.
-- Encode `contents` as fixed `bytes32[]` commitments, not raw proof/PII:
+- Add a Chia bridge/message coin puzzle that curies validator/member keys, threshold, and bridge policy hash.
+- The puzzle verifies enough signatures over the canonical zkPassport attestation message derived from the EVM event.
+- If quorum verifies, the puzzle emits the coin announcement consumed by the vault `'z'` spend.
+- Encode the signed message as fixed commitments, not raw proof/PII:
   - vault launcher id
   - new identity attestation root
   - bridge policy hash
   - scoped nullifier or attestation leaf hash
   - proof timestamp / policy version if needed for replay checks
+- Keep Warp as an optional future compatibility adapter, not the primary normal enrollment path.
 
 Acceptance:
 
-- Tests prove the emitted bridge message equals the Chia-side helper output for fixed vectors.
-- Portal can read verifier/bridge constants without a privileged backend.
+- CLVM tests prove insufficient signatures fail and threshold signatures emit the exact announcement asserted by the vault.
+- Python driver fixture can build the bridge spend and vault `'z'` spend in one bundle for fixed vectors.
 
 Commit style:
 
 ```text
-zkpassport: wire warp attestation message
+zkpassport: add validator bridge message puzzle
 ```
 
 ## Brick 11 — Portal EVM attestation client and poller
@@ -90,11 +94,13 @@ Output:
 - User starts zkPassport verification from the vault dashboard.
 - Portal requests/launches the EVM proof flow and watches the attestation transaction/event.
 - Portal derives the attestation leaf/root and bridge message automatically from event data.
+- Portal requests validator/member signatures for the canonical message and builds the bridge coin spend in WASM.
 - Replace manual preview inputs with read-only status fields and polling states.
 
 Acceptance:
 
 - Component/service tests cover pending, found, malformed event, and timeout states.
+- Tests cover insufficient validator signatures, threshold-ready bridge spend package, and no backend signing dependency.
 - No user-pasted verifier/bridge fields remain in the normal flow.
 
 Commit style:
