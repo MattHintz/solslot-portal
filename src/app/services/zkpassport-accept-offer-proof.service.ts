@@ -1,9 +1,11 @@
 import { Injectable, inject } from '@angular/core';
 
 import {
-  VaultAcceptOfferProofParams,
   ZkPassportProofStoreService,
+  type VaultAcceptOfferProofParams,
 } from './zkpassport-proof-store.service';
+
+export type { VaultAcceptOfferProofParams } from './zkpassport-proof-store.service';
 
 @Injectable({ providedIn: 'root' })
 export class ZkPassportAcceptOfferProofService {
