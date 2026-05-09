@@ -1,7 +1,11 @@
 import { Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { sha256 } from 'ethers';
 import { SessionService } from '../../services/session.service';
+import { ZkPassportAttestationService } from '../../services/zkpassport-attestation.service';
+import { bytesToHex, coinId, hexToBytes } from '../../utils/chia-hash';
 
 /** Polling cadence while the vault is still unconfirmed.  Testnet11 blocks
  *  are ~18s, so 5s keeps UI snappy without hammering coinset.org. */
@@ -11,10 +15,29 @@ const PENDING_POLL_MS = 5_000;
  *  deeds / balance changes.  30s is plenty. */
 const CONFIRMED_POLL_MS = 30_000;
 
+type EnrollmentStatus = 'idle' | 'preview_ready' | 'submit_pending';
+
+interface ZkPassportEnrollmentPreview {
+  spendCase: '0x7a';
+  vaultLauncherId: string;
+  vaultCoinId: string;
+  vaultSubscope: string;
+  attestationLeafHash: string;
+  newIdentityAttestRoot: string;
+  attestationProof: { bitpath: number; siblings: string[] };
+  bridgePolicyHash: string;
+  bridgeParentId: string;
+  bridgeAmount: number;
+  bridgeCoinId: string;
+  bridgeMessage: string;
+  bridgeAnnouncementPayload: string;
+  assertedCoinAnnouncement: string;
+}
+
 @Component({
   selector: 'pp-vault',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <section class="container-p pt-16 pb-24 max-w-4xl">
       <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-4">Your Vault</div>
@@ -87,6 +110,144 @@ const CONFIRMED_POLL_MS = 30_000;
               <span class="uppercase text-xs tracking-[0.2em] text-text-muted">Current coin id</span>
               <span class="mono text-xs break-all">{{ v.current_coin_id }}</span>
             </div>
+          </div>
+
+          <div class="card mt-8 space-y-5">
+            <div>
+              <div class="uppercase text-xs tracking-[0.2em] text-text-muted">zkPassport enrollment</div>
+              <h2 class="font-display text-2xl mt-1">Build identity enrollment preview</h2>
+              <p class="text-sm text-text-muted mt-2">
+                Paste the verifier/bridge output for this vault. The portal computes the
+                anonymous attestation root and the exact <span class="mono">'z'</span>
+                spend inputs. Broadcast wiring lands in the next spend-builder brick.
+              </p>
+              <div class="mono text-[0.7rem] text-brand mt-2 break-all">
+                Subscope: {{ vaultSubscope() }}
+              </div>
+            </div>
+
+            <form class="grid gap-4 md:grid-cols-2" (ngSubmit)="buildEnrollmentPreview()">
+              <label class="block md:col-span-2">
+                <span class="form-label">Scoped nullifier</span>
+                <input
+                  class="input mt-1 w-full mono text-xs"
+                  name="scoped_nullifier"
+                  [(ngModel)]="enroll.scopedNullifier"
+                  placeholder="0x… 32 bytes"
+                />
+              </label>
+
+              <label class="block">
+                <span class="form-label">Nullifier type</span>
+                <input
+                  class="input mt-1 w-full mono text-xs"
+                  name="nullifier_type"
+                  [(ngModel)]="enroll.nullifierType"
+                  type="number"
+                  min="0"
+                />
+              </label>
+
+              <label class="block">
+                <span class="form-label">Proof timestamp</span>
+                <input
+                  class="input mt-1 w-full mono text-xs"
+                  name="proof_timestamp"
+                  [(ngModel)]="enroll.proofTimestamp"
+                  type="number"
+                  min="0"
+                />
+              </label>
+
+              <label class="block md:col-span-2">
+                <span class="form-label">Service scope hash</span>
+                <input
+                  class="input mt-1 w-full mono text-xs"
+                  name="service_scope_hash"
+                  [(ngModel)]="enroll.serviceScopeHash"
+                  placeholder="0x… Poseidon2(populis.app)"
+                />
+              </label>
+
+              <label class="block md:col-span-2">
+                <span class="form-label">Service subscope hash</span>
+                <input
+                  class="input mt-1 w-full mono text-xs"
+                  name="service_subscope_hash"
+                  [(ngModel)]="enroll.serviceSubscopeHash"
+                  placeholder="0x… Poseidon2(vault:0x...)"
+                />
+              </label>
+
+              <label class="block md:col-span-2">
+                <span class="form-label">Bridge policy hash</span>
+                <input
+                  class="input mt-1 w-full mono text-xs"
+                  name="bridge_policy_hash"
+                  [(ngModel)]="enroll.bridgePolicyHash"
+                  placeholder="0x… 32 bytes"
+                />
+              </label>
+
+              <label class="block">
+                <span class="form-label">Bridge parent id</span>
+                <input
+                  class="input mt-1 w-full mono text-xs"
+                  name="bridge_parent_id"
+                  [(ngModel)]="enroll.bridgeParentId"
+                  placeholder="0x… 32 bytes"
+                />
+              </label>
+
+              <label class="block">
+                <span class="form-label">Bridge amount</span>
+                <input
+                  class="input mt-1 w-full mono text-xs"
+                  name="bridge_amount"
+                  [(ngModel)]="enroll.bridgeAmount"
+                  type="number"
+                  min="1"
+                />
+              </label>
+
+              <div class="md:col-span-2 flex flex-wrap gap-3">
+                <button class="btn btn--primary" type="submit">Build preview</button>
+                <button class="btn btn--ghost" type="button" (click)="clearEnrollmentPreview()">
+                  Clear
+                </button>
+              </div>
+            </form>
+
+            @if (enrollmentError()) {
+              <div class="rounded-card border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300 whitespace-pre-wrap">
+                {{ enrollmentError() }}
+              </div>
+            }
+
+            @if (enrollmentPreview(); as preview) {
+              <div class="rounded-card border border-brand/30 bg-brand-soft p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <div class="font-display text-xl">Preview ready</div>
+                    <div class="mono text-[0.7rem] text-text-muted">
+                      spend_case {{ preview.spendCase }} · bridge coin {{ preview.bridgeCoinId }}
+                    </div>
+                  </div>
+                  <button class="btn btn--primary" type="button" (click)="markEnrollmentSubmitPending()">
+                    Mark submit pending
+                  </button>
+                </div>
+
+                <pre class="mono text-[0.68rem] mt-4 overflow-auto whitespace-pre-wrap break-all">{{ enrollmentPreviewJson() }}</pre>
+
+                @if (enrollmentStatus() === 'submit_pending') {
+                  <p class="text-sm text-amber-200 mt-3">
+                    Submit is staged for the next brick: this preview contains the
+                    data the vault <span class="mono">'z'</span> spend builder needs.
+                  </p>
+                }
+              </div>
+            }
           </div>
 
           <div class="mt-6">
@@ -168,7 +329,22 @@ const CONFIRMED_POLL_MS = 30_000;
 })
 export class VaultComponent implements OnDestroy {
   readonly session = inject(SessionService);
+  private readonly zkPassport = inject(ZkPassportAttestationService);
   readonly refreshing = signal(false);
+  readonly enrollmentStatus = signal<EnrollmentStatus>('idle');
+  readonly enrollmentError = signal<string | null>(null);
+  readonly enrollmentPreview = signal<ZkPassportEnrollmentPreview | null>(null);
+
+  enroll = {
+    scopedNullifier: '',
+    nullifierType: 1,
+    serviceScopeHash: '',
+    serviceSubscopeHash: '',
+    proofTimestamp: Math.floor(Date.now() / 1000),
+    bridgePolicyHash: '0x' + '00'.repeat(32),
+    bridgeParentId: '',
+    bridgeAmount: 1,
+  };
 
   /** True while the current vault is still waiting for confirmation. */
   readonly pending = computed(() => {
@@ -179,6 +355,16 @@ export class VaultComponent implements OnDestroy {
   readonly pollCadenceSeconds = computed(() =>
     Math.round((this.pending() ? PENDING_POLL_MS : CONFIRMED_POLL_MS) / 1000)
   );
+
+  readonly vaultSubscope = computed(() => {
+    const launcherId = this.session.session()?.vaultLauncherId;
+    return launcherId ? this.zkPassport.computeVaultSubscope(launcherId) : '—';
+  });
+
+  readonly enrollmentPreviewJson = computed(() => {
+    const preview = this.enrollmentPreview();
+    return preview ? JSON.stringify(preview, null, 2) : '';
+  });
 
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly visibilityHandler = () => this.onVisibilityChange();
@@ -214,6 +400,86 @@ export class VaultComponent implements OnDestroy {
     this.reschedulePoll();
   }
 
+  buildEnrollmentPreview(): void {
+    this.enrollmentError.set(null);
+    this.enrollmentPreview.set(null);
+    const vault = this.session.vault();
+    const session = this.session.session();
+    try {
+      if (!session?.vaultLauncherId) {
+        throw new Error('No active vault session.');
+      }
+      if (!vault?.current_coin_id) {
+        throw new Error('Refresh the vault until a current coin id is available.');
+      }
+      const bridgeAmount = Number(this.enroll.bridgeAmount);
+      if (!Number.isInteger(bridgeAmount) || bridgeAmount <= 0) {
+        throw new Error('bridgeAmount must be a positive integer.');
+      }
+      const attestationLeafHash = this.zkPassport.computeAttestationLeaf({
+        vaultLauncherId: session.vaultLauncherId,
+        scopedNullifier: this.enroll.scopedNullifier,
+        nullifierType: Number(this.enroll.nullifierType),
+        serviceScopeHash: this.enroll.serviceScopeHash,
+        serviceSubscopeHash: this.enroll.serviceSubscopeHash,
+        proofTimestamp: Number(this.enroll.proofTimestamp),
+      });
+      const newIdentityAttestRoot = this.zkPassport.computeAttestationRoot([attestationLeafHash]);
+      const bridgePolicyHash = this.enroll.bridgePolicyHash;
+      const bridgeParentId = this.enroll.bridgeParentId;
+      const bridgeCoinId = coinId(bridgeParentId, bridgePolicyHash, bridgeAmount);
+      const bridgeMessage = this.zkPassport.computeAttestationBridgeMessage({
+        vaultLauncherId: session.vaultLauncherId,
+        attestationRoot: newIdentityAttestRoot,
+        bridgePolicyHash,
+      });
+      const bridgeAnnouncementPayload = '0x50' + bridgeMessage.slice(2);
+      const assertedCoinAnnouncement = bytesToHex(
+        hexToBytes(
+          sha256(
+            this.concatBytes(
+              hexToBytes(bridgeCoinId),
+              hexToBytes(bridgeAnnouncementPayload),
+            ),
+          ),
+        ),
+      );
+      const proof = this.zkPassport.singleLeafProof();
+      this.enrollmentPreview.set({
+        spendCase: '0x7a',
+        vaultLauncherId: session.vaultLauncherId,
+        vaultCoinId: vault.current_coin_id,
+        vaultSubscope: this.zkPassport.computeVaultSubscope(session.vaultLauncherId),
+        attestationLeafHash,
+        newIdentityAttestRoot,
+        attestationProof: { bitpath: proof.bitpath, siblings: [] },
+        bridgePolicyHash,
+        bridgeParentId,
+        bridgeAmount,
+        bridgeCoinId,
+        bridgeMessage,
+        bridgeAnnouncementPayload,
+        assertedCoinAnnouncement,
+      });
+      this.enrollmentStatus.set('preview_ready');
+    } catch (err) {
+      this.enrollmentStatus.set('idle');
+      this.enrollmentError.set(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  clearEnrollmentPreview(): void {
+    this.enrollmentStatus.set('idle');
+    this.enrollmentError.set(null);
+    this.enrollmentPreview.set(null);
+  }
+
+  markEnrollmentSubmitPending(): void {
+    if (this.enrollmentPreview()) {
+      this.enrollmentStatus.set('submit_pending');
+    }
+  }
+
   private async refresh(): Promise<void> {
     if (!this.session.session()) return;
     this.refreshing.set(true);
@@ -241,6 +507,16 @@ export class VaultComponent implements OnDestroy {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
+  }
+
+  private concatBytes(...chunks: Uint8Array[]): Uint8Array {
+    const out = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+    let offset = 0;
+    for (const chunk of chunks) {
+      out.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return out;
   }
 
   private onVisibilityChange(): void {
