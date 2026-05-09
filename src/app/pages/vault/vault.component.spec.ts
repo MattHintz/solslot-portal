@@ -8,6 +8,7 @@ import {
   ZkPassportEvmAttestationPollerService,
   ZkPassportEvmPollResult,
 } from '../../services/zkpassport-evm-attestation-poller.service';
+import { ZkPassportVaultEnrollmentSpendService } from '../../services/zkpassport-vault-enrollment-spend.service';
 import { VaultComponent } from './vault.component';
 
 const VAULT_LAUNCHER_ID = '0x' + '11'.repeat(32);
@@ -89,6 +90,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
   let component: VaultComponent;
   let sessionMock: Pick<SessionService, 'session' | 'vault' | 'refreshVault'>;
   let evmPollerMock: jasmine.SpyObj<ZkPassportEvmAttestationPollerService>;
+  let enrollmentSpendMock: jasmine.SpyObj<ZkPassportVaultEnrollmentSpendService>;
 
   beforeEach(async () => {
     localStorage.clear();
@@ -108,6 +110,42 @@ describe('VaultComponent zkPassport enrollment preview', () => {
       ['pollOnce', 'proofLaunchUrl'],
     );
     evmPollerMock.proofLaunchUrl.and.returnValue(null);
+    enrollmentSpendMock = jasmine.createSpyObj<ZkPassportVaultEnrollmentSpendService>(
+      'ZkPassportVaultEnrollmentSpendService',
+      ['buildFromChain'],
+    );
+    enrollmentSpendMock.buildFromChain.and.resolveTo({
+      status: 'unsigned',
+      backendSigning: false,
+      spendCase: '0x7a',
+      authType: 3,
+      vaultLauncherId: VAULT_LAUNCHER_ID,
+      vaultCoin: {
+        parentCoinInfo: '0x' + '11'.repeat(32),
+        puzzleHash: '0x' + 'bb'.repeat(32),
+        amount: 1,
+        coinId: VAULT_COIN_ID,
+      },
+      bridgeCoin: {
+        parentCoinInfo: '0x' + '66'.repeat(32),
+        puzzleHash: '0x' + '55'.repeat(32),
+        amount: 1,
+        coinId: '0x' + '77'.repeat(32),
+      },
+      bridgePolicyHash: '0x' + '55'.repeat(32),
+      vaultInnerPuzzleHash: '0x' + '88'.repeat(32),
+      vaultFullPuzzleHash: '0x' + 'bb'.repeat(32),
+      lineageProof: {
+        parentParentCoinInfo: '0x' + '11'.repeat(32),
+        parentInnerPuzzleHash: null,
+        parentAmount: 1,
+      },
+      signerIndices: [0, 2],
+      validatorSignatures: [],
+      vaultSignatureData: '0x',
+      coinSpends: [],
+      unsignedSpendBundle: { coinSpends: [], aggregatedSignature: null },
+    });
 
     await TestBed.configureTestingModule({
       imports: [VaultComponent],
@@ -115,6 +153,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
         provideRouter([]),
         { provide: SessionService, useValue: sessionMock },
         { provide: ZkPassportEvmAttestationPollerService, useValue: evmPollerMock },
+        { provide: ZkPassportVaultEnrollmentSpendService, useValue: enrollmentSpendMock },
       ],
     }).compileComponents();
 
@@ -158,6 +197,8 @@ describe('VaultComponent zkPassport enrollment preview', () => {
     expect(preview?.assertedCoinAnnouncement).toMatch(/^0x[0-9a-f]{64}$/);
     expect(preview?.bridgeSpendPackage.backendSigning).toBeFalse();
     expect(preview?.bridgeSpendPackage.status).toBe('threshold_ready');
+    expect(preview?.unsignedEnrollmentSpendPackage?.status).toBe('unsigned');
+    expect(enrollmentSpendMock.buildFromChain).toHaveBeenCalled();
     expect(component.enrollmentPreviewJson()).toContain('validatorMessage');
   });
 

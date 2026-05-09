@@ -10,7 +10,11 @@ import {
   ZkPassportEvmPollResult,
 } from '../../services/zkpassport-evm-attestation-poller.service';
 import { ZkPassportProofStoreService } from '../../services/zkpassport-proof-store.service';
-import { bytesToHex, hexToBytes } from '../../utils/chia-hash';
+import {
+  ZkPassportVaultEnrollmentSpendPackage,
+  ZkPassportVaultEnrollmentSpendService,
+} from '../../services/zkpassport-vault-enrollment-spend.service';
+import { AUTH_TYPE_BLS, AUTH_TYPE_SECP256K1, AUTH_TYPE_SECP256R1, bytesToHex, hexToBytes } from '../../utils/chia-hash';
 
 /** Polling cadence while the vault is still unconfirmed.  Testnet11 blocks
  *  are ~18s, so 5s keeps UI snappy without hammering coinset.org. */
@@ -45,6 +49,7 @@ interface ZkPassportEnrollmentPreview {
   assertedCoinAnnouncement: string;
   validatorMessage: string;
   bridgeSpendPackage: ValidatorBridgeSpendPackage;
+  unsignedEnrollmentSpendPackage: ZkPassportVaultEnrollmentSpendPackage | null;
 }
 
 @Component({
@@ -195,6 +200,18 @@ interface ZkPassportEnrollmentPreview {
                   </button>
                 </div>
 
+                @if (preview.unsignedEnrollmentSpendPackage) {
+                  <div class="mono text-[0.7rem] text-brand mt-3 break-all">
+                    Unsigned Chia package ready ·
+                    {{ preview.unsignedEnrollmentSpendPackage.coinSpends.length }} coin spends
+                  </div>
+                } @else {
+                  <div class="text-xs text-amber-200 mt-3">
+                    Waiting for validator threshold signatures before the unsigned Chia
+                    package can be serialized.
+                  </div>
+                }
+
                 <pre class="mono text-[0.68rem] mt-4 overflow-auto whitespace-pre-wrap break-all">{{ enrollmentPreviewJson() }}</pre>
 
                 @if (enrollmentStatus() === 'submit_pending') {
@@ -289,6 +306,7 @@ export class VaultComponent implements OnDestroy {
   private readonly zkPassport = inject(ZkPassportAttestationService);
   private readonly evmPoller = inject(ZkPassportEvmAttestationPollerService);
   private readonly proofStore = inject(ZkPassportProofStoreService);
+  private readonly enrollmentSpend = inject(ZkPassportVaultEnrollmentSpendService);
   readonly refreshing = signal(false);
   readonly enrollmentStatus = signal<EnrollmentStatus>('idle');
   readonly enrollmentError = signal<string | null>(null);
@@ -385,7 +403,7 @@ export class VaultComponent implements OnDestroy {
       const result = await this.evmPoller.pollOnce(session.vaultLauncherId, {
         startedAtMs: this.attestationStartedAtMs ?? undefined,
       });
-      this.applyAttestationPollResult(result, vault.current_coin_id);
+      await this.applyAttestationPollResult(result, vault.current_coin_id);
     } catch (err) {
       this.enrollmentStatus.set('idle');
       this.enrollmentError.set(err instanceof Error ? err.message : String(err));
@@ -418,7 +436,10 @@ export class VaultComponent implements OnDestroy {
     this.enrollmentStatus.set('submit_pending');
   }
 
-  private applyAttestationPollResult(result: ZkPassportEvmPollResult, vaultCoinId: string): void {
+  private async applyAttestationPollResult(
+    result: ZkPassportEvmPollResult,
+    vaultCoinId: string,
+  ): Promise<void> {
     if (result.kind === 'pending') {
       this.enrollmentStatus.set('attestation_pending');
       return;
@@ -435,6 +456,34 @@ export class VaultComponent implements OnDestroy {
       return;
     }
     const enrollment = result.enrollment;
+    const session = this.session.session();
+    const vault = this.session.vault();
+    const ownerPubkey = session?.compressedPubkey ?? vault?.owner_pubkey;
+    if (!session || !ownerPubkey) {
+      throw new Error('No vault owner pubkey is available for enrollment spend construction.');
+    }
+    const unsignedEnrollmentSpendPackage =
+      result.bridgeSpendPackage.status === 'threshold_ready'
+        ? await this.enrollmentSpend.buildFromChain({
+            vaultLauncherId: enrollment.vaultLauncherId,
+            vaultCoinId,
+            ownerPubkey,
+            authType: this.authTypeCode(session.authType),
+            bridgePolicyHash: enrollment.bridgePolicyHash,
+            bridgeParentId: enrollment.bridgeParentId,
+            bridgeAmount: enrollment.bridgeAmount,
+            newIdentityAttestRoot: enrollment.newIdentityAttestRoot,
+            attestationLeafHash: enrollment.attestationLeafHash,
+            scopedNullifier: enrollment.scopedNullifier,
+            nullifierType: enrollment.nullifierType,
+            serviceScopeHash: enrollment.serviceScopeHash,
+            serviceSubscopeHash: enrollment.serviceSubscopeHash,
+            proofTimestamp: enrollment.proofTimestamp,
+            currentTimestamp: Math.floor(Date.now() / 1000),
+            signerIndices: result.bridgeSpendPackage.signerIndices,
+            validatorSignatures: result.bridgeSpendPackage.signatures,
+          })
+        : null;
     const assertedCoinAnnouncement = bytesToHex(
       hexToBytes(
         sha256(
@@ -462,8 +511,15 @@ export class VaultComponent implements OnDestroy {
       assertedCoinAnnouncement,
       validatorMessage: enrollment.validatorMessage,
       bridgeSpendPackage: result.bridgeSpendPackage,
+      unsignedEnrollmentSpendPackage,
     });
     this.enrollmentStatus.set('preview_ready');
+  }
+
+  private authTypeCode(authType: 'evm' | 'chia_bls' | 'passkey'): number {
+    if (authType === 'evm') return AUTH_TYPE_SECP256K1;
+    if (authType === 'chia_bls') return AUTH_TYPE_BLS;
+    return AUTH_TYPE_SECP256R1;
   }
 
   private async refresh(): Promise<void> {
