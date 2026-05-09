@@ -9,10 +9,43 @@ import {
   ZkPassportEvmPollResult,
 } from '../../services/zkpassport-evm-attestation-poller.service';
 import { ZkPassportVaultEnrollmentSpendService } from '../../services/zkpassport-vault-enrollment-spend.service';
+import { ZkPassportVaultEnrollmentAuthorizeService } from '../../services/zkpassport-vault-enrollment-authorize.service';
 import { VaultComponent } from './vault.component';
 
 const VAULT_LAUNCHER_ID = '0x' + '11'.repeat(32);
 const VAULT_COIN_ID = '0x' + 'aa'.repeat(32);
+const MOCK_ENROLLMENT_PACKAGE = {
+  status: 'unsigned' as const,
+  backendSigning: false as const,
+  spendCase: '0x7a' as const,
+  authType: 3,
+  vaultLauncherId: VAULT_LAUNCHER_ID,
+  vaultCoin: {
+    parentCoinInfo: '0x' + '11'.repeat(32),
+    puzzleHash: '0x' + 'bb'.repeat(32),
+    amount: 1,
+    coinId: VAULT_COIN_ID,
+  },
+  bridgeCoin: {
+    parentCoinInfo: '0x' + '66'.repeat(32),
+    puzzleHash: '0x' + '55'.repeat(32),
+    amount: 1,
+    coinId: '0x' + '77'.repeat(32),
+  },
+  bridgePolicyHash: '0x' + '55'.repeat(32),
+  vaultInnerPuzzleHash: '0x' + '88'.repeat(32),
+  vaultFullPuzzleHash: '0x' + 'bb'.repeat(32),
+  lineageProof: {
+    parentParentCoinInfo: '0x' + '11'.repeat(32),
+    parentInnerPuzzleHash: null,
+    parentAmount: 1,
+  },
+  signerIndices: [0, 2],
+  validatorSignatures: [],
+  vaultSignatureData: '0x',
+  coinSpends: [],
+  unsignedSpendBundle: { coinSpends: [], aggregatedSignature: null },
+};
 
 function vaultState(currentCoinId: string | null = VAULT_COIN_ID): VaultState {
   return {
@@ -91,6 +124,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
   let sessionMock: Pick<SessionService, 'session' | 'vault' | 'refreshVault'>;
   let evmPollerMock: jasmine.SpyObj<ZkPassportEvmAttestationPollerService>;
   let enrollmentSpendMock: jasmine.SpyObj<ZkPassportVaultEnrollmentSpendService>;
+  let enrollmentAuthorizeMock: jasmine.SpyObj<ZkPassportVaultEnrollmentAuthorizeService>;
 
   beforeEach(async () => {
     localStorage.clear();
@@ -114,37 +148,17 @@ describe('VaultComponent zkPassport enrollment preview', () => {
       'ZkPassportVaultEnrollmentSpendService',
       ['buildFromChain'],
     );
-    enrollmentSpendMock.buildFromChain.and.resolveTo({
-      status: 'unsigned',
-      backendSigning: false,
-      spendCase: '0x7a',
-      authType: 3,
-      vaultLauncherId: VAULT_LAUNCHER_ID,
-      vaultCoin: {
-        parentCoinInfo: '0x' + '11'.repeat(32),
-        puzzleHash: '0x' + 'bb'.repeat(32),
-        amount: 1,
-        coinId: VAULT_COIN_ID,
+    enrollmentSpendMock.buildFromChain.and.resolveTo(MOCK_ENROLLMENT_PACKAGE);
+    enrollmentAuthorizeMock = jasmine.createSpyObj<ZkPassportVaultEnrollmentAuthorizeService>(
+      'ZkPassportVaultEnrollmentAuthorizeService',
+      ['authorizeFromChain'],
+    );
+    enrollmentAuthorizeMock.authorizeFromChain.and.resolveTo({
+      packageState: MOCK_ENROLLMENT_PACKAGE,
+      signedSpendBundle: {
+        coinSpends: [],
+        aggregatedSignature: '0x' + 'ee'.repeat(96),
       },
-      bridgeCoin: {
-        parentCoinInfo: '0x' + '66'.repeat(32),
-        puzzleHash: '0x' + '55'.repeat(32),
-        amount: 1,
-        coinId: '0x' + '77'.repeat(32),
-      },
-      bridgePolicyHash: '0x' + '55'.repeat(32),
-      vaultInnerPuzzleHash: '0x' + '88'.repeat(32),
-      vaultFullPuzzleHash: '0x' + 'bb'.repeat(32),
-      lineageProof: {
-        parentParentCoinInfo: '0x' + '11'.repeat(32),
-        parentInnerPuzzleHash: null,
-        parentAmount: 1,
-      },
-      signerIndices: [0, 2],
-      validatorSignatures: [],
-      vaultSignatureData: '0x',
-      coinSpends: [],
-      unsignedSpendBundle: { coinSpends: [], aggregatedSignature: null },
     });
 
     await TestBed.configureTestingModule({
@@ -154,6 +168,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
         { provide: SessionService, useValue: sessionMock },
         { provide: ZkPassportEvmAttestationPollerService, useValue: evmPollerMock },
         { provide: ZkPassportVaultEnrollmentSpendService, useValue: enrollmentSpendMock },
+        { provide: ZkPassportVaultEnrollmentAuthorizeService, useValue: enrollmentAuthorizeMock },
       ],
     }).compileComponents();
 
@@ -225,15 +240,21 @@ describe('VaultComponent zkPassport enrollment preview', () => {
     expect(component.enrollmentError()).toContain('Timed out');
   });
 
-  it('marks a ready preview as submit pending without broadcasting', async () => {
+  it('authorizes a ready enrollment package through the explicit auth service', async () => {
     evmPollerMock.pollOnce.and.resolveTo(foundResult());
     await component.checkZkPassportAttestation();
-    component.markEnrollmentSubmitPending();
-    expect(component.enrollmentStatus()).toBe('submit_pending');
-    const stored = JSON.parse(
-      localStorage.getItem('populis_zkpassport_proofs_v1') ?? '{}',
-    ) as Record<string, unknown>;
-    expect(stored[VAULT_LAUNCHER_ID]).toBeTruthy();
+    await component.authorizeZkPassportEnrollment();
+    expect(enrollmentAuthorizeMock.authorizeFromChain).toHaveBeenCalledWith(jasmine.objectContaining({
+      vaultLauncherId: VAULT_LAUNCHER_ID,
+      vaultCoinId: VAULT_COIN_ID,
+      scopedNullifier: '0x' + '22'.repeat(32),
+      nullifierType: 1,
+      serviceScopeHash: '0x' + '33'.repeat(32),
+      serviceSubscopeHash: '0x' + '44'.repeat(32),
+      proofTimestamp: 1_779_120_000,
+    }));
+    expect(component.enrollmentStatus()).toBe('authorized');
+    expect(component.enrollmentAuthorizationResult()?.signedSpendBundle.aggregatedSignature).toBe('0x' + 'ee'.repeat(96));
   });
 
   it('rejects checking before the current vault coin is known', async () => {
