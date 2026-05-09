@@ -100,6 +100,9 @@ describe('ZkPassportVaultEnrollmentSpendService', () => {
     expect(packageState.vaultCoin.coinId).toBe(fixtures.expected.vaultCoinId);
     expect(packageState.vaultInnerPuzzleHash).toBe(fixtures.expected.vaultInnerPuzzleHash);
     expect(packageState.vaultFullPuzzleHash).toBe(fixtures.expected.vaultFullPuzzleHash);
+    expect(packageState.expectedNextVaultCoin.parentCoinInfo).toBe(fixtures.expected.vaultCoinId);
+    expect(packageState.expectedNextVaultCoin.puzzleHash).toBe(packageState.expectedNextVaultFullPuzzleHash);
+    expect(packageState.expectedNextVaultCoin.coinId).toMatch(/^0x[0-9a-f]{64}$/);
     expect(packageState.coinSpends[0].coin).toEqual({
       parentCoinInfo: fixtures.expected.coinSpends[0].coin.parentCoinInfo,
       puzzleHash: fixtures.expected.coinSpends[0].coin.puzzleHash,

@@ -17,6 +17,11 @@ import {
   ZkPassportVaultEnrollmentAuthorizationResult,
   ZkPassportVaultEnrollmentAuthorizeService,
 } from '../../services/zkpassport-vault-enrollment-authorize.service';
+import {
+  ZkPassportVaultEnrollmentCommitResult,
+  ZkPassportVaultEnrollmentCommitService,
+} from '../../services/zkpassport-vault-enrollment-commit.service';
+import { ZkPassportProofStoreService } from '../../services/zkpassport-proof-store.service';
 import { AUTH_TYPE_BLS, AUTH_TYPE_SECP256K1, AUTH_TYPE_SECP256R1, bytesToHex, hexToBytes } from '../../utils/chia-hash';
 
 /** Polling cadence while the vault is still unconfirmed.  Testnet11 blocks
@@ -33,6 +38,8 @@ type EnrollmentStatus =
   | 'preview_ready'
   | 'authorization_pending'
   | 'authorized'
+  | 'commit_pending'
+  | 'confirmed'
   | 'malformed'
   | 'timeout';
 
@@ -208,7 +215,7 @@ interface ZkPassportEnrollmentPreview {
                     class="btn btn--primary"
                     type="button"
                     (click)="authorizeZkPassportEnrollment()"
-                    [disabled]="!preview.unsignedEnrollmentSpendPackage || enrollmentStatus() === 'authorization_pending'"
+                    [disabled]="!preview.unsignedEnrollmentSpendPackage || enrollmentStatus() === 'authorization_pending' || enrollmentStatus() === 'commit_pending'"
                   >
                     @if (enrollmentStatus() === 'authorization_pending') { Authorizing… } @else { Authorize spend }
                   </button>
@@ -235,9 +242,29 @@ interface ZkPassportEnrollmentPreview {
                 }
 
                 @if (enrollmentStatus() === 'authorized' && enrollmentAuthorizationResult(); as authorized) {
+                  <div class="flex flex-wrap items-center gap-3 mt-3">
+                    <p class="text-sm text-brand">
+                      Signed enrollment bundle ready:
+                      <span class="mono">{{ authorized.signedSpendBundle.coinSpends.length }} coin spends</span>
+                    </p>
+                    <button class="btn btn--primary" type="button" (click)="commitZkPassportEnrollment()">
+                      Submit signed bundle
+                    </button>
+                  </div>
+                }
+
+                @if (enrollmentStatus() === 'commit_pending') {
+                  <p class="text-sm text-amber-200 mt-3">
+                    Submitted to coinset; waiting for the vault singleton to confirm…
+                  </p>
+                }
+
+                @if (enrollmentStatus() === 'confirmed' && enrollmentCommitResult(); as committed) {
                   <p class="text-sm text-brand mt-3">
-                    Signed enrollment bundle ready:
-                    <span class="mono">{{ authorized.signedSpendBundle.coinSpends.length }} coin spends</span>
+                    Enrollment confirmed at block
+                    <span class="mono">{{ committed.confirmedBlockIndex ?? 'unknown' }}</span>
+                    with vault coin
+                    <span class="mono break-all">{{ committed.confirmedVaultCoinId }}</span>
                   </p>
                 }
               </div>
@@ -325,13 +352,16 @@ export class VaultComponent implements OnDestroy {
   readonly session = inject(SessionService);
   private readonly zkPassport = inject(ZkPassportAttestationService);
   private readonly evmPoller = inject(ZkPassportEvmAttestationPollerService);
+  private readonly proofStore = inject(ZkPassportProofStoreService);
   private readonly enrollmentSpend = inject(ZkPassportVaultEnrollmentSpendService);
   private readonly enrollmentAuthorize = inject(ZkPassportVaultEnrollmentAuthorizeService);
+  private readonly enrollmentCommit = inject(ZkPassportVaultEnrollmentCommitService);
   readonly refreshing = signal(false);
   readonly enrollmentStatus = signal<EnrollmentStatus>('idle');
   readonly enrollmentError = signal<string | null>(null);
   readonly enrollmentPreview = signal<ZkPassportEnrollmentPreview | null>(null);
   readonly enrollmentAuthorizationResult = signal<ZkPassportVaultEnrollmentAuthorizationResult | null>(null);
+  readonly enrollmentCommitResult = signal<ZkPassportVaultEnrollmentCommitResult | null>(null);
   readonly zkPassportProofUrl = signal<string | null>(null);
 
   /** True while the current vault is still waiting for confirmation. */
@@ -436,6 +466,7 @@ export class VaultComponent implements OnDestroy {
     this.enrollmentError.set(null);
     this.enrollmentPreview.set(null);
     this.enrollmentAuthorizationResult.set(null);
+    this.enrollmentCommitResult.set(null);
     this.zkPassportProofUrl.set(null);
     this.attestationStartedAtMs = null;
   }
@@ -483,6 +514,39 @@ export class VaultComponent implements OnDestroy {
       this.enrollmentStatus.set('preview_ready');
       this.enrollmentError.set(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  async commitZkPassportEnrollment(): Promise<void> {
+    const preview = this.enrollmentPreview();
+    const authorization = this.enrollmentAuthorizationResult();
+    try {
+      if (!preview || !authorization) {
+        throw new Error('No signed enrollment bundle is ready to submit.');
+      }
+      this.enrollmentError.set(null);
+      this.enrollmentCommitResult.set(null);
+      this.enrollmentStatus.set('commit_pending');
+      const result = await this.enrollmentCommit.commitAuthorizedEnrollment(authorization);
+      this.persistEnrollmentProof(preview);
+      this.enrollmentCommitResult.set(result);
+      this.enrollmentStatus.set('confirmed');
+    } catch (err) {
+      this.enrollmentStatus.set(authorization ? 'authorized' : 'preview_ready');
+      this.enrollmentError.set(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  private persistEnrollmentProof(preview: ZkPassportEnrollmentPreview): void {
+    this.proofStore.save({
+      vaultLauncherId: preview.vaultLauncherId,
+      vaultSubscope: preview.vaultSubscope,
+      identityAttestRoot: preview.newIdentityAttestRoot,
+      attestationLeafHash: preview.attestationLeafHash,
+      attestationProof: preview.attestationProof,
+      bridgePolicyHash: preview.bridgePolicyHash,
+      bridgeMessage: preview.bridgeMessage,
+      enrolledAt: Math.floor(Date.now() / 1000),
+    });
   }
 
   private async applyAttestationPollResult(

@@ -10,10 +10,13 @@ import {
 } from '../../services/zkpassport-evm-attestation-poller.service';
 import { ZkPassportVaultEnrollmentSpendService } from '../../services/zkpassport-vault-enrollment-spend.service';
 import { ZkPassportVaultEnrollmentAuthorizeService } from '../../services/zkpassport-vault-enrollment-authorize.service';
+import { ZkPassportVaultEnrollmentCommitService } from '../../services/zkpassport-vault-enrollment-commit.service';
 import { VaultComponent } from './vault.component';
 
 const VAULT_LAUNCHER_ID = '0x' + '11'.repeat(32);
 const VAULT_COIN_ID = '0x' + 'aa'.repeat(32);
+const NEXT_VAULT_COIN_ID = '0x' + '99'.repeat(32);
+const NEXT_VAULT_PUZZLE_HASH = '0x' + '98'.repeat(32);
 const MOCK_ENROLLMENT_PACKAGE = {
   status: 'unsigned' as const,
   backendSigning: false as const,
@@ -35,6 +38,14 @@ const MOCK_ENROLLMENT_PACKAGE = {
   bridgePolicyHash: '0x' + '55'.repeat(32),
   vaultInnerPuzzleHash: '0x' + '88'.repeat(32),
   vaultFullPuzzleHash: '0x' + 'bb'.repeat(32),
+  expectedNextVaultInnerPuzzleHash: '0x' + '97'.repeat(32),
+  expectedNextVaultFullPuzzleHash: NEXT_VAULT_PUZZLE_HASH,
+  expectedNextVaultCoin: {
+    parentCoinInfo: VAULT_COIN_ID,
+    puzzleHash: NEXT_VAULT_PUZZLE_HASH,
+    amount: 1,
+    coinId: NEXT_VAULT_COIN_ID,
+  },
   lineageProof: {
     parentParentCoinInfo: '0x' + '11'.repeat(32),
     parentInnerPuzzleHash: null,
@@ -125,6 +136,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
   let evmPollerMock: jasmine.SpyObj<ZkPassportEvmAttestationPollerService>;
   let enrollmentSpendMock: jasmine.SpyObj<ZkPassportVaultEnrollmentSpendService>;
   let enrollmentAuthorizeMock: jasmine.SpyObj<ZkPassportVaultEnrollmentAuthorizeService>;
+  let enrollmentCommitMock: jasmine.SpyObj<ZkPassportVaultEnrollmentCommitService>;
 
   beforeEach(async () => {
     localStorage.clear();
@@ -160,6 +172,20 @@ describe('VaultComponent zkPassport enrollment preview', () => {
         aggregatedSignature: '0x' + 'ee'.repeat(96),
       },
     });
+    enrollmentCommitMock = jasmine.createSpyObj<ZkPassportVaultEnrollmentCommitService>(
+      'ZkPassportVaultEnrollmentCommitService',
+      ['commitAuthorizedEnrollment'],
+    );
+    enrollmentCommitMock.commitAuthorizedEnrollment.and.resolveTo({
+      packageState: MOCK_ENROLLMENT_PACKAGE,
+      signedSpendBundle: {
+        coinSpends: [],
+        aggregatedSignature: '0x' + 'ee'.repeat(96),
+      },
+      pushResponse: { success: true, status: 'SUCCESS' },
+      confirmedVaultCoinId: NEXT_VAULT_COIN_ID,
+      confirmedBlockIndex: 124,
+    });
 
     await TestBed.configureTestingModule({
       imports: [VaultComponent],
@@ -169,6 +195,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
         { provide: ZkPassportEvmAttestationPollerService, useValue: evmPollerMock },
         { provide: ZkPassportVaultEnrollmentSpendService, useValue: enrollmentSpendMock },
         { provide: ZkPassportVaultEnrollmentAuthorizeService, useValue: enrollmentAuthorizeMock },
+        { provide: ZkPassportVaultEnrollmentCommitService, useValue: enrollmentCommitMock },
       ],
     }).compileComponents();
 
@@ -255,6 +282,22 @@ describe('VaultComponent zkPassport enrollment preview', () => {
     }));
     expect(component.enrollmentStatus()).toBe('authorized');
     expect(component.enrollmentAuthorizationResult()?.signedSpendBundle.aggregatedSignature).toBe('0x' + 'ee'.repeat(96));
+  });
+
+  it('submits an authorized enrollment bundle and persists the proof after confirmation', async () => {
+    evmPollerMock.pollOnce.and.resolveTo(foundResult());
+    await component.checkZkPassportAttestation();
+    await component.authorizeZkPassportEnrollment();
+    await component.commitZkPassportEnrollment();
+    expect(enrollmentCommitMock.commitAuthorizedEnrollment).toHaveBeenCalledOnceWith(
+      component.enrollmentAuthorizationResult()!,
+    );
+    expect(component.enrollmentStatus()).toBe('confirmed');
+    expect(component.enrollmentCommitResult()?.confirmedVaultCoinId).toBe(NEXT_VAULT_COIN_ID);
+    const stored = JSON.parse(
+      localStorage.getItem('populis_zkpassport_proofs_v1') ?? '{}',
+    ) as Record<string, unknown>;
+    expect(stored[VAULT_LAUNCHER_ID]).toBeTruthy();
   });
 
   it('rejects checking before the current vault coin is known', async () => {

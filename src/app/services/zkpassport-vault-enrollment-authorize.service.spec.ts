@@ -12,6 +12,8 @@ import {
 } from './zkpassport-vault-enrollment-authorize.service';
 
 const VAULT_COIN_ID = '0x' + '11'.repeat(32);
+const NEXT_VAULT_COIN_ID = '0x' + '12'.repeat(32);
+const NEXT_VAULT_PUZZLE_HASH = '0x' + '13'.repeat(32);
 const OWNER_PUBKEY = '0x02' + '22'.repeat(32);
 const VALIDATOR_SIG_A = '0x' + 'aa'.repeat(96);
 const VALIDATOR_SIG_B = '0x' + 'bb'.repeat(96);
@@ -136,6 +138,14 @@ function basePackage(authType = AUTH_TYPE_BLS, vaultSignatureData = '0x'): ZkPas
     bridgePolicyHash: '0x' + '77'.repeat(32),
     vaultInnerPuzzleHash: '0x' + '99'.repeat(32),
     vaultFullPuzzleHash: '0x' + '55'.repeat(32),
+    expectedNextVaultInnerPuzzleHash: '0x' + '14'.repeat(32),
+    expectedNextVaultFullPuzzleHash: NEXT_VAULT_PUZZLE_HASH,
+    expectedNextVaultCoin: {
+      parentCoinInfo: VAULT_COIN_ID,
+      puzzleHash: NEXT_VAULT_PUZZLE_HASH,
+      amount: 1,
+      coinId: NEXT_VAULT_COIN_ID,
+    },
     lineageProof: {
       parentParentCoinInfo: '0x' + '44'.repeat(32),
       parentInnerPuzzleHash: null,

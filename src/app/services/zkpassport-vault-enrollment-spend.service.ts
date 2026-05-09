@@ -121,6 +121,25 @@ export class ZkPassportVaultEnrollmentSpendService {
     if (bridgeCoinIdFromWasm !== bridgeCoinId) {
       throw new Error('vault enrollment spend: bridge coin id mismatch');
     }
+    const expectedNextVaultInnerPuzzle = vaultMod.curry([
+      singletonStruct,
+      clvm.atom(ownerPubkey),
+      clvm.int(BigInt(args.authType)),
+      clvm.atom(membersMerkleRoot),
+      clvm.atom(newIdentityAttestRoot),
+      clvm.atom(bridgePolicyHash),
+      clvm.atom(hexToBytes(SINGLETON_MOD_HASH)),
+      clvm.atom(poolLauncherId),
+      clvm.atom(hexToBytes(SINGLETON_LAUNCHER_HASH)),
+    ]);
+    const expectedNextVaultInnerPuzzleHash = expectedNextVaultInnerPuzzle.treeHash();
+    const expectedNextVaultFullPuzzle = this.singletonFullPuzzle(clvm, singletonStruct, expectedNextVaultInnerPuzzle);
+    const expectedNextVaultFullPuzzleHash = expectedNextVaultFullPuzzle.treeHash();
+    const expectedNextVaultCoinId = coinId(
+      vaultCoinId,
+      expectedNextVaultFullPuzzleHash,
+      vaultCoin.amount,
+    );
 
     const bridgeSolution = clvm.list([
       clvm.atom(hexToBytes(bridgeCoinId)),
@@ -195,6 +214,14 @@ export class ZkPassportVaultEnrollmentSpendService {
       bridgePolicyHash: bytesToHex(bridgePolicyHash),
       vaultInnerPuzzleHash: bytesToHex(vaultInnerPuzzleHash),
       vaultFullPuzzleHash: bytesToHex(vaultFullPuzzleHash),
+      expectedNextVaultInnerPuzzleHash: bytesToHex(expectedNextVaultInnerPuzzleHash),
+      expectedNextVaultFullPuzzleHash: bytesToHex(expectedNextVaultFullPuzzleHash),
+      expectedNextVaultCoin: {
+        parentCoinInfo: vaultCoinId,
+        puzzleHash: bytesToHex(expectedNextVaultFullPuzzleHash),
+        amount: vaultCoin.amount,
+        coinId: expectedNextVaultCoinId,
+      },
       lineageProof: {
         parentParentCoinInfo: normalizeHex(args.lineageProof.parentParentCoinInfo),
         parentInnerPuzzleHash: args.lineageProof.parentInnerPuzzleHash
@@ -360,6 +387,9 @@ export interface ZkPassportVaultEnrollmentSpendPackage {
   bridgePolicyHash: string;
   vaultInnerPuzzleHash: string;
   vaultFullPuzzleHash: string;
+  expectedNextVaultInnerPuzzleHash: string;
+  expectedNextVaultFullPuzzleHash: string;
+  expectedNextVaultCoin: CoinWithIdInput & { coinId: string };
   lineageProof: EnrollmentLineageProof;
   signerIndices: number[];
   validatorSignatures: ReadonlyArray<ValidatorBridgeSignature>;
