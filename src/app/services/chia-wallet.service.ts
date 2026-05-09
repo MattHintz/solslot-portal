@@ -2,6 +2,7 @@ import { Injectable, signal, computed, inject } from '@angular/core';
 
 import { ChiaWasmService } from './chia-wasm.service';
 import { environment } from '../../environments/environment';
+import { mojoAmountToSafeNumber } from '../utils/mojo-amount';
 
 /**
  * Chia wallet service.
@@ -156,9 +157,7 @@ export class ChiaWalletService {
       coin: {
         parent_coin_info: stripHexPrefix(cs.coin.parentCoinInfo),
         puzzle_hash: stripHexPrefix(cs.coin.puzzleHash),
-        amount: typeof cs.coin.amount === 'bigint'
-          ? Number(cs.coin.amount)
-          : cs.coin.amount,
+        amount: mojoAmountToSafeNumber(cs.coin.amount, 'coin amount'),
       },
       puzzle_reveal: stripHexPrefix(cs.puzzleReveal),
       solution: stripHexPrefix(cs.solution),
@@ -221,8 +220,7 @@ export class ChiaWalletService {
     if (state.kind !== 'connected') {
       throw new Error('transfer: wallet not connected');
     }
-    const amountNum =
-      typeof args.amount === 'bigint' ? Number(args.amount) : args.amount;
+    const amountNum = mojoAmountToSafeNumber(args.amount, 'transfer amount');
     if (amountNum < 1) {
       throw new Error('transfer: amount must be >= 1 mojo');
     }

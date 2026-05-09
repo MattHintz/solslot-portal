@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { ChiaWalletService } from './chia-wallet.service';
 import { ChiaWasmService } from './chia-wasm.service';
 import { CoinsetService, CoinRecord } from './coinset.service';
+import { parseMojoAmount } from '../utils/mojo-amount';
 
 /**
  * One-shot helper that picks an unspent coin from the connected
@@ -127,13 +128,13 @@ export class WalletCoinPickerService {
     const coin = new CoinClass(
       hexToBytes(largest.coin.parent_coin_info),
       hexToBytes(largest.coin.puzzle_hash),
-      BigInt(largest.coin.amount),
+      parseMojoAmount(largest.coin.amount, 'coin amount'),
     );
     return {
       coinId: bytesToHex(coin.coinId()),
       address: displayAddress,
       puzzleHash: ensure0xHex(puzzleHashHex),
-      amount: BigInt(largest.coin.amount),
+      amount: parseMojoAmount(largest.coin.amount, 'coin amount'),
     };
   }
 }
@@ -198,7 +199,10 @@ function normalizeWalletAddress(
 function pickLargest(records: ReadonlyArray<CoinRecord>): CoinRecord {
   let best = records[0];
   for (const r of records.slice(1)) {
-    if (r.coin.amount > best.coin.amount) best = r;
+    if (
+      parseMojoAmount(r.coin.amount, 'coin amount') >
+      parseMojoAmount(best.coin.amount, 'coin amount')
+    ) best = r;
   }
   return best;
 }

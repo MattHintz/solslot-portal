@@ -102,6 +102,16 @@ describe('WalletCoinPickerService', () => {
     };
   }
 
+  function makeUnsafeAmountRecord(amount: unknown): CoinRecord {
+    return {
+      ...makeRecord(1),
+      coin: {
+        ...makeRecord(1).coin,
+        amount: amount as number,
+      },
+    };
+  }
+
   it('Sage path: bech32 wallet address → decode → coinset → largest coin id', async () => {
     coinsetSpy.getCoinRecordsByPuzzleHash.and.resolveTo([
       makeRecord(100),
@@ -233,5 +243,16 @@ describe('WalletCoinPickerService', () => {
     const result = await service.pickLargestUnspentCoinId();
     expect(result.amount).toBe(42n);
     expect(coinCtorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects unsafe coin amounts returned by coinset before coin-id math', async () => {
+    coinsetSpy.getCoinRecordsByPuzzleHash.and.resolveTo([
+      makeUnsafeAmountRecord(Number.MAX_SAFE_INTEGER + 1),
+    ]);
+    const service = TestBed.inject(WalletCoinPickerService);
+    await expectAsync(service.pickLargestUnspentCoinId()).toBeRejectedWithError(
+      /safe integer mojo amount/,
+    );
+    expect(coinCtorSpy).not.toHaveBeenCalled();
   });
 });

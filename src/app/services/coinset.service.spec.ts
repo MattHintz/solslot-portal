@@ -114,4 +114,23 @@ describe('CoinsetService.pushTransaction', () => {
     req.flush({ success: false });
     await expectAsync(promise).toBeRejectedWithError(/unknown/);
   });
+
+  it('rejects unsafe mojo amounts before push_tx serialization', async () => {
+    const unsafe: PushTxSpendBundle = {
+      ...SAMPLE_BUNDLE,
+      coinSpends: [
+        {
+          ...SAMPLE_BUNDLE.coinSpends[0],
+          coin: {
+            ...SAMPLE_BUNDLE.coinSpends[0].coin,
+            amount: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+          },
+        },
+      ],
+    };
+    await expectAsync(service.pushTransaction(unsafe)).toBeRejectedWithError(
+      /safe integer range/,
+    );
+    http.expectNone(`${environment.coinsetRpc}/push_tx`);
+  });
 });

@@ -4,6 +4,7 @@ import {
   MintProposalState,
   ProposeMintRequest,
 } from './admin-api.service';
+import { canonicalizeMintPropertyId } from '../utils/mint-property-id';
 
 const STORAGE_KEY = 'populis_mint_drafts_v1';
 
@@ -60,13 +61,14 @@ export class MintDraftStorageService {
   create(req: ProposeMintRequest, ownerPubkey: string): MintProposalResponse {
     const id = newId();
     const now = nowSeconds();
+    const propertyId = canonicalizeMintPropertyId(req.property_id);
     const proposal: MintProposalResponse = {
       id,
       owner_pubkey: ownerPubkey,
       state: 'DRAFT' as MintProposalState,
       par_value: req.par_value,
       asset_class: req.asset_class,
-      property_id: req.property_id,
+      property_id: propertyId,
       jurisdiction: req.jurisdiction,
       royalty_puzhash: req.royalty_puzhash,
       royalty_bps: req.royalty_bps,

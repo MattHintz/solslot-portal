@@ -288,6 +288,25 @@ describe('ChiaWalletService.signSpendBundle', () => {
     );
   });
 
+  it('rejects unsafe coin spend amounts before wallet serialization', async () => {
+    setConnectedState('goby');
+    const mock = installMockWallet('chia', () => SAMPLE_SIG);
+    cleanup.push(mock.uninstall);
+
+    await expectAsync(
+      service.signSpendBundle([
+        {
+          ...SAMPLE_COIN_SPENDS[0],
+          coin: {
+            ...SAMPLE_COIN_SPENDS[0].coin,
+            amount: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+          },
+        },
+      ]),
+    ).toBeRejectedWithError(/safe integer range/);
+    expect(mock.calls.length).toBe(0);
+  });
+
   // ───────────────────────────────────────────────────────────────────
   // Wire format
   // ───────────────────────────────────────────────────────────────────
@@ -381,6 +400,20 @@ describe('ChiaWalletService.signSpendBundle', () => {
           amount: 0,
         }),
       ).toBeRejectedWithError(/>= 1 mojo/);
+    });
+
+    it('rejects unsafe transfer amounts before wallet RPC', async () => {
+      setConnectedState('goby');
+      const mock = installMockWallet('chia', () => SAMPLE_SIG);
+      cleanup.push(mock.uninstall);
+
+      await expectAsync(
+        service.transfer({
+          targetPuzzleHash: '0x' + 'aa'.repeat(32),
+          amount: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+        }),
+      ).toBeRejectedWithError(/safe integer range/);
+      expect(mock.calls.length).toBe(0);
     });
 
     it('throws when not connected', async () => {

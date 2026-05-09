@@ -2,9 +2,10 @@ import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { ProposeMintRequest } from '../../../services/admin-api.service';
-import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
+import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
+import { ProposeMintRequest } from '../../../services/admin-api.service';
+import { canonicalizeMintPropertyId } from '../../../utils/mint-property-id';
 import { formatError } from '../../../utils/format-error';
 
 /**
@@ -321,7 +322,7 @@ export class MintNewComponent {
     return {
       par_value: parValue,
       asset_class: this.assetClass.trim(),
-      property_id: this.propertyId.trim(),
+      property_id: canonicalizeMintPropertyId(this.propertyId),
       jurisdiction: this.jurisdiction.trim(),
       royalty_puzhash: royaltyPuzhash,
       royalty_bps: royaltyBps,

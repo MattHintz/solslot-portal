@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
+import { mojoAmountToSafeNumber } from '../utils/mojo-amount';
 
 /**
  * Direct read/write client for coinset.org's Chia full-node RPC.
@@ -203,10 +204,7 @@ export class CoinsetService {
         coin: {
           parent_coin_info: normalizeHex(cs.coin.parentCoinInfo),
           puzzle_hash: normalizeHex(cs.coin.puzzleHash),
-          amount:
-            typeof cs.coin.amount === 'bigint'
-              ? Number(cs.coin.amount)
-              : cs.coin.amount,
+          amount: mojoAmountToSafeNumber(cs.coin.amount, 'coin amount'),
         },
         puzzle_reveal: normalizeHex(cs.puzzleReveal),
         solution: normalizeHex(cs.solution),
