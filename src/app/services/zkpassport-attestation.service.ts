@@ -31,6 +31,16 @@ export interface AttestationBridgeMessageInput {
   policyVersion?: number;
 }
 
+export interface ValidatorBridgeMessageInput extends AttestationBridgeMessageInput {
+  bridgeMessage: string | Uint8Array;
+  attestationLeafHash: string | Uint8Array;
+  scopedNullifier: string | Uint8Array;
+  nullifierType: number;
+  serviceScopeHash: string | Uint8Array;
+  serviceSubscopeHash: string | Uint8Array;
+  proofTimestamp: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ZkPassportAttestationService {
   computeVaultSubscope(vaultLauncherId: string | Uint8Array): string {
@@ -83,6 +93,27 @@ export class ZkPassportAttestationService {
       treeHashAtom(bytes32(input.vaultLauncherId, 'vaultLauncherId')),
       treeHashAtom(bytes32(input.attestationRoot, 'attestationRoot')),
       treeHashAtom(bytes32(input.bridgePolicyHash, 'bridgePolicyHash')),
+    ];
+    return bytesToHex(treeHashListFromHashes(hashes));
+  }
+
+  computeValidatorBridgeMessage(input: ValidatorBridgeMessageInput): string {
+    const policyVersion = input.policyVersion ?? ZKPASSPORT_POLICY_VERSION;
+    assertUint(policyVersion, 0xffff, 'policyVersion');
+    assertUint(input.nullifierType, 0xffff, 'nullifierType');
+    assertUint(input.proofTimestamp, Number.MAX_SAFE_INTEGER, 'proofTimestamp');
+    const hashes = [
+      treeHashAtom(uintBytes32(policyVersion)),
+      treeHashAtom(bytes32(input.vaultLauncherId, 'vaultLauncherId')),
+      treeHashAtom(bytes32(input.attestationRoot, 'attestationRoot')),
+      treeHashAtom(bytes32(input.bridgePolicyHash, 'bridgePolicyHash')),
+      treeHashAtom(bytes32(input.bridgeMessage, 'bridgeMessage')),
+      treeHashAtom(bytes32(input.attestationLeafHash, 'attestationLeafHash')),
+      treeHashAtom(bytes32(input.scopedNullifier, 'scopedNullifier')),
+      treeHashAtom(uintBytes32(input.nullifierType)),
+      treeHashAtom(bytes32(input.serviceScopeHash, 'serviceScopeHash')),
+      treeHashAtom(bytes32(input.serviceSubscopeHash, 'serviceSubscopeHash')),
+      treeHashAtom(uintBytes32(input.proofTimestamp)),
     ];
     return bytesToHex(treeHashListFromHashes(hashes));
   }
@@ -172,6 +203,17 @@ function uintAtom(value: number): Uint8Array {
     bytes.unshift(0);
   }
   return new Uint8Array(bytes);
+}
+
+function uintBytes32(value: number): Uint8Array {
+  assertUint(value, Number.MAX_SAFE_INTEGER, 'value');
+  const out = new Uint8Array(32);
+  let remaining = value;
+  for (let i = 31; i >= 0 && remaining > 0; i--) {
+    out[i] = remaining & 0xff;
+    remaining = Math.floor(remaining / 256);
+  }
+  return out;
 }
 
 function assertUint(value: number, max: number, name: string): void {

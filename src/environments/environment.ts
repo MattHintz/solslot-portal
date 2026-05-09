@@ -60,6 +60,18 @@ export const environment = {
    */
   eip712ChainId: 1,
 
+  zkPassport: {
+    verificationUrl: '',
+    evmRpcUrl: '',
+    attestationEmitterAddress: '',
+    attestationEmitterFromBlock: 0,
+    evmPollTimeoutMs: 120_000,
+    bridgeParentId: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    bridgeAmount: 1,
+    validatorPubkeys: [] as string[],
+    validatorThreshold: 0,
+  },
+
   /**
    * Populis Protocol on-chain singleton coordinates (operator-specific).
    *

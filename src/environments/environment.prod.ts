@@ -5,6 +5,17 @@ export const environment = {
   chiaNetwork: 'testnet11' as 'testnet11' | 'mainnet',
   walletConnectProjectId: '',
   eip712ChainId: 1,
+  zkPassport: {
+    verificationUrl: '',
+    evmRpcUrl: '',
+    attestationEmitterAddress: '',
+    attestationEmitterFromBlock: 0,
+    evmPollTimeoutMs: 120_000,
+    bridgeParentId: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    bridgeAmount: 1,
+    validatorPubkeys: [] as string[],
+    validatorThreshold: 0,
+  },
   /**
    * On-chain singleton coordinates.  See environment.ts for full
    * documentation; mirror the same shape so prod builds compile.

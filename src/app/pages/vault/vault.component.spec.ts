@@ -4,6 +4,10 @@ import { provideRouter } from '@angular/router';
 
 import { VaultState } from '../../services/populis-api.service';
 import { SessionService } from '../../services/session.service';
+import {
+  ZkPassportEvmAttestationPollerService,
+  ZkPassportEvmPollResult,
+} from '../../services/zkpassport-evm-attestation-poller.service';
 import { VaultComponent } from './vault.component';
 
 const VAULT_LAUNCHER_ID = '0x' + '11'.repeat(32);
@@ -24,12 +28,70 @@ function vaultState(currentCoinId: string | null = VAULT_COIN_ID): VaultState {
   };
 }
 
+function foundResult(): ZkPassportEvmPollResult {
+  const bridgeMessage = '0x8de348f6526b3bcc752ca1b524f3288c91ddbeb0f9d3451390ffbb0609565a71';
+  const validatorMessage = '0xe4d2cc41e0f242efbba2b832a54cabab2495bccf100a341cef64b27f4eb67c76';
+  return {
+    kind: 'found',
+    checkedAtMs: 1,
+    event: {
+      sender: '0x0e61d3bb1148bdd802f747caea112333d156626a',
+      vaultLauncherId: VAULT_LAUNCHER_ID,
+      scopedNullifier: '0x' + '22'.repeat(32),
+      nullifierType: 1,
+      serviceScopeHash: '0x' + '33'.repeat(32),
+      serviceSubscopeHash: '0x' + '44'.repeat(32),
+      proofTimestamp: 1_779_120_000,
+      attestationLeafHash: '0x41950d187f655ae494bcdea426d643d3a21734ae9d3311c34477eb836867fcf7',
+      attestationRoot: '0x41950d187f655ae494bcdea426d643d3a21734ae9d3311c34477eb836867fcf7',
+      bridgeMessage,
+      bridgePolicyHash: '0x' + '55'.repeat(32),
+      policyVersion: 1,
+    },
+    enrollment: {
+      vaultLauncherId: VAULT_LAUNCHER_ID,
+      vaultSubscope: `vault:${VAULT_LAUNCHER_ID}`,
+      scopedNullifier: '0x' + '22'.repeat(32),
+      nullifierType: 1,
+      serviceScopeHash: '0x' + '33'.repeat(32),
+      serviceSubscopeHash: '0x' + '44'.repeat(32),
+      proofTimestamp: 1_779_120_000,
+      attestationLeafHash: '0x41950d187f655ae494bcdea426d643d3a21734ae9d3311c34477eb836867fcf7',
+      newIdentityAttestRoot: '0x41950d187f655ae494bcdea426d643d3a21734ae9d3311c34477eb836867fcf7',
+      attestationProof: { bitpath: 0, siblings: [] },
+      bridgePolicyHash: '0x' + '55'.repeat(32),
+      bridgeParentId: '0x' + '66'.repeat(32),
+      bridgeAmount: 1,
+      bridgeCoinId: '0x' + '77'.repeat(32),
+      bridgeMessage,
+      bridgeAnnouncementPayload: `0x50${bridgeMessage.slice(2)}`,
+      validatorMessage,
+    },
+    bridgeSpendPackage: {
+      status: 'threshold_ready',
+      backendSigning: false,
+      requiredSignatures: 2,
+      signerIndices: [0, 2],
+      validatorMessage,
+      signatures: [],
+      bridgeCoin: {
+        parentId: '0x' + '66'.repeat(32),
+        puzzleHash: '0x' + '55'.repeat(32),
+        amount: 1,
+        coinId: '0x' + '77'.repeat(32),
+      },
+    },
+  };
+}
+
 describe('VaultComponent zkPassport enrollment preview', () => {
   let fixture: ComponentFixture<VaultComponent>;
   let component: VaultComponent;
   let sessionMock: Pick<SessionService, 'session' | 'vault' | 'refreshVault'>;
+  let evmPollerMock: jasmine.SpyObj<ZkPassportEvmAttestationPollerService>;
 
   beforeEach(async () => {
+    localStorage.clear();
     sessionMock = {
       session: signal({
         authType: 'evm',
@@ -41,41 +103,49 @@ describe('VaultComponent zkPassport enrollment preview', () => {
       vault: signal(vaultState()),
       refreshVault: async () => vaultState(),
     } as unknown as Pick<SessionService, 'session' | 'vault' | 'refreshVault'>;
+    evmPollerMock = jasmine.createSpyObj<ZkPassportEvmAttestationPollerService>(
+      'ZkPassportEvmAttestationPollerService',
+      ['pollOnce', 'proofLaunchUrl'],
+    );
+    evmPollerMock.proofLaunchUrl.and.returnValue(null);
 
     await TestBed.configureTestingModule({
       imports: [VaultComponent],
       providers: [
         provideRouter([]),
         { provide: SessionService, useValue: sessionMock },
+        { provide: ZkPassportEvmAttestationPollerService, useValue: evmPollerMock },
       ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(VaultComponent);
     component = fixture.componentInstance;
-    component.enroll = {
-      scopedNullifier: '0x' + '22'.repeat(32),
-      nullifierType: 1,
-      serviceScopeHash: '0x' + '33'.repeat(32),
-      serviceSubscopeHash: '0x' + '44'.repeat(32),
-      proofTimestamp: 1_779_120_000,
-      bridgePolicyHash: '0x' + '55'.repeat(32),
-      bridgeParentId: '0x' + '66'.repeat(32),
-      bridgeAmount: 1,
-    };
     fixture.detectChanges();
   });
 
   afterEach(() => {
     fixture.destroy();
+    localStorage.clear();
   });
 
-  it('renders the enrollment preview card for an active vault', () => {
+  it('renders the event-driven enrollment card without manual bridge fields', () => {
     expect(fixture.nativeElement.textContent).toContain('zkPassport enrollment');
     expect(fixture.nativeElement.textContent).toContain(`vault:${VAULT_LAUNCHER_ID}`);
+    expect(fixture.nativeElement.textContent).not.toContain('Scoped nullifier');
+    expect(fixture.nativeElement.textContent).not.toContain('Bridge parent id');
   });
 
-  it('builds canonical enrollment preview data from verifier and bridge inputs', () => {
-    component.buildEnrollmentPreview();
+  it('shows pending while waiting for the EVM attestation event', async () => {
+    evmPollerMock.pollOnce.and.resolveTo({ kind: 'pending', checkedAtMs: 1 });
+    await component.checkZkPassportAttestation();
+    fixture.detectChanges();
+    expect(component.enrollmentStatus()).toBe('attestation_pending');
+    expect(fixture.nativeElement.textContent).toContain('Waiting for the EVM');
+  });
+
+  it('builds canonical enrollment preview data from a polled EVM event', async () => {
+    evmPollerMock.pollOnce.and.resolveTo(foundResult());
+    await component.checkZkPassportAttestation();
     const preview = component.enrollmentPreview();
     expect(preview).not.toBeNull();
     expect(component.enrollmentStatus()).toBe('preview_ready');
@@ -83,20 +153,40 @@ describe('VaultComponent zkPassport enrollment preview', () => {
     expect(preview?.spendCase).toBe('0x7a');
     expect(preview?.vaultLauncherId).toBe(VAULT_LAUNCHER_ID);
     expect(preview?.vaultCoinId).toBe(VAULT_COIN_ID);
-    expect(preview?.attestationLeafHash).toBe(
-      '0x41950d187f655ae494bcdea426d643d3a21734ae9d3311c34477eb836867fcf7',
-    );
     expect(preview?.newIdentityAttestRoot).toBe(preview?.attestationLeafHash);
-    expect(preview?.bridgeMessage).toBe(
-      '0x8de348f6526b3bcc752ca1b524f3288c91ddbeb0f9d3451390ffbb0609565a71',
-    );
     expect(preview?.bridgeAnnouncementPayload).toBe(`0x50${preview?.bridgeMessage.slice(2)}`);
     expect(preview?.assertedCoinAnnouncement).toMatch(/^0x[0-9a-f]{64}$/);
-    expect(component.enrollmentPreviewJson()).toContain('assertedCoinAnnouncement');
+    expect(preview?.bridgeSpendPackage.backendSigning).toBeFalse();
+    expect(preview?.bridgeSpendPackage.status).toBe('threshold_ready');
+    expect(component.enrollmentPreviewJson()).toContain('validatorMessage');
   });
 
-  it('marks a ready preview as submit pending without broadcasting', () => {
-    component.buildEnrollmentPreview();
+  it('surfaces malformed EVM events clearly', async () => {
+    evmPollerMock.pollOnce.and.resolveTo({
+      kind: 'malformed',
+      checkedAtMs: 1,
+      reason: 'event bridge message does not match commitments',
+    });
+    await component.checkZkPassportAttestation();
+    expect(component.enrollmentStatus()).toBe('malformed');
+    expect(component.enrollmentPreview()).toBeNull();
+    expect(component.enrollmentError()).toContain('bridge message');
+  });
+
+  it('surfaces attestation polling timeout', async () => {
+    evmPollerMock.pollOnce.and.resolveTo({
+      kind: 'timeout',
+      checkedAtMs: 10_000,
+      elapsedMs: 10_000,
+    });
+    await component.checkZkPassportAttestation();
+    expect(component.enrollmentStatus()).toBe('timeout');
+    expect(component.enrollmentError()).toContain('Timed out');
+  });
+
+  it('marks a ready preview as submit pending without broadcasting', async () => {
+    evmPollerMock.pollOnce.and.resolveTo(foundResult());
+    await component.checkZkPassportAttestation();
     component.markEnrollmentSubmitPending();
     expect(component.enrollmentStatus()).toBe('submit_pending');
     const stored = JSON.parse(
@@ -105,17 +195,21 @@ describe('VaultComponent zkPassport enrollment preview', () => {
     expect(stored[VAULT_LAUNCHER_ID]).toBeTruthy();
   });
 
-  it('rejects preview building before the current vault coin is known', () => {
+  it('rejects checking before the current vault coin is known', async () => {
     sessionMock.vault.set(vaultState(null));
-    component.buildEnrollmentPreview();
+    await component.checkZkPassportAttestation();
     expect(component.enrollmentPreview()).toBeNull();
     expect(component.enrollmentError()).toContain('current coin id');
+    expect(evmPollerMock.pollOnce).not.toHaveBeenCalled();
   });
 
-  it('clears preview and error state', () => {
-    component.buildEnrollmentPreview();
+  it('clears preview, proof URL, and error state', async () => {
+    evmPollerMock.pollOnce.and.resolveTo(foundResult());
+    await component.checkZkPassportAttestation();
+    component.zkPassportProofUrl.set('https://zkpassport.example');
     component.clearEnrollmentPreview();
     expect(component.enrollmentPreview()).toBeNull();
+    expect(component.zkPassportProofUrl()).toBeNull();
     expect(component.enrollmentError()).toBeNull();
     expect(component.enrollmentStatus()).toBe('idle');
   });

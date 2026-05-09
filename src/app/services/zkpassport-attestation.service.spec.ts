@@ -14,6 +14,7 @@ const PROOF_TIMESTAMP = 1_779_120_000;
 const EXPECTED_LEAF = '0x41950d187f655ae494bcdea426d643d3a21734ae9d3311c34477eb836867fcf7';
 const EXPECTED_ROOT_THREE = '0xf332e579325ab8b0248928ca5e462adad87c2b8528588c92e45fb73c978bff34';
 const EXPECTED_BRIDGE_MESSAGE = '0x8de348f6526b3bcc752ca1b524f3288c91ddbeb0f9d3451390ffbb0609565a71';
+const EXPECTED_VALIDATOR_MESSAGE = '0xe4d2cc41e0f242efbba2b832a54cabab2495bccf100a341cef64b27f4eb67c76';
 const EXPECTED_PAIR_ROOT = '0x2c66600c9d6ab5196b84e5fb389401569af0f4ebcfdac5ce763f4ec34c4c435f';
 
 function attestationInput() {
@@ -80,6 +81,23 @@ describe('ZkPassportAttestationService', () => {
       bridgePolicyHash: '0x' + '56'.repeat(32),
     });
     expect(a).not.toBe(b);
+  });
+
+  it('computes the canonical validator bridge message', () => {
+    expect(
+      service.computeValidatorBridgeMessage({
+        vaultLauncherId: VAULT_LAUNCHER_ID,
+        attestationRoot: EXPECTED_LEAF,
+        bridgePolicyHash: BRIDGE_POLICY_HASH,
+        bridgeMessage: EXPECTED_BRIDGE_MESSAGE,
+        attestationLeafHash: EXPECTED_LEAF,
+        scopedNullifier: SCOPED_NULLIFIER,
+        nullifierType: 1,
+        serviceScopeHash: SERVICE_SCOPE_HASH,
+        serviceSubscopeHash: SERVICE_SUBSCOPE_HASH,
+        proofTimestamp: PROOF_TIMESTAMP,
+      }),
+    ).toBe(EXPECTED_VALIDATOR_MESSAGE);
   });
 
   it('verifies low-bit-first merkle proofs', () => {
