@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { adminAuthGuard } from './services/admin-auth.guard';
+import { adminBootstrapLaunchGuard } from './services/admin-bootstrap-launch.guard';
 
 export const routes: Routes = [
   {
@@ -84,7 +85,7 @@ export const routes: Routes = [
     // records + MIPS root).  Preview-only for now — actual on-chain
     // submission lands in D-2.5/D-2.6.
     path: 'admin/launch-authority-v2',
-    canActivate: [adminAuthGuard],
+    canActivate: [adminBootstrapLaunchGuard],
     loadComponent: () =>
       import(
         './pages/admin/launch-authority-v2/launch-authority-v2.component'
