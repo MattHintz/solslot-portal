@@ -106,7 +106,7 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | 'bootstrap-status' | 'boo
             <button
               type="button"
               class="btn btn--primary"
-              [disabled]="busy() || bootstrapStatus()?.locked === true"
+              [disabled]="busy() || bootstrapLocked()"
               (click)="startBootstrapSession()"
             >
               @if (pendingAction() === 'bootstrap-session') {
@@ -116,6 +116,12 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | 'bootstrap-status' | 'boo
               }
             </button>
           </div>
+          @if (bootstrapLocked()) {
+            <p class="text-xs text-text-muted mt-3">
+              Bootstrap is finalized. Starting a new bootstrap session is disabled;
+              continue with the recorded first-admin wallet through permanent admin login.
+            </p>
+          }
         </div>
 
         <div class="card">
@@ -222,17 +228,41 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | 'bootstrap-status' | 'boo
       }
 
       @if (bootstrapStatus(); as b) {
-        <div class="card mt-6 border border-white/10">
-          <h3 class="font-display text-xl">Bootstrap session</h3>
+        <div
+          class="card mt-6 border"
+          [ngClass]="b.locked ? 'border-green-500/40 bg-green-500/10' : 'border-white/10'"
+        >
+          <h3 class="font-display text-xl">
+            @if (b.locked) {
+              Bootstrap finalized
+            } @else {
+              Bootstrap session
+            }
+          </h3>
           <p class="text-sm mt-1">
             @if (b.locked) {
-              Bootstrapper locked after successful recordation.
+              Bootstrapper locked after successful recordation. The public
+              <code>admin_records.json</code>,
+              <code>portal_runtime_config.json</code>, and
+              <code>bootstrap_manifest.json</code> artifacts are now the
+              durable bootstrap record.
             } @else if (b.authenticated) {
               Bootstrap session active.
             } @else {
               No active bootstrap session cookie.
             }
           </p>
+          @if (b.locked) {
+            <p class="text-sm text-text-muted mt-2">
+              The temporary bootstrap path is complete. Use permanent admin login
+              with the recorded admin slot 0 wallet; do not start another
+              bootstrap ceremony.
+            </p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <a routerLink="/admin/login" class="btn btn--primary">Permanent admin login</a>
+              <a routerLink="/admin" class="btn btn--ghost">Open Admin desk</a>
+            </div>
+          }
           @if (b.expires_at) {
             <p class="mono text-xs text-text-muted mt-2">Expires at {{ b.expires_at }}</p>
           }
@@ -269,6 +299,7 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | 'bootstrap-status' | 'boo
             <button type="button" class="btn btn--ghost" (click)="copyManifest()">Copy manifest</button>
             @if (bootstrapStatus()?.locked === true) {
               <span class="btn btn--primary opacity-50 cursor-not-allowed">First-admin launch locked</span>
+              <a routerLink="/admin/login" class="btn btn--ghost">Continue with permanent admin login</a>
             } @else {
               <a routerLink="/admin/launch-authority-v2" class="btn btn--primary">Next: launch first admin authority</a>
             }
@@ -330,6 +361,7 @@ export class GenesisComponent {
   readonly copyMessage = signal<string | null>(null);
 
   readonly busy = computed(() => this.pendingAction() !== null);
+  readonly bootstrapLocked = computed(() => this.bootstrapStatus()?.locked === true);
   readonly manifestJson = computed(() => {
     const manifest = this.deployResult()?.manifest ?? this.status()?.manifest ?? null;
     return manifest ? JSON.stringify(manifest, null, 2) : '';
@@ -349,6 +381,7 @@ export class GenesisComponent {
   }
 
   async startBootstrapSession(): Promise<void> {
+    if (this.bootstrapLocked()) return;
     await this.run('bootstrap-session', async () => {
       const session = await this.bootstrap.startBootstrapSession(this.tokenInput());
       this.bootstrapStatus.set({

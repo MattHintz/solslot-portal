@@ -109,9 +109,39 @@ describe('GenesisComponent', () => {
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Bootstrap finalized');
     expect(text).toContain('Bootstrapper locked after successful recordation');
+    expect(text).toContain('admin_records.json');
+    expect(text).toContain('portal_runtime_config.json');
+    expect(text).toContain('bootstrap_manifest.json');
+    expect(text).toContain('temporary bootstrap path is complete');
+    expect(text).toContain('Permanent admin login');
+    expect(text).toContain('Open Admin desk');
     expect(text).toContain('First-admin launch locked');
+    expect(text).toContain('Continue with permanent admin login');
     expect(text).not.toContain('Next: launch first admin authority');
+  });
+
+  it('does not start a bootstrap session after finalization is known', async () => {
+    component.bootstrapStatus.set({ locked: true, authenticated: false });
+    component.tokenInput.set('genesis-token');
+    fixture.detectChanges();
+
+    await component.startBootstrapSession();
+
+    expect(bootstrap.startBootstrapSession).not.toHaveBeenCalled();
+    expect(component.bootstrapStatus()).toEqual({ locked: true, authenticated: false });
+  });
+
+  it('does not persist bootstrap status or post-finalize state in browser storage', async () => {
+    const setItem = spyOn(Storage.prototype, 'setItem').and.callThrough();
+    bootstrap.getBootstrapStatus.and.resolveTo({ locked: true, authenticated: false });
+
+    await component.checkBootstrapStatus();
+    fixture.detectChanges();
+
+    expect(component.bootstrapLocked()).toBeTrue();
+    expect(setItem).not.toHaveBeenCalled();
   });
 
   it('checks the current deployment with the pasted token', async () => {
