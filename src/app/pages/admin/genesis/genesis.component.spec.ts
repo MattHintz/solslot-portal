@@ -33,6 +33,28 @@ describe('GenesisComponent', () => {
     fixture.detectChanges();
   });
 
+  it('states that base genesis does not create the first admin', () => {
+    const text = fixture.nativeElement.textContent as string;
+
+    expect(text).toContain('Bootstrap boundary');
+    expect(text).toContain('does not create admin slot 0');
+    expect(text).toContain('does not make the token holder a protocol admin');
+    expect(text).toContain('admin_authority_v2');
+    expect(text).toContain('bind the intended wallet as admin slot 0');
+  });
+
+  it('keeps the manifest next step pointed at first-admin authority launch', () => {
+    component.deployResult.set({
+      spend_bundle_id: null,
+      pushed: false,
+      manifest: { pool_launcher_id: '0x' + '11'.repeat(32) },
+    });
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Next: launch first admin authority');
+  });
+
   it('checks the current deployment with the pasted token', async () => {
     const status: GenesisDeploymentStatus = { deployed: false, manifest: null };
     genesis.getDeployment.and.resolveTo(status);

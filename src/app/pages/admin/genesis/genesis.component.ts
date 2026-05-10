@@ -40,6 +40,21 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | null;
         </div>
       </header>
 
+      <div class="card mt-8 border border-yellow-500/30 bg-yellow-500/10">
+        <h2 class="font-display text-2xl">Bootstrap boundary</h2>
+        <p class="text-sm text-text-muted mt-2">
+          This base genesis deploy does not create admin slot 0 and does not
+          make the token holder a protocol admin. The token is operator
+          authority for the one-shot deploy endpoint only.
+        </p>
+        <p class="text-sm text-text-muted mt-2">
+          The first admin must be launched separately at
+          <code>admin_authority_v2</code> genesis. After the base manifest is
+          correct, continue to the first-admin authority launch and bind the
+          intended wallet as admin slot 0.
+        </p>
+      </div>
+
       <div class="grid gap-6 lg:grid-cols-[1fr_1fr] mt-10">
         <div class="card">
           <h2 class="font-display text-2xl">Operator token</h2>
