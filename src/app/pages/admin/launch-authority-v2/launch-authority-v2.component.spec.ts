@@ -111,7 +111,7 @@ describe('LaunchAuthorityV2Component', () => {
     expect(component.launchAccessMode()).toBe('permanent-admin');
     expect(bootstrap.getBootstrapStatus).not.toHaveBeenCalled();
     expect(text).toContain('← Admin desk');
-    expect(text).not.toContain('Temporary bootstrap access');
+    expect(text).not.toContain('Genesis bootstrap access');
   });
 
   it('shows temporary bootstrap warning for unlocked bootstrap access', async () => {
@@ -127,8 +127,11 @@ describe('LaunchAuthorityV2Component', () => {
 
     expect(component.launchAccessMode()).toBe('bootstrap');
     expect(bootstrap.getBootstrapStatus).toHaveBeenCalledOnceWith();
-    expect(text).toContain('← Genesis bootstrap');
-    expect(text).toContain('Temporary bootstrap access');
+    expect(text).toContain('← Genesis ceremony');
+    expect(text).toContain('Create first-admin authority');
+    expect(text).toContain('Continue the same genesis ceremony');
+    expect(text).toContain('Genesis bootstrap access');
+    expect(text).toContain('This first-admin step was opened');
     expect(text).toContain('not permanent admin authority');
     expect(text).toContain('does not open the normal Admin Desk');
     expect(text).toContain('Bootstrap session expires at 1234');
@@ -289,7 +292,7 @@ describe('LaunchAuthorityV2Component', () => {
     fixture.detectChanges();
 
     expect(component.canFinalizeBootstrap()).toBeFalse();
-    expect(fixture.nativeElement.textContent).not.toContain('Finalize bootstrap artifacts');
+    expect(fixture.nativeElement.textContent).not.toContain('Finalize genesis artifacts');
     expect(bootstrap.finalizeBootstrap).not.toHaveBeenCalled();
   });
 
@@ -301,7 +304,7 @@ describe('LaunchAuthorityV2Component', () => {
     fixture.detectChanges();
 
     expect(component.canFinalizeBootstrap()).toBeFalse();
-    expect(fixture.nativeElement.textContent).not.toContain('Finalize bootstrap artifacts');
+    expect(fixture.nativeElement.textContent).not.toContain('Finalize genesis artifacts');
   });
 
   it('shows the finalize action in bootstrap mode after launch + first admin', async () => {
@@ -313,8 +316,9 @@ describe('LaunchAuthorityV2Component', () => {
     const text = fixture.nativeElement.textContent as string;
     expect(component.launchAccessMode()).toBe('bootstrap');
     expect(component.canFinalizeBootstrap()).toBeTrue();
-    expect(text).toContain('Bootstrap finalize · public artifacts');
-    expect(text).toContain('Finalize bootstrap artifacts');
+    expect(text).toContain('Finish genesis · public artifacts');
+    expect(text).toContain('Finalize genesis artifacts');
+    expect(text).toContain('finish the genesis ceremony');
     expect(text).toContain('No raw signatures, session cookies, or one-shot tokens are sent');
   });
 
@@ -361,7 +365,7 @@ describe('LaunchAuthorityV2Component', () => {
     expect(component.launchAccessMode()).toBe('locked');
 
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Finalized · bootstrapper locked');
+    expect(text).toContain('Genesis finalized · bootstrapper locked');
     expect(text).toContain('bootstrap_manifest.json');
     expect(text).toContain('portal_runtime_config.json');
     // The page legitimately contains the word "signature" in the

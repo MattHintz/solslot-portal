@@ -73,13 +73,13 @@ lookup.
 
 ### Operator/admin flow
 
-- **Genesis bootstrap** — `/admin/genesis` can deploy the base protocol
-  manifest with the one-shot operator token, start a short-lived
-  bootstrap session cookie, and route into first-admin launch before any
-  permanent admin exists. After first-admin launch is finalized,
-  `bootstrap_manifest.json` locks the bootstrapper; the page disables new
-  bootstrap sessions, hides the first-admin launch CTA, names the public
-  artifacts, and points operators to permanent admin login.
+- **Genesis ceremony** — `/admin/genesis` starts the full genesis flow:
+  deploy the base protocol manifest with the one-shot operator token,
+  start a short-lived bootstrap session cookie, continue into first-admin
+  authority creation, and finalize public artifacts. The token holder does
+  not become admin automatically; the selected wallet is bound as admin
+  slot `0`. After finalization, `bootstrap_manifest.json` locks the
+  bootstrapper and the page hands off to permanent admin login.
 - **Admin login** — local EIP-712 `PopulisAdminLogin` signature, pubkey
   recovery in the browser, and membership check against the pinned
   1-of-1 v2 MIPS root or fallback EVM address allowlist. No
@@ -89,14 +89,14 @@ lookup.
   values when the protocol announcement can be replayed. Inner curry
   fields such as quorum lists are still placeholders until client-side
   uncurry support lands.
-- **Admin-authority-v2 launch** — the wizard computes the v2 inner
-  puzzle hash, launcher id, eve coin, state hash, and records JSON in
-  WASM, asks Goby/Sage to sign the funding spend, combines it with the
-  permissionless launcher spend, and pushes the bundle directly to
-  coinset.org. When opened through temporary bootstrap access, it can
-  finalize the public bootstrap artifacts through
-  `POST /admin/bootstrap/finalize` using cookie credentials only, with no
-  bearer token or browser storage persistence.
+- **First-admin authority creation, genesis-only** —
+  `/admin/launch-authority-v2` computes the v2 inner puzzle hash, launcher
+  id, eve coin, state hash, and records JSON in WASM, asks Goby/Sage to
+  sign the funding spend, combines it with the permissionless launcher
+  spend, and pushes the bundle directly to coinset.org. When opened
+  through temporary bootstrap access, it finalizes the public bootstrap
+  artifacts through `POST /admin/bootstrap/finalize` using cookie
+  credentials only, with no bearer token or browser storage persistence.
 - **Mint proposals** — current UI creates and lists browser-local DRAFT
   records in `localStorage`. Computed deed/proposal hashes, on-chain
   proposal ids, PGT voting, publish, and execute are not wired in this
@@ -135,10 +135,10 @@ lookup.
 | `/connect` | Connect EVM or Chia wallet. |
 | `/create-vault` | Discover an existing vault or call the faucet API to create one. |
 | `/vault` | Current vault view backed by chain discovery. |
-| `/admin/genesis` | One-shot base protocol deploy, temporary bootstrap-session start/status, and locked post-finalize handoff to permanent admin login. |
+| `/admin/genesis` | Full genesis ceremony entry: base protocol deploy, temporary bootstrap-session start/status, first-admin authority handoff, and locked post-finalize permanent-admin handoff. |
 | `/admin/login` | Browser-only admin login. |
 | `/admin` | Operator dashboard for browser-local mint drafts. |
-| `/admin/launch-authority-v2` | Build, wallet-sign, and push the v2 admin-authority launch bundle; temporary bootstrap mode can finalize public bootstrap artifacts afterward. |
+| `/admin/launch-authority-v2` | Genesis-only first-admin authority step: build, wallet-sign, push the v2 authority launch bundle, and finalize public bootstrap artifacts in temporary bootstrap mode. |
 | `/admin/trust-roots` | Read configured trust-root singleton state from coinset.org. |
 | `/admin/mint/new` | Create a local DRAFT mint proposal. |
 | `/admin/mint/:id` | Inspect or cancel a local DRAFT; publish/execute are disabled. |

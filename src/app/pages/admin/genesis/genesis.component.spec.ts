@@ -43,14 +43,14 @@ describe('GenesisComponent', () => {
   it('states that base genesis does not create the first admin', () => {
     const text = fixture.nativeElement.textContent as string;
 
-    expect(text).toContain('Bootstrap boundary');
-    expect(text).toContain('does not create admin slot 0');
-    expect(text).toContain('does not make the token holder a protocol admin');
+    expect(text).toContain('Genesis ceremony boundary');
+    expect(text).toContain('genesis is not complete until first-admin authority is created and finalized');
+    expect(text).toContain('one-shot token does not become protocol admin');
     expect(text).toContain('admin_authority_v2');
-    expect(text).toContain('bind the intended wallet as admin slot 0');
+    expect(text).toContain('bind the selected wallet as admin slot 0');
   });
 
-  it('keeps the manifest next step pointed at first-admin authority launch', () => {
+  it('keeps the manifest next step inside the same genesis ceremony', () => {
     component.deployResult.set({
       spend_bundle_id: null,
       pushed: false,
@@ -59,7 +59,7 @@ describe('GenesisComponent', () => {
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Next: launch first admin authority');
+    expect(text).toContain('Continue genesis: create first admin authority');
   });
 
   it('checks bootstrap status without sending the raw token', async () => {
@@ -117,9 +117,9 @@ describe('GenesisComponent', () => {
     expect(text).toContain('temporary bootstrap path is complete');
     expect(text).toContain('Permanent admin login');
     expect(text).toContain('Open Admin desk');
-    expect(text).toContain('First-admin launch locked');
+    expect(text).toContain('First-admin ceremony finalized');
     expect(text).toContain('Continue with permanent admin login');
-    expect(text).not.toContain('Next: launch first admin authority');
+    expect(text).not.toContain('Continue genesis: create first admin authority');
   });
 
   it('does not start a bootstrap session after finalization is known', async () => {

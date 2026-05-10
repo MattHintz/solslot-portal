@@ -112,28 +112,28 @@ type FinalizeState =
           <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">
             A.5 / Phase 9-Hermes-D
           </div>
-          <h1 class="font-display text-4xl md:text-5xl">Launch authority v2.</h1>
+          <h1 class="font-display text-4xl md:text-5xl">Create first-admin authority.</h1>
           <p class="mt-2 text-sm text-text-muted max-w-prose">
-            Preview every deterministic output of a v2 admin-authority genesis
-            launch.  Computation runs entirely in WASM in your browser — no
-            Populis API call is involved.
+            Continue the same genesis ceremony by creating the
+            <code>admin_authority_v2</code> singleton and binding the selected
+            wallet as permanent admin slot 0.
           </p>
         </div>
         @if (launchAccessMode() === 'permanent-admin') {
           <a routerLink="/admin" class="btn btn--ghost">← Admin desk</a>
         } @else {
-          <a routerLink="/admin/genesis" class="btn btn--ghost">← Genesis bootstrap</a>
+          <a routerLink="/admin/genesis" class="btn btn--ghost">← Genesis ceremony</a>
         }
       </header>
 
       @switch (launchAccessMode()) {
         @case ('bootstrap') {
           <div class="card mb-6 border border-yellow-500/30 bg-yellow-500/10">
-            <h2 class="font-display text-2xl">Temporary bootstrap access</h2>
+            <h2 class="font-display text-2xl">Genesis bootstrap access</h2>
             <p class="text-sm text-text-muted mt-2">
-              This page was opened by a short-lived bootstrap session. It is
-              not permanent admin authority and does not open the normal Admin
-              Desk.
+              This first-admin step was opened by a short-lived bootstrap
+              session. It is not permanent admin authority and does not open
+              the normal Admin Desk.
             </p>
             @if (bootstrapStatus()?.expires_at) {
               <p class="mono text-xs text-text-muted mt-2">
@@ -161,7 +161,7 @@ type FinalizeState =
             <h2 class="font-display text-2xl">Bootstrap session unavailable</h2>
             <p class="text-sm text-text-muted mt-2">
               Return to genesis to start or refresh the bootstrap session before
-              launching first-admin authority.
+              continuing the first-admin step of the genesis ceremony.
             </p>
           </div>
         }
@@ -565,11 +565,11 @@ type FinalizeState =
                     @if ((launchAccessMode() === 'bootstrap' || finalizedView()) && firstAdminLeaf()) {
                       <div class="mt-4 pt-3 border-t border-yellow-500/20">
                         <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-yellow-400">
-                          Bootstrap finalize · public artifacts
+                          Finish genesis · public artifacts
                         </div>
                         <p class="text-xs text-text-muted mt-1">
-                          Submit the public commitments above to the bootstrap
-                          finalize endpoint. The API will atomically persist
+                          Submit the public commitments above to finish the
+                          genesis ceremony. The API will atomically persist
                           <code>admin_records.json</code>,
                           <code>portal_runtime_config.json</code> and
                           <code>bootstrap_manifest.json</code> and lock the
@@ -584,8 +584,8 @@ type FinalizeState =
                         >
                           @switch (finalizeState().kind) {
                             @case ('pending') { Finalizing… }
-                            @case ('finalized') { Finalized · bootstrapper locked }
-                            @default { Finalize bootstrap artifacts }
+                            @case ('finalized') { Genesis finalized · bootstrapper locked }
+                            @default { Finalize genesis artifacts }
                           }
                         </button>
                         @if (finalizeError(); as err) {

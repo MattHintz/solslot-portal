@@ -45,17 +45,17 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | 'bootstrap-status' | 'boo
       </header>
 
       <div class="card mt-8 border border-yellow-500/30 bg-yellow-500/10">
-        <h2 class="font-display text-2xl">Bootstrap boundary</h2>
+        <h2 class="font-display text-2xl">Genesis ceremony boundary</h2>
         <p class="text-sm text-text-muted mt-2">
-          This base genesis deploy does not create admin slot 0 and does not
-          make the token holder a protocol admin. The token is operator
-          authority for the one-shot deploy endpoint only.
+          This screen starts the genesis ceremony by deploying the base
+          protocol manifest, but genesis is not complete until first-admin
+          authority is created and finalized.
         </p>
         <p class="text-sm text-text-muted mt-2">
-          The first admin must be launched separately at
-          <code>admin_authority_v2</code> genesis. After the base manifest is
-          correct, continue to the first-admin authority launch and bind the
-          intended wallet as admin slot 0.
+          The one-shot token does not become protocol admin. After the base
+          manifest is correct, continue the same genesis ceremony at
+          <code>admin_authority_v2</code> and bind the selected wallet as
+          admin slot 0.
         </p>
       </div>
 
@@ -298,10 +298,10 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | 'bootstrap-status' | 'boo
           <div class="mt-4 flex flex-wrap gap-3">
             <button type="button" class="btn btn--ghost" (click)="copyManifest()">Copy manifest</button>
             @if (bootstrapStatus()?.locked === true) {
-              <span class="btn btn--primary opacity-50 cursor-not-allowed">First-admin launch locked</span>
+              <span class="btn btn--primary opacity-50 cursor-not-allowed">First-admin ceremony finalized</span>
               <a routerLink="/admin/login" class="btn btn--ghost">Continue with permanent admin login</a>
             } @else {
-              <a routerLink="/admin/launch-authority-v2" class="btn btn--primary">Next: launch first admin authority</a>
+              <a routerLink="/admin/launch-authority-v2" class="btn btn--primary">Continue genesis: create first admin authority</a>
             }
           </div>
           @if (copyMessage(); as msg) {
