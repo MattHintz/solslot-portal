@@ -6,7 +6,7 @@ import { bytesToHex, coinId, hexToBytes } from '../utils/chia-hash';
 import { ZkPassportAttestationService, ZKPASSPORT_POLICY_VERSION } from './zkpassport-attestation.service';
 
 const EVENT_ABI = [
-  'event VaultAttestationVerified(address indexed sender, bytes32 indexed vaultLauncherId, bytes32 indexed scopedNullifier, uint16 nullifierType, bytes32 serviceScopeHash, bytes32 serviceSubscopeHash, uint64 proofTimestamp, bytes32 attestationLeafHash, bytes32 attestationRoot, bytes32 bridgeMessage, bytes32 bridgePolicyHash, uint16 policyVersion)',
+  'event VaultAttestationVerified(address indexed sender, bytes32 indexed vaultLauncherId, bytes32 indexed scopedNullifier, uint16 nullifierType, bytes32 serviceScopeHash, bytes32 serviceSubscopeHash, uint64 proofTimestamp, bytes32 attestationLeafHash, bytes32 attestationRoot, bytes32 bridgeParentId, uint64 bridgeAmount, bytes32 bridgeCoinId, bytes32 bridgeMessage, bytes32 bridgePolicyHash, uint16 policyVersion)',
 ];
 const EVENT_IFACE = new Interface(EVENT_ABI);
 
@@ -20,6 +20,9 @@ export interface ZkPassportRawAttestationEvent {
   proofTimestamp: number;
   attestationLeafHash: string;
   attestationRoot: string;
+  bridgeParentId: string;
+  bridgeAmount: number;
+  bridgeCoinId: string;
   bridgeMessage: string;
   bridgePolicyHash: string;
   policyVersion: number;
@@ -55,8 +58,8 @@ export interface ValidatorBridgeSignature {
 export interface ValidatorBridgeConfig {
   validatorPubkeys: string[];
   validatorThreshold: number;
-  bridgeParentId: string;
-  bridgeAmount: number;
+  bridgeParentId?: string;
+  bridgeAmount?: number;
 }
 
 export interface ValidatorBridgeSpendPackage {
@@ -173,10 +176,24 @@ export class ZkPassportEvmAttestationPollerService {
       if (bridgeMessage !== event.bridgeMessage) {
         return { kind: 'malformed', reason: 'event bridge message does not match commitments' };
       }
+      const bridgeCoinId = coinId(event.bridgeParentId, event.bridgePolicyHash, event.bridgeAmount);
+      if (bridgeCoinId !== event.bridgeCoinId) {
+        return { kind: 'malformed', reason: 'event bridge coin id does not match parent, policy, and amount' };
+      }
+      if (bridgeConfig.bridgeParentId) {
+        const expectedBridgeParentId = normalizeHex(bridgeConfig.bridgeParentId, 'bridgeParentId', 32);
+        if (event.bridgeParentId !== expectedBridgeParentId) {
+          return { kind: 'malformed', reason: 'event bridge parent id does not match configured bridge parent' };
+        }
+      }
+      if (bridgeConfig.bridgeAmount !== undefined && event.bridgeAmount !== bridgeConfig.bridgeAmount) {
+        return { kind: 'malformed', reason: 'event bridge amount does not match configured bridge amount' };
+      }
       const validatorMessage = this.attestation.computeValidatorBridgeMessage({
         vaultLauncherId: event.vaultLauncherId,
         attestationRoot: root,
         bridgePolicyHash: event.bridgePolicyHash,
+        bridgeCoinId: event.bridgeCoinId,
         bridgeMessage,
         attestationLeafHash: leaf,
         scopedNullifier: event.scopedNullifier,
@@ -185,14 +202,6 @@ export class ZkPassportEvmAttestationPollerService {
         serviceSubscopeHash: event.serviceSubscopeHash,
         proofTimestamp: event.proofTimestamp,
       });
-      const bridgeParentId = normalizeHex(
-        bridgeConfig.bridgeParentId || environment.zkPassport.bridgeParentId,
-        'bridgeParentId',
-        32,
-      );
-      const bridgeAmount = bridgeConfig.bridgeAmount ?? environment.zkPassport.bridgeAmount;
-      assertPositiveInteger(bridgeAmount, 'bridgeAmount');
-      const bridgeCoinId = coinId(bridgeParentId, event.bridgePolicyHash, bridgeAmount);
       return {
         kind: 'ok',
         enrollment: {
@@ -210,9 +219,9 @@ export class ZkPassportEvmAttestationPollerService {
             siblings: [],
           },
           bridgePolicyHash: event.bridgePolicyHash,
-          bridgeParentId,
-          bridgeAmount,
-          bridgeCoinId,
+          bridgeParentId: event.bridgeParentId,
+          bridgeAmount: event.bridgeAmount,
+          bridgeCoinId: event.bridgeCoinId,
           bridgeMessage,
           bridgeAnnouncementPayload: `0x50${bridgeMessage.slice(2)}`,
           validatorMessage,
@@ -344,6 +353,9 @@ function decodeVaultAttestationLog(log: {
     proofTimestamp: Number(decoded['proofTimestamp']),
     attestationLeafHash: String(decoded['attestationLeafHash']),
     attestationRoot: String(decoded['attestationRoot']),
+    bridgeParentId: String(decoded['bridgeParentId']),
+    bridgeAmount: Number(decoded['bridgeAmount']),
+    bridgeCoinId: String(decoded['bridgeCoinId']),
     bridgeMessage: String(decoded['bridgeMessage']),
     bridgePolicyHash: String(decoded['bridgePolicyHash']),
     policyVersion: Number(decoded['policyVersion']),
@@ -361,6 +373,9 @@ function normalizeEvent(raw: ZkPassportRawAttestationEvent): ZkPassportRawAttest
     serviceSubscopeHash: normalizeHex(raw.serviceSubscopeHash, 'serviceSubscopeHash', 32),
     attestationLeafHash: normalizeHex(raw.attestationLeafHash, 'attestationLeafHash', 32),
     attestationRoot: normalizeHex(raw.attestationRoot, 'attestationRoot', 32),
+    bridgeParentId: normalizeHex(raw.bridgeParentId, 'bridgeParentId', 32),
+    bridgeAmount: assertPositiveInteger(raw.bridgeAmount, 'bridgeAmount'),
+    bridgeCoinId: normalizeHex(raw.bridgeCoinId, 'bridgeCoinId', 32),
     bridgeMessage: normalizeHex(raw.bridgeMessage, 'bridgeMessage', 32),
     bridgePolicyHash: normalizeHex(raw.bridgePolicyHash, 'bridgePolicyHash', 32),
     nullifierType: assertNonNegativeInteger(raw.nullifierType, 'nullifierType'),

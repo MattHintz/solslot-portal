@@ -32,6 +32,7 @@ export interface AttestationBridgeMessageInput {
 }
 
 export interface ValidatorBridgeMessageInput extends AttestationBridgeMessageInput {
+  bridgeCoinId: string | Uint8Array;
   bridgeMessage: string | Uint8Array;
   attestationLeafHash: string | Uint8Array;
   scopedNullifier: string | Uint8Array;
@@ -107,6 +108,7 @@ export class ZkPassportAttestationService {
       treeHashAtom(bytes32(input.vaultLauncherId, 'vaultLauncherId')),
       treeHashAtom(bytes32(input.attestationRoot, 'attestationRoot')),
       treeHashAtom(bytes32(input.bridgePolicyHash, 'bridgePolicyHash')),
+      treeHashAtom(bytes32(input.bridgeCoinId, 'bridgeCoinId')),
       treeHashAtom(bytes32(input.bridgeMessage, 'bridgeMessage')),
       treeHashAtom(bytes32(input.attestationLeafHash, 'attestationLeafHash')),
       treeHashAtom(bytes32(input.scopedNullifier, 'scopedNullifier')),

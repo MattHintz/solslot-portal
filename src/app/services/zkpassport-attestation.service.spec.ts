@@ -10,11 +10,12 @@ const SCOPED_NULLIFIER = '0x' + '22'.repeat(32);
 const SERVICE_SCOPE_HASH = '0x' + '33'.repeat(32);
 const SERVICE_SUBSCOPE_HASH = '0x' + '44'.repeat(32);
 const BRIDGE_POLICY_HASH = '0x' + '55'.repeat(32);
+const BRIDGE_COIN_ID = '0x30c14b0547553627bde49cd6021cbddc7e0dea379ce600c8832533027612f065';
 const PROOF_TIMESTAMP = 1_779_120_000;
 const EXPECTED_LEAF = '0x41950d187f655ae494bcdea426d643d3a21734ae9d3311c34477eb836867fcf7';
 const EXPECTED_ROOT_THREE = '0xf332e579325ab8b0248928ca5e462adad87c2b8528588c92e45fb73c978bff34';
 const EXPECTED_BRIDGE_MESSAGE = '0x8de348f6526b3bcc752ca1b524f3288c91ddbeb0f9d3451390ffbb0609565a71';
-const EXPECTED_VALIDATOR_MESSAGE = '0xe4d2cc41e0f242efbba2b832a54cabab2495bccf100a341cef64b27f4eb67c76';
+const EXPECTED_VALIDATOR_MESSAGE = '0x3f10937cdd776e5efe748416b36185a2d702540c437426896eb98562dbaddfa7';
 const EXPECTED_PAIR_ROOT = '0x2c66600c9d6ab5196b84e5fb389401569af0f4ebcfdac5ce763f4ec34c4c435f';
 
 function attestationInput() {
@@ -89,6 +90,7 @@ describe('ZkPassportAttestationService', () => {
         vaultLauncherId: VAULT_LAUNCHER_ID,
         attestationRoot: EXPECTED_LEAF,
         bridgePolicyHash: BRIDGE_POLICY_HASH,
+        bridgeCoinId: BRIDGE_COIN_ID,
         bridgeMessage: EXPECTED_BRIDGE_MESSAGE,
         attestationLeafHash: EXPECTED_LEAF,
         scopedNullifier: SCOPED_NULLIFIER,

@@ -7,6 +7,7 @@ import {
   ZkPassportRawAttestationEvent,
 } from './zkpassport-evm-attestation-poller.service';
 import { ZkPassportAttestationService } from './zkpassport-attestation.service';
+import { coinId } from '../utils/chia-hash';
 
 const VAULT_LAUNCHER_ID = '0x' + '11'.repeat(32);
 const SCOPED_NULLIFIER = '0x' + '22'.repeat(32);
@@ -47,6 +48,9 @@ describe('ZkPassportEvmAttestationPollerService', () => {
   });
 
   function validEvent(overrides: Partial<ZkPassportRawAttestationEvent> = {}): ZkPassportRawAttestationEvent {
+    const bridgeParentId = overrides.bridgeParentId ?? BRIDGE_PARENT_ID;
+    const bridgeAmount = overrides.bridgeAmount ?? 1;
+    const bridgePolicyHash = overrides.bridgePolicyHash ?? BRIDGE_POLICY_HASH;
     const leaf = attestation.computeAttestationLeaf({
       vaultLauncherId: VAULT_LAUNCHER_ID,
       scopedNullifier: SCOPED_NULLIFIER,
@@ -59,7 +63,7 @@ describe('ZkPassportEvmAttestationPollerService', () => {
     const bridgeMessage = attestation.computeAttestationBridgeMessage({
       vaultLauncherId: VAULT_LAUNCHER_ID,
       attestationRoot: root,
-      bridgePolicyHash: BRIDGE_POLICY_HASH,
+      bridgePolicyHash,
     });
     return {
       sender: '0x0e61d3bb1148bdd802f747caea112333d156626a',
@@ -71,8 +75,11 @@ describe('ZkPassportEvmAttestationPollerService', () => {
       proofTimestamp: PROOF_TIMESTAMP,
       attestationLeafHash: leaf,
       attestationRoot: root,
+      bridgeParentId,
+      bridgeAmount,
+      bridgeCoinId: coinId(bridgeParentId, bridgePolicyHash, bridgeAmount),
       bridgeMessage,
-      bridgePolicyHash: BRIDGE_POLICY_HASH,
+      bridgePolicyHash,
       policyVersion: 1,
       transactionHash: '0x' + '99'.repeat(32),
       blockNumber: 123,
@@ -117,8 +124,11 @@ describe('ZkPassportEvmAttestationPollerService', () => {
     expect(result.enrollment.bridgeMessage).toBe(
       '0x8de348f6526b3bcc752ca1b524f3288c91ddbeb0f9d3451390ffbb0609565a71',
     );
+    expect(result.enrollment.bridgeCoinId).toBe(
+      '0x30c14b0547553627bde49cd6021cbddc7e0dea379ce600c8832533027612f065',
+    );
     expect(result.enrollment.validatorMessage).toBe(
-      '0xe4d2cc41e0f242efbba2b832a54cabab2495bccf100a341cef64b27f4eb67c76',
+      '0x3f10937cdd776e5efe748416b36185a2d702540c437426896eb98562dbaddfa7',
     );
   });
 
@@ -130,6 +140,33 @@ describe('ZkPassportEvmAttestationPollerService', () => {
     expect(result.kind).toBe('malformed');
     if (result.kind !== 'malformed') return;
     expect(result.reason).toContain('bridge message');
+  });
+
+  it('returns malformed when the event bridge coin id does not match its parent, policy, and amount', async () => {
+    const result = await service.pollOnce(VAULT_LAUNCHER_ID, {
+      source: source(validEvent({ bridgeCoinId: '0x' + '00'.repeat(32) })),
+      bridgeConfig: bridgeConfig(),
+    });
+    expect(result.kind).toBe('malformed');
+    if (result.kind !== 'malformed') return;
+    expect(result.reason).toContain('bridge coin id');
+  });
+
+  it('derives distinct validator messages for distinct bridge parent coins', () => {
+    const first = service.deriveEnrollmentFromEvent(validEvent(), VAULT_LAUNCHER_ID, bridgeConfig());
+    const second = service.deriveEnrollmentFromEvent(
+      validEvent({
+        bridgeParentId: '0x' + '67'.repeat(32),
+        bridgeCoinId: coinId('0x' + '67'.repeat(32), BRIDGE_POLICY_HASH, 1),
+      }),
+      VAULT_LAUNCHER_ID,
+      { ...bridgeConfig(), bridgeParentId: undefined },
+    );
+    expect(first.kind).toBe('ok');
+    expect(second.kind).toBe('ok');
+    if (first.kind !== 'ok' || second.kind !== 'ok') return;
+    expect(first.enrollment.bridgeCoinId).not.toBe(second.enrollment.bridgeCoinId);
+    expect(first.enrollment.validatorMessage).not.toBe(second.enrollment.validatorMessage);
   });
 
   it('marks bridge spend package insufficient before validator quorum', async () => {
