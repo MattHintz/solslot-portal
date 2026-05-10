@@ -1,0 +1,47 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+
+import { environment } from '../../environments/environment';
+
+@Injectable({ providedIn: 'root' })
+export class AdminBootstrapService {
+  private readonly http = inject(HttpClient);
+  private readonly base = environment.faucetApi;
+
+  async startBootstrapSession(token: string): Promise<BootstrapChallengeResponse> {
+    return firstValueFrom(
+      this.http.post<BootstrapChallengeResponse>(`${this.base}/admin/bootstrap/challenge`, null, {
+        headers: authHeaders(token),
+        withCredentials: true,
+      }),
+    );
+  }
+
+  async getBootstrapStatus(): Promise<BootstrapStatusResponse> {
+    return firstValueFrom(
+      this.http.get<BootstrapStatusResponse>(`${this.base}/admin/bootstrap/status`, {
+        withCredentials: true,
+      }),
+    );
+  }
+}
+
+export interface BootstrapChallengeResponse {
+  unlocked: boolean;
+  expires_at: number;
+}
+
+export interface BootstrapStatusResponse {
+  locked: boolean;
+  authenticated: boolean;
+  expires_at?: number | null;
+}
+
+function authHeaders(token: string): HttpHeaders {
+  const trimmed = token.trim();
+  if (!trimmed) {
+    throw new Error('admin bootstrap: one-shot admin token is required');
+  }
+  return new HttpHeaders({ Authorization: `Bearer ${trimmed}` });
+}
