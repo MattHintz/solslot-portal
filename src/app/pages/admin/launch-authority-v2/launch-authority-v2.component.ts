@@ -17,6 +17,11 @@ import {
   LaunchOutputs,
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import {
+  AdminBootstrapService,
+  BootstrapStatusResponse,
+} from '../../../services/admin-bootstrap.service';
+import { AdminSessionService } from '../../../services/admin-session.service';
+import {
   Eip712LeafHash,
   Eip712LeafHashService,
 } from '../../../services/eip712-leaf-hash.service';
@@ -69,6 +74,8 @@ type SubmitState =
   | { kind: 'submitted'; launcherId: string; statusFromCoinset: string | null }
   | { kind: 'error'; message: string };
 
+type LaunchAccessMode = 'permanent-admin' | 'bootstrap' | 'checking' | 'locked' | 'missing';
+
 
 @Component({
   selector: 'pp-launch-authority-v2',
@@ -89,8 +96,53 @@ type SubmitState =
             Populis API call is involved.
           </p>
         </div>
-        <a routerLink="/admin" class="btn btn--ghost">← Admin desk</a>
+        @if (launchAccessMode() === 'permanent-admin') {
+          <a routerLink="/admin" class="btn btn--ghost">← Admin desk</a>
+        } @else {
+          <a routerLink="/admin/genesis" class="btn btn--ghost">← Genesis bootstrap</a>
+        }
       </header>
+
+      @switch (launchAccessMode()) {
+        @case ('bootstrap') {
+          <div class="card mb-6 border border-yellow-500/30 bg-yellow-500/10">
+            <h2 class="font-display text-2xl">Temporary bootstrap access</h2>
+            <p class="text-sm text-text-muted mt-2">
+              This page was opened by a short-lived bootstrap session. It is
+              not permanent admin authority and does not open the normal Admin
+              Desk.
+            </p>
+            @if (bootstrapStatus()?.expires_at) {
+              <p class="mono text-xs text-text-muted mt-2">
+                Bootstrap session expires at {{ bootstrapStatus()?.expires_at }}.
+              </p>
+            }
+          </div>
+        }
+        @case ('checking') {
+          <div class="card mb-6 border border-white/10">
+            <p class="text-sm text-text-muted">Checking bootstrap session…</p>
+          </div>
+        }
+        @case ('locked') {
+          <div class="card mb-6 border border-red-500/40 bg-red-500/10">
+            <h2 class="font-display text-2xl">Bootstrap access unavailable</h2>
+            <p class="text-sm text-text-muted mt-2">
+              The bootstrapper is locked. Return to genesis to inspect current
+              status.
+            </p>
+          </div>
+        }
+        @case ('missing') {
+          <div class="card mb-6 border border-yellow-500/30 bg-yellow-500/10">
+            <h2 class="font-display text-2xl">Bootstrap session unavailable</h2>
+            <p class="text-sm text-text-muted mt-2">
+              Return to genesis to start or refresh the bootstrap session before
+              launching first-admin authority.
+            </p>
+          </div>
+        }
+      }
 
       @if (!chiaWasmReady()) {
         <div class="card border border-yellow-500/40 bg-yellow-500/10">
@@ -405,7 +457,7 @@ type SubmitState =
               </button>
               @if (!walletConnected()) {
                 <span class="text-xs text-text-muted">
-                  Connect Goby/Sage from the admin desk before submitting.
+                  Connect Goby/Sage before submitting.
                 </span>
               }
               @if (copyConfirmation(); as msg) {
@@ -526,6 +578,8 @@ type SubmitState =
 export class LaunchAuthorityV2Component {
   private readonly v2 = inject(AdminAuthorityV2Service);
   private readonly wasm = inject(ChiaWasmService);
+  private readonly adminSession = inject(AdminSessionService);
+  private readonly bootstrap = inject(AdminBootstrapService);
   // Public so the template can read isConnected/pubkey/connectionKind
   // and call hasGoby()/hasSage() for the inline connect banner.
   readonly chiaWallet = inject(ChiaWalletService);
@@ -593,6 +647,17 @@ export class LaunchAuthorityV2Component {
   readonly copyConfirmation = signal<string | null>(null);
   readonly submitState = signal<SubmitState>({ kind: 'idle' });
   readonly walletConnected = computed(() => this.chiaWallet.isConnected());
+  readonly bootstrapStatus = signal<BootstrapStatusResponse | null>(null);
+  readonly bootstrapStatusError = signal<string | null>(null);
+  readonly checkingBootstrapStatus = signal(false);
+  readonly launchAccessMode = computed<LaunchAccessMode>(() => {
+    if (this.adminSession.isAuthenticated()) return 'permanent-admin';
+    if (this.checkingBootstrapStatus()) return 'checking';
+    const status = this.bootstrapStatus();
+    if (status?.locked) return 'locked';
+    if (status?.authenticated) return 'bootstrap';
+    return 'missing';
+  });
 
   /**
    * Narrowed view of submitState when the kind is 'submitted'.
@@ -794,6 +859,23 @@ export class LaunchAuthorityV2Component {
       const t = setTimeout(() => this.copyConfirmation.set(null), 3000);
       onCleanup(() => clearTimeout(t));
     });
+    if (!this.adminSession.isAuthenticated()) {
+      void this.refreshBootstrapStatus();
+    }
+  }
+
+  async refreshBootstrapStatus(): Promise<void> {
+    if (this.adminSession.isAuthenticated() || this.checkingBootstrapStatus()) return;
+    this.bootstrapStatusError.set(null);
+    this.checkingBootstrapStatus.set(true);
+    try {
+      this.bootstrapStatus.set(await this.bootstrap.getBootstrapStatus());
+    } catch (e) {
+      this.bootstrapStatus.set(null);
+      this.bootstrapStatusError.set(formatError(e));
+    } finally {
+      this.checkingBootstrapStatus.set(false);
+    }
   }
 
   /**
@@ -1064,7 +1146,7 @@ export class LaunchAuthorityV2Component {
     if (!this.walletConnected()) {
       this.submitState.set({
         kind: 'error',
-        message: 'Wallet not connected.  Connect Goby or Sage from the admin desk first.',
+        message: 'Wallet not connected.  Connect Goby or Sage first.',
       });
       return;
     }
