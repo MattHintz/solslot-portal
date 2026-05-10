@@ -8,17 +8,22 @@ for chain reads and most transaction construction.
 **Stack**: Angular 20, Tailwind 3, ethers v6, `chia-wallet-sdk-wasm`,
 Goby/Sage wallet APIs, WalletConnect, coinset.org RPC.
 
-**Backend dependency**: [`../populis_api/`](../populis_api/) is used only
-when a user needs the server-funded faucet to create a new vault:
-`/auth/challenge` and `/vault/register/{evm,chia}`. Returning-user vault
-discovery, admin login, admin-authority-v2 launch, trust-root reads, and
-mint-proposal drafts are browser-side flows.
+**Backend dependency**: [`../populis_api/`](../populis_api/) is used for
+server-funded first-time vault creation (`/auth/challenge`,
+`/vault/register/{evm,chia}`) and for the genesis bootstrap ceremony
+(`/admin/deploy/protocol`, `/admin/bootstrap/challenge`,
+`/admin/bootstrap/status`, `/admin/bootstrap/finalize`). Returning-user
+vault discovery, admin login, trust-root reads, and mint-proposal drafts
+are browser-side flows. The admin-authority-v2 launch spend is built and
+pushed browser-side; only the post-launch bootstrap finalize step records
+public deployment artifacts through the API.
 
 ## Quick start
 
 ```bash
-# 1. Faucet API (only needed to create a new vault).
-#    Returning users and admin pages read chain state directly.
+# 1. Faucet/API server.
+#    Needed for first-time vault creation and genesis bootstrap endpoints.
+#    Returning users and most admin pages read chain state directly.
 cd ../populis_api && .venv/bin/uvicorn populis_api.app:app --port 8787 &
 
 # 2. Portal
@@ -31,8 +36,8 @@ npm start                        # -> http://localhost:4200
 
 Edit `src/environments/environment.ts`:
 
-- `faucetApi` — URL of the Populis faucet backend. Used only by the
-  first-time vault creation path.
+- `faucetApi` — URL of the Populis faucet/API backend. Used by the
+  first-time vault creation path and by genesis bootstrap endpoints.
 - `coinsetRpc` — Chia full-node RPC. Defaults to
   `https://testnet11.api.coinset.org` and is used for reads and
   `push_tx`.
@@ -68,6 +73,13 @@ lookup.
 
 ### Operator/admin flow
 
+- **Genesis bootstrap** — `/admin/genesis` can deploy the base protocol
+  manifest with the one-shot operator token, start a short-lived
+  bootstrap session cookie, and route into first-admin launch before any
+  permanent admin exists. After first-admin launch is finalized,
+  `bootstrap_manifest.json` locks the bootstrapper; the page disables new
+  bootstrap sessions, hides the first-admin launch CTA, names the public
+  artifacts, and points operators to permanent admin login.
 - **Admin login** — local EIP-712 `PopulisAdminLogin` signature, pubkey
   recovery in the browser, and membership check against the pinned
   1-of-1 v2 MIPS root or fallback EVM address allowlist. No
@@ -81,7 +93,10 @@ lookup.
   puzzle hash, launcher id, eve coin, state hash, and records JSON in
   WASM, asks Goby/Sage to sign the funding spend, combines it with the
   permissionless launcher spend, and pushes the bundle directly to
-  coinset.org.
+  coinset.org. When opened through temporary bootstrap access, it can
+  finalize the public bootstrap artifacts through
+  `POST /admin/bootstrap/finalize` using cookie credentials only, with no
+  bearer token or browser storage persistence.
 - **Mint proposals** — current UI creates and lists browser-local DRAFT
   records in `localStorage`. Computed deed/proposal hashes, on-chain
   proposal ids, PGT voting, publish, and execute are not wired in this
@@ -97,6 +112,12 @@ lookup.
 - `ChiaWasmService` — bootstraps `chia-wallet-sdk-wasm`.
 - `AdminWalletAuthService` / `AdminSessionService` — browser-only admin
   login and session state.
+- `AdminGenesisService` — one-shot protocol genesis deployment/status
+  client for `/admin/deploy/protocol` and `/admin/deployment`.
+- `AdminBootstrapService` — short-lived bootstrap challenge/status/finalize
+  client. Finalize posts public first-admin commitments and receives
+  `bootstrap_manifest` plus `portal_runtime_config`; it does not send an
+  admin bearer token.
 - `OnChainStateService` — trust-root reads shaped like the legacy API
   responses but sourced from environment constants and coinset.org.
 - `AdminAuthorityV2Service` — TypeScript/WASM port of selected
@@ -114,9 +135,10 @@ lookup.
 | `/connect` | Connect EVM or Chia wallet. |
 | `/create-vault` | Discover an existing vault or call the faucet API to create one. |
 | `/vault` | Current vault view backed by chain discovery. |
+| `/admin/genesis` | One-shot base protocol deploy, temporary bootstrap-session start/status, and locked post-finalize handoff to permanent admin login. |
 | `/admin/login` | Browser-only admin login. |
 | `/admin` | Operator dashboard for browser-local mint drafts. |
-| `/admin/launch-authority-v2` | Build, wallet-sign, and push the v2 admin-authority launch bundle. |
+| `/admin/launch-authority-v2` | Build, wallet-sign, and push the v2 admin-authority launch bundle; temporary bootstrap mode can finalize public bootstrap artifacts afterward. |
 | `/admin/trust-roots` | Read configured trust-root singleton state from coinset.org. |
 | `/admin/mint/new` | Create a local DRAFT mint proposal. |
 | `/admin/mint/:id` | Inspect or cancel a local DRAFT; publish/execute are disabled. |
