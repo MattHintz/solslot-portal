@@ -312,7 +312,7 @@ type LaunchAccessMode = 'permanent-admin' | 'bootstrap' | 'checking' | 'locked' 
                   class="btn btn--ghost text-[0.6rem] py-1 px-2 relative z-10"
                   [disabled]="recoveringFirstAdmin()"
                   (click)="recoverFirstAdminFromWallet()"
-                  title="Sign a probe with your connected EVM wallet, recover its pubkey, ask the API for the canonical leaf hash, and pre-fill the textarea below as a single-admin (m_within=1) record."
+                  title="Sign a probe with your connected EVM wallet, recover its pubkey, compute the canonical leaf hash, and pre-fill the textarea below as a single-admin (m_within=1) record."
                 >
                   @if (recoveringFirstAdmin()) {
                     Recovering…
@@ -340,15 +340,31 @@ type LaunchAccessMode = 'permanent-admin' | 'bootstrap' | 'checking' | 'locked' 
                     ✓ First admin recovered
                   </div>
                   <dl class="mt-1 grid grid-cols-[max-content_1fr] gap-x-2 gap-y-0.5 text-[0.65rem]">
+                    <dt class="text-text-muted">Admin slot:</dt>
+                    <dd class="mono">0</dd>
+                    <dt class="text-text-muted">m_within:</dt>
+                    <dd class="mono">1</dd>
                     <dt class="text-text-muted">EVM:</dt>
                     <dd class="mono break-all">{{ firstAdminAddress() }}</dd>
                     <dt class="text-text-muted">Pubkey:</dt>
                     <dd class="mono break-all">{{ leaf.secp256k1_pubkey }}</dd>
                     <dt class="text-text-muted">Leaf hash:</dt>
                     <dd class="mono break-all">{{ leaf.leaf_hash }}</dd>
-                    <dt class="text-text-muted">Network:</dt>
-                    <dd class="mono">{{ leaf.network }}</dd>
+                    <dt class="text-text-muted">Type hash:</dt>
+                    <dd class="mono break-all">{{ leaf.type_hash }}</dd>
+                    <dt class="text-text-muted">Network/domain:</dt>
+                    <dd class="mono break-all">
+                      {{ leaf.network }} · {{ leaf.prefix_and_domain_separator }}
+                    </dd>
+                    @if (mipsRootHashInput()) {
+                      <dt class="text-text-muted">MIPS root:</dt>
+                      <dd class="mono break-all">{{ mipsRootHashInput() }}</dd>
+                    }
                   </dl>
+                  <p class="text-[0.6rem] text-text-muted mt-2">
+                    Wallet signature is proof-of-possession only; it is not
+                    stored or included in admin_records.json.
+                  </p>
                 </div>
               }
               @if (firstAdminError(); as err) {
