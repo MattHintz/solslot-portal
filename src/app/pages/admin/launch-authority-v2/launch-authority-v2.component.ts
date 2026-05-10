@@ -18,6 +18,7 @@ import {
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import {
   AdminBootstrapService,
+  BootstrapFinalizeResponse,
   BootstrapStatusResponse,
 } from '../../../services/admin-bootstrap.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
@@ -75,6 +76,28 @@ type SubmitState =
   | { kind: 'error'; message: string };
 
 type LaunchAccessMode = 'permanent-admin' | 'bootstrap' | 'checking' | 'locked' | 'missing';
+
+/**
+ * State machine for the bootstrap finalize flow.  Only meaningful when
+ * the page was opened under a temporary bootstrap session and the
+ * admin-authority launch has already been submitted.
+ *
+ *   idle      — not yet attempted, or cleared after a previous error.
+ *   pending   — request in flight against ``/admin/bootstrap/finalize``.
+ *   finalized — API persisted the public artifacts and locked the
+ *               bootstrapper; we cache the returned manifest +
+ *               runtime config for read-only display.
+ *   error     — finalize failed; user can retry.
+ */
+type FinalizeState =
+  | { kind: 'idle' }
+  | { kind: 'pending' }
+  | {
+      kind: 'finalized';
+      bootstrapManifest: Record<string, unknown>;
+      portalRuntimeConfig: Record<string, unknown>;
+    }
+  | { kind: 'error'; message: string };
 
 
 @Component({
@@ -538,6 +561,56 @@ type LaunchAccessMode = 'permanent-admin' | 'bootstrap' | 'checking' | 'locked' 
                         </button>
                       </div>
                     }
+
+                    @if ((launchAccessMode() === 'bootstrap' || finalizedView()) && firstAdminLeaf()) {
+                      <div class="mt-4 pt-3 border-t border-yellow-500/20">
+                        <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-yellow-400">
+                          Bootstrap finalize · public artifacts
+                        </div>
+                        <p class="text-xs text-text-muted mt-1">
+                          Submit the public commitments above to the bootstrap
+                          finalize endpoint. The API will atomically persist
+                          <code>admin_records.json</code>,
+                          <code>portal_runtime_config.json</code> and
+                          <code>bootstrap_manifest.json</code> and lock the
+                          bootstrapper. No raw signatures, session cookies, or
+                          one-shot tokens are sent.
+                        </p>
+                        <button
+                          type="button"
+                          class="btn btn--primary mt-2"
+                          [disabled]="!canFinalizeBootstrap() || finalizeState().kind === 'pending' || finalizeState().kind === 'finalized'"
+                          (click)="finalizeBootstrapArtifacts()"
+                        >
+                          @switch (finalizeState().kind) {
+                            @case ('pending') { Finalizing… }
+                            @case ('finalized') { Finalized · bootstrapper locked }
+                            @default { Finalize bootstrap artifacts }
+                          }
+                        </button>
+                        @if (finalizeError(); as err) {
+                          <p class="mono text-[0.65rem] text-red-300 mt-2">
+                            <strong>Finalize failed.</strong> {{ err }}
+                          </p>
+                        }
+                        @if (finalizedView(); as f) {
+                          <div class="mt-3 grid gap-3">
+                            <details>
+                              <summary class="text-xs text-text-muted cursor-pointer">
+                                bootstrap_manifest.json
+                              </summary>
+                              <pre class="mt-2 mono text-[0.6rem] bg-black/30 p-3 rounded overflow-x-auto">{{ finalizedManifestJson() }}</pre>
+                            </details>
+                            <details>
+                              <summary class="text-xs text-text-muted cursor-pointer">
+                                portal_runtime_config.json
+                              </summary>
+                              <pre class="mt-2 mono text-[0.6rem] bg-black/30 p-3 rounded overflow-x-auto">{{ finalizedRuntimeJson() }}</pre>
+                            </details>
+                          </div>
+                        }
+                      </div>
+                    }
                   </div>
                 }
               }
@@ -693,6 +766,54 @@ export class LaunchAuthorityV2Component {
     const s = this.submitState();
     return s.kind === 'error' ? { message: s.message } : null;
   });
+
+  // ─── Phase 0 Brick 0.4E: bootstrap finalize state ──────────────────
+  /** Result of the most recent ``/admin/bootstrap/finalize`` attempt.
+   * Only ever transitions away from ``'idle'`` after a successful
+   * admin-authority launch under a temporary bootstrap session. */
+  readonly finalizeState = signal<FinalizeState>({ kind: 'idle' });
+
+  /** Narrowed view of finalizeState when kind is ``'finalized'``. */
+  readonly finalizedView = computed(() => {
+    const s = this.finalizeState();
+    return s.kind === 'finalized'
+      ? {
+          bootstrapManifest: s.bootstrapManifest,
+          portalRuntimeConfig: s.portalRuntimeConfig,
+        }
+      : null;
+  });
+
+  /** Pretty-printed JSON of the returned bootstrap_manifest, for the
+   * read-only `<details>` block.  Empty string when not finalized. */
+  readonly finalizedManifestJson = computed(() => {
+    const v = this.finalizedView();
+    return v ? JSON.stringify(v.bootstrapManifest, null, 2) : '';
+  });
+
+  /** Pretty-printed JSON of the returned portal_runtime_config. */
+  readonly finalizedRuntimeJson = computed(() => {
+    const v = this.finalizedView();
+    return v ? JSON.stringify(v.portalRuntimeConfig, null, 2) : '';
+  });
+
+  /** Last finalize error message, or null when not in error state. */
+  readonly finalizeError = computed(() => {
+    const s = this.finalizeState();
+    return s.kind === 'error' ? s.message : null;
+  });
+
+  /** True when every input the finalize endpoint requires is present:
+   * temporary bootstrap session, submitted launch, recovered first
+   * admin, computed admins_hash, and a non-empty MIPS root. */
+  readonly canFinalizeBootstrap = computed(() =>
+    this.launchAccessMode() === 'bootstrap'
+    && this.submitState().kind === 'submitted'
+    && this.firstAdminLeaf() !== null
+    && this.firstAdminAddress() !== null
+    && !!this.adminsHash()
+    && !!this.mipsRootHashInput(),
+  );
 
   /**
    * Parse the admin-records textarea into typed AdminRecord objects,
@@ -1085,12 +1206,12 @@ export class LaunchAuthorityV2Component {
    * (no ``launcherId``); both are required for the JSON to be
    * useful.
    */
-  buildAdminRecordsJson(): string | null {
+  buildAdminRecordsConfig(): Record<string, unknown> | null {
     const leaf = this.firstAdminLeaf();
     const evm = this.firstAdminAddress();
     const submitted = this.submittedView();
     if (!leaf || !evm || !submitted) return null;
-    const config = {
+    return {
       version: 1,
       launcher_id: submitted.launcherId,
       admin_records: [
@@ -1110,7 +1231,11 @@ export class LaunchAuthorityV2Component {
         },
       ],
     };
-    return JSON.stringify(config, null, 2);
+  }
+
+  buildAdminRecordsJson(): string | null {
+    const config = this.buildAdminRecordsConfig();
+    return config ? JSON.stringify(config, null, 2) : null;
   }
 
   /**
@@ -1139,6 +1264,65 @@ export class LaunchAuthorityV2Component {
       this.copyConfirmation.set('Copied to clipboard.');
     } catch {
       this.copyConfirmation.set('Copy failed — select + copy manually below.');
+    }
+  }
+
+  /**
+   * Phase 0 Brick 0.4E: submit the public commitments built during
+   * the bootstrap-accessible launch ceremony to the API's
+   * ``/admin/bootstrap/finalize`` endpoint.  The API atomically
+   * persists ``admin_records.json``, ``portal_runtime_config.json``
+   * and ``bootstrap_manifest.json``, the last of which locks the
+   * bootstrapper.
+   *
+   * Pre-conditions (also enforced by ``canFinalizeBootstrap``):
+   *   * ``launchAccessMode() === 'bootstrap'`` — temporary bootstrap
+   *     session is active.  Permanent admin sessions never call this.
+   *   * ``submitState().kind === 'submitted'`` — admin-authority
+   *     launch already on chain.
+   *   * Recovered first admin (``firstAdminLeaf`` + ``firstAdminAddress``).
+   *   * Live ``adminsHash`` and a non-empty ``mipsRootHashInput``.
+   *
+   * Sends only public commitments — no wallet signatures, bootstrap
+   * session token/cookie, or admin JWT material is included in the
+   * request or stored locally.
+   */
+  async finalizeBootstrapArtifacts(): Promise<void> {
+    if (this.finalizeState().kind === 'pending') return;
+    const submitted = this.submittedView();
+    const adminRecords = this.buildAdminRecordsConfig();
+    const adminsHash = this.adminsHash();
+    const mipsRoot = this.mipsRootHashInput();
+    if (!this.canFinalizeBootstrap() || !submitted || !adminRecords || !adminsHash || !mipsRoot) {
+      this.finalizeState.set({
+        kind: 'error',
+        message:
+          'Cannot finalize: missing first admin, MIPS root, admins hash, or submitted launch.',
+      });
+      return;
+    }
+    this.finalizeState.set({ kind: 'pending' });
+    try {
+      const response: BootstrapFinalizeResponse = await this.bootstrap.finalizeBootstrap({
+        admin_records: adminRecords,
+        admin_authority_launcher_id: submitted.launcherId,
+        admins_hash: adminsHash,
+        mips_root: mipsRoot,
+      });
+      this.finalizeState.set({
+        kind: 'finalized',
+        bootstrapManifest: response.bootstrap_manifest,
+        portalRuntimeConfig: response.portal_runtime_config,
+      });
+      if (response.locked) {
+        this.bootstrapStatus.set({
+          locked: true,
+          authenticated: false,
+          expires_at: null,
+        });
+      }
+    } catch (e) {
+      this.finalizeState.set({ kind: 'error', message: formatError(e) });
     }
   }
 

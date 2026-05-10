@@ -14,7 +14,9 @@ import { LaunchAuthorityV2Component } from './launch-authority-v2.component';
 describe('LaunchAuthorityV2Component', () => {
   let fixture: ComponentFixture<LaunchAuthorityV2Component>;
   let session: jasmine.SpyObj<Pick<AdminSessionService, 'isAuthenticated'>>;
-  let bootstrap: jasmine.SpyObj<Pick<AdminBootstrapService, 'getBootstrapStatus'>>;
+  let bootstrap: jasmine.SpyObj<
+    Pick<AdminBootstrapService, 'getBootstrapStatus' | 'finalizeBootstrap'>
+  >;
   let evmWallet: jasmine.SpyObj<Pick<EvmWalletService, 'recoverFirstAdminPubkey'>>;
   let eip712Leaf: jasmine.SpyObj<Pick<Eip712LeafHashService, 'compute' | 'computeMipsRoot1Of1'>>;
 
@@ -33,7 +35,10 @@ describe('LaunchAuthorityV2Component', () => {
 
   beforeEach(async () => {
     session = jasmine.createSpyObj('AdminSessionService', ['isAuthenticated']);
-    bootstrap = jasmine.createSpyObj('AdminBootstrapService', ['getBootstrapStatus']);
+    bootstrap = jasmine.createSpyObj('AdminBootstrapService', [
+      'getBootstrapStatus',
+      'finalizeBootstrap',
+    ]);
     evmWallet = jasmine.createSpyObj('EvmWalletService', ['recoverFirstAdminPubkey']);
     eip712Leaf = jasmine.createSpyObj('Eip712LeafHashService', [
       'compute',
@@ -62,7 +67,24 @@ describe('LaunchAuthorityV2Component', () => {
           useValue: {
             computeAdminsHash: () => new Uint8Array(32),
             computeStateHash: () => new Uint8Array(32),
-            computeLaunchOutputs: () => null,
+            makeInnerPuzzleHash: () => new Uint8Array(32),
+            computeLaunchOutputs: () => ({
+              launcherId: `0x${'ee'.repeat(32)}`,
+              launcherCoin: {
+                parentCoinInfo: `0x${'00'.repeat(32)}`,
+                puzzleHash: `0x${'00'.repeat(32)}`,
+                amount: 1n,
+              },
+              eveInnerPuzzleHash: `0x${'00'.repeat(32)}`,
+              eveFullPuzzleHash: `0x${'00'.repeat(32)}`,
+              eveCoin: {
+                parentCoinInfo: `0x${'ee'.repeat(32)}`,
+                puzzleHash: `0x${'00'.repeat(32)}`,
+                amount: 1n,
+              },
+              launcherAnnouncementMessage: `0x${'00'.repeat(32)}`,
+              launcherAnnouncementId: `0x${'00'.repeat(32)}`,
+            }),
           },
         },
         { provide: EvmWalletService, useValue: evmWallet },
@@ -223,5 +245,175 @@ describe('LaunchAuthorityV2Component', () => {
     ]) {
       expect(lower).not.toContain(forbidden);
     }
+  });
+
+  // ─── Phase 0 Brick 0.4E: bootstrap finalize UI ─────────────────────
+  // The shared AdminAuthorityV2Service mock returns ``new Uint8Array(32)``
+  // from ``computeAdminsHash``, so the real ``component.adminsHash``
+  // computed signal resolves to ``0x`` + 64 zeros once a valid
+  // ``adminRecordsInput`` is set.  We assert against that exact value
+  // rather than overriding the signal so the finalize body that the
+  // component sends really does match what the live wizard would emit.
+  const adminsHash = `0x${'00'.repeat(32)}`;
+  const mipsRootHash = `0x${'cd'.repeat(32)}`;
+
+  function primeFinalizeReadyState(component: LaunchAuthorityV2Component): void {
+    component.firstAdminLeaf.set(leaf);
+    component.firstAdminAddress.set(evmAddress);
+    component.submitState.set({
+      kind: 'submitted',
+      launcherId,
+      statusFromCoinset: 'ACCEPTED',
+    });
+    component.adminRecordsInput.set(`0 ${leaf.leaf_hash} 1`);
+    component.mipsRootHashInput.set(mipsRootHash);
+    // ``computedPreview`` requires a non-empty 32-byte parent coin id;
+    // without it the entire preview/submitted card stays hidden and
+    // the finalize block never renders into the DOM.
+    component.parentCoinIdInput.set(`0x${'ee'.repeat(32)}`);
+  }
+
+  function configureBootstrapMode(): void {
+    session.isAuthenticated.and.returnValue(false);
+    bootstrap.getBootstrapStatus.and.resolveTo({
+      locked: false,
+      authenticated: true,
+      expires_at: 1234,
+    });
+  }
+
+  it('hides the finalize action in permanent-admin mode even after launch', async () => {
+    session.isAuthenticated.and.returnValue(true);
+    const component = await create();
+    primeFinalizeReadyState(component);
+    fixture.detectChanges();
+
+    expect(component.canFinalizeBootstrap()).toBeFalse();
+    expect(fixture.nativeElement.textContent).not.toContain('Finalize bootstrap artifacts');
+    expect(bootstrap.finalizeBootstrap).not.toHaveBeenCalled();
+  });
+
+  it('hides the finalize action when bootstrap session is missing', async () => {
+    session.isAuthenticated.and.returnValue(false);
+    bootstrap.getBootstrapStatus.and.resolveTo({ locked: false, authenticated: false });
+    const component = await create();
+    primeFinalizeReadyState(component);
+    fixture.detectChanges();
+
+    expect(component.canFinalizeBootstrap()).toBeFalse();
+    expect(fixture.nativeElement.textContent).not.toContain('Finalize bootstrap artifacts');
+  });
+
+  it('shows the finalize action in bootstrap mode after launch + first admin', async () => {
+    configureBootstrapMode();
+    const component = await create();
+    primeFinalizeReadyState(component);
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(component.launchAccessMode()).toBe('bootstrap');
+    expect(component.canFinalizeBootstrap()).toBeTrue();
+    expect(text).toContain('Bootstrap finalize · public artifacts');
+    expect(text).toContain('Finalize bootstrap artifacts');
+    expect(text).toContain('No raw signatures, session cookies, or one-shot tokens are sent');
+  });
+
+  it('finalizes public commitments and renders returned artifacts without secrets', async () => {
+    configureBootstrapMode();
+    const setItem = spyOn(Storage.prototype, 'setItem').and.callThrough();
+    const response = {
+      locked: true,
+      bootstrap_manifest: {
+        version: 1,
+        admin_authority_v2: {
+          launcher_id: launcherId,
+          admins_hash: adminsHash,
+          mips_root: mipsRootHash,
+        },
+      },
+      portal_runtime_config: {
+        version: 1,
+        admin_authority_v2: {
+          launcher_id: launcherId,
+          admin_records_hash: `sha256:${'12'.repeat(32)}`,
+        },
+      },
+    };
+    bootstrap.finalizeBootstrap.and.resolveTo(response);
+    const component = await create();
+    primeFinalizeReadyState(component);
+    fixture.detectChanges();
+
+    await component.finalizeBootstrapArtifacts();
+    fixture.detectChanges();
+
+    expect(bootstrap.finalizeBootstrap).toHaveBeenCalledOnceWith({
+      admin_records: jasmine.objectContaining({
+        version: 1,
+        launcher_id: launcherId,
+      }),
+      admin_authority_launcher_id: launcherId,
+      admins_hash: adminsHash,
+      mips_root: mipsRootHash,
+    });
+    expect(component.finalizeState().kind).toBe('finalized');
+    expect(component.bootstrapStatus()?.locked).toBeTrue();
+    expect(component.launchAccessMode()).toBe('locked');
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Finalized · bootstrapper locked');
+    expect(text).toContain('bootstrap_manifest.json');
+    expect(text).toContain('portal_runtime_config.json');
+    // The page legitimately contains the word "signature" in the
+    // first-admin preview copy ("Wallet signature is proof-of-possession
+    // only"), so we cannot ban that substring outright — instead we
+    // assert the actual raw signature hex never reaches the DOM, plus a
+    // tighter list of credential markers that should never appear in
+    // public artifacts.
+    const lower = text.toLowerCase();
+    for (const forbidden of [
+      'populis_admin_token',
+      'populis_bootstrap_session',
+      'bootstrap_session',
+      'bearer ',
+      'jwt_secret',
+      'nonce',
+      rawSignature.toLowerCase(),
+    ]) {
+      expect(lower).not.toContain(forbidden);
+    }
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it('surfaces finalize errors without locking the bootstrapper', async () => {
+    configureBootstrapMode();
+    bootstrap.finalizeBootstrap.and.rejectWith(new Error('410 bootstrap locked'));
+    const component = await create();
+    primeFinalizeReadyState(component);
+    fixture.detectChanges();
+
+    await component.finalizeBootstrapArtifacts();
+    fixture.detectChanges();
+
+    expect(component.finalizeState().kind).toBe('error');
+    expect(component.finalizeError()).toContain('410 bootstrap locked');
+    expect(component.bootstrapStatus()?.locked).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Finalize failed.');
+  });
+
+  it('refuses to finalize without the required public commitments', async () => {
+    configureBootstrapMode();
+    const component = await create();
+    component.submitState.set({
+      kind: 'submitted',
+      launcherId,
+      statusFromCoinset: null,
+    });
+    fixture.detectChanges();
+
+    await component.finalizeBootstrapArtifacts();
+
+    expect(bootstrap.finalizeBootstrap).not.toHaveBeenCalled();
+    expect(component.finalizeState().kind).toBe('error');
   });
 });
