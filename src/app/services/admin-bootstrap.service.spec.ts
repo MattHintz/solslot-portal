@@ -11,6 +11,33 @@ import { AdminBootstrapService } from './admin-bootstrap.service';
 describe('AdminBootstrapService', () => {
   let service: AdminBootstrapService;
   let http: HttpTestingController;
+  const finalizeRequest = {
+    admin_records: {
+      version: 1,
+      launcher_id: `0x${'88'.repeat(32)}`,
+      admin_records: [
+        {
+          admin_idx: 0,
+          m_within: 1,
+          leaves: [
+            {
+              kind: 'eip712_member',
+              leaf_hash: `0x${'99'.repeat(32)}`,
+              evm_address: `0x${'aa'.repeat(20)}`,
+              secp256k1_pubkey: `0x02${'bb'.repeat(32)}`,
+              type_hash: `0x${'cc'.repeat(32)}`,
+              prefix_and_domain_separator: `0x1901${'dd'.repeat(32)}`,
+            },
+          ],
+        },
+      ],
+    },
+    admin_authority_launcher_id: `0x${'88'.repeat(32)}`,
+    admins_hash: `0x${'ab'.repeat(32)}`,
+    mips_root: `0x${'cd'.repeat(32)}`,
+    read_only_api_url: 'https://api.populis.example',
+    read_only_coinset_url: 'https://coinset.example',
+  };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -49,6 +76,37 @@ describe('AdminBootstrapService', () => {
     await expectAsync(promise).toBeResolvedTo({ locked: false, authenticated: true, expires_at: 1234 });
   });
 
+  it('finalizes bootstrap artifacts with cookie credentials and without bearer credentials', async () => {
+    const response = {
+      locked: true,
+      bootstrap_manifest: {
+        version: 1,
+        admin_authority_v2: {
+          launcher_id: finalizeRequest.admin_authority_launcher_id,
+          admins_hash: finalizeRequest.admins_hash,
+          mips_root: finalizeRequest.mips_root,
+        },
+      },
+      portal_runtime_config: {
+        version: 1,
+        admin_authority_v2: {
+          launcher_id: finalizeRequest.admin_authority_launcher_id,
+          admin_records_hash: `sha256:${'12'.repeat(32)}`,
+        },
+      },
+    };
+    const promise = service.finalizeBootstrap(finalizeRequest);
+
+    const req = http.expectOne(`${environment.faucetApi}/admin/bootstrap/finalize`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(finalizeRequest);
+    expect(req.request.withCredentials).toBeTrue();
+    expect(req.request.headers.has('Authorization')).toBeFalse();
+    req.flush(response);
+
+    await expectAsync(promise).toBeResolvedTo(response);
+  });
+
   it('rejects blank tokens before making HTTP requests', async () => {
     await expectAsync(service.startBootstrapSession('   ')).toBeRejectedWithError(/token is required/);
     http.expectNone(`${environment.faucetApi}/admin/bootstrap/challenge`);
@@ -60,6 +118,21 @@ describe('AdminBootstrapService', () => {
     const promise = service.startBootstrapSession('bootstrap-token');
     const req = http.expectOne(`${environment.faucetApi}/admin/bootstrap/challenge`);
     req.flush({ unlocked: true, expires_at: 1234 });
+
+    await promise;
+
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it('does not persist finalized public artifacts in browser storage', async () => {
+    const setItem = spyOn(Storage.prototype, 'setItem').and.callThrough();
+    const promise = service.finalizeBootstrap(finalizeRequest);
+    const req = http.expectOne(`${environment.faucetApi}/admin/bootstrap/finalize`);
+    req.flush({
+      locked: true,
+      bootstrap_manifest: { version: 1 },
+      portal_runtime_config: { version: 1 },
+    });
 
     await promise;
 

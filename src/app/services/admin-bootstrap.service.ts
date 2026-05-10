@@ -25,6 +25,18 @@ export class AdminBootstrapService {
       }),
     );
   }
+
+  async finalizeBootstrap(request: BootstrapFinalizeRequest): Promise<BootstrapFinalizeResponse> {
+    return firstValueFrom(
+      this.http.post<BootstrapFinalizeResponse>(
+        `${this.base}/admin/bootstrap/finalize`,
+        request,
+        {
+          withCredentials: true,
+        },
+      ),
+    );
+  }
 }
 
 export interface BootstrapChallengeResponse {
@@ -36,6 +48,21 @@ export interface BootstrapStatusResponse {
   locked: boolean;
   authenticated: boolean;
   expires_at?: number | null;
+}
+
+export interface BootstrapFinalizeRequest {
+  admin_records: Record<string, unknown>;
+  admin_authority_launcher_id: string;
+  admins_hash: string;
+  mips_root: string;
+  read_only_api_url?: string | null;
+  read_only_coinset_url?: string | null;
+}
+
+export interface BootstrapFinalizeResponse {
+  locked: boolean;
+  bootstrap_manifest: Record<string, unknown>;
+  portal_runtime_config: Record<string, unknown>;
 }
 
 function authHeaders(token: string): HttpHeaders {
