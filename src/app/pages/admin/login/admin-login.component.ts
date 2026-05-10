@@ -121,6 +121,8 @@ import { formatError } from '../../../utils/format-error';
 
       <div class="mt-12 text-xs text-text-muted">
         <a routerLink="/" class="hover:text-brand">&larr; Back to portal</a>
+        <span class="mx-2 opacity-40">·</span>
+        <a routerLink="/admin/genesis" class="hover:text-brand">Initialize genesis</a>
       </div>
     </section>
   `,

@@ -37,6 +37,14 @@ export const routes: Routes = [
     title: 'Admin Sign-in · Populis',
   },
   {
+    path: 'admin/genesis',
+    loadComponent: () =>
+      import('./pages/admin/genesis/genesis.component').then(
+        (m) => m.GenesisComponent,
+      ),
+    title: 'Genesis Launch · Populis',
+  },
+  {
     path: 'admin',
     // The guard pushes the original URL into ?returnTo= so users land
     // back on their target page after signing in.  Static-imported so
