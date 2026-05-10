@@ -6,12 +6,14 @@ import {
   GenesisDeployResponse,
   GenesisDeploymentStatus,
 } from '../../../services/admin-genesis.service';
+import { AdminBootstrapService } from '../../../services/admin-bootstrap.service';
 import { GenesisComponent } from './genesis.component';
 
 describe('GenesisComponent', () => {
   let fixture: ComponentFixture<GenesisComponent>;
   let component: GenesisComponent;
   let genesis: jasmine.SpyObj<AdminGenesisService>;
+  let bootstrap: jasmine.SpyObj<AdminBootstrapService>;
 
   beforeEach(async () => {
     genesis = jasmine.createSpyObj<AdminGenesisService>('AdminGenesisService', [
@@ -19,12 +21,17 @@ describe('GenesisComponent', () => {
       'dryRunProtocolDeploy',
       'deployProtocol',
     ]);
+    bootstrap = jasmine.createSpyObj<AdminBootstrapService>('AdminBootstrapService', [
+      'getBootstrapStatus',
+      'startBootstrapSession',
+    ]);
 
     await TestBed.configureTestingModule({
       imports: [GenesisComponent],
       providers: [
         provideRouter([]),
         { provide: AdminGenesisService, useValue: genesis },
+        { provide: AdminBootstrapService, useValue: bootstrap },
       ],
     }).compileComponents();
 
@@ -53,6 +60,58 @@ describe('GenesisComponent', () => {
 
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Next: launch first admin authority');
+  });
+
+  it('checks bootstrap status without sending the raw token', async () => {
+    bootstrap.getBootstrapStatus.and.resolveTo({
+      locked: false,
+      authenticated: true,
+      expires_at: 1234,
+    });
+    component.tokenInput.set(' genesis-token ');
+
+    await component.checkBootstrapStatus();
+    fixture.detectChanges();
+
+    expect(bootstrap.getBootstrapStatus).toHaveBeenCalledOnceWith();
+    expect(bootstrap.startBootstrapSession).not.toHaveBeenCalled();
+    expect(component.bootstrapStatus()).toEqual({
+      locked: false,
+      authenticated: true,
+      expires_at: 1234,
+    });
+    expect(fixture.nativeElement.textContent as string).toContain('Bootstrap session active');
+  });
+
+  it('starts bootstrap session with the in-memory token only', async () => {
+    bootstrap.startBootstrapSession.and.resolveTo({ unlocked: true, expires_at: 5678 });
+    component.tokenInput.set(' genesis-token ');
+
+    await component.startBootstrapSession();
+    fixture.detectChanges();
+
+    expect(bootstrap.startBootstrapSession).toHaveBeenCalledOnceWith(' genesis-token ');
+    expect(component.bootstrapStatus()).toEqual({
+      locked: false,
+      authenticated: true,
+      expires_at: 5678,
+    });
+    expect(fixture.nativeElement.textContent as string).toContain('Bootstrap session active');
+  });
+
+  it('shows locked bootstrap state and blocks the first-admin next step', () => {
+    component.bootstrapStatus.set({ locked: true, authenticated: false });
+    component.deployResult.set({
+      spend_bundle_id: null,
+      pushed: false,
+      manifest: { pool_launcher_id: '0x' + '11'.repeat(32) },
+    });
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Bootstrapper locked after successful recordation');
+    expect(text).toContain('First-admin launch locked');
+    expect(text).not.toContain('Next: launch first admin authority');
   });
 
   it('checks the current deployment with the pasted token', async () => {

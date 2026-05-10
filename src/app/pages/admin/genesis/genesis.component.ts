@@ -9,9 +9,13 @@ import {
   GenesisDeployResponse,
   GenesisDeploymentStatus,
 } from '../../../services/admin-genesis.service';
+import {
+  AdminBootstrapService,
+  BootstrapStatusResponse,
+} from '../../../services/admin-bootstrap.service';
 import { formatError } from '../../../utils/format-error';
 
-type GenesisAction = 'status' | 'dry-run' | 'deploy' | null;
+type GenesisAction = 'status' | 'dry-run' | 'deploy' | 'bootstrap-status' | 'bootstrap-session' | null;
 
 @Component({
   selector: 'pp-admin-genesis',
@@ -86,6 +90,32 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | null;
               Check current deployment
             }
           </button>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="btn btn--ghost"
+              [disabled]="busy()"
+              (click)="checkBootstrapStatus()"
+            >
+              @if (pendingAction() === 'bootstrap-status') {
+                Checking bootstrap…
+              } @else {
+                Check bootstrap session
+              }
+            </button>
+            <button
+              type="button"
+              class="btn btn--primary"
+              [disabled]="busy() || bootstrapStatus()?.locked === true"
+              (click)="startBootstrapSession()"
+            >
+              @if (pendingAction() === 'bootstrap-session') {
+                Starting bootstrap…
+              } @else {
+                Start bootstrap session
+              }
+            </button>
+          </div>
         </div>
 
         <div class="card">
@@ -191,6 +221,24 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | null;
         </div>
       }
 
+      @if (bootstrapStatus(); as b) {
+        <div class="card mt-6 border border-white/10">
+          <h3 class="font-display text-xl">Bootstrap session</h3>
+          <p class="text-sm mt-1">
+            @if (b.locked) {
+              Bootstrapper locked after successful recordation.
+            } @else if (b.authenticated) {
+              Bootstrap session active.
+            } @else {
+              No active bootstrap session cookie.
+            }
+          </p>
+          @if (b.expires_at) {
+            <p class="mono text-xs text-text-muted mt-2">Expires at {{ b.expires_at }}</p>
+          }
+        </div>
+      }
+
       @if (deployResult(); as r) {
         <div class="card mt-6 border border-green-500/30 bg-green-500/5">
           <h3 class="font-display text-xl">
@@ -219,7 +267,11 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | null;
           <pre class="mt-3 mono text-[0.65rem] bg-black/30 p-3 rounded overflow-x-auto">{{ manifestJson() }}</pre>
           <div class="mt-4 flex flex-wrap gap-3">
             <button type="button" class="btn btn--ghost" (click)="copyManifest()">Copy manifest</button>
-            <a routerLink="/admin/launch-authority-v2" class="btn btn--primary">Next: launch first admin authority</a>
+            @if (bootstrapStatus()?.locked === true) {
+              <span class="btn btn--primary opacity-50 cursor-not-allowed">First-admin launch locked</span>
+            } @else {
+              <a routerLink="/admin/launch-authority-v2" class="btn btn--primary">Next: launch first admin authority</a>
+            }
           </div>
           @if (copyMessage(); as msg) {
             <p class="text-xs text-text-muted mt-2">{{ msg }}</p>
@@ -255,6 +307,7 @@ type GenesisAction = 'status' | 'dry-run' | 'deploy' | null;
 })
 export class GenesisComponent {
   private readonly genesis = inject(AdminGenesisService);
+  private readonly bootstrap = inject(AdminBootstrapService);
 
   readonly tokenInput = signal('');
   readonly quorumBpsInput = signal(5000);
@@ -271,6 +324,7 @@ export class GenesisComponent {
 
   readonly pendingAction = signal<GenesisAction>(null);
   readonly status = signal<GenesisDeploymentStatus | null>(null);
+  readonly bootstrapStatus = signal<BootstrapStatusResponse | null>(null);
   readonly deployResult = signal<GenesisDeployResponse | null>(null);
   readonly error = signal<string | null>(null);
   readonly copyMessage = signal<string | null>(null);
@@ -285,6 +339,23 @@ export class GenesisComponent {
     await this.run('status', async () => {
       this.deployResult.set(null);
       this.status.set(await this.genesis.getDeployment(this.tokenInput()));
+    });
+  }
+
+  async checkBootstrapStatus(): Promise<void> {
+    await this.run('bootstrap-status', async () => {
+      this.bootstrapStatus.set(await this.bootstrap.getBootstrapStatus());
+    });
+  }
+
+  async startBootstrapSession(): Promise<void> {
+    await this.run('bootstrap-session', async () => {
+      const session = await this.bootstrap.startBootstrapSession(this.tokenInput());
+      this.bootstrapStatus.set({
+        locked: false,
+        authenticated: session.unlocked,
+        expires_at: session.expires_at,
+      });
     });
   }
 
