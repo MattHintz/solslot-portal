@@ -259,6 +259,20 @@ describe('LaunchAuthorityV2Component', () => {
   // component sends really does match what the live wizard would emit.
   const adminsHash = `0x${'00'.repeat(32)}`;
   const mipsRootHash = `0x${'cd'.repeat(32)}`;
+  const protocol = {
+    pool_launcher_id: `0x${'11'.repeat(32)}`,
+    did_launcher_id: `0x${'22'.repeat(32)}`,
+    tracker_launcher_id: `0x${'33'.repeat(32)}`,
+    pgt_tail_hash: `0x${'44'.repeat(32)}`,
+    pool_token_tail_hash: `0x${'55'.repeat(32)}`,
+    pool_full_puzhash: `0x${'66'.repeat(32)}`,
+    tracker_full_puzhash: `0x${'77'.repeat(32)}`,
+  };
+  const artifactHashes = {
+    deployment_manifest_json: `sha256:${'01'.repeat(32)}`,
+    admin_records_json: `sha256:${'12'.repeat(32)}`,
+    portal_runtime_config_json: `sha256:${'23'.repeat(32)}`,
+  };
 
   function primeFinalizeReadyState(component: LaunchAuthorityV2Component): void {
     component.firstAdminLeaf.set(leaf);
@@ -329,15 +343,20 @@ describe('LaunchAuthorityV2Component', () => {
       locked: true,
       bootstrap_manifest: {
         version: 1,
+        network: 'testnet11',
+        protocol,
         admin_authority_v2: {
           launcher_id: launcherId,
           admins_hash: adminsHash,
           mips_root: mipsRootHash,
           authority_version: 1,
         },
+        artifact_hashes: artifactHashes,
       },
       portal_runtime_config: {
         version: 1,
+        network: 'testnet11',
+        protocol,
         admin_authority_v2: {
           launcher_id: launcherId,
           admins_hash: adminsHash,
@@ -345,6 +364,8 @@ describe('LaunchAuthorityV2Component', () => {
           authority_version: 1,
           admin_records_hash: `sha256:${'12'.repeat(32)}`,
         },
+        read_only_api_url: 'https://api.populis.example',
+        read_only_coinset_url: 'https://coinset.example',
       },
     };
     bootstrap.finalizeBootstrap.and.resolveTo(response);
@@ -372,6 +393,10 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('Genesis finalized · bootstrapper locked');
     expect(text).toContain('bootstrap_manifest.json');
     expect(text).toContain('portal_runtime_config.json');
+    expect(component.finalizedManifestJson()).toContain('"network": "testnet11"');
+    expect(component.finalizedManifestJson()).toContain('"artifact_hashes"');
+    expect(component.finalizedRuntimeJson()).toContain('"network": "testnet11"');
+    expect(component.finalizedRuntimeJson()).toContain('"read_only_api_url": "https://api.populis.example"');
     expect(component.finalizedManifestJson()).toContain('"authority_version": 1');
     expect(component.finalizedRuntimeJson()).toContain('"authority_version": 1');
     // The page legitimately contains the word "signature" in the

@@ -65,28 +65,34 @@ export interface BootstrapFinalizeResponse {
   portal_runtime_config: PortalRuntimeConfigArtifact;
 }
 
+export interface AdminAuthorityV2ManifestArtifact {
+  launcher_id: string;
+  admins_hash: string;
+  mips_root: string;
+  authority_version: number;
+  [key: string]: unknown;
+}
+
+export interface AdminAuthorityV2RuntimeArtifact extends AdminAuthorityV2ManifestArtifact {
+  admin_records_hash: string;
+}
+
 export interface BootstrapManifestArtifact {
   version: number;
-  admin_authority_v2: {
-    launcher_id: string;
-    admins_hash: string;
-    mips_root: string;
-    authority_version: number;
-    [key: string]: unknown;
-  };
+  network: string;
+  protocol: Record<string, unknown>;
+  admin_authority_v2: AdminAuthorityV2ManifestArtifact;
+  artifact_hashes: Record<string, string>;
   [key: string]: unknown;
 }
 
 export interface PortalRuntimeConfigArtifact {
   version: number;
-  admin_authority_v2: {
-    launcher_id: string;
-    admins_hash: string;
-    mips_root: string;
-    authority_version: number;
-    admin_records_hash: string;
-    [key: string]: unknown;
-  };
+  network: string;
+  protocol: Record<string, unknown>;
+  admin_authority_v2: AdminAuthorityV2RuntimeArtifact;
+  read_only_api_url?: string | null;
+  read_only_coinset_url?: string | null;
   [key: string]: unknown;
 }
 

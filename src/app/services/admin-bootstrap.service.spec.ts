@@ -38,6 +38,20 @@ describe('AdminBootstrapService', () => {
     read_only_api_url: 'https://api.populis.example',
     read_only_coinset_url: 'https://coinset.example',
   };
+  const protocol = {
+    pool_launcher_id: `0x${'11'.repeat(32)}`,
+    did_launcher_id: `0x${'22'.repeat(32)}`,
+    tracker_launcher_id: `0x${'33'.repeat(32)}`,
+    pgt_tail_hash: `0x${'44'.repeat(32)}`,
+    pool_token_tail_hash: `0x${'55'.repeat(32)}`,
+    pool_full_puzhash: `0x${'66'.repeat(32)}`,
+    tracker_full_puzhash: `0x${'77'.repeat(32)}`,
+  };
+  const artifactHashes = {
+    deployment_manifest_json: `sha256:${'01'.repeat(32)}`,
+    admin_records_json: `sha256:${'12'.repeat(32)}`,
+    portal_runtime_config_json: `sha256:${'23'.repeat(32)}`,
+  };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -81,15 +95,20 @@ describe('AdminBootstrapService', () => {
       locked: true,
       bootstrap_manifest: {
         version: 1,
+        network: 'testnet11',
+        protocol,
         admin_authority_v2: {
           launcher_id: finalizeRequest.admin_authority_launcher_id,
           admins_hash: finalizeRequest.admins_hash,
           mips_root: finalizeRequest.mips_root,
           authority_version: 1,
         },
+        artifact_hashes: artifactHashes,
       },
       portal_runtime_config: {
         version: 1,
+        network: 'testnet11',
+        protocol,
         admin_authority_v2: {
           launcher_id: finalizeRequest.admin_authority_launcher_id,
           admins_hash: finalizeRequest.admins_hash,
@@ -97,6 +116,8 @@ describe('AdminBootstrapService', () => {
           authority_version: 1,
           admin_records_hash: `sha256:${'12'.repeat(32)}`,
         },
+        read_only_api_url: finalizeRequest.read_only_api_url,
+        read_only_coinset_url: finalizeRequest.read_only_coinset_url,
       },
     };
     const promise = service.finalizeBootstrap(finalizeRequest);
@@ -136,15 +157,20 @@ describe('AdminBootstrapService', () => {
       locked: true,
       bootstrap_manifest: {
         version: 1,
+        network: 'testnet11',
+        protocol,
         admin_authority_v2: {
           launcher_id: finalizeRequest.admin_authority_launcher_id,
           admins_hash: finalizeRequest.admins_hash,
           mips_root: finalizeRequest.mips_root,
           authority_version: 1,
         },
+        artifact_hashes: artifactHashes,
       },
       portal_runtime_config: {
         version: 1,
+        network: 'testnet11',
+        protocol,
         admin_authority_v2: {
           launcher_id: finalizeRequest.admin_authority_launcher_id,
           admins_hash: finalizeRequest.admins_hash,
@@ -152,6 +178,8 @@ describe('AdminBootstrapService', () => {
           authority_version: 1,
           admin_records_hash: `sha256:${'12'.repeat(32)}`,
         },
+        read_only_api_url: finalizeRequest.read_only_api_url,
+        read_only_coinset_url: finalizeRequest.read_only_coinset_url,
       },
     });
 
