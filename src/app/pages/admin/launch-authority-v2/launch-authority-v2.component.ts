@@ -18,6 +18,7 @@ import {
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import {
   AdminBootstrapService,
+  BootstrapRecoveryAnchorCreateCoinPreviewResponse,
   BootstrapRecoveryAnchorArtifact,
   BootstrapRecoveryAnchorPublishIntentResponse,
   BootstrapRecoveryAnchorVerifyResponse,
@@ -136,6 +137,12 @@ type RecoveryPublishIntentState =
   | { kind: 'idle' }
   | { kind: 'pending' }
   | { kind: 'ready'; response: BootstrapRecoveryAnchorPublishIntentResponse }
+  | { kind: 'error'; message: string };
+
+type RecoveryCreateCoinPreviewState =
+  | { kind: 'idle' }
+  | { kind: 'pending' }
+  | { kind: 'ready'; response: BootstrapRecoveryAnchorCreateCoinPreviewResponse }
   | { kind: 'error'; message: string };
 
 
@@ -763,6 +770,30 @@ type RecoveryPublishIntentState =
                                       </summary>
                                       <pre class="mt-2 mono text-[0.6rem] bg-black/30 p-3 rounded overflow-x-auto">{{ recoveryPublishIntentPayloadJson() }}</pre>
                                     </details>
+                                    <div class="mt-3">
+                                      <label for="recovery-marker-puzzle-hash-input" class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted cursor-pointer">
+                                        Marker puzzle hash
+                                      </label>
+                                      <input
+                                        id="recovery-marker-puzzle-hash-input"
+                                        type="text"
+                                        class="input mt-1 w-full mono text-xs"
+                                        placeholder="0x… (32 bytes)"
+                                        [(ngModel)]="recoveryMarkerPuzzleHashInput"
+                                      />
+                                      <button
+                                        type="button"
+                                        class="btn btn--ghost mt-2 text-[0.65rem] py-1 px-3"
+                                        [disabled]="!canPreviewRecoveryMarkerCoin()"
+                                        (click)="previewRecoveryAnchorMarkerCoin()"
+                                      >
+                                        @if (recoveryCreateCoinPreviewState().kind === 'pending') {
+                                          Previewing…
+                                        } @else {
+                                          Preview CREATE_COIN
+                                        }
+                                      </button>
+                                    </div>
                                   }
                                 }
                                 @case ('error') {
@@ -777,6 +808,38 @@ type RecoveryPublishIntentState =
                                     Waiting for finalized artifacts before
                                     fetching recovery-anchor publication memos.
                                   </p>
+                                }
+                              }
+                              @switch (recoveryCreateCoinPreviewState().kind) {
+                                @case ('ready') {
+                                  @if (recoveryCreateCoinPreview(); as p) {
+                                    <div class="mt-3 rounded border border-emerald-500/20 bg-emerald-500/5 p-2">
+                                      <p class="text-xs text-emerald-300">
+                                        CREATE_COIN preview ready.
+                                      </p>
+                                      <p class="mono text-[0.6rem] text-text-muted mt-2 break-all">
+                                        opcode={{ p.condition_opcode }}
+                                        · amount={{ p.marker_coin_amount_mojos }} mojo
+                                        · payload_hash={{ p.payload_hash }}
+                                      </p>
+                                      <p class="mono text-[0.6rem] text-text-muted mt-2 break-all">
+                                        marker_puzzle_hash={{ p.marker_puzzle_hash }}
+                                      </p>
+                                      <details class="mt-2">
+                                        <summary class="text-xs text-text-muted cursor-pointer">
+                                          condition hex
+                                        </summary>
+                                        <pre class="mt-2 mono text-[0.6rem] bg-black/30 p-3 rounded overflow-x-auto">{{ p.condition_hex | json }}</pre>
+                                      </details>
+                                    </div>
+                                  }
+                                }
+                                @case ('error') {
+                                  @if (recoveryCreateCoinPreviewError(); as err) {
+                                    <p class="text-xs text-yellow-300 mt-2">
+                                      CREATE_COIN preview unavailable: {{ err }}
+                                    </p>
+                                  }
                                 }
                               }
                               <p class="text-[0.65rem] text-text-muted mt-2">
@@ -876,6 +939,7 @@ export class LaunchAuthorityV2Component {
   readonly parentCoinIdInput = signal('');
   readonly mipsRootHashInput = signal('');
   readonly adminRecordsInput = signal('');
+  readonly recoveryMarkerPuzzleHashInput = signal('');
   readonly authorityVersionInput = signal(1);
   readonly eveAmountInput = signal(1);
 
@@ -1008,6 +1072,7 @@ export class LaunchAuthorityV2Component {
   readonly recoveryVerifyState = signal<RecoveryVerifyState>({ kind: 'idle' });
   readonly recoveryChainState = signal<RecoveryChainState>({ kind: 'idle' });
   readonly recoveryPublishIntentState = signal<RecoveryPublishIntentState>({ kind: 'idle' });
+  readonly recoveryCreateCoinPreviewState = signal<RecoveryCreateCoinPreviewState>({ kind: 'idle' });
 
   readonly recoveryVerifySuccess = computed(() => {
     const s = this.recoveryVerifyState();
@@ -1045,6 +1110,22 @@ export class LaunchAuthorityV2Component {
     const intent = this.recoveryPublishIntent();
     return intent ? JSON.stringify(intent.payload_memo_json, null, 2) : '';
   });
+
+  readonly recoveryCreateCoinPreview = computed(() => {
+    const s = this.recoveryCreateCoinPreviewState();
+    return s.kind === 'ready' ? s.response : null;
+  });
+
+  readonly recoveryCreateCoinPreviewError = computed(() => {
+    const s = this.recoveryCreateCoinPreviewState();
+    return s.kind === 'error' ? s.message : null;
+  });
+
+  readonly canPreviewRecoveryMarkerCoin = computed(() =>
+    this.recoveryPublishIntentState().kind === 'ready'
+    && isHex32(this.recoveryMarkerPuzzleHashInput().trim())
+    && this.recoveryCreateCoinPreviewState().kind !== 'pending',
+  );
 
   /** True when every input the finalize endpoint requires is present:
    * temporary bootstrap session, submitted launch, recovered first
@@ -1548,6 +1629,7 @@ export class LaunchAuthorityV2Component {
     this.recoveryVerifyState.set({ kind: 'idle' });
     this.recoveryChainState.set({ kind: 'idle' });
     this.recoveryPublishIntentState.set({ kind: 'idle' });
+    this.recoveryCreateCoinPreviewState.set({ kind: 'idle' });
     try {
       const response: BootstrapFinalizeResponse = await this.bootstrap.finalizeBootstrap({
         admin_records: adminRecords,
@@ -1583,6 +1665,27 @@ export class LaunchAuthorityV2Component {
       this.recoveryPublishIntentState.set({ kind: 'ready', response });
     } catch (e) {
       this.recoveryPublishIntentState.set({ kind: 'error', message: formatError(e) });
+    }
+  }
+
+  async previewRecoveryAnchorMarkerCoin(): Promise<void> {
+    const markerPuzzleHash = this.recoveryMarkerPuzzleHashInput().trim();
+    if (!isHex32(markerPuzzleHash)) {
+      this.recoveryCreateCoinPreviewState.set({
+        kind: 'error',
+        message: 'Marker puzzle hash must be a 32-byte hex string.',
+      });
+      return;
+    }
+    if (this.recoveryCreateCoinPreviewState().kind === 'pending') return;
+    this.recoveryCreateCoinPreviewState.set({ kind: 'pending' });
+    try {
+      const response = await this.bootstrap.createRecoveryAnchorCoinPreview({
+        marker_puzzle_hash: markerPuzzleHash,
+      });
+      this.recoveryCreateCoinPreviewState.set({ kind: 'ready', response });
+    } catch (e) {
+      this.recoveryCreateCoinPreviewState.set({ kind: 'error', message: formatError(e) });
     }
   }
 

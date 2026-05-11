@@ -59,6 +59,20 @@ export class AdminBootstrapService {
       ),
     );
   }
+
+  async createRecoveryAnchorCoinPreview(
+    request: BootstrapRecoveryAnchorCreateCoinPreviewRequest,
+  ): Promise<BootstrapRecoveryAnchorCreateCoinPreviewResponse> {
+    return firstValueFrom(
+      this.http.post<BootstrapRecoveryAnchorCreateCoinPreviewResponse>(
+        `${this.base}/admin/bootstrap/recovery-anchor/create-coin-preview`,
+        request,
+        {
+          withCredentials: true,
+        },
+      ),
+    );
+  }
 }
 
 export interface BootstrapChallengeResponse {
@@ -170,6 +184,21 @@ export interface BootstrapRecoveryAnchorPublishIntentResponse {
   payload_memo_utf8: string;
   payload_memo_hex: string;
   memos_hex: string[];
+  payload_hash: string;
+}
+
+export interface BootstrapRecoveryAnchorCreateCoinPreviewRequest {
+  marker_puzzle_hash: string;
+}
+
+export interface BootstrapRecoveryAnchorCreateCoinPreviewResponse {
+  condition_opcode: number;
+  marker_puzzle_hash: string;
+  marker_coin_amount_mojos: number;
+  tag_memo_hex: string;
+  payload_memo_hex: string;
+  memos_hex: string[];
+  condition_hex: [number, string, number, [string, string]];
   payload_hash: string;
 }
 

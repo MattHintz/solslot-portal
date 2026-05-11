@@ -78,6 +78,21 @@ describe('AdminBootstrapService', () => {
     memos_hex: ['0x504f50554c49535f424f4f5453545241505f5631', `0x${'ab'.repeat(32)}`],
     payload_hash: `sha256:${'45'.repeat(32)}`,
   };
+  const createCoinPreview = {
+    condition_opcode: 51,
+    marker_puzzle_hash: `0x${'ef'.repeat(32)}`,
+    marker_coin_amount_mojos: 1,
+    tag_memo_hex: publishIntent.tag_memo_hex,
+    payload_memo_hex: publishIntent.payload_memo_hex,
+    memos_hex: publishIntent.memos_hex,
+    condition_hex: [51, `0x${'ef'.repeat(32)}`, 1, publishIntent.memos_hex] as [
+      number,
+      string,
+      number,
+      [string, string],
+    ],
+    payload_hash: publishIntent.payload_hash,
+  };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -227,6 +242,20 @@ describe('AdminBootstrapService', () => {
     req.flush(publishIntent);
 
     await expectAsync(promise).toBeResolvedTo(publishIntent);
+  });
+
+  it('fetches recovery anchor create coin preview with cookie credentials and without bearer headers', async () => {
+    const request = { marker_puzzle_hash: createCoinPreview.marker_puzzle_hash };
+    const promise = service.createRecoveryAnchorCoinPreview(request);
+
+    const req = http.expectOne(`${environment.faucetApi}/admin/bootstrap/recovery-anchor/create-coin-preview`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(request);
+    expect(req.request.withCredentials).toBeTrue();
+    expect(req.request.headers.has('Authorization')).toBeFalse();
+    req.flush(createCoinPreview);
+
+    await expectAsync(promise).toBeResolvedTo(createCoinPreview);
   });
 
   it('rejects blank tokens before making HTTP requests', async () => {

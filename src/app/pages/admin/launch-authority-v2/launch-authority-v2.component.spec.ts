@@ -18,7 +18,11 @@ describe('LaunchAuthorityV2Component', () => {
   let bootstrap: jasmine.SpyObj<
     Pick<
       AdminBootstrapService,
-      'getBootstrapStatus' | 'finalizeBootstrap' | 'verifyRecoveryArtifacts' | 'getRecoveryAnchorPublishIntent'
+      | 'getBootstrapStatus'
+      | 'finalizeBootstrap'
+      | 'verifyRecoveryArtifacts'
+      | 'getRecoveryAnchorPublishIntent'
+      | 'createRecoveryAnchorCoinPreview'
     >
   >;
   let onChain: jasmine.SpyObj<Pick<OnChainStateService, 'getAuthorityV2'>>;
@@ -45,6 +49,7 @@ describe('LaunchAuthorityV2Component', () => {
       'finalizeBootstrap',
       'verifyRecoveryArtifacts',
       'getRecoveryAnchorPublishIntent',
+      'createRecoveryAnchorCoinPreview',
     ]);
     onChain = jasmine.createSpyObj('OnChainStateService', ['getAuthorityV2']);
     evmWallet = jasmine.createSpyObj('EvmWalletService', ['recoverFirstAdminPubkey']);
@@ -324,6 +329,49 @@ describe('LaunchAuthorityV2Component', () => {
     memos_hex: ['0x504f50554c49535f424f4f5453545241505f5631', `0x${'ab'.repeat(32)}`],
     payload_hash: `sha256:${'45'.repeat(32)}`,
   };
+  const createCoinPreview = {
+    condition_opcode: 51,
+    marker_puzzle_hash: `0x${'ef'.repeat(32)}`,
+    marker_coin_amount_mojos: 1,
+    tag_memo_hex: publishIntent.tag_memo_hex,
+    payload_memo_hex: publishIntent.payload_memo_hex,
+    memos_hex: publishIntent.memos_hex,
+    condition_hex: [51, `0x${'ef'.repeat(32)}`, 1, publishIntent.memos_hex] as [
+      number,
+      string,
+      number,
+      [string, string],
+    ],
+    payload_hash: publishIntent.payload_hash,
+  };
+  const finalizedResponse = {
+    locked: true,
+    bootstrap_manifest: {
+      version: 1,
+      network: 'testnet11',
+      protocol,
+      admin_authority_v2: {
+        launcher_id: launcherId,
+        admins_hash: adminsHash,
+        mips_root: mipsRootHash,
+        authority_version: 1,
+      },
+      artifact_hashes: artifactHashes,
+    },
+    portal_runtime_config: {
+      version: 1,
+      network: 'testnet11',
+      protocol,
+      admin_authority_v2: {
+        launcher_id: launcherId,
+        admins_hash: adminsHash,
+        mips_root: mipsRootHash,
+        authority_version: 1,
+        admin_records_hash: `sha256:${'12'.repeat(32)}`,
+      },
+    },
+    bootstrap_recovery_anchor: recoveryAnchor,
+  };
 
   function primeFinalizeReadyState(component: LaunchAuthorityV2Component): void {
     component.firstAdminLeaf.set(leaf);
@@ -350,6 +398,7 @@ describe('LaunchAuthorityV2Component', () => {
     });
     bootstrap.verifyRecoveryArtifacts.and.resolveTo(verifiedRecoveryResponse);
     bootstrap.getRecoveryAnchorPublishIntent.and.resolveTo(publishIntent);
+    bootstrap.createRecoveryAnchorCoinPreview.and.resolveTo(createCoinPreview);
     onChain.getAuthorityV2.and.resolveTo({
       enabled: true,
       launcher_id: launcherId,
@@ -532,6 +581,7 @@ describe('LaunchAuthorityV2Component', () => {
     expect(component.bootstrapStatus()?.locked).toBeFalse();
     expect(bootstrap.verifyRecoveryArtifacts).not.toHaveBeenCalled();
     expect(bootstrap.getRecoveryAnchorPublishIntent).not.toHaveBeenCalled();
+    expect(bootstrap.createRecoveryAnchorCoinPreview).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Finalize failed.');
   });
 
@@ -635,6 +685,60 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('Recovery anchor handoff');
     expect(text).toContain('Publish intent unavailable');
     expect(text).toContain('401 bootstrap session expired');
+  });
+
+  it('previews recovery marker coin CREATE_COIN without signing or broadcasting', async () => {
+    configureBootstrapMode();
+    const component = await create();
+    primeFinalizeReadyState(component);
+    component.finalizeState.set({
+      kind: 'finalized',
+      bootstrapManifest: finalizedResponse.bootstrap_manifest,
+      portalRuntimeConfig: finalizedResponse.portal_runtime_config,
+      bootstrapRecoveryAnchor: finalizedResponse.bootstrap_recovery_anchor,
+    });
+    component.recoveryPublishIntentState.set({ kind: 'ready', response: publishIntent });
+    component.recoveryMarkerPuzzleHashInput.set(createCoinPreview.marker_puzzle_hash);
+    fixture.detectChanges();
+
+    await component.previewRecoveryAnchorMarkerCoin();
+    fixture.detectChanges();
+
+    expect(bootstrap.createRecoveryAnchorCoinPreview).toHaveBeenCalledOnceWith({
+      marker_puzzle_hash: createCoinPreview.marker_puzzle_hash,
+    });
+    expect(component.recoveryCreateCoinPreviewState().kind).toBe('ready');
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('CREATE_COIN preview ready');
+    expect(text).toContain(`opcode=${createCoinPreview.condition_opcode}`);
+    expect(text).toContain(createCoinPreview.marker_puzzle_hash);
+    expect(text).toContain(createCoinPreview.payload_hash);
+    expect(text).toContain('condition hex');
+    expect(text).toContain('This handoff is memo-only');
+  });
+
+  it('rejects malformed marker puzzle hashes before preview API calls', async () => {
+    configureBootstrapMode();
+    const component = await create();
+    primeFinalizeReadyState(component);
+    component.finalizeState.set({
+      kind: 'finalized',
+      bootstrapManifest: finalizedResponse.bootstrap_manifest,
+      portalRuntimeConfig: finalizedResponse.portal_runtime_config,
+      bootstrapRecoveryAnchor: finalizedResponse.bootstrap_recovery_anchor,
+    });
+    component.recoveryPublishIntentState.set({ kind: 'ready', response: publishIntent });
+    component.recoveryMarkerPuzzleHashInput.set('0x1234');
+    fixture.detectChanges();
+
+    await component.previewRecoveryAnchorMarkerCoin();
+    fixture.detectChanges();
+
+    expect(bootstrap.createRecoveryAnchorCoinPreview).not.toHaveBeenCalled();
+    expect(component.recoveryCreateCoinPreviewState().kind).toBe('error');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Marker puzzle hash must be a 32-byte hex string',
+    );
   });
 
   it('surfaces live authority state-hash mismatch after verifier success', async () => {
