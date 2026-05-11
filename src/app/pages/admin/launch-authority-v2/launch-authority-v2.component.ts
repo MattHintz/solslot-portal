@@ -34,6 +34,7 @@ import { ChiaWasmService } from '../../../services/chia-wasm.service';
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { WalletCoinPickerService } from '../../../services/wallet-coin-picker.service';
+import { OnChainStateService } from '../../../services/on-chain-state.service';
 import { environment } from '../../../../environments/environment';
 
 /**
@@ -109,6 +110,25 @@ type RecoveryVerifyState =
   | { kind: 'pending' }
   | { kind: 'verified'; response: BootstrapRecoveryAnchorVerifyResponse }
   | { kind: 'rejected'; response: BootstrapRecoveryAnchorVerifyResponse }
+  | { kind: 'error'; message: string };
+
+type RecoveryChainState =
+  | { kind: 'idle' }
+  | { kind: 'pending' }
+  | {
+      kind: 'matched';
+      launcherId: string;
+      expectedStateHash: string;
+      chainStateHash: string;
+    }
+  | {
+      kind: 'mismatch';
+      launcherId: string | null;
+      expectedStateHash: string;
+      chainStateHash: string | null;
+      message: string;
+    }
+  | { kind: 'unavailable'; expectedStateHash: string | null; message: string }
   | { kind: 'error'; message: string };
 
 
@@ -655,6 +675,48 @@ type RecoveryVerifyState =
                                   </p>
                                 }
                               }
+                              @switch (recoveryChainState().kind) {
+                                @case ('pending') {
+                                  <p class="text-xs text-text-muted mt-2">
+                                    Checking recovered authority state hash
+                                    against live chain state…
+                                  </p>
+                                }
+                                @case ('matched') {
+                                  @if (recoveryChainMatched(); as c) {
+                                    <p class="text-xs text-emerald-300 mt-2">
+                                      Chain state matched. The recovered
+                                      authority state hash equals the live
+                                      admin_authority_v2 state hash.
+                                    </p>
+                                    <p class="mono text-[0.6rem] text-text-muted mt-2 break-all">
+                                      launcher_id={{ c.launcherId }}
+                                      · state_hash={{ c.chainStateHash }}
+                                    </p>
+                                  }
+                                }
+                                @case ('mismatch') {
+                                  @if (recoveryChainWarning(); as msg) {
+                                    <p class="text-xs text-red-300 mt-2">
+                                      {{ msg }}
+                                    </p>
+                                  }
+                                }
+                                @case ('unavailable') {
+                                  @if (recoveryChainWarning(); as msg) {
+                                    <p class="text-xs text-yellow-300 mt-2">
+                                      {{ msg }}
+                                    </p>
+                                  }
+                                }
+                                @case ('error') {
+                                  @if (recoveryChainWarning(); as msg) {
+                                    <p class="text-xs text-yellow-300 mt-2">
+                                      Chain-state check failed: {{ msg }}
+                                    </p>
+                                  }
+                                }
+                              }
                               <p class="text-[0.65rem] text-text-muted mt-2">
                                 This check grants no admin access and does not
                                 sign, broadcast, mint, or persist anything.
@@ -746,6 +808,7 @@ export class LaunchAuthorityV2Component {
   private readonly evmWallet = inject(EvmWalletService);
   private readonly eip712Leaf = inject(Eip712LeafHashService);
   private readonly coinPicker = inject(WalletCoinPickerService);
+  private readonly onChain = inject(OnChainStateService);
 
   // ─── Form state ────────────────────────────────────────────────────
   readonly parentCoinIdInput = signal('');
@@ -881,6 +944,7 @@ export class LaunchAuthorityV2Component {
   });
 
   readonly recoveryVerifyState = signal<RecoveryVerifyState>({ kind: 'idle' });
+  readonly recoveryChainState = signal<RecoveryChainState>({ kind: 'idle' });
 
   readonly recoveryVerifySuccess = computed(() => {
     const s = this.recoveryVerifyState();
@@ -892,6 +956,16 @@ export class LaunchAuthorityV2Component {
     if (s.kind === 'rejected') return s.response.error ?? 'Recovery artifacts failed verification.';
     if (s.kind === 'error') return s.message;
     return null;
+  });
+
+  readonly recoveryChainMatched = computed(() => {
+    const s = this.recoveryChainState();
+    return s.kind === 'matched' ? s : null;
+  });
+
+  readonly recoveryChainWarning = computed(() => {
+    const s = this.recoveryChainState();
+    return s.kind === 'mismatch' || s.kind === 'unavailable' || s.kind === 'error' ? s.message : null;
   });
 
   /** True when every input the finalize endpoint requires is present:
@@ -1394,6 +1468,7 @@ export class LaunchAuthorityV2Component {
     }
     this.finalizeState.set({ kind: 'pending' });
     this.recoveryVerifyState.set({ kind: 'idle' });
+    this.recoveryChainState.set({ kind: 'idle' });
     try {
       const response: BootstrapFinalizeResponse = await this.bootstrap.finalizeBootstrap({
         admin_records: adminRecords,
@@ -1438,8 +1513,65 @@ export class LaunchAuthorityV2Component {
           ? { kind: 'verified', response: verification }
           : { kind: 'rejected', response: verification },
       );
+      if (verification.verified) {
+        void this.checkRecoveredAuthorityAgainstChain(response);
+      } else {
+        this.recoveryChainState.set({ kind: 'idle' });
+      }
     } catch (e) {
       this.recoveryVerifyState.set({ kind: 'error', message: formatError(e) });
+      this.recoveryChainState.set({ kind: 'idle' });
+    }
+  }
+
+  async checkRecoveredAuthorityAgainstChain(response: BootstrapFinalizeResponse): Promise<void> {
+    if (this.recoveryChainState().kind === 'pending') return;
+    this.recoveryChainState.set({ kind: 'pending' });
+    let expectedStateHash: string | null = null;
+    try {
+      const authority = response.bootstrap_manifest.admin_authority_v2;
+      expectedStateHash = bytesToHexPrefixed(
+        this.v2.computeStateHash({
+          mipsRootHash: authority.mips_root,
+          adminsHash: authority.admins_hash,
+          pendingOpsHash: AdminAuthorityV2Service.EMPTY_LIST_HASH,
+          authorityVersion: authority.authority_version,
+        }),
+      );
+      const chain = await this.onChain.getAuthorityV2();
+      if (!chain.launcher_id || !chain.state_hash) {
+        this.recoveryChainState.set({
+          kind: 'unavailable',
+          expectedStateHash,
+          message: 'Live admin_authority_v2 state hash is not available from chain yet.',
+        });
+        return;
+      }
+      const expectedLauncher = authority.launcher_id.toLowerCase();
+      const chainLauncher = chain.launcher_id.toLowerCase();
+      const expectedState = expectedStateHash.toLowerCase();
+      const chainState = chain.state_hash.toLowerCase();
+      if (chainLauncher === expectedLauncher && chainState === expectedState) {
+        this.recoveryChainState.set({
+          kind: 'matched',
+          launcherId: chain.launcher_id,
+          expectedStateHash,
+          chainStateHash: chain.state_hash,
+        });
+        return;
+      }
+      this.recoveryChainState.set({
+        kind: 'mismatch',
+        launcherId: chain.launcher_id,
+        expectedStateHash,
+        chainStateHash: chain.state_hash,
+        message: 'Recovered authority coordinates do not match the live admin_authority_v2 chain state.',
+      });
+    } catch (e) {
+      this.recoveryChainState.set({
+        kind: 'error',
+        message: formatError(e),
+      });
     }
   }
 
