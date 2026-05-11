@@ -61,8 +61,33 @@ export interface BootstrapFinalizeRequest {
 
 export interface BootstrapFinalizeResponse {
   locked: boolean;
-  bootstrap_manifest: Record<string, unknown>;
-  portal_runtime_config: Record<string, unknown>;
+  bootstrap_manifest: BootstrapManifestArtifact;
+  portal_runtime_config: PortalRuntimeConfigArtifact;
+}
+
+export interface BootstrapManifestArtifact {
+  version: number;
+  admin_authority_v2: {
+    launcher_id: string;
+    admins_hash: string;
+    mips_root: string;
+    authority_version: number;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface PortalRuntimeConfigArtifact {
+  version: number;
+  admin_authority_v2: {
+    launcher_id: string;
+    admins_hash: string;
+    mips_root: string;
+    authority_version: number;
+    admin_records_hash: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
 }
 
 function authHeaders(token: string): HttpHeaders {

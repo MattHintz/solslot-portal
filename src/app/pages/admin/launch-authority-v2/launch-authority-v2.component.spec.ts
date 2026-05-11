@@ -333,12 +333,16 @@ describe('LaunchAuthorityV2Component', () => {
           launcher_id: launcherId,
           admins_hash: adminsHash,
           mips_root: mipsRootHash,
+          authority_version: 1,
         },
       },
       portal_runtime_config: {
         version: 1,
         admin_authority_v2: {
           launcher_id: launcherId,
+          admins_hash: adminsHash,
+          mips_root: mipsRootHash,
+          authority_version: 1,
           admin_records_hash: `sha256:${'12'.repeat(32)}`,
         },
       },
@@ -368,6 +372,8 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('Genesis finalized · bootstrapper locked');
     expect(text).toContain('bootstrap_manifest.json');
     expect(text).toContain('portal_runtime_config.json');
+    expect(component.finalizedManifestJson()).toContain('"authority_version": 1');
+    expect(component.finalizedRuntimeJson()).toContain('"authority_version": 1');
     // The page legitimately contains the word "signature" in the
     // first-admin preview copy ("Wallet signature is proof-of-possession
     // only"), so we cannot ban that substring outright — instead we

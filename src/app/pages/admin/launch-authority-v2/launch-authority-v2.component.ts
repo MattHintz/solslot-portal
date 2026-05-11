@@ -18,8 +18,10 @@ import {
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import {
   AdminBootstrapService,
+  BootstrapManifestArtifact,
   BootstrapFinalizeResponse,
   BootstrapStatusResponse,
+  PortalRuntimeConfigArtifact,
 } from '../../../services/admin-bootstrap.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import {
@@ -94,8 +96,8 @@ type FinalizeState =
   | { kind: 'pending' }
   | {
       kind: 'finalized';
-      bootstrapManifest: Record<string, unknown>;
-      portalRuntimeConfig: Record<string, unknown>;
+      bootstrapManifest: BootstrapManifestArtifact;
+      portalRuntimeConfig: PortalRuntimeConfigArtifact;
     }
   | { kind: 'error'; message: string };
 

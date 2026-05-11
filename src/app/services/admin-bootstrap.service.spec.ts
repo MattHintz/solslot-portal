@@ -85,12 +85,16 @@ describe('AdminBootstrapService', () => {
           launcher_id: finalizeRequest.admin_authority_launcher_id,
           admins_hash: finalizeRequest.admins_hash,
           mips_root: finalizeRequest.mips_root,
+          authority_version: 1,
         },
       },
       portal_runtime_config: {
         version: 1,
         admin_authority_v2: {
           launcher_id: finalizeRequest.admin_authority_launcher_id,
+          admins_hash: finalizeRequest.admins_hash,
+          mips_root: finalizeRequest.mips_root,
+          authority_version: 1,
           admin_records_hash: `sha256:${'12'.repeat(32)}`,
         },
       },
@@ -130,8 +134,25 @@ describe('AdminBootstrapService', () => {
     const req = http.expectOne(`${environment.faucetApi}/admin/bootstrap/finalize`);
     req.flush({
       locked: true,
-      bootstrap_manifest: { version: 1 },
-      portal_runtime_config: { version: 1 },
+      bootstrap_manifest: {
+        version: 1,
+        admin_authority_v2: {
+          launcher_id: finalizeRequest.admin_authority_launcher_id,
+          admins_hash: finalizeRequest.admins_hash,
+          mips_root: finalizeRequest.mips_root,
+          authority_version: 1,
+        },
+      },
+      portal_runtime_config: {
+        version: 1,
+        admin_authority_v2: {
+          launcher_id: finalizeRequest.admin_authority_launcher_id,
+          admins_hash: finalizeRequest.admins_hash,
+          mips_root: finalizeRequest.mips_root,
+          authority_version: 1,
+          admin_records_hash: `sha256:${'12'.repeat(32)}`,
+        },
+      },
     });
 
     await promise;
