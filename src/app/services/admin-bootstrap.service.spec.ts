@@ -52,6 +52,16 @@ describe('AdminBootstrapService', () => {
     admin_records_json: `sha256:${'12'.repeat(32)}`,
     portal_runtime_config_json: `sha256:${'23'.repeat(32)}`,
   };
+  const recoveryAnchor = {
+    version: 1,
+    tag: 'POPULIS_BOOTSTRAP_V1',
+    network: 'testnet11',
+    admin_authority_v2_launcher_id: finalizeRequest.admin_authority_launcher_id,
+    authority_version: 1,
+    bootstrap_manifest_hash: `sha256:${'34'.repeat(32)}`,
+    portal_runtime_config_hash: `sha256:${'23'.repeat(32)}`,
+    admin_records_hash: `sha256:${'12'.repeat(32)}`,
+  };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -119,6 +129,7 @@ describe('AdminBootstrapService', () => {
         read_only_api_url: finalizeRequest.read_only_api_url,
         read_only_coinset_url: finalizeRequest.read_only_coinset_url,
       },
+      bootstrap_recovery_anchor: recoveryAnchor,
     };
     const promise = service.finalizeBootstrap(finalizeRequest);
 
@@ -181,6 +192,7 @@ describe('AdminBootstrapService', () => {
         read_only_api_url: finalizeRequest.read_only_api_url,
         read_only_coinset_url: finalizeRequest.read_only_coinset_url,
       },
+      bootstrap_recovery_anchor: recoveryAnchor,
     });
 
     await promise;

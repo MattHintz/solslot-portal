@@ -273,6 +273,16 @@ describe('LaunchAuthorityV2Component', () => {
     admin_records_json: `sha256:${'12'.repeat(32)}`,
     portal_runtime_config_json: `sha256:${'23'.repeat(32)}`,
   };
+  const recoveryAnchor = {
+    version: 1,
+    tag: 'POPULIS_BOOTSTRAP_V1',
+    network: 'testnet11',
+    admin_authority_v2_launcher_id: launcherId,
+    authority_version: 1,
+    bootstrap_manifest_hash: `sha256:${'34'.repeat(32)}`,
+    portal_runtime_config_hash: `sha256:${'23'.repeat(32)}`,
+    admin_records_hash: `sha256:${'12'.repeat(32)}`,
+  };
 
   function primeFinalizeReadyState(component: LaunchAuthorityV2Component): void {
     component.firstAdminLeaf.set(leaf);
@@ -367,6 +377,7 @@ describe('LaunchAuthorityV2Component', () => {
         read_only_api_url: 'https://api.populis.example',
         read_only_coinset_url: 'https://coinset.example',
       },
+      bootstrap_recovery_anchor: recoveryAnchor,
     };
     bootstrap.finalizeBootstrap.and.resolveTo(response);
     const component = await create();
@@ -393,12 +404,18 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('Genesis finalized · bootstrapper locked');
     expect(text).toContain('bootstrap_manifest.json');
     expect(text).toContain('portal_runtime_config.json');
+    expect(text).toContain('bootstrap_recovery_anchor.json');
     expect(component.finalizedManifestJson()).toContain('"network": "testnet11"');
     expect(component.finalizedManifestJson()).toContain('"artifact_hashes"');
     expect(component.finalizedRuntimeJson()).toContain('"network": "testnet11"');
     expect(component.finalizedRuntimeJson()).toContain('"read_only_api_url": "https://api.populis.example"');
     expect(component.finalizedManifestJson()).toContain('"authority_version": 1');
     expect(component.finalizedRuntimeJson()).toContain('"authority_version": 1');
+    expect(component.finalizedRecoveryAnchorJson()).toContain('"tag": "POPULIS_BOOTSTRAP_V1"');
+    expect(component.finalizedRecoveryAnchorJson()).toContain('"bootstrap_manifest_hash"');
+    expect(component.finalizedRecoveryAnchorJson()).toContain('"portal_runtime_config_hash"');
+    expect(component.finalizedRecoveryAnchorJson()).toContain('"admin_records_hash"');
+    expect(component.finalizedRecoveryAnchorJson()).toContain('"authority_version": 1');
     // The page legitimately contains the word "signature" in the
     // first-admin preview copy ("Wallet signature is proof-of-possession
     // only"), so we cannot ban that substring outright — instead we

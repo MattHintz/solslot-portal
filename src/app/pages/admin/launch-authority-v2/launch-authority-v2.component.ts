@@ -18,6 +18,7 @@ import {
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import {
   AdminBootstrapService,
+  BootstrapRecoveryAnchorArtifact,
   BootstrapManifestArtifact,
   BootstrapFinalizeResponse,
   BootstrapStatusResponse,
@@ -98,6 +99,7 @@ type FinalizeState =
       kind: 'finalized';
       bootstrapManifest: BootstrapManifestArtifact;
       portalRuntimeConfig: PortalRuntimeConfigArtifact;
+      bootstrapRecoveryAnchor: BootstrapRecoveryAnchorArtifact;
     }
   | { kind: 'error'; message: string };
 
@@ -573,7 +575,8 @@ type FinalizeState =
                           Submit the public commitments above to finish the
                           genesis ceremony. The API will atomically persist
                           <code>admin_records.json</code>,
-                          <code>portal_runtime_config.json</code> and
+                          <code>portal_runtime_config.json</code>,
+                          <code>bootstrap_recovery_anchor.json</code> and
                           <code>bootstrap_manifest.json</code> and lock the
                           bootstrapper. No raw signatures, session cookies, or
                           one-shot tokens are sent.
@@ -608,6 +611,12 @@ type FinalizeState =
                                 portal_runtime_config.json
                               </summary>
                               <pre class="mt-2 mono text-[0.6rem] bg-black/30 p-3 rounded overflow-x-auto">{{ finalizedRuntimeJson() }}</pre>
+                            </details>
+                            <details>
+                              <summary class="text-xs text-text-muted cursor-pointer">
+                                bootstrap_recovery_anchor.json
+                              </summary>
+                              <pre class="mt-2 mono text-[0.6rem] bg-black/30 p-3 rounded overflow-x-auto">{{ finalizedRecoveryAnchorJson() }}</pre>
                             </details>
                           </div>
                         }
@@ -782,6 +791,7 @@ export class LaunchAuthorityV2Component {
       ? {
           bootstrapManifest: s.bootstrapManifest,
           portalRuntimeConfig: s.portalRuntimeConfig,
+          bootstrapRecoveryAnchor: s.bootstrapRecoveryAnchor,
         }
       : null;
   });
@@ -797,6 +807,11 @@ export class LaunchAuthorityV2Component {
   readonly finalizedRuntimeJson = computed(() => {
     const v = this.finalizedView();
     return v ? JSON.stringify(v.portalRuntimeConfig, null, 2) : '';
+  });
+
+  readonly finalizedRecoveryAnchorJson = computed(() => {
+    const v = this.finalizedView();
+    return v ? JSON.stringify(v.bootstrapRecoveryAnchor, null, 2) : '';
   });
 
   /** Last finalize error message, or null when not in error state. */
@@ -1315,6 +1330,7 @@ export class LaunchAuthorityV2Component {
         kind: 'finalized',
         bootstrapManifest: response.bootstrap_manifest,
         portalRuntimeConfig: response.portal_runtime_config,
+        bootstrapRecoveryAnchor: response.bootstrap_recovery_anchor,
       });
       if (response.locked) {
         this.bootstrapStatus.set({
