@@ -19,6 +19,7 @@ import {
 import {
   AdminBootstrapService,
   BootstrapRecoveryAnchorArtifact,
+  BootstrapRecoveryAnchorPublishIntentResponse,
   BootstrapRecoveryAnchorVerifyResponse,
   BootstrapManifestArtifact,
   BootstrapFinalizeResponse,
@@ -129,6 +130,12 @@ type RecoveryChainState =
       message: string;
     }
   | { kind: 'unavailable'; expectedStateHash: string | null; message: string }
+  | { kind: 'error'; message: string };
+
+type RecoveryPublishIntentState =
+  | { kind: 'idle' }
+  | { kind: 'pending' }
+  | { kind: 'ready'; response: BootstrapRecoveryAnchorPublishIntentResponse }
   | { kind: 'error'; message: string };
 
 
@@ -722,6 +729,61 @@ type RecoveryChainState =
                                 sign, broadcast, mint, or persist anything.
                               </p>
                             </div>
+                            <div class="rounded border border-white/10 bg-white/[0.03] p-3">
+                              <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                                Recovery anchor handoff
+                              </div>
+                              @switch (recoveryPublishIntentState().kind) {
+                                @case ('pending') {
+                                  <p class="text-xs text-text-muted mt-1">
+                                    Fetching marker-coin memo payload for
+                                    recovery-anchor publication…
+                                  </p>
+                                }
+                                @case ('ready') {
+                                  @if (recoveryPublishIntent(); as intent) {
+                                    <p class="text-xs text-emerald-300 mt-1">
+                                      Publish intent ready. Use these memos if
+                                      you later create the optional recovery
+                                      marker coin.
+                                    </p>
+                                    <p class="mono text-[0.6rem] text-text-muted mt-2 break-all">
+                                      amount={{ intent.marker_coin_amount_mojos }} mojo
+                                      · payload_hash={{ intent.payload_hash }}
+                                    </p>
+                                    <details class="mt-2">
+                                      <summary class="text-xs text-text-muted cursor-pointer">
+                                        marker coin memos
+                                      </summary>
+                                      <pre class="mt-2 mono text-[0.6rem] bg-black/30 p-3 rounded overflow-x-auto">{{ intent.memos_hex.join('\n') }}</pre>
+                                    </details>
+                                    <details class="mt-2">
+                                      <summary class="text-xs text-text-muted cursor-pointer">
+                                        payload memo JSON
+                                      </summary>
+                                      <pre class="mt-2 mono text-[0.6rem] bg-black/30 p-3 rounded overflow-x-auto">{{ recoveryPublishIntentPayloadJson() }}</pre>
+                                    </details>
+                                  }
+                                }
+                                @case ('error') {
+                                  @if (recoveryPublishIntentError(); as err) {
+                                    <p class="text-xs text-yellow-300 mt-1">
+                                      Publish intent unavailable: {{ err }}
+                                    </p>
+                                  }
+                                }
+                                @default {
+                                  <p class="text-xs text-text-muted mt-1">
+                                    Waiting for finalized artifacts before
+                                    fetching recovery-anchor publication memos.
+                                  </p>
+                                }
+                              }
+                              <p class="text-[0.65rem] text-text-muted mt-2">
+                                This handoff is memo-only. The portal does not
+                                create, sign, or broadcast a marker coin here.
+                              </p>
+                            </div>
                             <details>
                               <summary class="text-xs text-text-muted cursor-pointer">
                                 bootstrap_manifest.json
@@ -945,6 +1007,7 @@ export class LaunchAuthorityV2Component {
 
   readonly recoveryVerifyState = signal<RecoveryVerifyState>({ kind: 'idle' });
   readonly recoveryChainState = signal<RecoveryChainState>({ kind: 'idle' });
+  readonly recoveryPublishIntentState = signal<RecoveryPublishIntentState>({ kind: 'idle' });
 
   readonly recoveryVerifySuccess = computed(() => {
     const s = this.recoveryVerifyState();
@@ -966,6 +1029,21 @@ export class LaunchAuthorityV2Component {
   readonly recoveryChainWarning = computed(() => {
     const s = this.recoveryChainState();
     return s.kind === 'mismatch' || s.kind === 'unavailable' || s.kind === 'error' ? s.message : null;
+  });
+
+  readonly recoveryPublishIntent = computed(() => {
+    const s = this.recoveryPublishIntentState();
+    return s.kind === 'ready' ? s.response : null;
+  });
+
+  readonly recoveryPublishIntentError = computed(() => {
+    const s = this.recoveryPublishIntentState();
+    return s.kind === 'error' ? s.message : null;
+  });
+
+  readonly recoveryPublishIntentPayloadJson = computed(() => {
+    const intent = this.recoveryPublishIntent();
+    return intent ? JSON.stringify(intent.payload_memo_json, null, 2) : '';
   });
 
   /** True when every input the finalize endpoint requires is present:
@@ -1469,6 +1547,7 @@ export class LaunchAuthorityV2Component {
     this.finalizeState.set({ kind: 'pending' });
     this.recoveryVerifyState.set({ kind: 'idle' });
     this.recoveryChainState.set({ kind: 'idle' });
+    this.recoveryPublishIntentState.set({ kind: 'idle' });
     try {
       const response: BootstrapFinalizeResponse = await this.bootstrap.finalizeBootstrap({
         admin_records: adminRecords,
@@ -1490,8 +1569,20 @@ export class LaunchAuthorityV2Component {
         });
       }
       void this.verifyFinalizedRecoveryArtifacts(response, adminRecords);
+      void this.fetchRecoveryAnchorPublishIntent();
     } catch (e) {
       this.finalizeState.set({ kind: 'error', message: formatError(e) });
+    }
+  }
+
+  async fetchRecoveryAnchorPublishIntent(): Promise<void> {
+    if (this.recoveryPublishIntentState().kind === 'pending') return;
+    this.recoveryPublishIntentState.set({ kind: 'pending' });
+    try {
+      const response = await this.bootstrap.getRecoveryAnchorPublishIntent();
+      this.recoveryPublishIntentState.set({ kind: 'ready', response });
+    } catch (e) {
+      this.recoveryPublishIntentState.set({ kind: 'error', message: formatError(e) });
     }
   }
 

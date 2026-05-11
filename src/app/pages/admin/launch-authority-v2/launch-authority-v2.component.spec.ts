@@ -16,7 +16,10 @@ describe('LaunchAuthorityV2Component', () => {
   let fixture: ComponentFixture<LaunchAuthorityV2Component>;
   let session: jasmine.SpyObj<Pick<AdminSessionService, 'isAuthenticated'>>;
   let bootstrap: jasmine.SpyObj<
-    Pick<AdminBootstrapService, 'getBootstrapStatus' | 'finalizeBootstrap' | 'verifyRecoveryArtifacts'>
+    Pick<
+      AdminBootstrapService,
+      'getBootstrapStatus' | 'finalizeBootstrap' | 'verifyRecoveryArtifacts' | 'getRecoveryAnchorPublishIntent'
+    >
   >;
   let onChain: jasmine.SpyObj<Pick<OnChainStateService, 'getAuthorityV2'>>;
   let evmWallet: jasmine.SpyObj<Pick<EvmWalletService, 'recoverFirstAdminPubkey'>>;
@@ -41,6 +44,7 @@ describe('LaunchAuthorityV2Component', () => {
       'getBootstrapStatus',
       'finalizeBootstrap',
       'verifyRecoveryArtifacts',
+      'getRecoveryAnchorPublishIntent',
     ]);
     onChain = jasmine.createSpyObj('OnChainStateService', ['getAuthorityV2']);
     evmWallet = jasmine.createSpyObj('EvmWalletService', ['recoverFirstAdminPubkey']);
@@ -304,6 +308,22 @@ describe('LaunchAuthorityV2Component', () => {
     deployment_manifest_hash: null,
     error: null,
   };
+  const publishIntent = {
+    network: 'testnet11',
+    marker_coin_amount_mojos: 1,
+    admin_authority_v2_launcher_id: launcherId,
+    authority_version: 1,
+    bootstrap_manifest_hash: recoveryAnchor.bootstrap_manifest_hash,
+    portal_runtime_config_hash: recoveryAnchor.portal_runtime_config_hash,
+    admin_records_hash: recoveryAnchor.admin_records_hash,
+    tag_memo_utf8: 'POPULIS_BOOTSTRAP_V1',
+    tag_memo_hex: '0x504f50554c49535f424f4f5453545241505f5631',
+    payload_memo_json: recoveryAnchor,
+    payload_memo_utf8: JSON.stringify(recoveryAnchor),
+    payload_memo_hex: `0x${'ab'.repeat(32)}`,
+    memos_hex: ['0x504f50554c49535f424f4f5453545241505f5631', `0x${'ab'.repeat(32)}`],
+    payload_hash: `sha256:${'45'.repeat(32)}`,
+  };
 
   function primeFinalizeReadyState(component: LaunchAuthorityV2Component): void {
     component.firstAdminLeaf.set(leaf);
@@ -329,6 +349,7 @@ describe('LaunchAuthorityV2Component', () => {
       expires_at: 1234,
     });
     bootstrap.verifyRecoveryArtifacts.and.resolveTo(verifiedRecoveryResponse);
+    bootstrap.getRecoveryAnchorPublishIntent.and.resolveTo(publishIntent);
     onChain.getAuthorityV2.and.resolveTo({
       enabled: true,
       launcher_id: launcherId,
@@ -443,7 +464,9 @@ describe('LaunchAuthorityV2Component', () => {
     expect(component.finalizeState().kind).toBe('finalized');
     expect(component.recoveryVerifyState().kind).toBe('verified');
     expect(component.recoveryChainState().kind).toBe('matched');
+    expect(component.recoveryPublishIntentState().kind).toBe('ready');
     expect(onChain.getAuthorityV2).toHaveBeenCalledOnceWith();
+    expect(bootstrap.getRecoveryAnchorPublishIntent).toHaveBeenCalledOnceWith();
     expect(component.bootstrapStatus()?.locked).toBeTrue();
     expect(component.launchAccessMode()).toBe('locked');
 
@@ -456,6 +479,11 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('Verified. The recovery anchor, manifest');
     expect(text).toContain('Chain state matched');
     expect(text).toContain(chainStateHash);
+    expect(text).toContain('Recovery anchor handoff');
+    expect(text).toContain('Publish intent ready');
+    expect(text).toContain(publishIntent.payload_hash);
+    expect(text).toContain('marker coin memos');
+    expect(text).toContain('This handoff is memo-only');
     expect(text).toContain('This check grants no admin access');
     expect(component.finalizedManifestJson()).toContain('"network": "testnet11"');
     expect(component.finalizedManifestJson()).toContain('"artifact_hashes"');
@@ -503,6 +531,7 @@ describe('LaunchAuthorityV2Component', () => {
     expect(component.finalizeError()).toContain('410 bootstrap locked');
     expect(component.bootstrapStatus()?.locked).toBeFalse();
     expect(bootstrap.verifyRecoveryArtifacts).not.toHaveBeenCalled();
+    expect(bootstrap.getRecoveryAnchorPublishIntent).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Finalize failed.');
   });
 
@@ -557,6 +586,55 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('Verification rejected these public artifacts');
     expect(text).toContain('admin_records.json content hash mismatch');
     expect(text).toContain('This check grants no admin access');
+  });
+
+  it('surfaces recovery-anchor publish intent errors without failing finalized artifacts', async () => {
+    configureBootstrapMode();
+    const response = {
+      locked: true,
+      bootstrap_manifest: {
+        version: 1,
+        network: 'testnet11',
+        protocol,
+        admin_authority_v2: {
+          launcher_id: launcherId,
+          admins_hash: adminsHash,
+          mips_root: mipsRootHash,
+          authority_version: 1,
+        },
+        artifact_hashes: artifactHashes,
+      },
+      portal_runtime_config: {
+        version: 1,
+        network: 'testnet11',
+        protocol,
+        admin_authority_v2: {
+          launcher_id: launcherId,
+          admins_hash: adminsHash,
+          mips_root: mipsRootHash,
+          authority_version: 1,
+          admin_records_hash: `sha256:${'12'.repeat(32)}`,
+        },
+      },
+      bootstrap_recovery_anchor: recoveryAnchor,
+    };
+    bootstrap.finalizeBootstrap.and.resolveTo(response);
+    bootstrap.getRecoveryAnchorPublishIntent.and.rejectWith(new Error('401 bootstrap session expired'));
+    const component = await create();
+    primeFinalizeReadyState(component);
+    fixture.detectChanges();
+
+    await component.finalizeBootstrapArtifacts();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.finalizeState().kind).toBe('finalized');
+    expect(component.recoveryVerifyState().kind).toBe('verified');
+    expect(component.recoveryPublishIntentState().kind).toBe('error');
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Recovery anchor handoff');
+    expect(text).toContain('Publish intent unavailable');
+    expect(text).toContain('401 bootstrap session expired');
   });
 
   it('surfaces live authority state-hash mismatch after verifier success', async () => {

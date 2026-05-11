@@ -62,6 +62,22 @@ describe('AdminBootstrapService', () => {
     portal_runtime_config_hash: `sha256:${'23'.repeat(32)}`,
     admin_records_hash: `sha256:${'12'.repeat(32)}`,
   };
+  const publishIntent = {
+    network: 'testnet11',
+    marker_coin_amount_mojos: 1,
+    admin_authority_v2_launcher_id: finalizeRequest.admin_authority_launcher_id,
+    authority_version: 1,
+    bootstrap_manifest_hash: recoveryAnchor.bootstrap_manifest_hash,
+    portal_runtime_config_hash: recoveryAnchor.portal_runtime_config_hash,
+    admin_records_hash: recoveryAnchor.admin_records_hash,
+    tag_memo_utf8: 'POPULIS_BOOTSTRAP_V1',
+    tag_memo_hex: '0x504f50554c49535f424f4f5453545241505f5631',
+    payload_memo_json: recoveryAnchor,
+    payload_memo_utf8: JSON.stringify(recoveryAnchor),
+    payload_memo_hex: `0x${'ab'.repeat(32)}`,
+    memos_hex: ['0x504f50554c49535f424f4f5453545241505f5631', `0x${'ab'.repeat(32)}`],
+    payload_hash: `sha256:${'45'.repeat(32)}`,
+  };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -199,6 +215,18 @@ describe('AdminBootstrapService', () => {
     req.flush(response);
 
     await expectAsync(promise).toBeResolvedTo(response);
+  });
+
+  it('fetches recovery anchor publish intent with cookie credentials and without bearer headers', async () => {
+    const promise = service.getRecoveryAnchorPublishIntent();
+
+    const req = http.expectOne(`${environment.faucetApi}/admin/bootstrap/recovery-anchor/publish-intent`);
+    expect(req.request.method).toBe('GET');
+    expect(req.request.withCredentials).toBeTrue();
+    expect(req.request.headers.has('Authorization')).toBeFalse();
+    req.flush(publishIntent);
+
+    await expectAsync(promise).toBeResolvedTo(publishIntent);
   });
 
   it('rejects blank tokens before making HTTP requests', async () => {

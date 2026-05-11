@@ -48,6 +48,17 @@ export class AdminBootstrapService {
       ),
     );
   }
+
+  async getRecoveryAnchorPublishIntent(): Promise<BootstrapRecoveryAnchorPublishIntentResponse> {
+    return firstValueFrom(
+      this.http.get<BootstrapRecoveryAnchorPublishIntentResponse>(
+        `${this.base}/admin/bootstrap/recovery-anchor/publish-intent`,
+        {
+          withCredentials: true,
+        },
+      ),
+    );
+  }
 }
 
 export interface BootstrapChallengeResponse {
@@ -143,6 +154,23 @@ export interface BootstrapRecoveryAnchorVerifyResponse {
   admin_records_hash?: string | null;
   deployment_manifest_hash?: string | null;
   error?: string | null;
+}
+
+export interface BootstrapRecoveryAnchorPublishIntentResponse {
+  network: string;
+  marker_coin_amount_mojos: number;
+  admin_authority_v2_launcher_id: string;
+  authority_version: number;
+  bootstrap_manifest_hash: string;
+  portal_runtime_config_hash: string;
+  admin_records_hash: string;
+  tag_memo_utf8: string;
+  tag_memo_hex: string;
+  payload_memo_json: BootstrapRecoveryAnchorArtifact;
+  payload_memo_utf8: string;
+  payload_memo_hex: string;
+  memos_hex: string[];
+  payload_hash: string;
 }
 
 function authHeaders(token: string): HttpHeaders {
