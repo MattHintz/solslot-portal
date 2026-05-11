@@ -145,6 +145,20 @@ type RecoveryCreateCoinPreviewState =
   | { kind: 'ready'; response: BootstrapRecoveryAnchorCreateCoinPreviewResponse }
   | { kind: 'error'; message: string };
 
+interface RecoveryHandoffBundle {
+  version: 1;
+  artifacts: {
+    bootstrap_manifest: BootstrapManifestArtifact;
+    portal_runtime_config: PortalRuntimeConfigArtifact;
+    bootstrap_recovery_anchor: BootstrapRecoveryAnchorArtifact;
+    admin_records: Record<string, unknown>;
+  };
+  verifier: RecoveryVerifyState;
+  chain_state: RecoveryChainState;
+  recovery_anchor_publish_intent: BootstrapRecoveryAnchorPublishIntentResponse | null;
+  recovery_anchor_create_coin_preview: BootstrapRecoveryAnchorCreateCoinPreviewResponse | null;
+}
+
 
 @Component({
   selector: 'pp-launch-authority-v2',
@@ -846,6 +860,21 @@ type RecoveryCreateCoinPreviewState =
                                 This handoff is memo-only. The portal does not
                                 create, sign, or broadcast a marker coin here.
                               </p>
+                              @if (recoveryHandoffBundleJson()) {
+                                <button
+                                  type="button"
+                                  class="btn btn--ghost mt-3 text-[0.65rem] py-1 px-3"
+                                  (click)="downloadRecoveryHandoffBundleJson()"
+                                >
+                                  Download recovery handoff bundle
+                                </button>
+                                <details class="mt-2">
+                                  <summary class="text-xs text-text-muted cursor-pointer">
+                                    recovery_handoff_bundle.json
+                                  </summary>
+                                  <pre class="mt-2 mono text-[0.6rem] bg-black/30 p-3 rounded overflow-x-auto">{{ recoveryHandoffBundleJson() }}</pre>
+                                </details>
+                              }
                             </div>
                             <details>
                               <summary class="text-xs text-text-muted cursor-pointer">
@@ -1119,6 +1148,30 @@ export class LaunchAuthorityV2Component {
   readonly recoveryCreateCoinPreviewError = computed(() => {
     const s = this.recoveryCreateCoinPreviewState();
     return s.kind === 'error' ? s.message : null;
+  });
+
+  readonly recoveryHandoffBundle = computed<RecoveryHandoffBundle | null>(() => {
+    const finalized = this.finalizedView();
+    const adminRecords = this.buildAdminRecordsConfig();
+    if (!finalized || !adminRecords) return null;
+    return {
+      version: 1,
+      artifacts: {
+        bootstrap_manifest: finalized.bootstrapManifest,
+        portal_runtime_config: finalized.portalRuntimeConfig,
+        bootstrap_recovery_anchor: finalized.bootstrapRecoveryAnchor,
+        admin_records: adminRecords,
+      },
+      verifier: this.recoveryVerifyState(),
+      chain_state: this.recoveryChainState(),
+      recovery_anchor_publish_intent: this.recoveryPublishIntent(),
+      recovery_anchor_create_coin_preview: this.recoveryCreateCoinPreview(),
+    };
+  });
+
+  readonly recoveryHandoffBundleJson = computed(() => {
+    const bundle = this.recoveryHandoffBundle();
+    return bundle ? JSON.stringify(bundle, null, 2) : '';
   });
 
   readonly canPreviewRecoveryMarkerCoin = computed(() =>
@@ -1569,11 +1622,21 @@ export class LaunchAuthorityV2Component {
   downloadAdminRecordsJson(): void {
     const json = this.buildAdminRecordsJson();
     if (!json) return;
+    this.downloadJson('admin_records.json', json);
+  }
+
+  downloadRecoveryHandoffBundleJson(): void {
+    const json = this.recoveryHandoffBundleJson();
+    if (!json) return;
+    this.downloadJson('recovery_handoff_bundle.json', json);
+  }
+
+  private downloadJson(filename: string, json: string): void {
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'admin_records.json';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

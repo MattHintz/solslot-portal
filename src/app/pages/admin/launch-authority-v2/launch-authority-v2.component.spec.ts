@@ -532,6 +532,8 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('Publish intent ready');
     expect(text).toContain(publishIntent.payload_hash);
     expect(text).toContain('marker coin memos');
+    expect(text).toContain('Download recovery handoff bundle');
+    expect(text).toContain('recovery_handoff_bundle.json');
     expect(text).toContain('This handoff is memo-only');
     expect(text).toContain('This check grants no admin access');
     expect(component.finalizedManifestJson()).toContain('"network": "testnet11"');
@@ -563,6 +565,95 @@ describe('LaunchAuthorityV2Component', () => {
     ]) {
       expect(lower).not.toContain(forbidden);
     }
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it('builds a recovery handoff bundle with artifacts, verifier state, and handoff previews', async () => {
+    configureBootstrapMode();
+    const component = await create();
+    primeFinalizeReadyState(component);
+    component.finalizeState.set({
+      kind: 'finalized',
+      bootstrapManifest: finalizedResponse.bootstrap_manifest,
+      portalRuntimeConfig: finalizedResponse.portal_runtime_config,
+      bootstrapRecoveryAnchor: finalizedResponse.bootstrap_recovery_anchor,
+    });
+    component.recoveryVerifyState.set({
+      kind: 'verified',
+      response: verifiedRecoveryResponse,
+    });
+    component.recoveryChainState.set({
+      kind: 'matched',
+      launcherId,
+      expectedStateHash: chainStateHash,
+      chainStateHash,
+    });
+    component.recoveryPublishIntentState.set({ kind: 'ready', response: publishIntent });
+    component.recoveryCreateCoinPreviewState.set({ kind: 'ready', response: createCoinPreview });
+    fixture.detectChanges();
+
+    const json = component.recoveryHandoffBundleJson();
+    const bundle = JSON.parse(json);
+
+    expect(bundle.version).toBe(1);
+    expect(bundle.artifacts.bootstrap_manifest).toEqual(finalizedResponse.bootstrap_manifest);
+    expect(bundle.artifacts.portal_runtime_config).toEqual(finalizedResponse.portal_runtime_config);
+    expect(bundle.artifacts.bootstrap_recovery_anchor).toEqual(recoveryAnchor);
+    expect(bundle.artifacts.admin_records).toEqual(jasmine.objectContaining({
+      version: 1,
+      launcher_id: launcherId,
+    }));
+    expect(bundle.verifier.kind).toBe('verified');
+    expect(bundle.chain_state.kind).toBe('matched');
+    expect(bundle.recovery_anchor_publish_intent).toEqual(publishIntent);
+    expect(bundle.recovery_anchor_create_coin_preview).toEqual(createCoinPreview);
+
+    const lower = json.toLowerCase();
+    for (const forbidden of [
+      'populis_admin_token',
+      'populis_bootstrap_session',
+      'bootstrap_session',
+      'bearer',
+      'jwt_secret',
+      'nonce',
+      rawSignature.toLowerCase(),
+    ]) {
+      expect(lower).not.toContain(forbidden);
+    }
+    expect(fixture.nativeElement.textContent).toContain('Download recovery handoff bundle');
+  });
+
+  it('downloads the recovery handoff bundle without browser storage', async () => {
+    configureBootstrapMode();
+    const component = await create();
+    primeFinalizeReadyState(component);
+    component.finalizeState.set({
+      kind: 'finalized',
+      bootstrapManifest: finalizedResponse.bootstrap_manifest,
+      portalRuntimeConfig: finalizedResponse.portal_runtime_config,
+      bootstrapRecoveryAnchor: finalizedResponse.bootstrap_recovery_anchor,
+    });
+    component.recoveryPublishIntentState.set({ kind: 'ready', response: publishIntent });
+    const setItem = spyOn(Storage.prototype, 'setItem').and.callThrough();
+    const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:handoff');
+    const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
+    const click = jasmine.createSpy('click');
+    const realCreateElement = document.createElement.bind(document);
+    spyOn(document, 'createElement').and.callFake((tagName: string) => {
+      const el = realCreateElement(tagName);
+      if (tagName.toLowerCase() === 'a') {
+        Object.defineProperty(el, 'click', { value: click });
+      }
+      return el;
+    });
+
+    component.downloadRecoveryHandoffBundleJson();
+
+    expect(createObjectUrl).toHaveBeenCalled();
+    const blob = createObjectUrl.calls.mostRecent().args[0] as Blob;
+    expect(blob.type).toBe('application/json');
+    expect(click).toHaveBeenCalled();
+    expect(revokeObjectUrl).toHaveBeenCalledOnceWith('blob:handoff');
     expect(setItem).not.toHaveBeenCalled();
   });
 
