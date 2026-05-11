@@ -19,6 +19,7 @@ import {
 import {
   AdminBootstrapService,
   BootstrapRecoveryAnchorArtifact,
+  BootstrapRecoveryAnchorVerifyResponse,
   BootstrapManifestArtifact,
   BootstrapFinalizeResponse,
   BootstrapStatusResponse,
@@ -101,6 +102,13 @@ type FinalizeState =
       portalRuntimeConfig: PortalRuntimeConfigArtifact;
       bootstrapRecoveryAnchor: BootstrapRecoveryAnchorArtifact;
     }
+  | { kind: 'error'; message: string };
+
+type RecoveryVerifyState =
+  | { kind: 'idle' }
+  | { kind: 'pending' }
+  | { kind: 'verified'; response: BootstrapRecoveryAnchorVerifyResponse }
+  | { kind: 'rejected'; response: BootstrapRecoveryAnchorVerifyResponse }
   | { kind: 'error'; message: string };
 
 
@@ -600,6 +608,58 @@ type FinalizeState =
                         }
                         @if (finalizedView(); as f) {
                           <div class="mt-3 grid gap-3">
+                            <div class="rounded border border-white/10 bg-white/[0.03] p-3">
+                              <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                                Recovery verifier
+                              </div>
+                              @switch (recoveryVerifyState().kind) {
+                                @case ('pending') {
+                                  <p class="text-xs text-text-muted mt-1">
+                                    Verifying returned public artifacts against
+                                    the recovery anchor hash chain…
+                                  </p>
+                                }
+                                @case ('verified') {
+                                  @if (recoveryVerifySuccess(); as v) {
+                                    <p class="text-xs text-emerald-300 mt-1">
+                                      Verified. The recovery anchor, manifest,
+                                      runtime config, admin records, and
+                                      authority coordinates agree.
+                                    </p>
+                                    <p class="mono text-[0.6rem] text-text-muted mt-2 break-all">
+                                      launcher_id={{ v.admin_authority_v2_launcher_id }}
+                                      · admins_hash={{ v.admins_hash }}
+                                      · admin_records_hash={{ v.admin_records_hash }}
+                                    </p>
+                                  }
+                                }
+                                @case ('rejected') {
+                                  @if (recoveryVerifyFailure(); as err) {
+                                    <p class="text-xs text-red-300 mt-1">
+                                      Verification rejected these public artifacts:
+                                      {{ err }}
+                                    </p>
+                                  }
+                                }
+                                @case ('error') {
+                                  @if (recoveryVerifyFailure(); as err) {
+                                    <p class="text-xs text-yellow-300 mt-1">
+                                      Verification request failed: {{ err }}
+                                    </p>
+                                  }
+                                }
+                                @default {
+                                  <p class="text-xs text-text-muted mt-1">
+                                    Waiting for finalized artifacts before
+                                    checking the recovery verifier.
+                                  </p>
+                                }
+                              }
+                              <p class="text-[0.65rem] text-text-muted mt-2">
+                                This check grants no admin access and does not
+                                sign, broadcast, mint, or persist anything.
+                              </p>
+                            </div>
                             <details>
                               <summary class="text-xs text-text-muted cursor-pointer">
                                 bootstrap_manifest.json
@@ -818,6 +878,20 @@ export class LaunchAuthorityV2Component {
   readonly finalizeError = computed(() => {
     const s = this.finalizeState();
     return s.kind === 'error' ? s.message : null;
+  });
+
+  readonly recoveryVerifyState = signal<RecoveryVerifyState>({ kind: 'idle' });
+
+  readonly recoveryVerifySuccess = computed(() => {
+    const s = this.recoveryVerifyState();
+    return s.kind === 'verified' ? s.response : null;
+  });
+
+  readonly recoveryVerifyFailure = computed(() => {
+    const s = this.recoveryVerifyState();
+    if (s.kind === 'rejected') return s.response.error ?? 'Recovery artifacts failed verification.';
+    if (s.kind === 'error') return s.message;
+    return null;
   });
 
   /** True when every input the finalize endpoint requires is present:
@@ -1319,6 +1393,7 @@ export class LaunchAuthorityV2Component {
       return;
     }
     this.finalizeState.set({ kind: 'pending' });
+    this.recoveryVerifyState.set({ kind: 'idle' });
     try {
       const response: BootstrapFinalizeResponse = await this.bootstrap.finalizeBootstrap({
         admin_records: adminRecords,
@@ -1339,8 +1414,32 @@ export class LaunchAuthorityV2Component {
           expires_at: null,
         });
       }
+      void this.verifyFinalizedRecoveryArtifacts(response, adminRecords);
     } catch (e) {
       this.finalizeState.set({ kind: 'error', message: formatError(e) });
+    }
+  }
+
+  async verifyFinalizedRecoveryArtifacts(
+    response: BootstrapFinalizeResponse,
+    adminRecords: Record<string, unknown>,
+  ): Promise<void> {
+    if (this.recoveryVerifyState().kind === 'pending') return;
+    this.recoveryVerifyState.set({ kind: 'pending' });
+    try {
+      const verification = await this.bootstrap.verifyRecoveryArtifacts({
+        bootstrap_recovery_anchor: response.bootstrap_recovery_anchor,
+        bootstrap_manifest: response.bootstrap_manifest,
+        portal_runtime_config: response.portal_runtime_config,
+        admin_records: adminRecords,
+      });
+      this.recoveryVerifyState.set(
+        verification.verified
+          ? { kind: 'verified', response: verification }
+          : { kind: 'rejected', response: verification },
+      );
+    } catch (e) {
+      this.recoveryVerifyState.set({ kind: 'error', message: formatError(e) });
     }
   }
 

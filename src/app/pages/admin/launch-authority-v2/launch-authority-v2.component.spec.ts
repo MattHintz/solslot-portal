@@ -15,7 +15,7 @@ describe('LaunchAuthorityV2Component', () => {
   let fixture: ComponentFixture<LaunchAuthorityV2Component>;
   let session: jasmine.SpyObj<Pick<AdminSessionService, 'isAuthenticated'>>;
   let bootstrap: jasmine.SpyObj<
-    Pick<AdminBootstrapService, 'getBootstrapStatus' | 'finalizeBootstrap'>
+    Pick<AdminBootstrapService, 'getBootstrapStatus' | 'finalizeBootstrap' | 'verifyRecoveryArtifacts'>
   >;
   let evmWallet: jasmine.SpyObj<Pick<EvmWalletService, 'recoverFirstAdminPubkey'>>;
   let eip712Leaf: jasmine.SpyObj<Pick<Eip712LeafHashService, 'compute' | 'computeMipsRoot1Of1'>>;
@@ -38,6 +38,7 @@ describe('LaunchAuthorityV2Component', () => {
     bootstrap = jasmine.createSpyObj('AdminBootstrapService', [
       'getBootstrapStatus',
       'finalizeBootstrap',
+      'verifyRecoveryArtifacts',
     ]);
     evmWallet = jasmine.createSpyObj('EvmWalletService', ['recoverFirstAdminPubkey']);
     eip712Leaf = jasmine.createSpyObj('Eip712LeafHashService', [
@@ -283,6 +284,21 @@ describe('LaunchAuthorityV2Component', () => {
     portal_runtime_config_hash: `sha256:${'23'.repeat(32)}`,
     admin_records_hash: `sha256:${'12'.repeat(32)}`,
   };
+  const verifiedRecoveryResponse = {
+    verified: true,
+    deployment_manifest_verified: false,
+    live_authority_verified: false,
+    network: 'testnet11',
+    admin_authority_v2_launcher_id: launcherId,
+    admins_hash: adminsHash,
+    mips_root: mipsRootHash,
+    authority_version: 1,
+    bootstrap_manifest_hash: recoveryAnchor.bootstrap_manifest_hash,
+    portal_runtime_config_hash: recoveryAnchor.portal_runtime_config_hash,
+    admin_records_hash: recoveryAnchor.admin_records_hash,
+    deployment_manifest_hash: null,
+    error: null,
+  };
 
   function primeFinalizeReadyState(component: LaunchAuthorityV2Component): void {
     component.firstAdminLeaf.set(leaf);
@@ -307,6 +323,7 @@ describe('LaunchAuthorityV2Component', () => {
       authenticated: true,
       expires_at: 1234,
     });
+    bootstrap.verifyRecoveryArtifacts.and.resolveTo(verifiedRecoveryResponse);
   }
 
   it('hides the finalize action in permanent-admin mode even after launch', async () => {
@@ -396,7 +413,17 @@ describe('LaunchAuthorityV2Component', () => {
       admins_hash: adminsHash,
       mips_root: mipsRootHash,
     });
+    expect(bootstrap.verifyRecoveryArtifacts).toHaveBeenCalledOnceWith({
+      bootstrap_recovery_anchor: recoveryAnchor,
+      bootstrap_manifest: response.bootstrap_manifest,
+      portal_runtime_config: response.portal_runtime_config,
+      admin_records: jasmine.objectContaining({
+        version: 1,
+        launcher_id: launcherId,
+      }),
+    });
     expect(component.finalizeState().kind).toBe('finalized');
+    expect(component.recoveryVerifyState().kind).toBe('verified');
     expect(component.bootstrapStatus()?.locked).toBeTrue();
     expect(component.launchAccessMode()).toBe('locked');
 
@@ -405,6 +432,9 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('bootstrap_manifest.json');
     expect(text).toContain('portal_runtime_config.json');
     expect(text).toContain('bootstrap_recovery_anchor.json');
+    expect(text).toContain('Recovery verifier');
+    expect(text).toContain('Verified. The recovery anchor, manifest');
+    expect(text).toContain('This check grants no admin access');
     expect(component.finalizedManifestJson()).toContain('"network": "testnet11"');
     expect(component.finalizedManifestJson()).toContain('"artifact_hashes"');
     expect(component.finalizedRuntimeJson()).toContain('"network": "testnet11"');
@@ -450,7 +480,60 @@ describe('LaunchAuthorityV2Component', () => {
     expect(component.finalizeState().kind).toBe('error');
     expect(component.finalizeError()).toContain('410 bootstrap locked');
     expect(component.bootstrapStatus()?.locked).toBeFalse();
+    expect(bootstrap.verifyRecoveryArtifacts).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Finalize failed.');
+  });
+
+  it('surfaces recovery verifier rejection without granting authority', async () => {
+    configureBootstrapMode();
+    const response = {
+      locked: true,
+      bootstrap_manifest: {
+        version: 1,
+        network: 'testnet11',
+        protocol,
+        admin_authority_v2: {
+          launcher_id: launcherId,
+          admins_hash: adminsHash,
+          mips_root: mipsRootHash,
+          authority_version: 1,
+        },
+        artifact_hashes: artifactHashes,
+      },
+      portal_runtime_config: {
+        version: 1,
+        network: 'testnet11',
+        protocol,
+        admin_authority_v2: {
+          launcher_id: launcherId,
+          admins_hash: adminsHash,
+          mips_root: mipsRootHash,
+          authority_version: 1,
+          admin_records_hash: `sha256:${'12'.repeat(32)}`,
+        },
+      },
+      bootstrap_recovery_anchor: recoveryAnchor,
+    };
+    bootstrap.finalizeBootstrap.and.resolveTo(response);
+    bootstrap.verifyRecoveryArtifacts.and.resolveTo({
+      ...verifiedRecoveryResponse,
+      verified: false,
+      error: 'admin_records.json content hash mismatch',
+    });
+    const component = await create();
+    primeFinalizeReadyState(component);
+    fixture.detectChanges();
+
+    await component.finalizeBootstrapArtifacts();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.finalizeState().kind).toBe('finalized');
+    expect(component.recoveryVerifyState().kind).toBe('rejected');
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Verification rejected these public artifacts');
+    expect(text).toContain('admin_records.json content hash mismatch');
+    expect(text).toContain('This check grants no admin access');
   });
 
   it('refuses to finalize without the required public commitments', async () => {

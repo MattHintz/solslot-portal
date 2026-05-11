@@ -143,6 +143,64 @@ describe('AdminBootstrapService', () => {
     await expectAsync(promise).toBeResolvedTo(response);
   });
 
+  it('verifies recovery artifacts without credentials or bearer headers', async () => {
+    const request = {
+      bootstrap_recovery_anchor: recoveryAnchor,
+      bootstrap_manifest: {
+        version: 1,
+        network: 'testnet11',
+        protocol,
+        admin_authority_v2: {
+          launcher_id: finalizeRequest.admin_authority_launcher_id,
+          admins_hash: finalizeRequest.admins_hash,
+          mips_root: finalizeRequest.mips_root,
+          authority_version: 1,
+        },
+        artifact_hashes: artifactHashes,
+      },
+      portal_runtime_config: {
+        version: 1,
+        network: 'testnet11',
+        protocol,
+        admin_authority_v2: {
+          launcher_id: finalizeRequest.admin_authority_launcher_id,
+          admins_hash: finalizeRequest.admins_hash,
+          mips_root: finalizeRequest.mips_root,
+          authority_version: 1,
+          admin_records_hash: `sha256:${'12'.repeat(32)}`,
+        },
+        read_only_api_url: finalizeRequest.read_only_api_url,
+        read_only_coinset_url: finalizeRequest.read_only_coinset_url,
+      },
+      admin_records: finalizeRequest.admin_records,
+    };
+    const response = {
+      verified: true,
+      deployment_manifest_verified: false,
+      live_authority_verified: false,
+      network: 'testnet11',
+      admin_authority_v2_launcher_id: finalizeRequest.admin_authority_launcher_id,
+      admins_hash: finalizeRequest.admins_hash,
+      mips_root: finalizeRequest.mips_root,
+      authority_version: 1,
+      bootstrap_manifest_hash: recoveryAnchor.bootstrap_manifest_hash,
+      portal_runtime_config_hash: recoveryAnchor.portal_runtime_config_hash,
+      admin_records_hash: recoveryAnchor.admin_records_hash,
+      deployment_manifest_hash: null,
+      error: null,
+    };
+    const promise = service.verifyRecoveryArtifacts(request);
+
+    const req = http.expectOne(`${environment.faucetApi}/admin/bootstrap/recovery-anchor/verify`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(request);
+    expect(req.request.withCredentials).toBeFalse();
+    expect(req.request.headers.has('Authorization')).toBeFalse();
+    req.flush(response);
+
+    await expectAsync(promise).toBeResolvedTo(response);
+  });
+
   it('rejects blank tokens before making HTTP requests', async () => {
     await expectAsync(service.startBootstrapSession('   ')).toBeRejectedWithError(/token is required/);
     http.expectNone(`${environment.faucetApi}/admin/bootstrap/challenge`);

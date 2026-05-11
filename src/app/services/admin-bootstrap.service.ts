@@ -37,6 +37,17 @@ export class AdminBootstrapService {
       ),
     );
   }
+
+  async verifyRecoveryArtifacts(
+    request: BootstrapRecoveryAnchorVerifyRequest,
+  ): Promise<BootstrapRecoveryAnchorVerifyResponse> {
+    return firstValueFrom(
+      this.http.post<BootstrapRecoveryAnchorVerifyResponse>(
+        `${this.base}/admin/bootstrap/recovery-anchor/verify`,
+        request,
+      ),
+    );
+  }
 }
 
 export interface BootstrapChallengeResponse {
@@ -107,6 +118,31 @@ export interface BootstrapRecoveryAnchorArtifact {
   portal_runtime_config_hash: string;
   admin_records_hash: string;
   [key: string]: unknown;
+}
+
+export interface BootstrapRecoveryAnchorVerifyRequest {
+  bootstrap_recovery_anchor: BootstrapRecoveryAnchorArtifact;
+  bootstrap_manifest: BootstrapManifestArtifact;
+  portal_runtime_config: PortalRuntimeConfigArtifact;
+  admin_records: Record<string, unknown>;
+  deployment_manifest?: Record<string, unknown> | null;
+  live_admin_authority_v2?: AdminAuthorityV2ManifestArtifact | null;
+}
+
+export interface BootstrapRecoveryAnchorVerifyResponse {
+  verified: boolean;
+  deployment_manifest_verified: boolean;
+  live_authority_verified: boolean;
+  network?: string | null;
+  admin_authority_v2_launcher_id?: string | null;
+  admins_hash?: string | null;
+  mips_root?: string | null;
+  authority_version?: number | null;
+  bootstrap_manifest_hash?: string | null;
+  portal_runtime_config_hash?: string | null;
+  admin_records_hash?: string | null;
+  deployment_manifest_hash?: string | null;
+  error?: string | null;
 }
 
 function authHeaders(token: string): HttpHeaders {
