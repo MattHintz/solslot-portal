@@ -172,12 +172,20 @@ interface RecoveryHandoffBundle {
           <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">
             A.5 / Phase 9-Hermes-D
           </div>
-          <h1 class="font-display text-4xl md:text-5xl">Create first-admin authority.</h1>
-          <p class="mt-2 text-sm text-text-muted max-w-prose">
-            Continue the same genesis ceremony by creating the
-            <code>admin_authority_v2</code> singleton and binding the selected
-            wallet as permanent admin slot 0.
-          </p>
+          @if (launchAccessMode() === 'locked') {
+            <h1 class="font-display text-4xl md:text-5xl">Genesis already finalized.</h1>
+            <p class="mt-2 text-sm text-text-muted max-w-prose">
+              The <code>admin_authority_v2</code> bootstrapper is locked. Inspect
+              finalized artifacts or sign in with the recorded admin slot 0 wallet.
+            </p>
+          } @else {
+            <h1 class="font-display text-4xl md:text-5xl">Create first-admin authority.</h1>
+            <p class="mt-2 text-sm text-text-muted max-w-prose">
+              Continue the same genesis ceremony by creating the
+              <code>admin_authority_v2</code> singleton and binding the selected
+              wallet as permanent admin slot 0.
+            </p>
+          }
         </div>
         @if (launchAccessMode() === 'permanent-admin') {
           <a routerLink="/admin" class="btn btn--ghost">← Admin desk</a>
@@ -211,9 +219,15 @@ interface RecoveryHandoffBundle {
           <div class="card mb-6 border border-red-500/40 bg-red-500/10">
             <h2 class="font-display text-2xl">Bootstrap access unavailable</h2>
             <p class="text-sm text-text-muted mt-2">
-              The bootstrapper is locked. Return to genesis to inspect current
-              status.
+              The bootstrapper is locked, so this first-admin bootstrap step
+              cannot be run again. Inspect the finalized artifacts or continue
+              with permanent admin login using the recorded admin slot 0 wallet.
             </p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <a routerLink="/admin/genesis" class="btn btn--ghost">Inspect finalized artifacts</a>
+              <a routerLink="/admin/login" class="btn btn--primary">Permanent admin login</a>
+              <a routerLink="/admin" class="btn btn--ghost">Open Admin desk</a>
+            </div>
           </div>
         }
         @case ('missing') {
@@ -227,6 +241,7 @@ interface RecoveryHandoffBundle {
         }
       }
 
+      @if (launchAccessMode() !== 'locked' || finalizedView()) {
       @if (!chiaWasmReady()) {
         <div class="card border border-yellow-500/40 bg-yellow-500/10">
           <p class="text-sm">
@@ -923,6 +938,7 @@ interface RecoveryHandoffBundle {
             </details>
           </div>
         }
+      }
       }
     </div>
   `,

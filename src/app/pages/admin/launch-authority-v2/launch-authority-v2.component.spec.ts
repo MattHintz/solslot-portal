@@ -159,8 +159,17 @@ describe('LaunchAuthorityV2Component', () => {
     const text = fixture.nativeElement.textContent as string;
 
     expect(component.launchAccessMode()).toBe('locked');
+    expect(text).toContain('Genesis already finalized');
     expect(text).toContain('Bootstrap access unavailable');
     expect(text).toContain('The bootstrapper is locked');
+    expect(text).toContain('cannot be run again');
+    expect(text).toContain('Inspect finalized artifacts');
+    expect(text).toContain('Permanent admin login');
+    expect(text).toContain('Open Admin desk');
+    expect(text).toContain('recorded admin slot 0 wallet');
+    expect(text).not.toContain('Create first-admin authority');
+    expect(text).not.toContain('Inputs');
+    expect(text).not.toContain('Use my connected wallet as first admin');
   });
 
   it('shows missing bootstrap prompt when no bootstrap session is active', async () => {
