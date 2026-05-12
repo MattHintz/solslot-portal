@@ -311,6 +311,27 @@ describe('ChiaWalletService.signSpendBundle', () => {
   // Wire format
   // ───────────────────────────────────────────────────────────────────
 
+  it('sends 0x-prefixed coin spend hex fields to signCoinSpends', async () => {
+    setConnectedState('goby');
+    const mock = installMockWallet('chia', () => SAMPLE_SIG);
+    cleanup.push(mock.uninstall);
+
+    await service.signSpendBundle(SAMPLE_COIN_SPENDS);
+
+    const params = mock.calls[0].params as {
+      coinSpends: Array<{
+        coin: { parent_coin_info: string; puzzle_hash: string; amount: number };
+        puzzle_reveal: string;
+        solution: string;
+      }>;
+    };
+    const spend = params.coinSpends[0];
+    expect(spend.coin.parent_coin_info).toBe('0x' + 'a1'.repeat(32));
+    expect(spend.coin.puzzle_hash).toBe('0x' + 'b2'.repeat(32));
+    expect(spend.puzzle_reveal).toBe('0xff01ff80');
+    expect(spend.solution).toBe('0xff8080');
+  });
+
   // ───────────────────────────────────────────────────────────────────
   // transfer (D-2.6)
   // ───────────────────────────────────────────────────────────────────
@@ -424,9 +445,119 @@ describe('ChiaWalletService.signSpendBundle', () => {
         }),
       ).toBeRejectedWithError(/not connected/);
     });
+
+    it('Goby: passes the optional memos array through to the wallet', async () => {
+      setConnectedState('goby');
+      const TAG_MEMO = 'POPULIS_BOOTSTRAP_V1';
+      const PAYLOAD_MEMO = '{"version":1,"tag":"POPULIS_BOOTSTRAP_V1"}';
+      const mock = installMockWallet('chia', (_method, params) => {
+        const p = params as { memos: unknown };
+        expect(p.memos)
+          .withContext(
+            'Goby transfer must forward caller-supplied memos verbatim ' +
+              '(used by the recovery anchor broadcast flow)',
+          )
+          .toEqual([TAG_MEMO, PAYLOAD_MEMO]);
+        return { signature: SAMPLE_SIG, spendBundle: { coin_spends: [] } };
+      });
+      cleanup.push(mock.uninstall);
+
+      await service.transfer({
+        targetPuzzleHash: '0x' + 'aa'.repeat(32),
+        amount: 1,
+        memos: [TAG_MEMO, PAYLOAD_MEMO],
+      });
+    });
+
+    it('Sage: passes the optional memos array through to chia_send', async () => {
+      setConnectedState('sage');
+      const TAG_MEMO = 'POPULIS_BOOTSTRAP_V1';
+      const PAYLOAD_MEMO = '{"version":1,"tag":"POPULIS_BOOTSTRAP_V1"}';
+      const mock = installMockWallet('sage', (_method, params) => {
+        const p = params as { memos: unknown };
+        expect(p.memos)
+          .withContext('Sage chia_send/chip0002_send must accept memos too')
+          .toEqual([TAG_MEMO, PAYLOAD_MEMO]);
+        return { aggregatedSignature: SAMPLE_SIG, coinSpends: [] };
+      });
+      cleanup.push(mock.uninstall);
+
+      await service.transfer({
+        targetPuzzleHash: '0x' + 'aa'.repeat(32),
+        amount: 1,
+        memos: [TAG_MEMO, PAYLOAD_MEMO],
+      });
+    });
+
+    it('defaults memos to an empty array when omitted (Goby + Sage)', async () => {
+      setConnectedState('goby');
+      const gobyMock = installMockWallet('chia', (_method, params) => {
+        expect((params as { memos: unknown[] }).memos)
+          .withContext('omitting memos must keep the legacy empty-array shape')
+          .toEqual([]);
+        return { signature: SAMPLE_SIG, spendBundle: { coin_spends: [] } };
+      });
+      cleanup.push(gobyMock.uninstall);
+      await service.transfer({
+        targetPuzzleHash: '0x' + 'aa'.repeat(32),
+        amount: 1,
+      });
+      gobyMock.uninstall();
+
+      setConnectedState('sage');
+      const sageMock = installMockWallet('sage', (_method, params) => {
+        expect((params as { memos: unknown[] }).memos)
+          .withContext('Sage path must also default memos to empty array')
+          .toEqual([]);
+        return { aggregatedSignature: SAMPLE_SIG, coinSpends: [] };
+      });
+      cleanup.push(sageMock.uninstall);
+      await service.transfer({
+        targetPuzzleHash: '0x' + 'aa'.repeat(32),
+        amount: 1,
+      });
+    });
   });
 
-  it('strips 0x prefix and uses snake_case in wire format', async () => {
+  describe('filterUnlockedCoinIds', () => {
+    it('Sage: sends bare coin names and accepts coin_ids response shape', async () => {
+      setConnectedState('sage');
+      const unlocked = 'ab'.repeat(32);
+      const mock = installMockWallet('sage', (method, params) => {
+        expect(method).toBe('chia_filterUnlockedCoins');
+        expect(params).toEqual({
+          coinNames: [unlocked, 'cd'.repeat(32)],
+        });
+        return { coin_ids: [unlocked] };
+      });
+      cleanup.push(mock.uninstall);
+
+      const result = await service.filterUnlockedCoinIds([
+        '0x' + unlocked,
+        '0x' + 'cd'.repeat(32),
+      ]);
+
+      expect(result).toEqual(['0x' + unlocked]);
+      expect(mock.calls.length).toBe(1);
+    });
+
+    it('Goby: keeps 0x-prefixed coin names and accepts bare array response shape', async () => {
+      setConnectedState('goby');
+      const unlocked = '0x' + 'ef'.repeat(32);
+      const mock = installMockWallet('chia', (method, params) => {
+        expect(method).toBe('filterUnlockedCoins');
+        expect(params).toEqual({ coinNames: [unlocked] });
+        return [unlocked];
+      });
+      cleanup.push(mock.uninstall);
+
+      const result = await service.filterUnlockedCoinIds([unlocked]);
+
+      expect(result).toEqual([unlocked]);
+    });
+  });
+
+  it('keeps 0x prefix and uses snake_case in wire format', async () => {
     setConnectedState('goby');
     const mock = installMockWallet('chia', () => ({
       signature: SAMPLE_SIG,
@@ -447,16 +578,16 @@ describe('ChiaWalletService.signSpendBundle', () => {
         solution: string;
       }>;
     };
-    expect(params.coinSpends[0].coin.parent_coin_info).toBe('a1'.repeat(32));
+    expect(params.coinSpends[0].coin.parent_coin_info).toBe('0x' + 'a1'.repeat(32));
     expect(params.coinSpends[0].coin.parent_coin_info.startsWith('0x'))
-      .withContext('hex prefix should be stripped before sending to wallet')
-      .toBe(false);
-    expect(params.coinSpends[0].coin.puzzle_hash).toBe('b2'.repeat(32));
+      .withContext('hex prefix should be preserved before sending to wallet')
+      .toBe(true);
+    expect(params.coinSpends[0].coin.puzzle_hash).toBe('0x' + 'b2'.repeat(32));
     expect(params.coinSpends[0].coin.amount)
       .withContext('amount should be number for wire format, not bigint')
       .toBe(1);
-    expect(params.coinSpends[0].puzzle_reveal).toBe('ff01ff80');
-    expect(params.coinSpends[0].solution).toBe('ff8080');
+    expect(params.coinSpends[0].puzzle_reveal).toBe('0xff01ff80');
+    expect(params.coinSpends[0].solution).toBe('0xff8080');
   });
 });
 

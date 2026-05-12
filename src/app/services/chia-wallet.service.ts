@@ -1,8 +1,14 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
+import SignClient from '@walletconnect/sign-client';
 
 import { ChiaWasmService } from './chia-wasm.service';
 import { environment } from '../../environments/environment';
 import { mojoAmountToSafeNumber } from '../utils/mojo-amount';
+
+type WalletConnectSignClient = Awaited<ReturnType<typeof SignClient.init>>;
+interface ChiaWalletConnectSession {
+  topic: string;
+}
 
 /**
  * Chia wallet service.
@@ -22,7 +28,13 @@ import { mojoAmountToSafeNumber } from '../utils/mojo-amount';
 export class ChiaWalletService {
   private readonly chiaWasm = inject(ChiaWasmService);
   private readonly _state = signal<ChiaState>({ kind: 'disconnected' });
+  private readonly _sageWalletConnectUri = signal<string | null>(null);
+  private sageWcClient: WalletConnectSignClient | null = null;
+  private sageWcInitPromise: Promise<WalletConnectSignClient> | null = null;
+  private sageWcSession: ChiaWalletConnectSession | null = null;
+  private sageWcBridge: ChiaInjected | null = null;
   readonly state = this._state.asReadonly();
+  readonly sageWalletConnectUri = this._sageWalletConnectUri.asReadonly();
 
   readonly isConnected = computed(() => this._state().kind === 'connected');
   readonly pubkey = computed(() => {
@@ -40,6 +52,10 @@ export class ChiaWalletService {
 
   hasSage(): boolean {
     return typeof window !== 'undefined' && !!(window as WindowWithChia).sage;
+  }
+
+  hasSageWalletConnect(): boolean {
+    return true;
   }
 
   /** Connect to Goby (browser extension). */
@@ -79,6 +95,67 @@ export class ChiaWalletService {
     return blsHex;
   }
 
+  async connectSageWalletConnect(): Promise<string> {
+    if (!environment.walletConnectProjectId) {
+      throw new Error(
+        'WalletConnect projectId is not configured. Set environment.walletConnectProjectId ' +
+          'to connect Sage through WalletConnect.',
+      );
+    }
+    const client = await this.getOrInitSageWalletConnectClient();
+    const chainId = chiaWalletConnectChainId();
+    const { uri, approval } = await client.connect({
+      requiredNamespaces: {
+        chia: {
+          methods: [
+            'chip0002_getPublicKeys',
+            'chia_getAddress',
+            'chip0002_signCoinSpends',
+          ],
+          chains: [chainId],
+          events: [],
+        },
+      },
+      optionalNamespaces: {
+        chia: {
+          methods: [
+            'chia_getPublicKeys',
+            'chia_getCurrentAddress',
+            'chip0002_getCurrentAddress',
+            'chia_signCoinSpends',
+            'chia_filterUnlockedCoins',
+            'chip0002_filterUnlockedCoins',
+            'filterUnlockedCoins',
+            'chia_signMessageByAddress',
+          ],
+          chains: [chainId],
+          events: [],
+        },
+      },
+    });
+    this._sageWalletConnectUri.set(uri ?? null);
+    try {
+      this.sageWcSession = await approval();
+      this.sageWcBridge = this.makeSageWalletConnectBridge(client, this.sageWcSession, chainId);
+      const keys = (await this.sageWcBridge.request({
+        method: 'chip0002_getPublicKeys',
+        params: {},
+      })) as string[];
+      if (!keys || keys.length === 0) {
+        throw new Error('Sage WalletConnect returned no public keys');
+      }
+      const blsHex = normalizeHex(keys[0]);
+      this._state.set({
+        kind: 'connected',
+        pubkey: blsHex,
+        connection: 'sage-walletconnect',
+      });
+      return blsHex;
+    } finally {
+      this._sageWalletConnectUri.set(null);
+    }
+  }
+
   /**
    * Sign an arbitrary message with the user's master BLS key.
    *
@@ -99,8 +176,8 @@ export class ChiaWalletService {
       return normalizeHex(sig.signature);
     }
 
-    if (state.connection === 'sage') {
-      const sage = (window as WindowWithChia).sage;
+    if (state.connection === 'sage' || state.connection === 'sage-walletconnect') {
+      const sage = this.getSageBridge();
       if (!sage) throw new Error('Sage no longer available');
       const sig = (await sage.request({
         method: 'chia_signMessageByAddress',
@@ -155,12 +232,12 @@ export class ChiaWalletService {
     // see https://chialisp.com/chips/chip-0002 for the canonical spec.
     const wireSpends = coinSpends.map((cs) => ({
       coin: {
-        parent_coin_info: stripHexPrefix(cs.coin.parentCoinInfo),
-        puzzle_hash: stripHexPrefix(cs.coin.puzzleHash),
+        parent_coin_info: normalizeHex(cs.coin.parentCoinInfo),
+        puzzle_hash: normalizeHex(cs.coin.puzzleHash),
         amount: mojoAmountToSafeNumber(cs.coin.amount, 'coin amount'),
       },
-      puzzle_reveal: stripHexPrefix(cs.puzzleReveal),
-      solution: stripHexPrefix(cs.solution),
+      puzzle_reveal: normalizeHex(cs.puzzleReveal),
+      solution: normalizeHex(cs.solution),
     }));
 
     if (state.connection === 'goby') {
@@ -172,9 +249,9 @@ export class ChiaWalletService {
       );
     }
 
-    if (state.connection === 'sage') {
+    if (state.connection === 'sage' || state.connection === 'sage-walletconnect') {
       return this.invokeSignCoinSpends(
-        (window as WindowWithChia).sage,
+        this.getSageBridge(),
         ['chip0002_signCoinSpends', 'chia_signCoinSpends'],
         wireSpends,
         coinSpends,
@@ -209,12 +286,21 @@ export class ChiaWalletService {
    *
    * @param targetPuzzleHash 0x-prefixed 32-byte hex (where the mojos go).
    * @param amount Mojos to send (1 for a singleton launcher coin).
+   * @param memos Optional UTF-8 strings to attach as memos on the
+   *   ``CREATE_COIN`` condition.  Used by the bootstrap recovery
+   *   anchor broadcast flow to embed the ``POPULIS_BOOTSTRAP_V1`` tag
+   *   + canonical-JSON payload on a small marker coin so any future
+   *   recovery scanner can find the deployment's coordinates on chain.
+   *   Pure-ASCII strings only (Goby + Sage both treat memos as UTF-8;
+   *   the recovery anchor's canonical JSON is ASCII by construction).
+   *   Defaults to no memos.
    * @returns The signed spend bundle ready to combine with our
    *   launcher spend before pushing to coinset.
    */
   async transfer(args: {
     targetPuzzleHash: string;
     amount: number | bigint;
+    memos?: ReadonlyArray<string>;
   }): Promise<SignedSpendBundle> {
     const state = this._state();
     if (state.kind !== 'connected') {
@@ -225,6 +311,7 @@ export class ChiaWalletService {
       throw new Error('transfer: amount must be >= 1 mojo');
     }
     const targetHashBare = stripHexPrefix(args.targetPuzzleHash);
+    const memos: string[] = args.memos ? [...args.memos] : [];
 
     if (state.connection === 'goby') {
       // Goby's ``transfer`` wire format strictly requires:
@@ -236,6 +323,8 @@ export class ChiaWalletService {
       //   * ``waitForConfirmation``: ``false`` so Goby returns the
       //     signed bundle instead of auto-broadcasting (we need to
       //     combine it with our launcher spend before submission).
+      //   * ``memos``: UTF-8 strings the wallet will atomise into the
+      //     ``CREATE_COIN`` condition (empty array by default).
       const toBech32 = this.encodePuzzleHashAsBech32(targetHashBare);
       return this.invokeTransfer(
         (window as WindowWithChia).chia,
@@ -245,17 +334,17 @@ export class ChiaWalletService {
           amount: amountNum,
           assetId: '',
           fee: 0,
-          memos: [],
+          memos,
           waitForConfirmation: false,
         },
       );
     }
 
-    if (state.connection === 'sage') {
+    if (state.connection === 'sage' || state.connection === 'sage-walletconnect') {
       return this.invokeTransfer(
-        (window as WindowWithChia).sage,
+        this.getSageBridge(),
         ['chia_send', 'chip0002_send'],
-        { recipient: targetHashBare, amount: amountNum },
+        { recipient: targetHashBare, amount: amountNum, memos },
       );
     }
 
@@ -372,7 +461,41 @@ export class ChiaWalletService {
       );
     }
 
+    if (state.connection === 'sage-walletconnect') {
+      return this.invokeGetAddress(
+        this.getSageBridge(),
+        ['chia_getAddress', 'chia_getCurrentAddress', 'chip0002_getCurrentAddress'],
+      );
+    }
+
     throw new Error(`getCurrentAddress: unsupported connection: ${state.connection}`);
+  }
+
+  async filterUnlockedCoinIds(coinIds: ReadonlyArray<string>): Promise<string[]> {
+    const state = this._state();
+    if (state.kind !== 'connected') {
+      throw new Error('filterUnlockedCoinIds: wallet not connected');
+    }
+    const normalized = coinIds.map(normalizeHex);
+    if (normalized.length === 0) return [];
+
+    if (state.connection === 'goby') {
+      return this.invokeFilterUnlockedCoins(
+        (window as WindowWithChia).chia,
+        ['filterUnlockedCoins'],
+        normalized,
+      );
+    }
+
+    if (state.connection === 'sage' || state.connection === 'sage-walletconnect') {
+      return this.invokeFilterUnlockedCoins(
+        this.getSageBridge(),
+        ['chia_filterUnlockedCoins', 'chip0002_filterUnlockedCoins', 'filterUnlockedCoins'],
+        normalized.map(stripHexPrefix),
+      );
+    }
+
+    throw new Error(`filterUnlockedCoinIds: unsupported connection: ${state.connection}`);
   }
 
   /** Try each method name in order; return the first successful address. */
@@ -428,6 +551,38 @@ export class ChiaWalletService {
       `transfer: wallet rejected all method names tried (${methods.join(', ')}). ` +
         `Last error: ${formatErrorMessage(lastError)}`,
     );
+  }
+
+  private async invokeFilterUnlockedCoins(
+    wallet: ChiaInjected | undefined,
+    methods: ReadonlyArray<string>,
+    coinIds: ReadonlyArray<string>,
+  ): Promise<string[]> {
+    if (!wallet) {
+      throw new Error('filterUnlockedCoinIds: wallet bridge no longer available');
+    }
+    let lastError: unknown = null;
+    for (const method of methods) {
+      try {
+        const result = await wallet.request({
+          method,
+          params: { coinNames: [...coinIds] },
+        });
+        return parseStringArrayResult(result, 'filterUnlockedCoinIds').map(normalizeHex);
+      } catch (err: unknown) {
+        if (isMethodNotSupportedError(err)) {
+          lastError = err;
+          continue;
+        }
+        const result = await wallet.request({
+          method,
+          params: { coinNames: coinIds.map(stripHexPrefix) },
+        });
+        return parseStringArrayResult(result, 'filterUnlockedCoinIds').map(normalizeHex);
+      }
+    }
+    if (lastError) return [...coinIds];
+    return [...coinIds];
   }
 
   /**
@@ -490,14 +645,73 @@ export class ChiaWalletService {
     );
   }
 
+  private async getOrInitSageWalletConnectClient(): Promise<WalletConnectSignClient> {
+    if (this.sageWcClient) return this.sageWcClient;
+    if (this.sageWcInitPromise) return this.sageWcInitPromise;
+    this.sageWcInitPromise = SignClient.init({
+      projectId: environment.walletConnectProjectId,
+      relayUrl: 'wss://relay.walletconnect.com',
+      metadata: {
+        name: 'Populis Portal',
+        description: 'Populis genesis admin-authority launch',
+        url: typeof window !== 'undefined' ? window.location.origin : 'https://populis.xyz',
+        icons: [],
+      },
+    }).then((client) => {
+      this.sageWcClient = client;
+      client.on('session_delete', () => {
+        if (this._state().kind === 'connected') {
+          const state = this._state();
+          if (state.kind === 'connected' && state.connection === 'sage-walletconnect') {
+            this.disconnect();
+          }
+        }
+      });
+      return client;
+    });
+    return this.sageWcInitPromise;
+  }
+
+  private makeSageWalletConnectBridge(
+    client: WalletConnectSignClient,
+    session: ChiaWalletConnectSession,
+    chainId: string,
+  ): ChiaInjected {
+    return {
+      request: ({ method, params }: { method: string; params?: unknown }) =>
+        client.request({
+          topic: session.topic,
+          chainId,
+          request: {
+            method,
+            params: params ?? {},
+          },
+        }),
+    };
+  }
+
+  private getSageBridge(): ChiaInjected | undefined {
+    const state = this._state();
+    if (state.kind !== 'connected') return undefined;
+    if (state.connection === 'sage-walletconnect') return this.sageWcBridge ?? undefined;
+    return (window as WindowWithChia).sage;
+  }
+
   disconnect(): void {
     this._state.set({ kind: 'disconnected' });
+    this.sageWcSession = null;
+    this.sageWcBridge = null;
+    this._sageWalletConnectUri.set(null);
   }
 }
 
 export type ChiaState =
   | { kind: 'disconnected' }
-  | { kind: 'connected'; pubkey: string; connection: 'goby' | 'sage' };
+  | {
+      kind: 'connected';
+      pubkey: string;
+      connection: 'goby' | 'sage' | 'sage-walletconnect';
+    };
 
 interface ChiaInjected {
   request: (args: { method: string; params?: unknown }) => Promise<unknown>;
@@ -571,6 +785,10 @@ function normalizeHex(s: string): string {
 
 function stripHexPrefix(s: string): string {
   return s.startsWith('0x') || s.startsWith('0X') ? s.slice(2) : s;
+}
+
+function chiaWalletConnectChainId(): string {
+  return environment.chiaNetwork === 'mainnet' ? 'chia:mainnet' : 'chia:testnet';
 }
 
 /**
@@ -720,6 +938,25 @@ function parseGetAddressResult(raw: unknown): string {
     );
   }
   return trimmed;
+}
+
+function parseStringArrayResult(raw: unknown, label: string): string[] {
+  const candidate =
+    Array.isArray(raw)
+      ? raw
+      : raw !== null && typeof raw === 'object'
+        ? ((raw as Record<string, unknown>)['coin_ids'] ??
+          (raw as Record<string, unknown>)['coinIds'] ??
+          (raw as Record<string, unknown>)['coin_names'] ??
+          (raw as Record<string, unknown>)['coinNames'])
+        : raw;
+  if (
+    !Array.isArray(candidate) ||
+    candidate.some((item) => typeof item !== 'string')
+  ) {
+    throw new Error(`${label}: wallet returned unexpected shape: ${JSON.stringify(raw)}`);
+  }
+  return candidate as string[];
 }
 
 function parseWireCoinSpend(raw: unknown): UnsignedCoinSpend {

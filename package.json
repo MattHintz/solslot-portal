@@ -33,6 +33,7 @@
     "@angular/platform-browser": "^20.3.0",
     "@angular/router": "^20.3.0",
     "@walletconnect/ethereum-provider": "^2.19.1",
+    "@walletconnect/sign-client": "^2.23.9",
     "chia-bls": "^1.0.3",
     "chia-wallet-sdk": "^0.33.0",
     "chia-wallet-sdk-wasm": "^0.33.0",

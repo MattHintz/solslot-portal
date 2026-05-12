@@ -20,11 +20,11 @@ import { SessionService } from '../../services/session.service';
           ></span>
           <span class="font-display text-xl tracking-tight">Populis</span>
           <span class="mono text-[0.65rem] uppercase tracking-[0.2em] text-text-muted rounded border border-[var(--border)] px-2 py-0.5">
-            Portal · Testnet
+            Genesis · Testnet
           </span>
         </a>
         <nav class="hidden md:flex items-center gap-6 text-sm text-text-muted">
-          <a routerLink="/" routerLinkActive="text-text" [routerLinkActiveOptions]="{ exact: true }" class="hover:text-text transition">Home</a>
+          <a routerLink="/" routerLinkActive="text-text" [routerLinkActiveOptions]="{ exact: true }" class="hover:text-text transition">Genesis</a>
           <a routerLink="/vault" routerLinkActive="text-text" class="hover:text-text transition" *ngIf="session.session()">My Vault</a>
           <a href="https://populis.xyz" target="_blank" rel="noopener" class="hover:text-text transition">Learn</a>
         </nav>

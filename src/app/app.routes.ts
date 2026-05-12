@@ -6,8 +6,10 @@ export const routes: Routes = [
   {
     path: '',
     loadComponent: () =>
-      import('./pages/landing/landing.component').then((m) => m.LandingComponent),
-    title: 'Populis Portal — Members Area',
+      import('./pages/admin/genesis/genesis.component').then(
+        (m) => m.GenesisComponent,
+      ),
+    title: 'Genesis Launch · Populis',
   },
   {
     path: 'connect',
@@ -44,6 +46,14 @@ export const routes: Routes = [
         (m) => m.GenesisComponent,
       ),
     title: 'Genesis Launch · Populis',
+  },
+  {
+    path: 'admin/recovery',
+    loadComponent: () =>
+      import('./pages/admin/recovery/recovery.component').then(
+        (m) => m.RecoveryComponent,
+      ),
+    title: 'Bootstrap Recovery · Populis',
   },
   {
     path: 'admin',

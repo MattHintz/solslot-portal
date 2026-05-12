@@ -124,17 +124,42 @@ export class WalletCoinPickerService {
     // change across many small coins; using the largest minimises
     // the chance of "coin already spent" by the time the operator
     // clicks Submit.
-    const largest = pickLargest(records);
-    const coin = new CoinClass(
-      hexToBytes(largest.coin.parent_coin_info),
-      hexToBytes(largest.coin.puzzle_hash),
-      parseMojoAmount(largest.coin.amount, 'coin amount'),
+    const candidates = records.map((record) => {
+      const amount = parseMojoAmount(record.coin.amount, 'coin amount');
+      const coin = new CoinClass(
+        hexToBytes(record.coin.parent_coin_info),
+        hexToBytes(record.coin.puzzle_hash),
+        amount,
+      );
+      return {
+        record,
+        amount,
+        coinId: bytesToHex(coin.coinId()),
+      };
+    });
+    const unlockedCoinIds = await this.wallet.filterUnlockedCoinIds(
+      candidates.map((candidate) => candidate.coinId),
     );
+    const unlockedSet = new Set(
+      unlockedCoinIds.map((coinId) => ensure0xHex(coinId).toLowerCase()),
+    );
+    const spendable = candidates.filter((candidate) =>
+      unlockedSet.has(candidate.coinId.toLowerCase()),
+    );
+    if (spendable.length === 0) {
+      throw new Error(
+        `No wallet-unlocked coins at ${displayAddress}.  ` +
+          'The wallet may have pending or cancelled transactions; wait for ' +
+          'the wallet to unlock coins or choose a different wallet.',
+      );
+    }
+
+    const largest = pickLargest(spendable);
     return {
-      coinId: bytesToHex(coin.coinId()),
+      coinId: largest.coinId,
       address: displayAddress,
       puzzleHash: ensure0xHex(puzzleHashHex),
-      amount: parseMojoAmount(largest.coin.amount, 'coin amount'),
+      amount: largest.amount,
     };
   }
 }
@@ -196,13 +221,12 @@ function normalizeWalletAddress(
 }
 
 /** Pick the unspent coin with the largest mojo amount (ties broken arbitrarily). */
-function pickLargest(records: ReadonlyArray<CoinRecord>): CoinRecord {
+function pickLargest<T extends { amount: bigint }>(records: ReadonlyArray<T>): T {
   let best = records[0];
   for (const r of records.slice(1)) {
-    if (
-      parseMojoAmount(r.coin.amount, 'coin amount') >
-      parseMojoAmount(best.coin.amount, 'coin amount')
-    ) best = r;
+    if (r.amount > best.amount) {
+      best = r;
+    }
   }
   return best;
 }

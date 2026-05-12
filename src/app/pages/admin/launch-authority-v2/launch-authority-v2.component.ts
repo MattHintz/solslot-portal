@@ -37,6 +37,10 @@ import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { WalletCoinPickerService } from '../../../services/wallet-coin-picker.service';
 import { OnChainStateService } from '../../../services/on-chain-state.service';
+import {
+  BroadcastRecoveryAnchorResult,
+  RecoveryAnchorBroadcastService,
+} from '../../../services/recovery-anchor-broadcast.service';
 import { environment } from '../../../../environments/environment';
 
 /**
@@ -145,6 +149,28 @@ type RecoveryCreateCoinPreviewState =
   | { kind: 'ready'; response: BootstrapRecoveryAnchorCreateCoinPreviewResponse }
   | { kind: 'error'; message: string };
 
+/**
+ * State machine for broadcasting the recovery anchor marker coin
+ * on chain (Path A brick R1).
+ *
+ *   idle       — preview generated but operator hasn't clicked Broadcast.
+ *   signing    — waiting on the connected wallet to sign the funding
+ *                transfer carrying the two recovery anchor memos.
+ *   pushing    — wallet signed; pushing the bundle to coinset.org.
+ *   broadcast  — coinset accepted the bundle.  ``result`` records the
+ *                marker coin id + funding coin id + push status for
+ *                inclusion in the downloadable handoff bundle.
+ *   error      — wallet rejected, wallet stripped our memos, or
+ *                coinset rejected the bundle.  ``message`` is the
+ *                operator-facing reason.
+ */
+type RecoveryBroadcastState =
+  | { kind: 'idle' }
+  | { kind: 'signing' }
+  | { kind: 'pushing' }
+  | { kind: 'broadcast'; result: BroadcastRecoveryAnchorResult }
+  | { kind: 'error'; message: string };
+
 interface RecoveryHandoffBundle {
   version: 1;
   artifacts: {
@@ -157,6 +183,20 @@ interface RecoveryHandoffBundle {
   chain_state: RecoveryChainState;
   recovery_anchor_publish_intent: BootstrapRecoveryAnchorPublishIntentResponse | null;
   recovery_anchor_create_coin_preview: BootstrapRecoveryAnchorCreateCoinPreviewResponse | null;
+  /**
+   * The on-chain marker coin record produced by Path A brick R1's
+   * broadcast button.  ``null`` until the operator broadcasts; only
+   * shape we record after a successful push so the bundle can pin
+   * the marker coin id + push status without re-deriving from chain.
+   */
+  recovery_anchor_broadcast: {
+    funding_coin_id: string;
+    marker_coin_id: string;
+    marker_puzzle_hash: string;
+    marker_coin_amount_mojos: number;
+    payload_hash: string;
+    push_status: string | null;
+  } | null;
 }
 
 
@@ -297,8 +337,31 @@ interface RecoveryHandoffBundle {
                       }
                     </button>
                   }
+                  @if (chiaWallet.hasSageWalletConnect()) {
+                    <button
+                      type="button"
+                      class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                      [disabled]="connectingChia()"
+                      (click)="connectChia('sage-walletconnect')"
+                    >
+                      @if (connectingChia() === 'sage-walletconnect') {
+                        Connecting…
+                      } @else {
+                        Sage WalletConnect
+                      }
+                    </button>
+                  }
                 </div>
               </div>
+              @if (chiaWallet.sageWalletConnectUri(); as uri) {
+                <div class="mt-3 rounded-card border border-brand/30 bg-brand/10 p-2">
+                  <p class="text-[0.7rem] text-text-muted">
+                    Open Sage WalletConnect and paste this pairing URI if the
+                    wallet does not open automatically:
+                  </p>
+                  <code class="mt-1 block break-all text-[0.6rem]">{{ uri }}</code>
+                </div>
+              }
               @if (chiaConnectError(); as err) {
                 <p class="mono text-[0.6rem] text-red-300 mt-2">
                   <strong>Connect failed.</strong> {{ err }}
@@ -307,7 +370,7 @@ interface RecoveryHandoffBundle {
             </div>
           } @else {
             <div class="mt-4 rounded-card border border-emerald-500/30 bg-emerald-500/5 p-2 text-[0.7rem]">
-              <span class="text-emerald-400">✓ Chia wallet connected</span>
+              <span class="text-emerald-400">✓ Chia funding wallet connected</span>
               ({{ chiaWallet.connectionKind() }}).
               Pubkey:
               <code class="break-all">{{ chiaWallet.pubkey() }}</code>
@@ -408,14 +471,14 @@ interface RecoveryHandoffBundle {
                 <button
                   type="button"
                   class="btn btn--ghost text-[0.6rem] py-1 px-2 relative z-10"
-                  [disabled]="recoveringFirstAdmin()"
+                  [disabled]="recoveringFirstAdmin() || !evmAdminConnected()"
                   (click)="recoverFirstAdminFromWallet()"
                   title="Sign a probe with your connected EVM wallet, recover its pubkey, compute the canonical leaf hash, and pre-fill the textarea below as a single-admin (m_within=1) record."
                 >
                   @if (recoveringFirstAdmin()) {
                     Recovering…
                   } @else {
-                    Use my connected wallet as first admin
+                    Use connected EVM wallet as first admin
                   }
                 </button>
               </div>
@@ -432,6 +495,58 @@ interface RecoveryHandoffBundle {
                 separate them with commas inside the leaf field, e.g.
                 <code>0 0xa1...,0xa2... 2</code>.
               </p>
+              @if (!evmAdminConnected()) {
+                <div class="mt-2 rounded-card border border-yellow-500/40 bg-yellow-500/10 p-3">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="text-xs">
+                      <strong>No EVM admin wallet connected.</strong>
+                      Your Chia/Goby wallet funds the on-chain launcher; the
+                      first admin uses an EVM signature to recover the
+                      secp256k1 pubkey for admin slot 0.
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      @if (hasInjectedEvmWallet()) {
+                        <button
+                          type="button"
+                          class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                          [disabled]="connectingEvm()"
+                          (click)="connectEvmAdminWallet('injected')"
+                        >
+                          @if (connectingEvm() === 'injected') {
+                            Connecting…
+                          } @else {
+                            Connect browser EVM
+                          }
+                        </button>
+                      }
+                      <button
+                        type="button"
+                        class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                        [disabled]="connectingEvm()"
+                        (click)="connectEvmAdminWallet('walletconnect')"
+                      >
+                        @if (connectingEvm() === 'walletconnect') {
+                          Connecting…
+                        } @else {
+                          WalletConnect
+                        }
+                      </button>
+                    </div>
+                  </div>
+                  @if (evmConnectError(); as err) {
+                    <p class="mono text-[0.6rem] text-red-300 mt-2">
+                      <strong>EVM connect failed.</strong> {{ err }}
+                    </p>
+                  }
+                </div>
+              } @else {
+                <div class="mt-2 rounded-card border border-emerald-500/30 bg-emerald-500/5 p-2 text-[0.7rem]">
+                  <span class="text-emerald-400">✓ EVM admin wallet connected</span>
+                  ({{ evmAdminConnectionKind() }}).
+                  Address:
+                  <code class="break-all">{{ evmAdminAddress() }}</code>
+                </div>
+              }
               @if (firstAdminLeaf(); as leaf) {
                 <div class="mt-2 rounded-card border border-green-500/30 bg-green-500/5 p-2">
                   <div class="mono text-[0.6rem] uppercase tracking-[0.18em] text-green-400">
@@ -871,9 +986,64 @@ interface RecoveryHandoffBundle {
                                   }
                                 }
                               }
+                              @switch (recoveryCreateCoinPreviewState().kind) {
+                                @case ('ready') {
+                                  <div class="mt-3 rounded border border-white/10 bg-white/[0.03] p-2">
+                                    <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                                      Broadcast marker coin (optional)
+                                    </div>
+                                    @if (!walletConnected()) {
+                                      <p class="text-[0.65rem] text-yellow-300 mt-2">
+                                        Connect a Chia wallet above to enable
+                                        on-chain broadcast.
+                                      </p>
+                                    } @else {
+                                      <p class="text-[0.65rem] text-text-muted mt-2">
+                                        Signs the previewed CREATE_COIN with the
+                                        connected wallet, then pushes the bundle
+                                        to coinset.org. The marker coin is owned
+                                        by the marker puzzle hash you entered
+                                        above; only the 1-mojo dust + memos are
+                                        recorded on chain.
+                                      </p>
+                                    }
+                                    <button
+                                      type="button"
+                                      class="btn btn--ghost mt-2 text-[0.65rem] py-1 px-3"
+                                      [disabled]="!canBroadcastRecoveryMarkerCoin()"
+                                      (click)="broadcastRecoveryAnchorMarkerCoin()"
+                                    >
+                                      @switch (recoveryBroadcastState().kind) {
+                                        @case ('signing') { Signing… }
+                                        @case ('pushing') { Pushing… }
+                                        @default { Broadcast on chain }
+                                      }
+                                    </button>
+                                    @if (recoveryBroadcastResult(); as r) {
+                                      <p class="text-xs text-emerald-300 mt-2">
+                                        Broadcast accepted by coinset.org
+                                        (status: {{ r.pushStatus ?? 'pending' }}).
+                                      </p>
+                                      <p class="mono text-[0.6rem] text-text-muted mt-1 break-all">
+                                        marker_coin_id={{ r.markerCoinId }}
+                                      </p>
+                                      <p class="mono text-[0.6rem] text-text-muted mt-1 break-all">
+                                        funding_coin_id={{ r.fundingCoinId }}
+                                      </p>
+                                    }
+                                    @if (recoveryBroadcastError(); as err) {
+                                      <p class="text-xs text-yellow-300 mt-2">
+                                        Broadcast failed: {{ err }}
+                                      </p>
+                                    }
+                                  </div>
+                                }
+                              }
                               <p class="text-[0.65rem] text-text-muted mt-2">
-                                This handoff is memo-only. The portal does not
-                                create, sign, or broadcast a marker coin here.
+                                The preview above is also accepted by offline
+                                tools (e.g. <code>chia rpc full_node
+                                push_tx</code>) so operators can publish without
+                                a browser wallet if they prefer.
                               </p>
                               @if (recoveryHandoffBundleJson()) {
                                 <button
@@ -979,6 +1149,7 @@ export class LaunchAuthorityV2Component {
   private readonly eip712Leaf = inject(Eip712LeafHashService);
   private readonly coinPicker = inject(WalletCoinPickerService);
   private readonly onChain = inject(OnChainStateService);
+  private readonly recoveryBroadcast = inject(RecoveryAnchorBroadcastService);
 
   // ─── Form state ────────────────────────────────────────────────────
   readonly parentCoinIdInput = signal('');
@@ -1031,16 +1202,21 @@ export class LaunchAuthorityV2Component {
   /** Set to ``'goby'`` or ``'sage'`` while a connect call is in
    * flight; ``null`` otherwise.  Used by the connect banner to
    * disable both buttons + show "Connecting…" on the active one. */
-  readonly connectingChia = signal<'goby' | 'sage' | null>(null);
+  readonly connectingChia = signal<'goby' | 'sage' | 'sage-walletconnect' | null>(null);
   /** Last error from the inline connect flow.  Cleared on the next
    * attempt. */
   readonly chiaConnectError = signal<string | null>(null);
+  readonly connectingEvm = signal<'injected' | 'walletconnect' | null>(null);
+  readonly evmConnectError = signal<string | null>(null);
 
   // ─── Derived state ─────────────────────────────────────────────────
   readonly chiaWasmReady = computed(() => this.wasm.ready());
   readonly copyConfirmation = signal<string | null>(null);
   readonly submitState = signal<SubmitState>({ kind: 'idle' });
   readonly walletConnected = computed(() => this.chiaWallet.isConnected());
+  readonly evmAdminConnected = computed(() => this.evmWallet.isConnected());
+  readonly evmAdminAddress = computed(() => this.evmWallet.address());
+  readonly evmAdminConnectionKind = computed(() => this.evmWallet.connectionKind());
   readonly bootstrapStatus = signal<BootstrapStatusResponse | null>(null);
   readonly bootstrapStatusError = signal<string | null>(null);
   readonly checkingBootstrapStatus = signal(false);
@@ -1118,6 +1294,7 @@ export class LaunchAuthorityV2Component {
   readonly recoveryChainState = signal<RecoveryChainState>({ kind: 'idle' });
   readonly recoveryPublishIntentState = signal<RecoveryPublishIntentState>({ kind: 'idle' });
   readonly recoveryCreateCoinPreviewState = signal<RecoveryCreateCoinPreviewState>({ kind: 'idle' });
+  readonly recoveryBroadcastState = signal<RecoveryBroadcastState>({ kind: 'idle' });
 
   readonly recoveryVerifySuccess = computed(() => {
     const s = this.recoveryVerifyState();
@@ -1170,6 +1347,7 @@ export class LaunchAuthorityV2Component {
     const finalized = this.finalizedView();
     const adminRecords = this.buildAdminRecordsConfig();
     if (!finalized || !adminRecords) return null;
+    const broadcast = this.recoveryBroadcastResult();
     return {
       version: 1,
       artifacts: {
@@ -1182,6 +1360,16 @@ export class LaunchAuthorityV2Component {
       chain_state: this.recoveryChainState(),
       recovery_anchor_publish_intent: this.recoveryPublishIntent(),
       recovery_anchor_create_coin_preview: this.recoveryCreateCoinPreview(),
+      recovery_anchor_broadcast: broadcast
+        ? {
+            funding_coin_id: broadcast.fundingCoinId,
+            marker_coin_id: broadcast.markerCoinId,
+            marker_puzzle_hash: broadcast.markerPuzzleHash,
+            marker_coin_amount_mojos: broadcast.markerCoinAmountMojos,
+            payload_hash: broadcast.payloadHash,
+            push_status: broadcast.pushStatus,
+          }
+        : null,
     };
   });
 
@@ -1194,6 +1382,34 @@ export class LaunchAuthorityV2Component {
     this.recoveryPublishIntentState().kind === 'ready'
     && isHex32(this.recoveryMarkerPuzzleHashInput().trim())
     && this.recoveryCreateCoinPreviewState().kind !== 'pending',
+  );
+
+  /** Successful broadcast result, or ``null`` if not yet broadcast. */
+  readonly recoveryBroadcastResult = computed(() => {
+    const s = this.recoveryBroadcastState();
+    return s.kind === 'broadcast' ? s.result : null;
+  });
+
+  /** Operator-facing broadcast error message, if any. */
+  readonly recoveryBroadcastError = computed(() => {
+    const s = this.recoveryBroadcastState();
+    return s.kind === 'error' ? s.message : null;
+  });
+
+  /** True iff the broadcast button is currently waiting on the
+   * wallet or coinset.  Used to disable the button + show a spinner. */
+  readonly recoveryBroadcastInFlight = computed(() => {
+    const k = this.recoveryBroadcastState().kind;
+    return k === 'signing' || k === 'pushing';
+  });
+
+  /** True iff every precondition for the broadcast button is met:
+   * a CREATE_COIN preview has been generated, a Chia wallet is
+   * connected, and we're not already broadcasting. */
+  readonly canBroadcastRecoveryMarkerCoin = computed(() =>
+    this.recoveryCreateCoinPreviewState().kind === 'ready'
+    && this.walletConnected()
+    && !this.recoveryBroadcastInFlight(),
   );
 
   /** True when every input the finalize endpoint requires is present:
@@ -1422,6 +1638,12 @@ export class LaunchAuthorityV2Component {
   async recoverFirstAdminFromWallet(): Promise<void> {
     if (this.recoveringFirstAdmin()) return;
     this.firstAdminError.set(null);
+    if (!this.evmAdminConnected()) {
+      this.firstAdminError.set(
+        'Connect an EVM wallet for admin slot 0 first. The connected Chia wallet only funds the on-chain launcher.',
+      );
+      return;
+    }
     this.recoveringFirstAdmin.set(true);
     try {
       const { pubkey, address } = await this.evmWallet.recoverFirstAdminPubkey();
@@ -1464,20 +1686,44 @@ export class LaunchAuthorityV2Component {
    *   are rendered, so we don't expose a "missing wallet" error
    *   path here — the connect call would surface that anyway.
    */
-  async connectChia(kind: 'goby' | 'sage'): Promise<void> {
+  async connectChia(kind: 'goby' | 'sage' | 'sage-walletconnect'): Promise<void> {
     if (this.connectingChia()) return;
     this.chiaConnectError.set(null);
     this.connectingChia.set(kind);
     try {
       if (kind === 'goby') {
         await this.chiaWallet.connectGoby();
-      } else {
+      } else if (kind === 'sage') {
         await this.chiaWallet.connectSage();
+      } else {
+        await this.chiaWallet.connectSageWalletConnect();
       }
     } catch (e) {
       this.chiaConnectError.set(formatError(e));
     } finally {
       this.connectingChia.set(null);
+    }
+  }
+
+  hasInjectedEvmWallet(): boolean {
+    return this.evmWallet.hasInjectedProvider();
+  }
+
+  async connectEvmAdminWallet(kind: 'injected' | 'walletconnect'): Promise<void> {
+    if (this.connectingEvm()) return;
+    this.evmConnectError.set(null);
+    this.firstAdminError.set(null);
+    this.connectingEvm.set(kind);
+    try {
+      if (kind === 'injected') {
+        await this.evmWallet.connectInjected();
+      } else {
+        await this.evmWallet.connectWalletConnect();
+      }
+    } catch (e) {
+      this.evmConnectError.set(formatError(e));
+    } finally {
+      this.connectingEvm.set(null);
     }
   }
 
@@ -1731,6 +1977,7 @@ export class LaunchAuthorityV2Component {
       }
       void this.verifyFinalizedRecoveryArtifacts(response, adminRecords);
       void this.fetchRecoveryAnchorPublishIntent();
+      this.recoveryBroadcastState.set({ kind: 'idle' });
     } catch (e) {
       this.finalizeState.set({ kind: 'error', message: formatError(e) });
     }
@@ -1758,6 +2005,10 @@ export class LaunchAuthorityV2Component {
     }
     if (this.recoveryCreateCoinPreviewState().kind === 'pending') return;
     this.recoveryCreateCoinPreviewState.set({ kind: 'pending' });
+    // Re-previewing invalidates any prior broadcast result; the marker
+    // puzzle hash and/or memos may have changed, so a stale "broadcast"
+    // state would misrepresent the freshly-previewed condition.
+    this.recoveryBroadcastState.set({ kind: 'idle' });
     try {
       const response = await this.bootstrap.createRecoveryAnchorCoinPreview({
         marker_puzzle_hash: markerPuzzleHash,
@@ -1765,6 +2016,58 @@ export class LaunchAuthorityV2Component {
       this.recoveryCreateCoinPreviewState.set({ kind: 'ready', response });
     } catch (e) {
       this.recoveryCreateCoinPreviewState.set({ kind: 'error', message: formatError(e) });
+    }
+  }
+
+  /**
+   * Path A brick R1: actually publish the recovery anchor on chain.
+   *
+   * Uses the previously-fetched ``publishIntent`` + ``createCoinPreview``
+   * pair as the source of truth for the marker coin's puzzle hash and
+   * memos, hands the deterministic ``CREATE_COIN`` to
+   * ``RecoveryAnchorBroadcastService`` which asks the connected wallet
+   * to sign a 1-mojo transfer carrying both memos, walks the signed
+   * bundle to derive the marker coin id, and pushes via coinset.org.
+   *
+   * Refuses to run if the preview isn't ready or no wallet is connected.
+   * Surfaces wallet rejections + push_tx errors via
+   * ``recoveryBroadcastState`` so the UI can show a useful message
+   * without blowing up the whole launch wizard.
+   */
+  async broadcastRecoveryAnchorMarkerCoin(): Promise<void> {
+    if (this.recoveryBroadcastInFlight()) return;
+    const previewState = this.recoveryCreateCoinPreviewState();
+    const intentState = this.recoveryPublishIntentState();
+    if (previewState.kind !== 'ready' || intentState.kind !== 'ready') {
+      this.recoveryBroadcastState.set({
+        kind: 'error',
+        message:
+          'Generate a CREATE_COIN preview before attempting to broadcast.',
+      });
+      return;
+    }
+    if (!this.walletConnected()) {
+      this.recoveryBroadcastState.set({
+        kind: 'error',
+        message: 'Connect a Chia wallet before broadcasting.',
+      });
+      return;
+    }
+    this.recoveryBroadcastState.set({ kind: 'signing' });
+    try {
+      // We can't distinguish "wallet still showing signing prompt" from
+      // "wallet signed, push in flight" without instrumenting the
+      // service — but flipping to 'pushing' before the await would lie.
+      // The service's awaited call covers both phases; the UI's
+      // "Signing…" → "Pushing…" copy is approximate but accurate enough
+      // for the operator, who sees the wallet's own UI for signing.
+      const result = await this.recoveryBroadcast.broadcastMarkerCoin({
+        publishIntent: intentState.response,
+        createCoinPreview: previewState.response,
+      });
+      this.recoveryBroadcastState.set({ kind: 'broadcast', result });
+    } catch (e) {
+      this.recoveryBroadcastState.set({ kind: 'error', message: formatError(e) });
     }
   }
 

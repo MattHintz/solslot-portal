@@ -41,8 +41,14 @@ describe('WalletCoinPickerService', () => {
   let addressDecodeSpy: jasmine.Spy;
 
   beforeEach(() => {
-    walletSpy = jasmine.createSpyObj('ChiaWalletService', ['getCurrentAddress']);
+    walletSpy = jasmine.createSpyObj('ChiaWalletService', [
+      'getCurrentAddress',
+      'filterUnlockedCoinIds',
+    ]);
     walletSpy.getCurrentAddress.and.resolveTo(fakeBech32Address);
+    walletSpy.filterUnlockedCoinIds.and.callFake(async (coinIds: ReadonlyArray<string>) => [
+      ...coinIds,
+    ]);
 
     coinsetSpy = jasmine.createSpyObj('CoinsetService', [
       'getCoinRecordsByPuzzleHash',
@@ -136,11 +142,12 @@ describe('WalletCoinPickerService', () => {
       false,
     );
 
-    // Coin constructor was called with the LARGEST coin's parent
-    // coin info + puzzle hash + amount (as bigint).
-    expect(coinCtorSpy).toHaveBeenCalledTimes(1);
-    const ctorArgs = coinCtorSpy.calls.mostRecent().args;
-    expect(ctorArgs[2]).toEqual(999n);
+    expect(coinCtorSpy).toHaveBeenCalledTimes(3);
+    expect(coinCtorSpy.calls.allArgs().map((args) => args[2])).toEqual([
+      100n,
+      999n,
+      1n,
+    ]);
 
     // Returned coin id matches the WASM stub's value.
     const expectedCoinIdHex =
@@ -150,6 +157,34 @@ describe('WalletCoinPickerService', () => {
     expect(result.address).toBe(fakeBech32Address);
     expect(result.puzzleHash).toBe(expectedPhHex);
     expect(result.amount).toBe(999n);
+  });
+
+  it('filters out wallet-locked coins before picking the largest candidate', async () => {
+    coinCtorSpy.and.callFake(function (
+      this: { coinId: () => Uint8Array },
+      parentCoinInfo: Uint8Array,
+    ) {
+      this.coinId = () => new Uint8Array(32).fill(parentCoinInfo[0]);
+    });
+    const largestLockedId = '0x' + '33'.repeat(32);
+    const nextLargestUnlockedId = '0x' + '22'.repeat(32);
+    walletSpy.filterUnlockedCoinIds.and.resolveTo([nextLargestUnlockedId]);
+    coinsetSpy.getCoinRecordsByPuzzleHash.and.resolveTo([
+      makeRecord(100, 0x11),
+      makeRecord(700, 0x22),
+      makeRecord(999, 0x33),
+    ]);
+
+    const service = TestBed.inject(WalletCoinPickerService);
+    const result = await service.pickLargestUnspentCoinId();
+
+    expect(walletSpy.filterUnlockedCoinIds).toHaveBeenCalledOnceWith([
+      '0x' + '11'.repeat(32),
+      nextLargestUnlockedId,
+      largestLockedId,
+    ]);
+    expect(result.coinId).toBe(nextLargestUnlockedId);
+    expect(result.amount).toBe(700n);
   });
 
   it('Goby path: bare hex puzzle hash → used directly + encoded to bech32 for display', async () => {
@@ -205,6 +240,15 @@ describe('WalletCoinPickerService', () => {
     const service = TestBed.inject(WalletCoinPickerService);
     await expectAsync(service.pickLargestUnspentCoinId()).toBeRejectedWithError(
       /No unspent coins/,
+    );
+  });
+
+  it('throws a clear error when all chain-unspent coins are wallet-locked', async () => {
+    coinsetSpy.getCoinRecordsByPuzzleHash.and.resolveTo([makeRecord(42)]);
+    walletSpy.filterUnlockedCoinIds.and.resolveTo([]);
+    const service = TestBed.inject(WalletCoinPickerService);
+    await expectAsync(service.pickLargestUnspentCoinId()).toBeRejectedWithError(
+      /No wallet-unlocked coins/,
     );
   });
 

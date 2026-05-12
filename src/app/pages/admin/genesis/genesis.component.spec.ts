@@ -40,26 +40,54 @@ describe('GenesisComponent', () => {
     fixture.detectChanges();
   });
 
-  it('states that base genesis does not create the first admin', () => {
+  it('presents genesis as the pre-software story mode', () => {
     const text = fixture.nativeElement.textContent as string;
 
-    expect(text).toContain('Genesis ceremony boundary');
-    expect(text).toContain('genesis is not complete until first-admin authority is created and finalized');
-    expect(text).toContain('one-shot token does not become protocol admin');
+    expect(text).toContain('Populis · Story mode · Act I');
+    expect(text).toContain('Let there be genesis.');
+    expect(text).toContain('This software is in ceremony mode');
+    expect(text).toContain('rest of Populis opens');
+    expect(text).toContain('Ceremony boundary');
+    expect(text).toContain('one-shot token only unlocks Genesis');
     expect(text).toContain('admin_authority_v2');
-    expect(text).toContain('bind the selected wallet as admin slot 0');
+    expect(text).toContain('admin slot 0');
+    expect(text).toContain('Chapter 1');
+    expect(text).toContain('Chapter 4');
   });
 
-  it('keeps the manifest next step inside the same genesis ceremony', () => {
+  it('keeps the first-admin next step gated by deployed base and active genesis session', () => {
+    component.deployResult.set({
+      spend_bundle_id: null,
+      pushed: true,
+      manifest: { pool_launcher_id: '0x' + '11'.repeat(32) },
+    });
+    component.bootstrapStatus.set({
+      locked: false,
+      authenticated: true,
+      expires_at: 1234,
+    });
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Continue Act II: bind admin slot 0');
+  });
+
+  it('does not send the operator to first-admin authority after dry-run only', () => {
     component.deployResult.set({
       spend_bundle_id: null,
       pushed: false,
       manifest: { pool_launcher_id: '0x' + '11'.repeat(32) },
     });
+    component.bootstrapStatus.set({
+      locked: false,
+      authenticated: true,
+      expires_at: 1234,
+    });
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Continue genesis: create first admin authority');
+    expect(text).toContain('Dry-run manifest computed');
+    expect(text).not.toContain('Continue Act II: bind admin slot 0');
   });
 
   it('checks bootstrap status without sending the raw token', async () => {
@@ -80,23 +108,52 @@ describe('GenesisComponent', () => {
       authenticated: true,
       expires_at: 1234,
     });
-    expect(fixture.nativeElement.textContent as string).toContain('Bootstrap session active');
+    expect(fixture.nativeElement.textContent as string).toContain('Genesis session active');
+    expect(component.actionMessage()).toContain('Genesis session active');
   });
 
-  it('starts bootstrap session with the in-memory token only', async () => {
+  it('starts bootstrap session with the in-memory token only and verifies the cookie', async () => {
     bootstrap.startBootstrapSession.and.resolveTo({ unlocked: true, expires_at: 5678 });
+    bootstrap.getBootstrapStatus.and.resolveTo({
+      locked: false,
+      authenticated: true,
+      expires_at: 5678,
+    });
     component.tokenInput.set(' genesis-token ');
 
     await component.startBootstrapSession();
     fixture.detectChanges();
 
     expect(bootstrap.startBootstrapSession).toHaveBeenCalledOnceWith(' genesis-token ');
+    expect(bootstrap.getBootstrapStatus).toHaveBeenCalledOnceWith();
     expect(component.bootstrapStatus()).toEqual({
       locked: false,
       authenticated: true,
       expires_at: 5678,
     });
-    expect(fixture.nativeElement.textContent as string).toContain('Bootstrap session active');
+    expect(fixture.nativeElement.textContent as string).toContain('Genesis session active');
+    expect(component.bootstrapCookieWarning()).toBeNull();
+  });
+
+  it('warns when the bootstrap token is accepted but the cookie is not retained', async () => {
+    bootstrap.startBootstrapSession.and.resolveTo({ unlocked: true, expires_at: 5678 });
+    bootstrap.getBootstrapStatus.and.resolveTo({
+      locked: false,
+      authenticated: false,
+      expires_at: null,
+    });
+    component.tokenInput.set(' genesis-token ');
+
+    await component.startBootstrapSession();
+    fixture.detectChanges();
+
+    expect(component.bootstrapStatus()).toEqual({
+      locked: false,
+      authenticated: false,
+      expires_at: null,
+    });
+    expect(component.bootstrapCookieWarning()).toContain('token was accepted');
+    expect(fixture.nativeElement.textContent as string).toContain('Open http://127.0.0.1:4200 directly');
   });
 
   it('shows locked bootstrap state and blocks the first-admin next step', () => {
@@ -109,17 +166,17 @@ describe('GenesisComponent', () => {
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Bootstrap finalized');
+    expect(text).toContain('Genesis sealed.');
     expect(text).toContain('Bootstrapper locked after successful recordation');
     expect(text).toContain('admin_records.json');
     expect(text).toContain('portal_runtime_config.json');
     expect(text).toContain('bootstrap_manifest.json');
-    expect(text).toContain('temporary bootstrap path is complete');
+    expect(text).toContain('recorded admin slot 0 wallet');
     expect(text).toContain('Permanent admin login');
     expect(text).toContain('Open Admin desk');
     expect(text).toContain('First-admin ceremony finalized');
     expect(text).toContain('Continue with permanent admin login');
-    expect(text).not.toContain('Continue genesis: create first admin authority');
+    expect(text).not.toContain('Continue Act II: bind admin slot 0');
   });
 
   it('does not start a bootstrap session after finalization is known', async () => {
@@ -155,6 +212,7 @@ describe('GenesisComponent', () => {
     expect(component.status()).toEqual(status);
     expect(component.deployResult()).toBeNull();
     expect(component.error()).toBeNull();
+    expect(component.actionMessage()).toContain('No base manifest exists yet');
   });
 
   it('dry-runs genesis with parameter and optional coin inputs', async () => {
@@ -181,6 +239,7 @@ describe('GenesisComponent', () => {
     );
     expect(component.deployResult()).toEqual(result);
     expect(component.manifestJson()).toContain('pool_launcher_id');
+    expect(component.actionMessage()).toContain('Dry-run complete');
   });
 
   it('does not deploy when the browser confirmation is canceled', async () => {
@@ -216,5 +275,6 @@ describe('GenesisComponent', () => {
     expect(request?.dry_run).toBeUndefined();
     expect(component.deployResult()).toEqual(result);
     expect(component.error()).toBeNull();
+    expect(component.actionMessage()).toContain('Base protocol deployed');
   });
 });

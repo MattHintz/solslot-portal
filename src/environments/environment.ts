@@ -30,7 +30,7 @@ export const environment = {
    * ``AdminWalletAuthService``).  Coinset.org is read directly for
    * everything else.
    */
-  faucetApi: 'http://localhost:8787',
+  faucetApi: 'http://127.0.0.1:8787',
 
   /**
    * Chia full-node RPC.  Defaults to coinset.org's public testnet11
@@ -52,7 +52,7 @@ export const environment = {
    * WalletConnect project ID.  Create one at https://cloud.walletconnect.com
    * and paste it here.  Required for EVM wallet connection via WalletConnect v2.
    */
-  walletConnectProjectId: '',
+  walletConnectProjectId: '3145bc617be2b491a8e6033b3b0fcf43',
 
   /**
    * Chain id that Populis EIP-712 signatures are bound to.

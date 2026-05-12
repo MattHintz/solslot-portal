@@ -10,6 +10,7 @@ import { Eip712LeafHashService } from '../../../services/eip712-leaf-hash.servic
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { WalletCoinPickerService } from '../../../services/wallet-coin-picker.service';
 import { OnChainStateService } from '../../../services/on-chain-state.service';
+import { RecoveryAnchorBroadcastService } from '../../../services/recovery-anchor-broadcast.service';
 import { LaunchAuthorityV2Component } from './launch-authority-v2.component';
 
 describe('LaunchAuthorityV2Component', () => {
@@ -26,7 +27,16 @@ describe('LaunchAuthorityV2Component', () => {
     >
   >;
   let onChain: jasmine.SpyObj<Pick<OnChainStateService, 'getAuthorityV2'>>;
-  let evmWallet: jasmine.SpyObj<Pick<EvmWalletService, 'recoverFirstAdminPubkey'>>;
+  let chiaWalletConnected: boolean;
+  let evmWallet: jasmine.SpyObj<{
+    recoverFirstAdminPubkey: EvmWalletService['recoverFirstAdminPubkey'];
+    connectInjected: EvmWalletService['connectInjected'];
+    connectWalletConnect: EvmWalletService['connectWalletConnect'];
+    hasInjectedProvider: EvmWalletService['hasInjectedProvider'];
+    isConnected: () => boolean;
+    address: () => string | null;
+    connectionKind: () => 'injected' | 'walletconnect' | null;
+  }>;
   let eip712Leaf: jasmine.SpyObj<Pick<Eip712LeafHashService, 'compute' | 'computeMipsRoot1Of1'>>;
 
   const pubkey = `0x02${'11'.repeat(32)}`;
@@ -43,6 +53,7 @@ describe('LaunchAuthorityV2Component', () => {
   const launcherId = `0x${'ee'.repeat(32)}`;
 
   beforeEach(async () => {
+    chiaWalletConnected = false;
     session = jasmine.createSpyObj('AdminSessionService', ['isAuthenticated']);
     bootstrap = jasmine.createSpyObj('AdminBootstrapService', [
       'getBootstrapStatus',
@@ -52,7 +63,21 @@ describe('LaunchAuthorityV2Component', () => {
       'createRecoveryAnchorCoinPreview',
     ]);
     onChain = jasmine.createSpyObj('OnChainStateService', ['getAuthorityV2']);
-    evmWallet = jasmine.createSpyObj('EvmWalletService', ['recoverFirstAdminPubkey']);
+    evmWallet = jasmine.createSpyObj('EvmWalletService', [
+      'recoverFirstAdminPubkey',
+      'connectInjected',
+      'connectWalletConnect',
+      'hasInjectedProvider',
+      'isConnected',
+      'address',
+      'connectionKind',
+    ]);
+    evmWallet.hasInjectedProvider.and.returnValue(true);
+    evmWallet.isConnected.and.returnValue(false);
+    evmWallet.address.and.returnValue(null);
+    evmWallet.connectionKind.and.returnValue(null);
+    evmWallet.connectInjected.and.resolveTo(evmAddress);
+    evmWallet.connectWalletConnect.and.resolveTo(evmAddress);
     eip712Leaf = jasmine.createSpyObj('Eip712LeafHashService', [
       'compute',
       'computeMipsRoot1Of1',
@@ -68,11 +93,18 @@ describe('LaunchAuthorityV2Component', () => {
         {
           provide: ChiaWalletService,
           useValue: {
-            isConnected: () => false,
+            isConnected: () => chiaWalletConnected,
             hasGoby: () => false,
             hasSage: () => false,
+            hasSageWalletConnect: () => true,
+            sageWalletConnectUri: () => null,
             connectionKind: () => null,
             pubkey: () => null,
+            connectGoby: jasmine.createSpy('connectGoby').and.resolveTo(`0x${'11'.repeat(48)}`),
+            connectSage: jasmine.createSpy('connectSage').and.resolveTo(`0x${'22'.repeat(48)}`),
+            connectSageWalletConnect: jasmine
+              .createSpy('connectSageWalletConnect')
+              .and.resolveTo(`0x${'33'.repeat(48)}`),
           },
         },
         {
@@ -104,6 +136,17 @@ describe('LaunchAuthorityV2Component', () => {
         { provide: Eip712LeafHashService, useValue: eip712Leaf },
         { provide: WalletCoinPickerService, useValue: {} },
         { provide: OnChainStateService, useValue: onChain },
+        // Path A brick R1: stub the recovery anchor broadcast service so
+        // the component can be constructed without dragging in
+        // HttpClient + CoinsetService.  The R1-specific behaviour is
+        // covered end-to-end in recovery-anchor-broadcast.service.spec.ts.
+        {
+          provide: RecoveryAnchorBroadcastService,
+          useValue: jasmine.createSpyObj<RecoveryAnchorBroadcastService>(
+            'RecoveryAnchorBroadcastService',
+            ['broadcastMarkerCoin'],
+          ),
+        },
       ],
     }).compileComponents();
   });
@@ -196,6 +239,9 @@ describe('LaunchAuthorityV2Component', () => {
 
   it('recovers and displays the first-admin slot 0 artifact preview', async () => {
     session.isAuthenticated.and.returnValue(true);
+    evmWallet.isConnected.and.returnValue(true);
+    evmWallet.address.and.returnValue(evmAddress);
+    evmWallet.connectionKind.and.returnValue('injected');
     evmWallet.recoverFirstAdminPubkey.and.resolveTo({ pubkey, address: evmAddress });
     eip712Leaf.compute.and.returnValue(leaf);
     eip712Leaf.computeMipsRoot1Of1.and.returnValue({
@@ -212,6 +258,7 @@ describe('LaunchAuthorityV2Component', () => {
     expect(evmWallet.recoverFirstAdminPubkey).toHaveBeenCalledOnceWith();
     expect(eip712Leaf.compute).toHaveBeenCalledOnceWith(pubkey, 'testnet11');
     expect(component.adminRecordsInput()).toBe(`0 ${leaf.leaf_hash} 1`);
+    expect(text).toContain('EVM admin wallet connected');
     expect(text).toContain('First admin recovered');
     expect(text).toContain('Admin slot:');
     expect(text).toContain('m_within:');
@@ -224,6 +271,22 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain(mipsRoot);
     expect(text).toContain('Wallet signature is proof-of-possession only');
     expect(text).not.toContain(rawSignature);
+  });
+
+  it('explains that first-admin recovery needs an EVM wallet, not the Chia funding wallet', async () => {
+    session.isAuthenticated.and.returnValue(true);
+
+    const component = await create();
+    const text = fixture.nativeElement.textContent as string;
+
+    expect(component.evmAdminConnected()).toBeFalse();
+    expect(text).toContain('No EVM admin wallet connected');
+    expect(text).toContain('Your Chia/Goby wallet funds the on-chain launcher');
+
+    await component.recoverFirstAdminFromWallet();
+
+    expect(component.firstAdminError()).toContain('Connect an EVM wallet for admin slot 0 first');
+    expect(evmWallet.recoverFirstAdminPubkey).not.toHaveBeenCalled();
   });
 
   it('builds admin_records.json for admin slot 0 without secrets or signatures', async () => {
@@ -543,7 +606,10 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('marker coin memos');
     expect(text).toContain('Download recovery handoff bundle');
     expect(text).toContain('recovery_handoff_bundle.json');
-    expect(text).toContain('This handoff is memo-only');
+    // Path A brick R1: the previous "memo-only" copy is replaced
+    // with an offline-tool fallback note; the broadcast button gates
+    // on having a wallet connected.
+    expect(text).toContain('offline');
     expect(text).toContain('This check grants no admin access');
     expect(component.finalizedManifestJson()).toContain('"network": "testnet11"');
     expect(component.finalizedManifestJson()).toContain('"artifact_hashes"');
@@ -814,7 +880,12 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain(createCoinPreview.marker_puzzle_hash);
     expect(text).toContain(createCoinPreview.payload_hash);
     expect(text).toContain('condition hex');
-    expect(text).toContain('This handoff is memo-only');
+    // Path A brick R1: with a CREATE_COIN preview ready the
+    // "Broadcast on chain" card is rendered alongside the offline
+    // fallback note.  Without a connected wallet the card shows a
+    // clear gating message instead of the broadcast button.
+    expect(text).toContain('Broadcast marker coin');
+    expect(text).toContain('Connect a Chia wallet');
   });
 
   it('rejects malformed marker puzzle hashes before preview API calls', async () => {
@@ -839,6 +910,136 @@ describe('LaunchAuthorityV2Component', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'Marker puzzle hash must be a 32-byte hex string',
     );
+  });
+
+  it('broadcasts the recovery anchor marker via the RecoveryAnchorBroadcastService', async () => {
+    configureBootstrapMode();
+    chiaWalletConnected = true;
+    const component = await create();
+    primeFinalizeReadyState(component);
+    component.finalizeState.set({
+      kind: 'finalized',
+      bootstrapManifest: finalizedResponse.bootstrap_manifest,
+      portalRuntimeConfig: finalizedResponse.portal_runtime_config,
+      bootstrapRecoveryAnchor: finalizedResponse.bootstrap_recovery_anchor,
+    });
+    component.recoveryPublishIntentState.set({ kind: 'ready', response: publishIntent });
+    component.recoveryCreateCoinPreviewState.set({
+      kind: 'ready',
+      response: createCoinPreview,
+    });
+    fixture.detectChanges();
+
+    const broadcastSpy = TestBed.inject(
+      RecoveryAnchorBroadcastService,
+    ) as jasmine.SpyObj<RecoveryAnchorBroadcastService>;
+    broadcastSpy.broadcastMarkerCoin.and.resolveTo({
+      fundingCoinId: `0x${'fc'.repeat(32)}`,
+      markerCoinId: `0x${'aa'.repeat(32)}`,
+      markerPuzzleHash: createCoinPreview.marker_puzzle_hash,
+      markerCoinAmountMojos: 1,
+      tagMemoUtf8: publishIntent.tag_memo_utf8,
+      payloadMemoUtf8: publishIntent.payload_memo_utf8,
+      payloadHash: publishIntent.payload_hash,
+      pushStatus: 'SUCCESS',
+      signedSpendBundle: {
+        coinSpends: [],
+        aggregatedSignature: `0x${'ab'.repeat(96)}`,
+      },
+    });
+
+    await component.broadcastRecoveryAnchorMarkerCoin();
+    fixture.detectChanges();
+
+    expect(broadcastSpy.broadcastMarkerCoin).toHaveBeenCalledOnceWith({
+      publishIntent,
+      createCoinPreview,
+    });
+    expect(component.recoveryBroadcastState().kind).toBe('broadcast');
+    expect(component.recoveryBroadcastResult()?.markerCoinId).toBe(
+      `0x${'aa'.repeat(32)}`,
+    );
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Broadcast accepted by coinset.org');
+    expect(text).toContain(`marker_coin_id=0x${'aa'.repeat(32)}`);
+    const bundle = JSON.parse(component.recoveryHandoffBundleJson()) as {
+      recovery_anchor_broadcast: {
+        marker_coin_id: string;
+        push_status: string | null;
+      } | null;
+    };
+    expect(bundle.recovery_anchor_broadcast?.marker_coin_id).toBe(
+      `0x${'aa'.repeat(32)}`,
+    );
+    expect(bundle.recovery_anchor_broadcast?.push_status).toBe('SUCCESS');
+  });
+
+  it('surfaces broadcast failures without flipping into the success state', async () => {
+    configureBootstrapMode();
+    chiaWalletConnected = true;
+    const component = await create();
+    primeFinalizeReadyState(component);
+    component.finalizeState.set({
+      kind: 'finalized',
+      bootstrapManifest: finalizedResponse.bootstrap_manifest,
+      portalRuntimeConfig: finalizedResponse.portal_runtime_config,
+      bootstrapRecoveryAnchor: finalizedResponse.bootstrap_recovery_anchor,
+    });
+    component.recoveryPublishIntentState.set({ kind: 'ready', response: publishIntent });
+    component.recoveryCreateCoinPreviewState.set({
+      kind: 'ready',
+      response: createCoinPreview,
+    });
+    const wallet = TestBed.inject(ChiaWalletService) as unknown as {
+      isConnected: () => boolean;
+    };
+    wallet.isConnected = () => true;
+    fixture.detectChanges();
+
+    const broadcastSpy = TestBed.inject(
+      RecoveryAnchorBroadcastService,
+    ) as jasmine.SpyObj<RecoveryAnchorBroadcastService>;
+    broadcastSpy.broadcastMarkerCoin.and.rejectWith(
+      new Error('pushTransaction rejected: DOUBLE_SPEND_DETECTED'),
+    );
+
+    await component.broadcastRecoveryAnchorMarkerCoin();
+    fixture.detectChanges();
+
+    expect(component.recoveryBroadcastState().kind).toBe('error');
+    expect(component.recoveryBroadcastError()).toContain('DOUBLE_SPEND_DETECTED');
+    expect(fixture.nativeElement.textContent).toContain('Broadcast failed:');
+  });
+
+  it('refuses to broadcast without a wallet or without a preview', async () => {
+    configureBootstrapMode();
+    const component = await create();
+    primeFinalizeReadyState(component);
+    component.finalizeState.set({
+      kind: 'finalized',
+      bootstrapManifest: finalizedResponse.bootstrap_manifest,
+      portalRuntimeConfig: finalizedResponse.portal_runtime_config,
+      bootstrapRecoveryAnchor: finalizedResponse.bootstrap_recovery_anchor,
+    });
+    component.recoveryPublishIntentState.set({ kind: 'ready', response: publishIntent });
+    fixture.detectChanges();
+
+    // No preview yet → must surface a clear error and never call the spy.
+    await component.broadcastRecoveryAnchorMarkerCoin();
+    expect(component.recoveryBroadcastError()).toContain('Generate a CREATE_COIN preview');
+
+    // Preview ready, wallet still disconnected → still refuse.
+    component.recoveryCreateCoinPreviewState.set({
+      kind: 'ready',
+      response: createCoinPreview,
+    });
+    await component.broadcastRecoveryAnchorMarkerCoin();
+    expect(component.recoveryBroadcastError()).toContain('Connect a Chia wallet');
+
+    const broadcastSpy = TestBed.inject(
+      RecoveryAnchorBroadcastService,
+    ) as jasmine.SpyObj<RecoveryAnchorBroadcastService>;
+    expect(broadcastSpy.broadcastMarkerCoin).not.toHaveBeenCalled();
   });
 
   it('surfaces live authority state-hash mismatch after verifier success', async () => {
