@@ -57,6 +57,19 @@ import {
             <p class="status warn">
               Rejected {{ discoveryState().report.rejectedCandidates.length }} malformed candidate(s).
             </p>
+            <details class="payload">
+              <summary>Rejected candidate details</summary>
+              <div class="rejected-list">
+                @for (candidate of discoveryState().report.rejectedCandidates; track candidate.markerCoinId) {
+                  <div class="rejected">
+                    <strong>marker={{ candidate.markerCoinId }}</strong>
+                    <span>parent={{ candidate.parentCoinId }}</span>
+                    <span>block={{ candidate.confirmedBlockIndex }}</span>
+                    <em>{{ candidate.reason }}</em>
+                  </div>
+                }
+              </div>
+            </details>
           }
           @if (discoveryState().report.anchors.length === 0) {
             <p class="muted">No recovery anchors found yet.</p>
@@ -212,7 +225,8 @@ import {
       }
       .anchor-list,
       .checks,
-      .grid {
+      .grid,
+      .rejected-list {
         display: grid;
         gap: 0.75rem;
       }
@@ -273,6 +287,11 @@ import {
       .check {
         display: grid;
         gap: 0.25rem;
+      }
+      .rejected {
+        display: grid;
+        gap: 0.25rem;
+        color: rgba(232, 245, 255, 0.78);
       }
     `,
   ],

@@ -150,6 +150,30 @@ describe('RecoveryComponent', () => {
     expect(text).toContain('bootstrap_recovery_anchor.json payload');
   });
 
+  it('renders rejected anchor candidate reasons for operator review', async () => {
+    discovery.discoverAnchors.and.resolveTo({
+      ...discoveryReport,
+      scannedCandidateCount: 2,
+      rejectedCandidates: [
+        {
+          markerCoinId: `0x${'99'.repeat(32)}`,
+          parentCoinId: `0x${'98'.repeat(32)}`,
+          confirmedBlockIndex: 456,
+          reason: 'parent spend puzzle/solution unavailable',
+        },
+      ],
+    });
+
+    await component.scanAnchors();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Rejected 1 malformed candidate');
+    expect(text).toContain('Rejected candidate details');
+    expect(text).toContain(`marker=0x${'99'.repeat(32)}`);
+    expect(text).toContain('parent spend puzzle/solution unavailable');
+  });
+
   it('verifies pasted artifacts after local hash checks pass', async () => {
     await component.scanAnchors();
     component.bootstrapManifestText.set(JSON.stringify(bootstrapManifest));

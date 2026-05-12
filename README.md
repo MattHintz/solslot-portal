@@ -97,10 +97,44 @@ lookup.
   through temporary bootstrap access, it finalizes the public bootstrap
   artifacts through `POST /admin/bootstrap/finalize` using cookie
   credentials only, with no bearer token or browser storage persistence.
+- **Bootstrap recovery** — `/admin/recovery` scans chain-visible
+  `POPULIS_BOOTSTRAP_V1` marker memos, shows verified recovery anchors and
+  rejected candidate reasons, locally checks pasted public artifacts against
+  the selected anchor's canonical `sha256:` hashes, then calls the public
+  verifier endpoint before handing off to permanent admin login.
 - **Mint proposals** — current UI creates and lists browser-local DRAFT
   records in `localStorage`. Computed deed/proposal hashes, on-chain
   proposal ids, PGT voting, publish, and execute are not wired in this
   portal path yet.
+
+## Path A recovery drill
+
+Use this drill after a successful first-admin bootstrap to prove the
+installation is recoverable without trusting the original portal host:
+
+1. Open `/admin/launch-authority-v2` in bootstrap mode after
+   `/admin/bootstrap/finalize` has returned the public artifacts.
+2. Fetch the recovery publish intent and `CREATE_COIN` preview, connect a
+   Chia wallet, and broadcast the one-mojo marker coin carrying the
+   `POPULIS_BOOTSTRAP_V1` tag memo plus the canonical
+   `bootstrap_recovery_anchor.json` payload memo.
+3. Wait until the marker transaction is visible through coinset.org.
+4. Open `/admin/recovery` from any portal build pointed at the same
+   `coinsetRpc` network and click **Scan chain**.
+5. Confirm the expected anchor appears. If malformed candidates are present,
+   expand **Rejected candidate details** and verify they are unrelated or
+   explainable indexer/wallet artifacts.
+6. Paste `bootstrap_manifest.json`, `portal_runtime_config.json`, and
+   `admin_records.json`. Paste `deployment_manifest.json` as well when full
+   replay material is available.
+7. Verify that all local hash checks match the selected anchor, then run the
+   public verifier. A verified result re-establishes public trust roots; it
+   does not grant admin authority by itself.
+8. Continue to `/admin/login` with the recorded admin slot `0` wallet and
+   perform normal permanent admin login.
+
+The recovery page must not persist pasted artifacts, anchors, verifier
+responses, bootstrap cookies, or handoff bundles in browser storage.
 
 ## Key services
 
@@ -139,6 +173,7 @@ lookup.
 | `/admin/login` | Browser-only admin login. |
 | `/admin` | Operator dashboard for browser-local mint drafts. |
 | `/admin/launch-authority-v2` | Genesis-only first-admin authority step: build, wallet-sign, push the v2 authority launch bundle, and finalize public bootstrap artifacts in temporary bootstrap mode. |
+| `/admin/recovery` | Public Path A bootstrap recovery: discover marker anchors, review rejected candidates, hash-check pasted artifacts, and call the recovery verifier before permanent admin login. |
 | `/admin/trust-roots` | Read configured trust-root singleton state from coinset.org. |
 | `/admin/mint/new` | Create a local DRAFT mint proposal. |
 | `/admin/mint/:id` | Inspect or cancel a local DRAFT; publish/execute are disabled. |
