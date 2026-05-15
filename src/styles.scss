@@ -207,3 +207,98 @@ select:focus {
   }
 }
 
+wcm-modal,
+w3m-modal,
+#w3m-modal,
+.walletconnect-modal,
+.walletconnect-qrcode-modal {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  --wcm-z-index: 2147483647;
+}
+
+wcm-modal,
+wcm-modal * {
+  font-family: var(--font-sans);
+}
+
+wcm-modal .wcm-modal,
+wcm-modal .wcm-container,
+wcm-modal .wcm-overlay,
+#w3m-modal,
+#w3m-modal .w3m-overlay {
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  z-index: 2147483647 !important;
+}
+
+wcm-modal .wcm-overlay,
+#w3m-modal .w3m-overlay,
+.walletconnect-modal__base,
+.walletconnect-qrcode-modal {
+  background:
+    radial-gradient(900px 420px at 75% 0%, rgba(124, 255, 178, 0.14), transparent 60%),
+    rgba(2, 11, 11, 0.72) !important;
+  z-index: 2147483647 !important;
+}
+
+wcm-modal .wcm-card,
+wcm-modal .wcm-qrcode,
+wcm-modal .wcm-view,
+wcm-modal .wcm-qr-container,
+wcm-modal .wcm-modal__inner,
+#w3m-modal .w3m-modal,
+.walletconnect-modal,
+.walletconnect-modal__base,
+.walletconnect-qrcode-modal {
+  background: rgba(3, 22, 21, 0.88) !important;
+  border: 1px solid rgba(234, 255, 247, 0.16) !important;
+  box-shadow:
+    0 40px 90px rgba(0, 0, 0, 0.68),
+    0 0 70px rgba(124, 255, 178, 0.12) !important;
+  border-radius: var(--radius) !important;
+  color: var(--text) !important;
+  z-index: 2147483647 !important;
+}
+
+wcm-modal h1,
+wcm-modal h2,
+wcm-modal h3,
+wcm-modal .wcm-title,
+wcm-modal .wcm-text,
+wcm-modal .wcm-subtitle,
+wcm-modal .wcm-wallet-name {
+  color: var(--text) !important;
+}
+
+wcm-modal button,
+wcm-modal .wcm-button {
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, rgba(124, 255, 178, 0.96), rgba(0, 211, 167, 0.96)) !important;
+  color: #04110d !important;
+  border: 1px solid rgba(124, 255, 178, 0.42) !important;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.45) !important;
+  font-weight: 700 !important;
+}
+
+wcm-modal input,
+wcm-modal .wcm-input,
+wcm-modal .wcm-copy,
+wcm-modal .wcm-code,
+wcm-modal .wcm-address,
+wcm-modal .wcm-address-input {
+  background: rgba(0, 0, 0, 0.26) !important;
+  border: 1px solid rgba(234, 255, 247, 0.16) !important;
+  color: var(--text) !important;
+  border-radius: 14px !important;
+}
+
+wcm-modal .wcm-explorer,
+wcm-modal .wcm-wallet-list,
+wcm-modal .wcm-desktop-wallets,
+wcm-modal .wcm-mobile-wallets,
+wcm-modal .wcm-wallet-item,
+wcm-modal .wcm-view-all {
+  display: none !important;
+}
+
