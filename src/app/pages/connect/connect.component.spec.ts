@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 
 import { ChiaWalletService } from '../../services/chia-wallet.service';
 import { EvmWalletService } from '../../services/evm-wallet.service';
+import { LastWalletKind, WalletUxStateService } from '../../services/wallet-ux-state.service';
 import { ConnectComponent } from './connect.component';
 
 class MockChiaWalletService {
@@ -31,14 +32,24 @@ class MockEvmWalletService {
   connectWalletConnect = jasmine.createSpy('connectWalletConnect').and.resolveTo('0x5678');
 }
 
+class MockWalletUxStateService {
+  private readonly _lastWalletKind = signal<LastWalletKind | null>(null);
+  readonly lastWalletKind = this._lastWalletKind.asReadonly();
+  setLastWalletKind = jasmine
+    .createSpy('setLastWalletKind')
+    .and.callFake((kind: LastWalletKind) => this._lastWalletKind.set(kind));
+}
+
 describe('ConnectComponent', () => {
   let fixture: ComponentFixture<ConnectComponent>;
   let component: ConnectComponent;
   let chia: MockChiaWalletService;
+  let walletUx: MockWalletUxStateService;
   let router: jasmine.SpyObj<Router>;
 
   beforeEach(async () => {
     chia = new MockChiaWalletService();
+    walletUx = new MockWalletUxStateService();
     router = jasmine.createSpyObj<Router>('Router', ['navigate']);
     router.navigate.and.resolveTo(true);
 
@@ -47,6 +58,7 @@ describe('ConnectComponent', () => {
       providers: [
         { provide: ChiaWalletService, useValue: chia },
         { provide: EvmWalletService, useClass: MockEvmWalletService },
+        { provide: WalletUxStateService, useValue: walletUx },
         { provide: Router, useValue: router },
       ],
     }).compileComponents();
@@ -62,9 +74,19 @@ describe('ConnectComponent', () => {
     expect(chia.connectGoby).not.toHaveBeenCalled();
     expect(chia.connectSage).not.toHaveBeenCalled();
     expect(chia.connectSageWalletConnect).toHaveBeenCalledOnceWith();
+    expect(walletUx.setLastWalletKind).toHaveBeenCalledOnceWith('chia');
     expect(router.navigate).toHaveBeenCalledOnceWith(['/create-vault'], {
       queryParams: { via: 'chia' },
     });
+  });
+
+  it('surfaces the last-used wallet preference as a non-authoritative hint', async () => {
+    expect(component.walletLabel('evm', 'Recommended')).toBe('Recommended');
+
+    await component.connectChia();
+    fixture.detectChanges();
+
+    expect(component.walletLabel('chia', 'Advanced')).toBe('Last used');
   });
 
   it('renders the Sage WalletConnect pairing link while approval is pending', () => {

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { EvmWalletService } from '../../services/evm-wallet.service';
 import { ChiaWalletService } from '../../services/chia-wallet.service';
+import { WalletUxStateService } from '../../services/wallet-ux-state.service';
 import { formatError } from '../../utils/format-error';
 
 @Component({
@@ -35,7 +36,7 @@ import { formatError } from '../../utils/format-error';
             wallet. Works entirely via EIP-712 signatures.
           </p>
           <div class="mt-4 mono text-xs text-brand uppercase tracking-[0.15em]">
-            Recommended
+            {{ walletLabel('evm', 'Recommended') }}
           </div>
         </button>
 
@@ -54,7 +55,7 @@ import { formatError } from '../../utils/format-error';
             Uses a native BLS signature and lets you spend XCH directly from your own wallet.
           </p>
           <div class="mt-4 mono text-xs text-text-muted uppercase tracking-[0.15em]">
-            Advanced · extension or QR link
+            {{ walletLabel('chia', 'Advanced · extension or QR link') }}
           </div>
         </button>
       </div>
@@ -95,6 +96,7 @@ export class ConnectComponent {
   private readonly evm = inject(EvmWalletService);
   private readonly chia = inject(ChiaWalletService);
   private readonly router = inject(Router);
+  private readonly walletUx = inject(WalletUxStateService);
 
   readonly busy = signal(false);
   readonly status = signal<string>('');
@@ -113,6 +115,7 @@ export class ConnectComponent {
         address = await this.evm.connectWalletConnect();
       }
       this.status.set(`Connected ${address}`);
+      this.walletUx.setLastWalletKind('evm');
       await this.router.navigate(['/create-vault'], { queryParams: { via: 'evm' } });
     } catch (e) {
       this.error.set(this.msg(e));
@@ -140,6 +143,7 @@ export class ConnectComponent {
         throw new Error('No Chia wallet option detected');
       }
       this.status.set(`Connected ${this.short(pubkey)}`);
+      this.walletUx.setLastWalletKind('chia');
       await this.router.navigate(['/create-vault'], { queryParams: { via: 'chia' } });
     } catch (e) {
       this.error.set(this.msg(e));
@@ -165,6 +169,10 @@ export class ConnectComponent {
 
   private msg(e: unknown): string {
     return formatError(e);
+  }
+
+  walletLabel(kind: 'evm' | 'chia', fallback: string): string {
+    return this.walletUx.lastWalletKind() === kind ? 'Last used' : fallback;
   }
 
   private short(value: string): string {
