@@ -50,11 +50,11 @@ import { formatError } from '../../utils/format-error';
             <span class="font-display text-2xl">Chia wallet</span>
           </div>
           <p class="mt-3 text-sm text-text-muted leading-relaxed">
-            Sage or Goby browser extension. Uses a native BLS signature and
-            lets you spend XCH directly from your own wallet.
+            Sage or Goby browser extension, with Sage WalletConnect fallback.
+            Uses a native BLS signature and lets you spend XCH directly from your own wallet.
           </p>
           <div class="mt-4 mono text-xs text-text-muted uppercase tracking-[0.15em]">
-            Advanced · requires testnet XCH
+            Advanced · extension or QR link
           </div>
         </button>
       </div>
@@ -70,6 +70,24 @@ import { formatError } from '../../utils/format-error';
           {{ status() }}
         </div>
       }
+
+      @if (sageWalletConnectUri(); as uri) {
+        <div class="mt-6 card border-brand/30 bg-brand-soft">
+          <div class="font-display text-xl">Sage WalletConnect is waiting.</div>
+          <p class="mt-2 text-sm text-text-muted">
+            Open Sage, scan the WalletConnect prompt, or copy the pairing link.
+          </p>
+          <div class="mt-4 flex flex-wrap gap-3">
+            <button class="btn btn--primary" type="button" (click)="copySagePairUri(uri)">
+              Copy pairing link
+            </button>
+            <button class="btn btn--ghost" type="button" (click)="cancelChiaPairing()">
+              Cancel
+            </button>
+          </div>
+          <pre class="mono mt-4 max-h-32 overflow-auto rounded-card border border-white/10 bg-black/30 p-3 text-xs text-text-muted">{{ uri }}</pre>
+        </div>
+      }
     </section>
   `,
 })
@@ -81,6 +99,7 @@ export class ConnectComponent {
   readonly busy = signal(false);
   readonly status = signal<string>('');
   readonly error = signal<string | null>(null);
+  readonly sageWalletConnectUri = this.chia.sageWalletConnectUri;
 
   async connectEvm(): Promise<void> {
     this.error.set(null);
@@ -107,13 +126,20 @@ export class ConnectComponent {
     this.busy.set(true);
     try {
       this.status.set('Requesting Chia wallet…');
+      let pubkey: string;
       if (this.chia.hasGoby()) {
-        await this.chia.connectGoby();
+        this.status.set('Opening Goby…');
+        pubkey = await this.chia.connectGoby();
       } else if (this.chia.hasSage()) {
-        await this.chia.connectSage();
+        this.status.set('Opening Sage…');
+        pubkey = await this.chia.connectSage();
+      } else if (this.chia.hasSageWalletConnect()) {
+        this.status.set('Opening Sage WalletConnect…');
+        pubkey = await this.chia.connectSageWalletConnect();
       } else {
-        throw new Error('No Chia wallet extension detected (Goby or Sage)');
+        throw new Error('No Chia wallet option detected');
       }
+      this.status.set(`Connected ${this.short(pubkey)}`);
       await this.router.navigate(['/create-vault'], { queryParams: { via: 'chia' } });
     } catch (e) {
       this.error.set(this.msg(e));
@@ -122,7 +148,26 @@ export class ConnectComponent {
     }
   }
 
+  async copySagePairUri(uri: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(uri);
+      this.status.set('Sage pairing link copied.');
+    } catch {
+      this.error.set('Could not copy pairing link. Select and copy it manually.');
+    }
+  }
+
+  cancelChiaPairing(): void {
+    this.chia.disconnect();
+    this.busy.set(false);
+    this.status.set('');
+  }
+
   private msg(e: unknown): string {
     return formatError(e);
+  }
+
+  private short(value: string): string {
+    return value.length <= 18 ? value : `${value.slice(0, 10)}…${value.slice(-6)}`;
   }
 }
