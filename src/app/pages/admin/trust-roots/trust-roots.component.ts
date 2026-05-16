@@ -139,14 +139,20 @@ type VerifyStatus =
       }
 
       <div class="mt-10 grid gap-6 md:grid-cols-2">
+        <h2 class="font-display text-xl md:col-span-2 mt-2 -mb-2">
+          Admin authority
+          <span class="mono text-[0.65rem] uppercase tracking-[0.2em] text-text-muted ml-2 align-middle">
+            A.2 / A.5
+          </span>
+        </h2>
         <!-- A.2 admin authority -->
-        <div class="card">
+        <div class="card flex flex-col">
           <div class="flex items-center justify-between gap-4">
             <div>
               <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">
                 A.2
               </div>
-              <h2 class="font-display text-2xl mt-1">Admin authority</h2>
+              <h3 class="font-display text-2xl mt-1">BLS quorum (v1)</h3>
               <p class="text-xs text-text-muted mt-1">
                 m-of-n BLS quorum with on-chain rotation.
               </p>
@@ -154,13 +160,20 @@ type VerifyStatus =
             <ng-container [ngTemplateOutlet]="statusBadge" [ngTemplateOutletContext]="{ s: adminAuthorityStatus() }"></ng-container>
           </div>
 
-          <dl class="mt-5 space-y-3 text-sm">
+          @if (!authority()?.launcher_id) {
+            <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
+              Not deployed.  Populate
+              <span class="mono">POPULIS_ADMIN_AUTHORITY_*</span>
+              on the API to enable on-chain verification here.
+            </p>
+          } @else {
+          <dl class="mt-5 space-y-3 text-sm flex-1">
             <div>
               <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
                 Launcher ID
               </dt>
               <dd class="mono text-xs break-all mt-1">
-                {{ authority()?.launcher_id || '— not configured —' }}
+                {{ authority()?.launcher_id }}
               </dd>
             </div>
             <div>
@@ -213,15 +226,16 @@ type VerifyStatus =
               </div>
             }
           </dl>
+          }
 
-          <div class="mt-5 flex items-center gap-3">
+          <div class="mt-5 flex items-center gap-3 flex-wrap">
             <button
               type="button"
               class="btn btn--ghost text-xs"
               [disabled]="!authority()?.launcher_id || !chiaWasmReady() || isWalking(adminAuthorityStatus())"
               (click)="verifyAdminAuthority()"
             >
-              {{ adminAuthorityStatus().kind === 'pending' ? 'Verify on chain' : 'Re-verify' }}
+              {{ verifyButtonLabel(adminAuthorityStatus()) }}
             </button>
             @if (verifyDetail(adminAuthorityStatus()); as detail) {
               <span class="text-xs text-text-muted">{{ detail }}</span>
@@ -230,13 +244,13 @@ type VerifyStatus =
         </div>
 
         <!-- A.5 admin authority v2 (Phase 9-Hermes-C) -->
-        <div class="card">
+        <div class="card flex flex-col">
           <div class="flex items-center justify-between gap-4">
             <div>
               <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">
                 A.5
               </div>
-              <h2 class="font-display text-2xl mt-1">Admin authority v2</h2>
+              <h3 class="font-display text-2xl mt-1">MIPS quorum (v2)</h3>
               <p class="text-xs text-text-muted mt-1">
                 MIPS m-of-n quorum with per-admin OneOfN
                 (BLS / EIP-712 / passkey).
@@ -245,13 +259,19 @@ type VerifyStatus =
             <ng-container [ngTemplateOutlet]="statusBadge" [ngTemplateOutletContext]="{ s: adminAuthorityV2Status() }"></ng-container>
           </div>
 
-          <dl class="mt-5 space-y-3 text-sm">
+          @if (!authorityV2()?.launcher_id) {
+            <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
+              Not deployed.  v2 surfaces are inert until the launch
+              ceremony writes a launcher into the runtime config.
+            </p>
+          } @else {
+          <dl class="mt-5 space-y-3 text-sm flex-1">
             <div>
               <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
                 Launcher ID
               </dt>
               <dd class="mono text-xs break-all mt-1">
-                {{ authorityV2()?.launcher_id || '— not configured —' }}
+                {{ authorityV2()?.launcher_id }}
               </dd>
             </div>
             <div>
@@ -268,12 +288,6 @@ type VerifyStatus =
                   <span class="text-text-muted text-sm">disabled</span>
                 }
               </dd>
-              @if (authorityV2()?.informational_only) {
-                <p class="text-[0.65rem] text-text-muted mt-1">
-                  Surface only — admin desk gating still uses v1 allowlist
-                  (gating_source: {{ authorityV2()?.gating_source }}).
-                </p>
-              }
             </div>
             <div>
               <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
@@ -308,15 +322,16 @@ type VerifyStatus =
               </dd>
             </div>
           </dl>
+          }
 
-          <div class="mt-5 flex items-center gap-3">
+          <div class="mt-5 flex items-center gap-3 flex-wrap">
             <button
               type="button"
               class="btn btn--ghost text-xs"
               [disabled]="!authorityV2()?.launcher_id || !chiaWasmReady() || isWalking(adminAuthorityV2Status())"
               (click)="verifyAdminAuthorityV2()"
             >
-              {{ adminAuthorityV2Status().kind === 'pending' ? 'Verify on chain' : 'Re-verify' }}
+              {{ verifyButtonLabel(adminAuthorityV2Status()) }}
             </button>
             @if (verifyDetail(adminAuthorityV2Status()); as detail) {
               <span class="text-xs text-text-muted">{{ detail }}</span>
@@ -324,12 +339,18 @@ type VerifyStatus =
           </div>
         </div>
 
+        <h2 class="font-display text-xl md:col-span-2 mt-6 -mb-2">
+          Protocol surfaces
+          <span class="mono text-[0.65rem] uppercase tracking-[0.2em] text-text-muted ml-2 align-middle">
+            A.3 / A.4
+          </span>
+        </h2>
         <!-- A.3 protocol config -->
-        <div class="card">
+        <div class="card flex flex-col">
           <div class="flex items-center justify-between gap-4">
             <div>
               <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">A.3</div>
-              <h2 class="font-display text-2xl mt-1">Protocol config</h2>
+              <h3 class="font-display text-2xl mt-1">Protocol config</h3>
               <p class="text-xs text-text-muted mt-1">
                 Pool / governance launcher ids + chain network.
               </p>
@@ -337,13 +358,19 @@ type VerifyStatus =
             <ng-container [ngTemplateOutlet]="statusBadge" [ngTemplateOutletContext]="{ s: protocolConfigStatus() }"></ng-container>
           </div>
 
-          <dl class="mt-5 space-y-3 text-sm">
+          @if (!protocol()?.protocol_config_launcher_id) {
+            <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
+              Not deployed.  Network: <span class="mono">{{ protocol()?.network || '—' }}</span>.
+              Genesis ceremony writes the protocol-config singleton.
+            </p>
+          } @else {
+          <dl class="mt-5 space-y-3 text-sm flex-1">
             <div>
               <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
                 Launcher ID
               </dt>
               <dd class="mono text-xs break-all mt-1">
-                {{ protocol()?.protocol_config_launcher_id || '— not configured —' }}
+                {{ protocol()?.protocol_config_launcher_id }}
               </dd>
             </div>
             <div class="grid grid-cols-2 gap-4">
@@ -369,19 +396,20 @@ type VerifyStatus =
                 Content hash
               </dt>
               <dd class="mono text-xs break-all mt-1">
-                {{ protocol()?.protocol_config_hash || '— not configured —' }}
+                {{ protocol()?.protocol_config_hash || '—' }}
               </dd>
             </div>
           </dl>
+          }
 
-          <div class="mt-5 flex items-center gap-3">
+          <div class="mt-5 flex items-center gap-3 flex-wrap">
             <button
               type="button"
               class="btn btn--ghost text-xs"
               [disabled]="!protocol()?.protocol_config_launcher_id || !chiaWasmReady() || isWalking(protocolConfigStatus())"
               (click)="verifyProtocolConfig()"
             >
-              {{ protocolConfigStatus().kind === 'pending' ? 'Verify on chain' : 'Re-verify' }}
+              {{ verifyButtonLabel(protocolConfigStatus()) }}
             </button>
             @if (verifyDetail(protocolConfigStatus()); as detail) {
               <span class="text-xs text-text-muted">{{ detail }}</span>
@@ -390,11 +418,11 @@ type VerifyStatus =
         </div>
 
         <!-- A.4 property registry -->
-        <div class="card">
+        <div class="card flex flex-col">
           <div class="flex items-center justify-between gap-4">
             <div>
               <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">A.4</div>
-              <h2 class="font-display text-2xl mt-1">Property registry</h2>
+              <h3 class="font-display text-2xl mt-1">Property registry</h3>
               <p class="text-xs text-text-muted mt-1">
                 Append-only on-chain log of registered property ids.
               </p>
@@ -402,13 +430,19 @@ type VerifyStatus =
             <ng-container [ngTemplateOutlet]="statusBadge" [ngTemplateOutletContext]="{ s: propertyRegistryStatus() }"></ng-container>
           </div>
 
-          <dl class="mt-5 space-y-3 text-sm">
+          @if (!protocol()?.property_registry_launcher_id) {
+            <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
+              Not deployed.  Property registration is unavailable until
+              this singleton is launched.
+            </p>
+          } @else {
+          <dl class="mt-5 space-y-3 text-sm flex-1">
             <div>
               <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
                 Launcher ID
               </dt>
               <dd class="mono text-xs break-all mt-1">
-                {{ protocol()?.property_registry_launcher_id || '— not configured —' }}
+                {{ protocol()?.property_registry_launcher_id }}
               </dd>
             </div>
             <div>
@@ -420,15 +454,16 @@ type VerifyStatus =
               </dd>
             </div>
           </dl>
+          }
 
-          <div class="mt-5 flex items-center gap-3">
+          <div class="mt-5 flex items-center gap-3 flex-wrap">
             <button
               type="button"
               class="btn btn--ghost text-xs"
               [disabled]="!protocol()?.property_registry_launcher_id || !chiaWasmReady() || isWalking(propertyRegistryStatus())"
               (click)="verifyPropertyRegistry()"
             >
-              {{ propertyRegistryStatus().kind === 'pending' ? 'Verify on chain' : 'Re-verify' }}
+              {{ verifyButtonLabel(propertyRegistryStatus()) }}
             </button>
             @if (verifyDetail(propertyRegistryStatus()); as detail) {
               <span class="text-xs text-text-muted">{{ detail }}</span>
@@ -436,37 +471,41 @@ type VerifyStatus =
           </div>
         </div>
 
+        <h2 class="font-display text-xl md:col-span-2 mt-6 -mb-2">
+          Per-proposal puzzle
+          <span class="mono text-[0.65rem] uppercase tracking-[0.2em] text-text-muted ml-2 align-middle">
+            A.1
+          </span>
+        </h2>
         <!-- A.1 mint proposal mod hash (no per-protocol launcher; per-proposal) -->
-        <div class="card">
+        <div class="card md:col-span-2">
           <div class="flex items-center justify-between gap-4">
             <div>
               <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">A.1</div>
-              <h2 class="font-display text-2xl mt-1">Mint proposal</h2>
+              <h3 class="font-display text-2xl mt-1">Mint proposal</h3>
               <p class="text-xs text-text-muted mt-1">
-                Per-proposal singletons (DRAFT → APPROVED / CANCELLED).
+                A.1 is a puzzle module rather than a singleton.  Each
+                proposal launches its own singleton with its own
+                launcher_id, so verification is per-proposal.
               </p>
             </div>
             <span class="state-pill" data-state="DRAFT">module</span>
           </div>
 
-          <dl class="mt-5 space-y-3 text-sm">
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Inner mod hash
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ protocol()?.mint_proposal_mod_hash || '—' }}
-              </dd>
+          <div class="mt-5 text-sm">
+            <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+              Inner mod hash
             </div>
-            <p class="text-xs text-text-muted leading-relaxed">
-              A.1 is a puzzle module rather than a singleton — each
-              proposal launches its own singleton with its own
-              launcher_id.  Verification is per-proposal: visit any
-              <a class="text-brand hover:underline" routerLink="/admin">mint proposal detail</a>
-              page to walk that proposal's lineage and verify its
-              published state.
-            </p>
-          </dl>
+            <div class="mono text-xs break-all mt-1">
+              {{ protocol()?.mint_proposal_mod_hash || '—' }}
+            </div>
+          </div>
+          <p class="text-xs text-text-muted leading-relaxed mt-4">
+            Open any
+            <a class="text-brand hover:underline" routerLink="/admin">mint proposal detail</a>
+            page to walk that proposal's lineage and verify its
+            published state.
+          </p>
         </div>
       </div>
     </section>
@@ -492,7 +531,7 @@ type VerifyStatus =
           <span class="state-pill err">error</span>
         }
         @case ('not-configured') {
-          <span class="state-pill">disabled</span>
+          <span class="state-pill">not deployed</span>
         }
         @default {
           <span class="state-pill">unverified</span>
@@ -738,6 +777,30 @@ export class TrustRootsComponent {
         return s.message;
       default:
         return null;
+    }
+  }
+
+  /**
+   * Verify-button copy.  ``Re-verify`` is only correct after a prior
+   * successful walk; otherwise the button hasn't actually verified
+   * anything yet.  ``not-configured`` cards render the button disabled
+   * with a passive label so the affordance is honest.
+   */
+  verifyButtonLabel(s: VerifyStatus): string {
+    switch (s.kind) {
+      case 'match':
+      case 'mismatch':
+      case 'no-spends-yet':
+        return 'Re-verify';
+      case 'walking':
+      case 'replaying':
+        return 'Verifying…';
+      case 'not-configured':
+        return 'Not deployed';
+      case 'error':
+        return 'Retry verify';
+      default:
+        return 'Verify on chain';
     }
   }
 }
