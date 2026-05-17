@@ -45,50 +45,52 @@ import {
           </button>
         </div>
 
-        @if (discoveryState().kind === 'error') {
-          <p class="status error">Scan failed: {{ discoveryState().message }}</p>
-        }
-        @if (discoveryState().kind === 'ready') {
-          <p class="status ok">
-            Found {{ discoveryState().report.anchors.length }} verified anchor(s)
-            from {{ discoveryState().report.scannedCandidateCount }} candidate marker coin(s).
-          </p>
-          @if (discoveryState().report.rejectedCandidates.length > 0) {
-            <p class="status warn">
-              Rejected {{ discoveryState().report.rejectedCandidates.length }} malformed candidate(s).
+        @if (discoveryState(); as state) {
+          @if (state.kind === 'error') {
+            <p class="status error">Scan failed: {{ state.message }}</p>
+          }
+          @if (state.kind === 'ready') {
+            <p class="status ok">
+              Found {{ state.report.anchors.length }} verified anchor(s)
+              from {{ state.report.scannedCandidateCount }} candidate marker coin(s).
             </p>
-            <details class="payload">
-              <summary>Rejected candidate details</summary>
-              <div class="rejected-list">
-                @for (candidate of discoveryState().report.rejectedCandidates; track candidate.markerCoinId) {
-                  <div class="rejected">
-                    <strong>marker={{ candidate.markerCoinId }}</strong>
-                    <span>parent={{ candidate.parentCoinId }}</span>
-                    <span>block={{ candidate.confirmedBlockIndex }}</span>
-                    <em>{{ candidate.reason }}</em>
-                  </div>
-                }
-              </div>
-            </details>
-          }
-          @if (discoveryState().report.anchors.length === 0) {
-            <p class="muted">No recovery anchors found yet.</p>
-          }
-          <div class="anchor-list">
-            @for (anchor of discoveryState().report.anchors; track anchor.markerCoinId; let i = $index) {
-              <button
-                type="button"
-                class="anchor"
-                [class.selected]="selectedAnchorIndex() === i"
-                (click)="selectAnchor(i)"
-              >
-                <strong>{{ anchor.bootstrapRecoveryAnchor.network }}</strong>
-                <span>launcher={{ anchor.bootstrapRecoveryAnchor.admin_authority_v2_launcher_id }}</span>
-                <span>marker={{ anchor.markerCoinId }}</span>
-                <span>block={{ anchor.confirmedBlockIndex }}</span>
-              </button>
+            @if (state.report.rejectedCandidates.length > 0) {
+              <p class="status warn">
+                Rejected {{ state.report.rejectedCandidates.length }} malformed candidate(s).
+              </p>
+              <details class="payload">
+                <summary>Rejected candidate details</summary>
+                <div class="rejected-list">
+                  @for (candidate of state.report.rejectedCandidates; track candidate.markerCoinId) {
+                    <div class="rejected">
+                      <strong>marker={{ candidate.markerCoinId }}</strong>
+                      <span>parent={{ candidate.parentCoinId }}</span>
+                      <span>block={{ candidate.confirmedBlockIndex }}</span>
+                      <em>{{ candidate.reason }}</em>
+                    </div>
+                  }
+                </div>
+              </details>
             }
-          </div>
+            @if (state.report.anchors.length === 0) {
+              <p class="muted">No recovery anchors found yet.</p>
+            }
+            <div class="anchor-list">
+              @for (anchor of state.report.anchors; track anchor.markerCoinId; let i = $index) {
+                <button
+                  type="button"
+                  class="anchor"
+                  [class.selected]="selectedAnchorIndex() === i"
+                  (click)="selectAnchor(i)"
+                >
+                  <strong>{{ anchor.bootstrapRecoveryAnchor.network }}</strong>
+                  <span>launcher={{ anchor.bootstrapRecoveryAnchor.admin_authority_v2_launcher_id }}</span>
+                  <span>marker={{ anchor.markerCoinId }}</span>
+                  <span>block={{ anchor.confirmedBlockIndex }}</span>
+                </button>
+              }
+            </div>
+          }
         }
       </section>
 
@@ -157,18 +159,20 @@ import {
           </div>
         }
 
-        @if (verifyState().kind === 'verified') {
-          <p class="status ok">
-            Recovery artifacts verified. Admin authority launcher:
-            {{ verifyState().response.admin_authority_v2_launcher_id }}.
-          </p>
-          <a routerLink="/admin/login" class="primary link-button">Continue to permanent admin login</a>
-        }
-        @if (verifyState().kind === 'rejected') {
-          <p class="status error">Verifier rejected artifacts: {{ verifyState().response.error || 'unknown mismatch' }}</p>
-        }
-        @if (verifyState().kind === 'error') {
-          <p class="status error">Verification failed: {{ verifyState().message }}</p>
+        @if (verifyState(); as state) {
+          @if (state.kind === 'verified') {
+            <p class="status ok">
+              Recovery artifacts verified. Admin authority launcher:
+              {{ state.response.admin_authority_v2_launcher_id }}.
+            </p>
+            <a routerLink="/admin/login" class="primary link-button">Continue to permanent admin login</a>
+          }
+          @if (state.kind === 'rejected') {
+            <p class="status error">Verifier rejected artifacts: {{ state.response.error || 'unknown mismatch' }}</p>
+          }
+          @if (state.kind === 'error') {
+            <p class="status error">Verification failed: {{ state.message }}</p>
+          }
         }
       </section>
     </main>
