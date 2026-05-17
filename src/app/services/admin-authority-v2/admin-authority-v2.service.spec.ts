@@ -60,6 +60,16 @@ interface InnerPuzzleInputFixture {
   pgt_governance_puzzle_hash?: string;
 }
 
+interface RosterUpdateBindingInputFixture {
+  current_mips_root_hash: string;
+  current_admins_hash: string;
+  current_pending_ops_hash: string;
+  current_authority_version: number;
+  new_admins_hash: string;
+  new_mips_root_hash: string;
+  new_authority_version: number;
+}
+
 interface SingletonFullInputFixture {
   launcher_id: string;
   inner_puzzle_hash: string;
@@ -99,11 +109,16 @@ interface FixtureFile {
   admins_hash: FixtureCase<AdminInputFixture[]>[];
   pending_ops_hash: FixtureCase<PendingOpInputFixture[]>[];
   inner_puzzle_hash: FixtureCase<InnerPuzzleInputFixture>[];
+  roster_update_binding_hash: FixtureCase<RosterUpdateBindingInputFixture>[];
   singleton_full_puzzle_hash: FixtureCase<SingletonFullInputFixture>[];
   launch_outputs: FixtureCase<LaunchInputFixture, LaunchExpectedFixture>[];
 }
 
 const fixtures = fixturesJson as FixtureFile;
+const PRECHECK_H1 = '0x' + '11'.repeat(32);
+const PRECHECK_H2 = '0x' + '22'.repeat(32);
+const PRECHECK_H3 = '0x' + '33'.repeat(32);
+const PRECHECK_H4 = '0x' + '44'.repeat(32);
 
 describe('AdminAuthorityV2Service', () => {
   let service: AdminAuthorityV2Service;
@@ -285,6 +300,113 @@ describe('AdminAuthorityV2Service', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────
+  // computeRosterUpdateBindingHash
+  // ───────────────────────────────────────────────────────────────────
+  describe('computeRosterUpdateBindingHash', () => {
+    fixtures.roster_update_binding_hash.forEach((c) => {
+      it(`matches Python for case "${c.label}"`, () => {
+        const got = bytesToHexPrefixed(
+          service.computeRosterUpdateBindingHash({
+            currentMipsRootHash: c.input.current_mips_root_hash,
+            currentAdminsHash: c.input.current_admins_hash,
+            currentPendingOpsHash: c.input.current_pending_ops_hash,
+            currentAuthorityVersion: c.input.current_authority_version,
+            newAdminsHash: c.input.new_admins_hash,
+            newMipsRootHash: c.input.new_mips_root_hash,
+            newAuthorityVersion: c.input.new_authority_version,
+          }),
+        );
+        expect(got)
+          .withContext(`roster_update_binding_hash[${c.label}]`)
+          .toBe(c.expected);
+      });
+    });
+  });
+
+  describe('validateUnsignedRosterSpendPackage', () => {
+    it('passes a locally consistent unsigned package', () => {
+      const pkg = validUnsignedRosterSpendPackage(service);
+
+      const result = service.validateUnsignedRosterSpendPackage(pkg);
+
+      expect(result.ok).toBeTrue();
+      expect(result.status).toBe('passes local checks');
+      expect(result.failures).toEqual([]);
+    });
+
+    it('rejects the wrong package kind', () => {
+      const pkg = validUnsignedRosterSpendPackage(service);
+      pkg['kind'] = 'backend_prepared_roster_update';
+
+      const result = service.validateUnsignedRosterSpendPackage(pkg);
+
+      expect(result.ok).toBeFalse();
+      expect(result.failures).toContain('kind must equal admin_authority_v2_roster_update_unsigned_package');
+    });
+
+    it('rejects a stale roster update binding hash', () => {
+      const pkg = validUnsignedRosterSpendPackage(service);
+      (pkg['update'] as Record<string, unknown>)['roster_update_binding_hash'] = PRECHECK_H4;
+
+      const result = service.validateUnsignedRosterSpendPackage(pkg);
+
+      expect(result.ok).toBeFalse();
+      expect(result.failures).toContain('update.roster_update_binding_hash must match computed roster update binding hash');
+    });
+
+    it('rejects a mutated new admins hash', () => {
+      const pkg = validUnsignedRosterSpendPackage(service);
+      (pkg['update'] as Record<string, unknown>)['new_admins_hash'] = PRECHECK_H4;
+
+      const result = service.validateUnsignedRosterSpendPackage(pkg);
+
+      expect(result.ok).toBeFalse();
+      expect(result.failures).toContain('update.new_admins_hash must match computed admin records hash');
+    });
+
+    it('rejects pending ops hash drift', () => {
+      const pkg = validUnsignedRosterSpendPackage(service);
+      (pkg['update'] as Record<string, unknown>)['new_pending_ops_hash'] = PRECHECK_H1;
+
+      const result = service.validateUnsignedRosterSpendPackage(pkg);
+
+      expect(result.ok).toBeFalse();
+      expect(result.failures).toContain('current.pending_ops_hash must equal update.new_pending_ops_hash');
+    });
+
+    it('ignores optional API attachments for package validity', () => {
+      const pkg = validUnsignedRosterSpendPackage(service);
+      (pkg['optional_attachments'] as Record<string, unknown>)['api_cross_check'] = {
+        submission_status: 'validated_preview_only_roster_spend_not_submitted',
+      };
+      (pkg['optional_attachments'] as Record<string, unknown>)['api_live_singleton_lookup'] = {
+        lookup_status: 'found_unique_unspent_candidate',
+      };
+
+      const result = service.validateUnsignedRosterSpendPackage(pkg);
+
+      expect(result.ok).toBeTrue();
+      expect(result.failures).toEqual([]);
+    });
+
+    it('rejects credential and signature fields anywhere in the package', () => {
+      const pkg = validUnsignedRosterSpendPackage(service);
+      (pkg['optional_attachments'] as Record<string, unknown>)['api_cross_check'] = {
+        jwt: 'header.payload.signature',
+        signature: '0x' + 'ab'.repeat(65),
+        nonce: PRECHECK_H1,
+      };
+
+      const result = service.validateUnsignedRosterSpendPackage(pkg);
+
+      expect(result.ok).toBeFalse();
+      expect(result.failures.join('\n')).toContain('jwt must not contain credentials or signatures');
+      expect(result.failures.join('\n')).toContain('signature must not contain credentials or signatures');
+      expect(result.failures.join('\n')).toContain('nonce must not contain credentials or signatures');
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────
   // Singleton constants
   // ───────────────────────────────────────────────────────────────────
   describe('singleton constants', () => {
@@ -415,3 +537,106 @@ describe('AdminAuthorityV2Service', () => {
     });
   });
 });
+
+function validUnsignedRosterSpendPackage(service: AdminAuthorityV2Service): Record<string, unknown> {
+  const currentRecord = {
+    admin_idx: 0,
+    m_within: 1,
+    leaves: [{ leaf_hash: PRECHECK_H1 }],
+  };
+  const newRecord = {
+    admin_idx: 1,
+    m_within: 1,
+    leaves: [{ leaf_hash: PRECHECK_H2 }],
+  };
+  const currentAdminRecords: AdminRecord[] = [{ adminIdx: 0, leaves: [PRECHECK_H1], mWithin: 1 }];
+  const updatedAdminRecords: AdminRecord[] = [
+    currentAdminRecords[0],
+    { adminIdx: 1, leaves: [PRECHECK_H2], mWithin: 1 },
+  ];
+  const pendingOpsHash = AdminAuthorityV2Service.EMPTY_LIST_HASH;
+  const currentAdminsHash = bytesToHexPrefixed(service.computeAdminsHash(currentAdminRecords));
+  const newAdminsHash = bytesToHexPrefixed(service.computeAdminsHash(updatedAdminRecords));
+  const currentStateHash = bytesToHexPrefixed(
+    service.computeStateHash({
+      mipsRootHash: PRECHECK_H2,
+      adminsHash: currentAdminsHash,
+      pendingOpsHash,
+      authorityVersion: 1,
+    }),
+  );
+  const newStateHash = bytesToHexPrefixed(
+    service.computeStateHash({
+      mipsRootHash: PRECHECK_H3,
+      adminsHash: newAdminsHash,
+      pendingOpsHash,
+      authorityVersion: 2,
+    }),
+  );
+  const rosterUpdateBindingHash = bytesToHexPrefixed(
+    service.computeRosterUpdateBindingHash({
+      currentMipsRootHash: PRECHECK_H2,
+      currentAdminsHash,
+      currentPendingOpsHash: pendingOpsHash,
+      currentAuthorityVersion: 1,
+      newAdminsHash,
+      newMipsRootHash: PRECHECK_H3,
+      newAuthorityVersion: 2,
+    }),
+  );
+  return {
+    version: 1,
+    kind: 'admin_authority_v2_roster_update_unsigned_package',
+    network: 'testnet11',
+    package_status: 'unsigned_package_only',
+    signing_status: 'not_signed',
+    broadcast_status: 'not_built_not_submitted',
+    backend_dependency: 'optional_admin_cross_check_only',
+    launcher_id: PRECHECK_H4,
+    activation_status: 'candidate_not_active_until_admin_roster_update_confirms',
+    spend_intent: {
+      kind: 'admin_authority_v2_roster_update',
+      spend_tag: 7,
+      spend_name: 'ADMIN_ROSTER_UPDATE',
+      launcher_id: PRECHECK_H4,
+      current_state_hash: currentStateHash,
+      new_state_hash: newStateHash,
+      roster_update_binding_hash: rosterUpdateBindingHash,
+      binding_hash_source: 'local_admin_authority_v2_service',
+      validation_scope: 'local_unsigned_package_no_broadcast',
+    },
+    current: {
+      authority_version: 1,
+      mips_root_hash: PRECHECK_H2,
+      admins_hash: currentAdminsHash,
+      state_hash: currentStateHash,
+      pending_ops_hash: pendingOpsHash,
+      admin_records: [currentRecord],
+    },
+    update: {
+      new_authority_version: 2,
+      new_admin_record: newRecord,
+      new_threshold: 2,
+      new_mips_member_hashes: [PRECHECK_H1, PRECHECK_H2],
+      new_mips_root_hash: PRECHECK_H3,
+      new_admins_hash: newAdminsHash,
+      new_pending_ops_hash: pendingOpsHash,
+      new_state_hash: newStateHash,
+      roster_update_binding_hash: rosterUpdateBindingHash,
+      updated_admin_records: [currentRecord, newRecord],
+    },
+    live_singleton: {
+      source: 'operator_wallet_or_coinset_client',
+      required_amount: 1,
+      selected_coin: null,
+    },
+    required_local_signer_inputs: [
+      'current MIPS puzzle reveal matching current.mips_root_hash',
+    ],
+    optional_attachments: {
+      api_cross_check_status: 'not checked',
+      api_cross_check: null,
+      api_live_singleton_lookup: null,
+    },
+  };
+}

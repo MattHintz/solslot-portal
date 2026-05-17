@@ -180,6 +180,47 @@
       "expected": "0x50df68b8283d63f3eaa4627f20b0c7bd29443b09e12cfeb49ebbdf0302ae25b1"
     }
   ],
+  "roster_update_binding_hash": [
+    {
+      "label": "fresh-slot-add-empty-pending",
+      "input": {
+        "current_mips_root_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "current_admins_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "current_pending_ops_hash": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+        "current_authority_version": 1,
+        "new_admins_hash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "new_mips_root_hash": "0x4444444444444444444444444444444444444444444444444444444444444444",
+        "new_authority_version": 2
+      },
+      "expected": "0xac3788bd37d975c65f4cad97dab597c58ebe2af0e92af786d297f3d1a5aa0d8b"
+    },
+    {
+      "label": "with-pending-op-version-bump",
+      "input": {
+        "current_mips_root_hash": "0x4444444444444444444444444444444444444444444444444444444444444444",
+        "current_admins_hash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "current_pending_ops_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "current_authority_version": 7,
+        "new_admins_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "new_mips_root_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "new_authority_version": 8
+      },
+      "expected": "0xc3b64c878a4765a66cee208b858d41851f93a9a6fd1dc3f0313cfab1407599bd"
+    },
+    {
+      "label": "all-distinct-roster-update-fields",
+      "input": {
+        "current_mips_root_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "current_admins_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "current_pending_ops_hash": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+        "current_authority_version": 41,
+        "new_admins_hash": "0x4444444444444444444444444444444444444444444444444444444444444444",
+        "new_mips_root_hash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "new_authority_version": 42
+      },
+      "expected": "0xfcb7074586c44078b11b6df7d5204a587171b772339a859507fdc4e13d8dabbd"
+    }
+  ],
   "singleton_full_puzzle_hash": [
     {
       "label": "h1-h2",

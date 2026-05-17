@@ -103,6 +103,11 @@ export class AdminAuthorityV2Service {
     return clvm.deserialize(puzzleBytes).treeHash();
   }
 
+  computeSerializedProgramTreeHash(programHex: string): string {
+    const clvm = this.clvm();
+    return bytesToHexPrefixed(clvm.deserialize(hexToBytes(programHex.trim())).treeHash());
+  }
+
   /**
    * sha256tree of the 4-tuple ``(mips_root_hash, admins_hash,
    * pending_ops_hash, authority_version)``.  This is the hash the
@@ -129,6 +134,147 @@ export class AdminAuthorityV2Service {
       clvm.int(BigInt(args.authorityVersion)),
     ]);
     return list.treeHash();
+  }
+
+  computeRosterUpdateBindingHash(args: {
+    currentMipsRootHash: string;
+    currentAdminsHash: string;
+    currentPendingOpsHash: string;
+    currentAuthorityVersion: number | bigint;
+    newAdminsHash: string;
+    newMipsRootHash: string;
+    newAuthorityVersion: number | bigint;
+  }): Uint8Array {
+    const clvm = this.clvm();
+    const list = clvm.list([
+      clvm.int(BigInt(0x07)),
+      clvm.atom(hexToBytes(args.currentMipsRootHash)),
+      clvm.atom(hexToBytes(args.currentAdminsHash)),
+      clvm.atom(hexToBytes(args.currentPendingOpsHash)),
+      clvm.int(BigInt(args.currentAuthorityVersion)),
+      clvm.atom(hexToBytes(args.newAdminsHash)),
+      clvm.atom(hexToBytes(args.newMipsRootHash)),
+      clvm.int(BigInt(args.newAuthorityVersion)),
+    ]);
+    return list.treeHash();
+  }
+
+  validateUnsignedRosterSpendPackage(pkg: unknown): AdminRosterSpendPackagePreflight {
+    const failures: string[] = [];
+    const root = asRecord(pkg);
+    if (!root) {
+      return preflightResult(['package must be an object']);
+    }
+
+    collectForbiddenCredentialFields(root, 'package', failures);
+
+    expectString(root, 'kind', 'admin_authority_v2_roster_update_unsigned_package', failures);
+    expectString(root, 'package_status', 'unsigned_package_only', failures);
+    expectString(root, 'signing_status', 'not_signed', failures);
+    expectString(root, 'broadcast_status', 'not_built_not_submitted', failures);
+    expectString(root, 'backend_dependency', 'optional_admin_cross_check_only', failures);
+    expectString(root, 'activation_status', 'candidate_not_active_until_admin_roster_update_confirms', failures);
+
+    const launcherId = readString(root, 'launcher_id', failures);
+    const current = readRecord(root, 'current', failures);
+    const update = readRecord(root, 'update', failures);
+    const spendIntent = readRecord(root, 'spend_intent', failures);
+    const liveSingleton = readRecord(root, 'live_singleton', failures);
+    readArray(root, 'required_local_signer_inputs', failures);
+    readRecord(root, 'optional_attachments', failures);
+
+    if (spendIntent) {
+      expectString(spendIntent, 'kind', 'admin_authority_v2_roster_update', failures, 'spend_intent.kind');
+      expectNumber(spendIntent, 'spend_tag', 0x07, failures, 'spend_intent.spend_tag');
+      expectString(spendIntent, 'spend_name', 'ADMIN_ROSTER_UPDATE', failures, 'spend_intent.spend_name');
+      expectString(spendIntent, 'binding_hash_source', 'local_admin_authority_v2_service', failures, 'spend_intent.binding_hash_source');
+      expectString(spendIntent, 'validation_scope', 'local_unsigned_package_no_broadcast', failures, 'spend_intent.validation_scope');
+      if (launcherId && readString(spendIntent, 'launcher_id', failures, 'spend_intent.launcher_id') !== launcherId) {
+        failures.push('spend_intent.launcher_id must match launcher_id');
+      }
+    }
+
+    if (liveSingleton) {
+      const source = readString(liveSingleton, 'source', failures, 'live_singleton.source');
+      if (source && source !== 'operator_wallet_or_coinset_client' && source !== 'optional_api_lookup') {
+        failures.push('live_singleton.source must be operator_wallet_or_coinset_client or optional_api_lookup');
+      }
+      expectNumber(liveSingleton, 'required_amount', 1, failures, 'live_singleton.required_amount');
+    }
+
+    if (!current || !update || !spendIntent) {
+      return preflightResult(failures);
+    }
+
+    const currentAuthorityVersion = readNumber(current, 'authority_version', failures, 'current.authority_version');
+    const newAuthorityVersion = readNumber(update, 'new_authority_version', failures, 'update.new_authority_version');
+    if (currentAuthorityVersion !== null && newAuthorityVersion !== null && newAuthorityVersion !== currentAuthorityVersion + 1) {
+      failures.push('update.new_authority_version must equal current.authority_version + 1');
+    }
+
+    const currentPendingOpsHash = readString(current, 'pending_ops_hash', failures, 'current.pending_ops_hash');
+    const newPendingOpsHash = readString(update, 'new_pending_ops_hash', failures, 'update.new_pending_ops_hash');
+    if (currentPendingOpsHash && newPendingOpsHash && !sameHexValue(currentPendingOpsHash, newPendingOpsHash)) {
+      failures.push('current.pending_ops_hash must equal update.new_pending_ops_hash');
+    }
+
+    const currentRecords = readArray(current, 'admin_records', failures, 'current.admin_records');
+    const updatedRecords = readArray(update, 'updated_admin_records', failures, 'update.updated_admin_records');
+    const newAdminRecord = readRecord(update, 'new_admin_record', failures, 'update.new_admin_record');
+    const currentAdminRecords = currentRecords ? adminRecordsFromPackage(currentRecords, 'current.admin_records', failures) : [];
+    const updatedAdminRecords = updatedRecords ? adminRecordsFromPackage(updatedRecords, 'update.updated_admin_records', failures) : [];
+
+    if (currentRecords && updatedRecords && newAdminRecord) {
+      if (updatedRecords.length !== currentRecords.length + 1) {
+        failures.push('update.updated_admin_records must append exactly one admin slot');
+      }
+      const prefix = updatedRecords.slice(0, currentRecords.length);
+      if (JSON.stringify(prefix) !== JSON.stringify(currentRecords)) {
+        failures.push('update.updated_admin_records must preserve existing admin records as a prefix');
+      }
+      const appended = updatedRecords[updatedRecords.length - 1];
+      if (JSON.stringify(appended) !== JSON.stringify(newAdminRecord)) {
+        failures.push('update.new_admin_record must equal the appended admin record');
+      }
+      const appendedRecord = asRecord(appended);
+      const expectedNewIdx = currentRecords.length;
+      if (appendedRecord && appendedRecord['admin_idx'] !== expectedNewIdx) {
+        failures.push('update.new_admin_record.admin_idx must equal the next appended slot index');
+      }
+    }
+
+    const currentMipsRootHash = readString(current, 'mips_root_hash', failures, 'current.mips_root_hash');
+    const currentAdminsHash = readString(current, 'admins_hash', failures, 'current.admins_hash');
+    const currentStateHash = readString(current, 'state_hash', failures, 'current.state_hash');
+    const newMipsRootHash = readString(update, 'new_mips_root_hash', failures, 'update.new_mips_root_hash');
+    const newAdminsHash = readString(update, 'new_admins_hash', failures, 'update.new_admins_hash');
+    const newStateHash = readString(update, 'new_state_hash', failures, 'update.new_state_hash');
+    const updateBindingHash = readString(update, 'roster_update_binding_hash', failures, 'update.roster_update_binding_hash');
+    const intentCurrentStateHash = readString(spendIntent, 'current_state_hash', failures, 'spend_intent.current_state_hash');
+    const intentNewStateHash = readString(spendIntent, 'new_state_hash', failures, 'spend_intent.new_state_hash');
+    const intentBindingHash = readString(spendIntent, 'roster_update_binding_hash', failures, 'spend_intent.roster_update_binding_hash');
+
+    this.compareComputedHashes({
+      failures,
+      currentAdminRecords,
+      updatedAdminRecords,
+      currentMipsRootHash,
+      currentAdminsHash,
+      currentPendingOpsHash,
+      currentAuthorityVersion,
+      currentStateHash,
+      newMipsRootHash,
+      newAdminsHash,
+      newPendingOpsHash,
+      newAuthorityVersion,
+      newStateHash,
+      updateBindingHash,
+      intentCurrentStateHash,
+      intentNewStateHash,
+      intentBindingHash,
+    });
+
+    return preflightResult(failures);
   }
 
   /**
@@ -712,6 +858,100 @@ export class AdminAuthorityV2Service {
   // hashing primitive used by every other Chia tooling.
   // ───────────────────────────────────────────────────────────────────
 
+  private compareComputedHashes(args: {
+    failures: string[];
+    currentAdminRecords: AdminRecord[];
+    updatedAdminRecords: AdminRecord[];
+    currentMipsRootHash: string | null;
+    currentAdminsHash: string | null;
+    currentPendingOpsHash: string | null;
+    currentAuthorityVersion: number | null;
+    currentStateHash: string | null;
+    newMipsRootHash: string | null;
+    newAdminsHash: string | null;
+    newPendingOpsHash: string | null;
+    newAuthorityVersion: number | null;
+    newStateHash: string | null;
+    updateBindingHash: string | null;
+    intentCurrentStateHash: string | null;
+    intentNewStateHash: string | null;
+    intentBindingHash: string | null;
+  }): void {
+    try {
+      if (args.currentAdminsHash) {
+        const computedCurrentAdminsHash = bytesToHexPrefixed(this.computeAdminsHash(args.currentAdminRecords));
+        if (!sameHexValue(args.currentAdminsHash, computedCurrentAdminsHash)) {
+          args.failures.push('current.admins_hash must match computed admin records hash');
+        }
+      }
+      if (args.newAdminsHash) {
+        const computedUpdatedAdminsHash = bytesToHexPrefixed(this.computeAdminsHash(args.updatedAdminRecords));
+        if (!sameHexValue(args.newAdminsHash, computedUpdatedAdminsHash)) {
+          args.failures.push('update.new_admins_hash must match computed admin records hash');
+        }
+      }
+      if (
+        args.currentMipsRootHash &&
+        args.currentAdminsHash &&
+        args.currentPendingOpsHash &&
+        args.currentAuthorityVersion !== null
+      ) {
+        const computedCurrentStateHash = bytesToHexPrefixed(
+          this.computeStateHash({
+            mipsRootHash: args.currentMipsRootHash,
+            adminsHash: args.currentAdminsHash,
+            pendingOpsHash: args.currentPendingOpsHash,
+            authorityVersion: args.currentAuthorityVersion,
+          }),
+        );
+        compareHex(args.currentStateHash, computedCurrentStateHash, 'current.state_hash must match computed current state hash', args.failures);
+        compareHex(args.intentCurrentStateHash, computedCurrentStateHash, 'spend_intent.current_state_hash must match computed current state hash', args.failures);
+      }
+      if (
+        args.newMipsRootHash &&
+        args.newAdminsHash &&
+        args.newPendingOpsHash &&
+        args.newAuthorityVersion !== null
+      ) {
+        const computedNewStateHash = bytesToHexPrefixed(
+          this.computeStateHash({
+            mipsRootHash: args.newMipsRootHash,
+            adminsHash: args.newAdminsHash,
+            pendingOpsHash: args.newPendingOpsHash,
+            authorityVersion: args.newAuthorityVersion,
+          }),
+        );
+        compareHex(args.newStateHash, computedNewStateHash, 'update.new_state_hash must match computed update state hash', args.failures);
+        compareHex(args.intentNewStateHash, computedNewStateHash, 'spend_intent.new_state_hash must match computed update state hash', args.failures);
+      }
+      if (
+        args.currentMipsRootHash &&
+        args.currentAdminsHash &&
+        args.currentPendingOpsHash &&
+        args.currentAuthorityVersion !== null &&
+        args.newAdminsHash &&
+        args.newMipsRootHash &&
+        args.newAuthorityVersion !== null
+      ) {
+        const computedBindingHash = bytesToHexPrefixed(
+          this.computeRosterUpdateBindingHash({
+            currentMipsRootHash: args.currentMipsRootHash,
+            currentAdminsHash: args.currentAdminsHash,
+            currentPendingOpsHash: args.currentPendingOpsHash,
+            currentAuthorityVersion: args.currentAuthorityVersion,
+            newAdminsHash: args.newAdminsHash,
+            newMipsRootHash: args.newMipsRootHash,
+            newAuthorityVersion: args.newAuthorityVersion,
+          }),
+        );
+        compareHex(args.updateBindingHash, computedBindingHash, 'update.roster_update_binding_hash must match computed roster update binding hash', args.failures);
+        compareHex(args.intentBindingHash, computedBindingHash, 'spend_intent.roster_update_binding_hash must match computed roster update binding hash', args.failures);
+      }
+    } catch (e) {
+      args.failures.push(`local preflight hash recomputation failed: ${errorMessage(e)}`);
+    }
+  }
+
   private singletonStructHash(launcherIdBytes: Uint8Array): Uint8Array {
     // SINGLETON_STRUCT = (MOD_HASH . (LAUNCHER_ID . LAUNCHER_HASH))
     // sha256tree of a cons cell = treeHashPair(treeHash(left), treeHash(right))
@@ -962,6 +1202,12 @@ export interface PendingOp {
   activatesAt: number | bigint;
 }
 
+export interface AdminRosterSpendPackagePreflight {
+  ok: boolean;
+  status: string;
+  failures: string[];
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Internal types + helpers.
 // ─────────────────────────────────────────────────────────────────────────
@@ -1050,6 +1296,127 @@ interface SdkShape {
   };
   treeHashAtom?: (atom: Uint8Array) => Uint8Array;
   treeHashPair?: (first: Uint8Array, rest: Uint8Array) => Uint8Array;
+}
+
+function preflightResult(failures: string[]): AdminRosterSpendPackagePreflight {
+  return {
+    ok: failures.length === 0,
+    status: failures.length === 0 ? 'passes local checks' : 'fails local checks',
+    failures,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function readRecord(root: Record<string, unknown>, key: string, failures: string[], path = key): Record<string, unknown> | null {
+  const value = root[key];
+  const record = asRecord(value);
+  if (!record) failures.push(`${path} must be an object`);
+  return record;
+}
+
+function readArray(root: Record<string, unknown>, key: string, failures: string[], path = key): unknown[] | null {
+  const value = root[key];
+  if (!Array.isArray(value)) {
+    failures.push(`${path} must be an array`);
+    return null;
+  }
+  return value;
+}
+
+function readString(root: Record<string, unknown>, key: string, failures: string[], path = key): string | null {
+  const value = root[key];
+  if (typeof value !== 'string' || !value) {
+    failures.push(`${path} must be a non-empty string`);
+    return null;
+  }
+  return value;
+}
+
+function readNumber(root: Record<string, unknown>, key: string, failures: string[], path = key): number | null {
+  const value = root[key];
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    failures.push(`${path} must be an integer`);
+    return null;
+  }
+  return value;
+}
+
+function expectString(root: Record<string, unknown>, key: string, expected: string, failures: string[], path = key): void {
+  const value = root[key];
+  if (value !== expected) failures.push(`${path} must equal ${expected}`);
+}
+
+function expectNumber(root: Record<string, unknown>, key: string, expected: number, failures: string[], path = key): void {
+  const value = root[key];
+  if (value !== expected) failures.push(`${path} must equal ${expected}`);
+}
+
+function collectForbiddenCredentialFields(value: unknown, path: string, failures: string[]): void {
+  const record = asRecord(value);
+  if (!record) {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => collectForbiddenCredentialFields(item, `${path}[${index}]`, failures));
+    }
+    return;
+  }
+  for (const [key, child] of Object.entries(record)) {
+    const lower = key.toLowerCase();
+    if (
+      lower.includes('bearer') ||
+      lower.includes('jwt') ||
+      lower.includes('nonce') ||
+      lower.includes('signature') ||
+      lower.includes('private') ||
+      lower.includes('secret') ||
+      lower.includes('faucet') ||
+      lower.includes('bootstrap')
+    ) {
+      failures.push(`${path}.${key} must not contain credentials or signatures`);
+    }
+    collectForbiddenCredentialFields(child, `${path}.${key}`, failures);
+  }
+}
+
+function adminRecordsFromPackage(records: unknown[], path: string, failures: string[]): AdminRecord[] {
+  return records.flatMap((record, index) => {
+    const itemPath = `${path}[${index}]`;
+    const obj = asRecord(record);
+    if (!obj) {
+      failures.push(`${itemPath} must be an object`);
+      return [];
+    }
+    const adminIdx = readNumber(obj, 'admin_idx', failures, `${itemPath}.admin_idx`);
+    const mWithin = readNumber(obj, 'm_within', failures, `${itemPath}.m_within`);
+    const leaves = readArray(obj, 'leaves', failures, `${itemPath}.leaves`);
+    const leafHashes = leaves?.flatMap((leaf, leafIndex) => {
+      const leafObj = asRecord(leaf);
+      if (!leafObj) {
+        failures.push(`${itemPath}.leaves[${leafIndex}] must be an object`);
+        return [];
+      }
+      const leafHash = readString(leafObj, 'leaf_hash', failures, `${itemPath}.leaves[${leafIndex}].leaf_hash`);
+      return leafHash ? [leafHash] : [];
+    }) ?? [];
+    if (adminIdx === null || mWithin === null) return [];
+    return [{ adminIdx, leaves: leafHashes, mWithin }];
+  });
+}
+
+function sameHexValue(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+function compareHex(actual: string | null, expected: string, message: string, failures: string[]): void {
+  if (!actual || !sameHexValue(actual, expected)) failures.push(message);
+}
+
+function errorMessage(value: unknown): string {
+  return value instanceof Error ? value.message : String(value);
 }
 
 /**
