@@ -295,4 +295,81 @@ export class Eip712LeafHashService {
 
     return { mips_root_hash: bytesToHex(mipsRoot), shape: 'mofn1of1' };
   }
+
+  computeMipsRootEip712MOfN(
+    secp256k1Pubkeys: readonly string[],
+    required: number,
+    network: 'testnet11' | 'mainnet',
+  ): {
+    mips_root_hash: string;
+    shape: 'mofn';
+    required: number;
+    member_count: number;
+    member_hashes: string[];
+  } {
+    if (secp256k1Pubkeys.length === 0) {
+      throw new Error('m_of_n root requires at least one member');
+    }
+    if (!Number.isInteger(required) || required < 1 || required > secp256k1Pubkeys.length) {
+      throw new Error(
+        `m_of_n required threshold must be between 1 and ${secp256k1Pubkeys.length}`,
+      );
+    }
+
+    const sdk = this.chiaWasm.sdk();
+    const MemberConfigClass = sdk['MemberConfig'] as
+      | { new (): { topLevel: boolean; nonce: number; restrictions: unknown[] } }
+      | undefined;
+    const eip712MemberHashFn = sdk['eip712MemberHash'] as
+      | ((config: unknown, genesis: Uint8Array, pubkey: unknown) => Uint8Array)
+      | undefined;
+    const mOfNHashFn = sdk['mOfNHash'] as
+      | ((config: unknown, required: number, items: Uint8Array[]) => Uint8Array)
+      | undefined;
+    const K1PublicKeyClass = sdk['K1PublicKey'] as
+      | { fromBytes: (bytes: Uint8Array) => unknown }
+      | undefined;
+    if (
+      typeof MemberConfigClass !== 'function' ||
+      typeof eip712MemberHashFn !== 'function' ||
+      typeof mOfNHashFn !== 'function' ||
+      typeof K1PublicKeyClass?.fromBytes !== 'function'
+    ) {
+      throw new Error(
+        'chia-wallet-sdk-wasm is missing m_of_n helpers. ' +
+          'Required exports: MemberConfig, eip712MemberHash, ' +
+          'mOfNHash, K1PublicKey.fromBytes.',
+      );
+    }
+
+    const genesis = genesisChallengeFor(network);
+    const memberHashes = secp256k1Pubkeys.map((pubkey, index) => {
+      const pubkeyBytes = hexToBytes(pubkey);
+      if (pubkeyBytes.length !== 33) {
+        throw new Error(
+          `secp256k1_pubkey must be 33 bytes (compressed), got ${pubkeyBytes.length}`,
+        );
+      }
+      const k1 = K1PublicKeyClass.fromBytes(pubkeyBytes);
+      const memberConfig = new MemberConfigClass();
+      memberConfig.topLevel = false;
+      memberConfig.nonce = index;
+      memberConfig.restrictions = [];
+      return eip712MemberHashFn(memberConfig, genesis, k1);
+    });
+
+    const quorumConfig = new MemberConfigClass();
+    quorumConfig.topLevel = true;
+    quorumConfig.nonce = 0;
+    quorumConfig.restrictions = [];
+    const mipsRoot = mOfNHashFn(quorumConfig, required, memberHashes);
+
+    return {
+      mips_root_hash: bytesToHex(mipsRoot),
+      shape: 'mofn',
+      required,
+      member_count: memberHashes.length,
+      member_hashes: memberHashes.map((h) => bytesToHex(h)),
+    };
+  }
 }

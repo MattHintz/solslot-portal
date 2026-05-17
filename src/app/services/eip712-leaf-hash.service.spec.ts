@@ -309,6 +309,64 @@ describe('Eip712LeafHashService', () => {
       ).toThrowError(/33 bytes/);
     });
   });
+
+  describe('computeMipsRootEip712MOfN', () => {
+    const otherPubkey = '0x03' + 'aa'.repeat(32);
+
+    it('builds a deterministic 2-of-2 root', () => {
+      const a = service.computeMipsRootEip712MOfN(
+        [FIXTURE_PUBKEY, otherPubkey],
+        2,
+        'testnet11',
+      );
+      const b = service.computeMipsRootEip712MOfN(
+        [FIXTURE_PUBKEY, otherPubkey],
+        2,
+        'testnet11',
+      );
+
+      expect(a.shape).toBe('mofn');
+      expect(a.required).toBe(2);
+      expect(a.member_count).toBe(2);
+      expect(a.member_hashes.length).toBe(2);
+      expect(a.mips_root_hash.length).toBe(2 + 64);
+      expect(a.mips_root_hash).toBe(b.mips_root_hash);
+      expect(a.member_hashes).toEqual(b.member_hashes);
+    });
+
+    it('binds the root to threshold and member order', () => {
+      const twoOfTwo = service.computeMipsRootEip712MOfN(
+        [FIXTURE_PUBKEY, otherPubkey],
+        2,
+        'testnet11',
+      );
+      const oneOfTwo = service.computeMipsRootEip712MOfN(
+        [FIXTURE_PUBKEY, otherPubkey],
+        1,
+        'testnet11',
+      );
+      const reversed = service.computeMipsRootEip712MOfN(
+        [otherPubkey, FIXTURE_PUBKEY],
+        2,
+        'testnet11',
+      );
+
+      expect(twoOfTwo.mips_root_hash).not.toBe(oneOfTwo.mips_root_hash);
+      expect(twoOfTwo.mips_root_hash).not.toBe(reversed.mips_root_hash);
+    });
+
+    it('rejects invalid thresholds', () => {
+      expect(() =>
+        service.computeMipsRootEip712MOfN([FIXTURE_PUBKEY, otherPubkey], 0, 'testnet11'),
+      ).toThrowError(/between 1 and 2/);
+      expect(() =>
+        service.computeMipsRootEip712MOfN([FIXTURE_PUBKEY, otherPubkey], 3, 'testnet11'),
+      ).toThrowError(/between 1 and 2/);
+      expect(() =>
+        service.computeMipsRootEip712MOfN([], 1, 'testnet11'),
+      ).toThrowError(/at least one member/);
+    });
+  });
 });
 
 function hexToBytes(hex: string): Uint8Array {

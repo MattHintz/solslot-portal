@@ -6,8 +6,11 @@ import {
   SigningKey,
   TypedDataEncoder,
   getAddress,
+  getBytes,
+  hashMessage,
   hexlify,
   toBeHex,
+  toUtf8Bytes,
 } from 'ethers';
 import { environment } from '../../environments/environment';
 import { Eip712TypedData } from './populis-api.service';
@@ -83,8 +86,27 @@ export class EvmWalletService {
       );
     }
 
+    try {
+      return await this.connectWalletConnectOnce();
+    } catch (e) {
+      if (!isWalletConnectRecoverableError(e)) {
+        throw e;
+      }
+      await this.resetWalletConnectProvider();
+      this.clearWalletConnectStorage();
+      try {
+        return await this.connectWalletConnectOnce();
+      } catch (retryError) {
+        await this.resetWalletConnectProvider();
+        this.clearWalletConnectStorage();
+        throw new Error(walletConnectRelayErrorMessage(retryError));
+      }
+    }
+  }
+
+  private async connectWalletConnectOnce(): Promise<string> {
     const provider = await this.getOrInitWcProvider();
-    await provider.connect();
+    await provider.connect({ chains: [environment.eip712ChainId] });
     const accounts = provider.accounts || [];
     if (accounts.length === 0) {
       throw new Error('WalletConnect returned no accounts');
@@ -161,17 +183,22 @@ export class EvmWalletService {
   }
 
   async disconnect(): Promise<void> {
-    if (this.wcProvider) {
-      try {
-        await this.wcProvider.disconnect();
-      } catch {}
-      this.wcProvider = null;
-      this.wcInitPromise = null;
-    }
+    await this.resetWalletConnectProvider();
     try {
       this.clearWalletConnectStorage();
     } catch {}
     this.handleDisconnect();
+  }
+
+  private async resetWalletConnectProvider(): Promise<void> {
+    const provider = this.wcProvider;
+    this.wcProvider = null;
+    this.wcInitPromise = null;
+    if (provider) {
+      try {
+        await provider.disconnect();
+      } catch {}
+    }
   }
 
   private clearWalletConnectStorage(): void {
@@ -180,7 +207,7 @@ export class EvmWalletService {
       const toRemove: string[] = [];
       for (let i = 0; i < s.length; i++) {
         const k = s.key(i);
-        if (k && k.startsWith('wc@2:')) toRemove.push(k);
+        if (k && isWalletConnectStorageKey(k)) toRemove.push(k);
       }
       toRemove.forEach((k) => s.removeItem(k));
     }
@@ -244,7 +271,9 @@ export class EvmWalletService {
     const hexChain = '0x' + targetChainId.toString(16);
     let currentHex: string | null = null;
     try {
-      currentHex = (await this.eip1193.request({ method: 'eth_chainId' })) as string;
+      currentHex = normalizeChainIdHex(
+        await this.eip1193.request({ method: 'eth_chainId' }),
+      );
     } catch {}
     if (currentHex && currentHex.toLowerCase() === hexChain.toLowerCase()) return;
 
@@ -356,9 +385,28 @@ export class EvmWalletService {
       },
     };
 
-    const signature = await this.signTypedData(probe);
-    const pubkey = this.recoverCompressedPubkey(probe, signature);
+    let pubkey: string;
+    try {
+      const signature = await this.signTypedData(probe);
+      pubkey = this.recoverCompressedPubkey(probe, signature);
+    } catch (e) {
+      if (!isUnsupportedTypedDataError(e)) {
+        throw e;
+      }
+      const message = buildAdminRecordsPersonalSignProbe(address, probe.message['timestamp']);
+      const signature = await this.personalSign(message, address);
+      pubkey = recoverCompressedPubkeyFromDigest(hashMessage(message), signature);
+    }
     return { pubkey, address };
+  }
+
+  private async personalSign(message: string, address: string): Promise<string> {
+    if (!this.eip1193) throw new Error('Not connected');
+    const hexMessage = hexlify(toUtf8Bytes(message));
+    return (await this.eip1193.request({
+      method: 'personal_sign',
+      params: [hexMessage, address],
+    })) as string;
   }
 }
 
@@ -394,8 +442,118 @@ function compressSecp256k1Pubkey(uncompressedHex: string): string {
   return '0x' + prefix + x;
 }
 
+function recoverCompressedPubkeyFromDigest(digest: string, signature: string): string {
+  const uncompressedHex = SigningKey.recoverPublicKey(getBytes(digest), signature);
+  return compressSecp256k1Pubkey(uncompressedHex);
+}
+
+function isUnsupportedTypedDataError(e: unknown): boolean {
+  const message = errorMessage(e).toLowerCase();
+  return (
+    message.includes('method not found') ||
+    message.includes('-32601') ||
+    message.includes('eth_signtypeddata') ||
+    message.includes('sign typed data') ||
+    message.includes('unsupported')
+  );
+}
+
+function buildAdminRecordsPersonalSignProbe(address: string, timestamp: unknown): string {
+  return [
+    'Populis Admin Records Probe',
+    '',
+    'Purpose: Recover compressed secp256k1 pubkey for admin records',
+    `Address: ${address}`,
+    `Chain ID: ${environment.eip712ChainId}`,
+    `Timestamp: ${String(timestamp)}`,
+    '',
+    'This signature is used only locally by the portal and is not stored or submitted on chain.',
+  ].join('\n');
+}
+
+function isWalletConnectRecoverableError(e: unknown): boolean {
+  const message = errorMessage(e).toLowerCase();
+  return (
+    message.includes('subscribe') ||
+    message.includes('relay') ||
+    message.includes('pairing') ||
+    message.includes('topic') ||
+    message.includes('session')
+  );
+}
+
+function walletConnectRelayErrorMessage(e: unknown): string {
+  const detail = errorMessage(e);
+  return (
+    'WalletConnect relay connection failed after clearing stale session state. ' +
+    'Reload the page and try scanning a fresh QR code. If this repeats, verify ' +
+    'environment.walletConnectProjectId in src/environments/environment.ts and ' +
+    `that the WalletConnect Cloud project allows this app origin. (${detail})`
+  );
+}
+
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message || e.toString();
+  if (typeof e === 'string') return e;
+  if (e && typeof e === 'object') {
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return Object.prototype.toString.call(e);
+    }
+  }
+  return String(e);
+}
+
+function isWalletConnectStorageKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  return (
+    lower.startsWith('wc@2:') ||
+    lower.startsWith('walletconnect') ||
+    lower.includes('@walletconnect')
+  );
+}
+
+function normalizeChainIdHex(value: unknown): string | null {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) return null;
+    return '0x' + Math.trunc(value).toString(16);
+  }
+  if (typeof value === 'bigint') {
+    if (value < 0n) return null;
+    return '0x' + value.toString(16);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^0x[0-9a-f]+$/i.test(trimmed)) {
+      try {
+        return '0x' + BigInt(trimmed).toString(16);
+      } catch {
+        return trimmed.toLowerCase();
+      }
+    }
+    if (/^[0-9]+$/.test(trimmed)) {
+      return '0x' + BigInt(trimmed).toString(16);
+    }
+    return null;
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return (
+      normalizeChainIdHex(record['chainId']) ??
+      normalizeChainIdHex(record['result']) ??
+      normalizeChainIdHex(record['id'])
+    );
+  }
+  return null;
+}
+
 // Re-export for tests.
-export const _internal = { compressSecp256k1Pubkey };
+export const _internal = {
+  buildAdminRecordsPersonalSignProbe,
+  compressSecp256k1Pubkey,
+  normalizeChainIdHex,
+};
 
 // Prevent dead-code elimination of imports used only for their side effects
 // (hexlify/toBeHex currently unused but kept available for upcoming spend flows).
