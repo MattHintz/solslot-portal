@@ -25,6 +25,11 @@ describe('GenesisComponent', () => {
       'getBootstrapStatus',
       'startBootstrapSession',
     ]);
+    bootstrap.getBootstrapStatus.and.resolveTo({
+      locked: false,
+      authenticated: false,
+      expires_at: null,
+    });
 
     await TestBed.configureTestingModule({
       imports: [GenesisComponent],
@@ -38,6 +43,8 @@ describe('GenesisComponent', () => {
     fixture = TestBed.createComponent(GenesisComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
+    await fixture.whenStable();
+    bootstrap.getBootstrapStatus.calls.reset();
   });
 
   it('presents genesis as the pre-software story mode', () => {
@@ -110,6 +117,22 @@ describe('GenesisComponent', () => {
     });
     expect(fixture.nativeElement.textContent as string).toContain('Genesis session active');
     expect(component.actionMessage()).toContain('Genesis session active');
+  });
+
+  it('loads finalized bootstrap state on page startup', async () => {
+    bootstrap.getBootstrapStatus.and.resolveTo({ locked: true, authenticated: false });
+
+    await component.ngOnInit();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(bootstrap.getBootstrapStatus).toHaveBeenCalledOnceWith();
+    expect(component.bootstrapLocked()).toBeTrue();
+    expect(text).toContain('Genesis is sealed.');
+    expect(text).toContain('Genesis is already complete.');
+    expect(text).toContain('The bootstrapper is locked');
+    expect(text).toContain('Permanent admin login');
+    expect(text).not.toContain('Paste the one-shot Genesis token');
   });
 
   it('starts bootstrap session with the in-memory token only and verifies the cookie', async () => {
@@ -258,11 +281,13 @@ describe('GenesisComponent', () => {
       manifest: { tracker_launcher_id: '0x' + '33'.repeat(32) },
     };
     spyOn(window, 'confirm').and.returnValue(true);
+    genesis.getDeployment.and.resolveTo({ deployed: false, manifest: null });
     genesis.deployProtocol.and.resolveTo(result);
     component.tokenInput.set('genesis-token');
 
     await component.deploy();
 
+    expect(genesis.getDeployment).toHaveBeenCalledOnceWith('genesis-token');
     expect(genesis.deployProtocol).toHaveBeenCalledOnceWith(
       'genesis-token',
       jasmine.objectContaining({
@@ -276,5 +301,30 @@ describe('GenesisComponent', () => {
     expect(component.deployResult()).toEqual(result);
     expect(component.error()).toBeNull();
     expect(component.actionMessage()).toContain('Base protocol deployed');
+  });
+
+  it('loads an existing base manifest instead of redeploying stale dry-run state', async () => {
+    const existing: GenesisDeploymentStatus = {
+      deployed: true,
+      manifest: { pool_launcher_id: '0x' + '44'.repeat(32) },
+    };
+    component.deployResult.set({
+      spend_bundle_id: null,
+      pushed: false,
+      manifest: { pool_launcher_id: '0x' + '11'.repeat(32) },
+    });
+    spyOn(window, 'confirm').and.returnValue(true);
+    genesis.getDeployment.and.resolveTo(existing);
+    component.tokenInput.set('genesis-token');
+
+    await component.deploy();
+
+    expect(genesis.getDeployment).toHaveBeenCalledOnceWith('genesis-token');
+    expect(genesis.deployProtocol).not.toHaveBeenCalled();
+    expect(component.status()).toEqual(existing);
+    expect(component.deployResult()).toBeNull();
+    expect(component.baseManifestReady()).toBeTrue();
+    expect(component.manifestJson()).toContain('44');
+    expect(component.actionMessage()).toContain('Base manifest already exists');
   });
 });

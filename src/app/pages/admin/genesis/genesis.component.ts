@@ -31,11 +31,22 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
             <div class="mono text-[0.7rem] uppercase tracking-[0.28em] text-brand mb-3">
               Populis · Story mode · Act I
             </div>
-            <h1 class="font-display text-5xl md:text-7xl leading-none">Let there be genesis.</h1>
+            <h1 class="font-display text-5xl md:text-7xl leading-none">
+              @if (bootstrapLocked()) {
+                Genesis is sealed.
+              } @else {
+                Let there be genesis.
+              }
+            </h1>
             <p class="mt-5 text-text-muted max-w-2xl text-base md:text-lg">
-              This software is in ceremony mode. Complete the base protocol launch,
-              bind the first admin wallet, and seal the bootstrap record before the
-              rest of Populis opens.
+              @if (bootstrapLocked()) {
+                The bootstrap ceremony is already finalized. Continue through
+                permanent admin login, the admin desk, or recovery artifact review.
+              } @else {
+                This software is in ceremony mode. Complete the base protocol launch,
+                bind the first admin wallet, and seal the bootstrap record before the
+                rest of Populis opens.
+              }
             </p>
             <div class="mt-6 flex flex-wrap gap-3">
               <span class="rounded-full border border-white/10 bg-black/20 px-3 py-1 mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
@@ -91,61 +102,80 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
         <aside class="space-y-6">
           <div class="card border border-white/10">
             <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-brand">Operator key</div>
-            <h2 class="font-display text-3xl mt-1">Unlock the ceremony.</h2>
+            <h2 class="font-display text-3xl mt-1">
+              @if (bootstrapLocked()) {
+                Genesis is already complete.
+              } @else {
+                Unlock the ceremony.
+              }
+            </h2>
             <p class="text-sm text-text-muted mt-2">
-              Paste the one-shot Genesis token. The page keeps it in memory and
-              sends it only as <code>Authorization: Bearer …</code>.
+              @if (bootstrapLocked()) {
+                The bootstrapper is locked. New bootstrap sessions are disabled,
+                and the one-shot token is no longer accepted for ceremony steps.
+              } @else {
+                Paste the one-shot Genesis token. The page keeps it in memory and
+                sends it only as <code>Authorization: Bearer …</code>.
+              }
             </p>
-            <label class="block mt-5">
-              <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                POPULIS_ADMIN_TOKEN
+            @if (bootstrapLocked()) {
+              <div class="mt-4 grid gap-2">
+                <a routerLink="/admin/login" class="btn btn--primary justify-center">Permanent admin login</a>
+                <a routerLink="/admin" class="btn btn--ghost justify-center">Open Admin desk</a>
+                <a routerLink="/admin/recovery" class="btn btn--ghost justify-center">Review recovery artifacts</a>
               </div>
-              <input
-                type="password"
-                class="input mt-1 w-full mono text-xs"
-                autocomplete="off"
-                [(ngModel)]="tokenInput"
-                placeholder="Paste token to begin"
-              />
-            </label>
-            <div class="mt-4 grid gap-2">
-              <button
-                type="button"
-                class="btn btn--ghost justify-center"
-                [disabled]="busy()"
-                (click)="checkDeployment()"
-              >
-                @if (pendingAction() === 'status') {
-                  Checking base manifest…
-                } @else {
-                  1 · Check base manifest
-                }
-              </button>
-              <button
-                type="button"
-                class="btn btn--ghost justify-center"
-                [disabled]="busy()"
-                (click)="checkBootstrapStatus()"
-              >
-                @if (pendingAction() === 'bootstrap-status') {
-                  Checking bootstrap seal…
-                } @else {
-                  2 · Check bootstrap seal
-                }
-              </button>
-              <button
-                type="button"
-                class="btn btn--primary justify-center"
-                [disabled]="busy() || bootstrapLocked()"
-                (click)="startBootstrapSession()"
-              >
-                @if (pendingAction() === 'bootstrap-session') {
-                  Starting session…
-                } @else {
-                  3 · Start Genesis session
-                }
-              </button>
-            </div>
+            } @else {
+              <label class="block mt-5">
+                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                  POPULIS_ADMIN_TOKEN
+                </div>
+                <input
+                  type="password"
+                  class="input mt-1 w-full mono text-xs"
+                  autocomplete="off"
+                  [(ngModel)]="tokenInput"
+                  placeholder="Paste token to begin"
+                />
+              </label>
+              <div class="mt-4 grid gap-2">
+                <button
+                  type="button"
+                  class="btn btn--ghost justify-center"
+                  [disabled]="busy()"
+                  (click)="checkDeployment()"
+                >
+                  @if (pendingAction() === 'status') {
+                    Checking base manifest…
+                  } @else {
+                    1 · Check base manifest
+                  }
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--ghost justify-center"
+                  [disabled]="busy()"
+                  (click)="checkBootstrapStatus()"
+                >
+                  @if (pendingAction() === 'bootstrap-status') {
+                    Checking bootstrap seal…
+                  } @else {
+                    2 · Check bootstrap seal
+                  }
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--primary justify-center"
+                  [disabled]="busy()"
+                  (click)="startBootstrapSession()"
+                >
+                  @if (pendingAction() === 'bootstrap-session') {
+                    Starting session…
+                  } @else {
+                    3 · Start Genesis session
+                  }
+                </button>
+              </div>
+            }
             @if (actionMessage()) {
               <div class="mt-4 rounded-card border border-brand/30 bg-brand/10 p-3 text-sm">
                 {{ actionMessage() }}
@@ -472,6 +502,10 @@ export class GenesisComponent {
   });
   readonly dryRunLabel = computed(() => this.dryRunReady() ? 'complete' : 'needed');
 
+  async ngOnInit(): Promise<void> {
+    await this.loadBootstrapStatus();
+  }
+
   stageClass(stage: GenesisStageId): string {
     if (stage === this.activeStage()) return 'border-brand/50 bg-brand/10 shadow-[0_0_30px_rgba(0,211,167,0.08)]';
     if (this.stageComplete(stage)) return 'border-green-500/40 bg-green-500/10';
@@ -526,6 +560,8 @@ export class GenesisComponent {
       } else {
         this.bootstrapCookieWarning.set(null);
       }
+      const deployment = await this.genesis.getDeployment(this.tokenInput());
+      this.status.set(deployment);
       this.actionMessage.set(this.describeBootstrapStatus(verified));
     });
   }
@@ -545,7 +581,13 @@ export class GenesisComponent {
     );
     if (!ok) return;
     await this.run('deploy', async () => {
-      this.status.set(null);
+      const current = await this.genesis.getDeployment(this.tokenInput());
+      this.status.set(current);
+      if (current.deployed) {
+        this.deployResult.set(null);
+        this.actionMessage.set('Base manifest already exists. Continue Act II and bind the first admin wallet.');
+        return;
+      }
       const result = await this.genesis.deployProtocol(this.tokenInput(), this.request());
       this.deployResult.set(result);
       this.actionMessage.set('Base protocol deployed. Continue Act II and bind the first admin wallet.');
@@ -593,6 +635,17 @@ export class GenesisComponent {
       ...optionalCoin('did_coin_id', this.didCoinIdInput()),
       ...optionalCoin('gov_coin_id', this.govCoinIdInput()),
     };
+  }
+
+  private async loadBootstrapStatus(): Promise<void> {
+    try {
+      const status = await this.bootstrap.getBootstrapStatus();
+      this.bootstrapStatus.set(status);
+      if (status.locked) {
+        this.actionMessage.set(this.describeBootstrapStatus(status));
+      }
+    } catch {
+    }
   }
 
   private describeBootstrapStatus(status: BootstrapStatusResponse): string {
