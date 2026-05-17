@@ -7,6 +7,7 @@ import {
   AdminRosterSpendPackagePreflight,
   bytesToHexPrefixed,
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
+import { coinId } from '../../../utils/chia-hash';
 
 @Component({
   selector: 'pp-roster-spend-package-review',
@@ -176,6 +177,26 @@ import {
                 class="mt-3 min-h-72 w-full rounded-card border border-white/10 bg-black/30 p-4 mono text-xs text-text outline-none"
                 readonly
                 [value]="report"
+              ></textarea>
+            } @else {
+              <p class="mt-2 text-sm text-text-muted">
+                Available after the unsigned package preflight and local signer-input hash verification pass.
+              </p>
+            }
+          </div>
+
+          <div class="card">
+            <div class="font-display text-lg">Local unsigned spend blueprint</div>
+            @if (localUnsignedSpendBlueprintJson(); as blueprint) {
+              <p class="mt-2 text-sm text-text-muted">
+                Public, hash-only blueprint for a future spend builder. It derives the singleton
+                coin id and transition commitments, but does not construct coin spends or collect
+                wallet finalization material.
+              </p>
+              <textarea
+                class="mt-3 min-h-72 w-full rounded-card border border-white/10 bg-black/30 p-4 mono text-xs text-text outline-none"
+                readonly
+                [value]="blueprint"
               ></textarea>
             } @else {
               <p class="mt-2 text-sm text-text-muted">
@@ -505,6 +526,88 @@ export class RosterSpendPackageReviewComponent {
             'mips_not_executed',
             'clvm_spends_not_constructed',
             'transaction_not_signed',
+            'transaction_not_broadcast',
+            'backend_not_called',
+          ],
+        },
+        null,
+        2,
+      );
+    } catch {
+      return null;
+    }
+  });
+
+  readonly localUnsignedSpendBlueprintJson = computed<string | null>(() => {
+    const pkg = this.parsedPackage();
+    const preflight = this.preflight();
+    const readiness = this.signerInputReadiness();
+    if (!pkg || !preflight?.ok || !readiness.ok) return null;
+    const root = asRecord(pkg);
+    if (!root) return null;
+    const current = asRecord(root['current']);
+    const update = asRecord(root['update']);
+    const spendIntent = asRecord(root['spend_intent']);
+    const liveParent = this.liveSingletonParentCoinId().trim();
+    const livePuzzleHash = this.liveSingletonPuzzleHash().trim();
+    const liveAmount = Number(this.liveSingletonAmount().trim());
+    const launcherId = stringValue(root['launcher_id']);
+    try {
+      const currentMipsPuzzleRevealTreeHash = this.v2.computeSerializedProgramTreeHash(this.currentMipsPuzzleReveal());
+      const currentMipsQuorumSolutionTreeHash = this.v2.computeSerializedProgramTreeHash(this.currentMipsQuorumSolution());
+      const currentAuthorityInnerPuzzleRevealTreeHash = this.v2.computeSerializedProgramTreeHash(
+        this.currentAuthorityInnerPuzzleReveal(),
+      );
+      const computedSingletonFullPuzzleHash = launcherId
+        ? bytesToHexPrefixed(this.v2.singletonFullPuzzleHash(launcherId, currentAuthorityInnerPuzzleRevealTreeHash))
+        : null;
+      return JSON.stringify(
+        {
+          version: 1,
+          kind: 'admin_authority_v2_roster_update_local_unsigned_spend_blueprint',
+          construction_scope: 'local_blueprint_only_no_clvm_spends_no_finalization_no_broadcast',
+          result: 'ready_for_future_spend_builder',
+          singleton_coin: {
+            coin_id: coinId(liveParent, livePuzzleHash, liveAmount),
+            parent_coin_info: liveParent,
+            puzzle_hash: livePuzzleHash,
+            amount: liveAmount,
+          },
+          roster_transition: {
+            launcher_id: launcherId,
+            spend_tag: numberValue(spendIntent?.['spend_tag']),
+            spend_name: stringValue(spendIntent?.['spend_name']),
+            current_authority_version: numberValue(current?.['authority_version']),
+            new_authority_version: numberValue(update?.['new_authority_version']),
+            current_state_hash: stringValue(spendIntent?.['current_state_hash'] ?? current?.['state_hash']),
+            new_state_hash: stringValue(spendIntent?.['new_state_hash'] ?? update?.['new_state_hash']),
+            roster_update_binding_hash: stringValue(
+              spendIntent?.['roster_update_binding_hash'] ?? update?.['roster_update_binding_hash'],
+            ),
+            current_mips_root_hash: stringValue(current?.['mips_root_hash']),
+            new_mips_root_hash: stringValue(update?.['new_mips_root_hash']),
+            current_admins_hash: stringValue(current?.['admins_hash']),
+            new_admins_hash: stringValue(update?.['new_admins_hash']),
+            current_pending_ops_hash: stringValue(current?.['pending_ops_hash']),
+            new_pending_ops_hash: stringValue(update?.['new_pending_ops_hash']),
+          },
+          verified_commitments: {
+            current_mips_puzzle_reveal_tree_hash: currentMipsPuzzleRevealTreeHash,
+            current_mips_quorum_solution_tree_hash: currentMipsQuorumSolutionTreeHash,
+            current_admin_authority_v2_inner_puzzle_reveal_tree_hash: currentAuthorityInnerPuzzleRevealTreeHash,
+            computed_singleton_full_puzzle_hash: computedSingletonFullPuzzleHash,
+          },
+          deferred_material: [
+            'raw_current_mips_puzzle_reveal',
+            'raw_current_mips_quorum_solution',
+            'raw_current_admin_authority_v2_inner_puzzle_reveal',
+            'wallet_finalization_material',
+            'api_credentials',
+          ],
+          local_only_boundaries: [
+            'mips_not_executed',
+            'clvm_spends_not_constructed',
+            'transaction_not_finalized',
             'transaction_not_broadcast',
             'backend_not_called',
           ],

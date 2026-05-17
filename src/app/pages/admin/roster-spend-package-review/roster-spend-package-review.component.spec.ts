@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { RosterSpendPackageReviewComponent } from './roster-spend-package-review.component';
 import { AdminAuthorityV2Service } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import { AdminRosterUpdateService } from '../../../services/admin-roster-update.service';
+import { coinId } from '../../../utils/chia-hash';
 
 const H1 = '0x' + '11'.repeat(32);
 const H2 = '0x' + '22'.repeat(32);
@@ -211,6 +212,7 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(component.preflight()?.ok).toBeTrue();
     expect(component.signerInputReadiness().ok).toBeFalse();
     expect(component.localVerificationReportJson()).toBeNull();
+    expect(component.localUnsignedSpendBlueprintJson()).toBeNull();
     expect(component.signerInputReadiness().status).toBe('incomplete');
     expect(component.signerInputReadiness().failures).toContain('current MIPS puzzle reveal is required');
     expect(component.signerInputReadiness().failures).toContain('current MIPS quorum solution is required');
@@ -276,6 +278,48 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'Hash-only report for handoff to a future spend builder.',
     );
+  });
+
+  it('renders a local unsigned spend blueprint after signer input verification passes', () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fixture.detectChanges();
+
+    const blueprintJson = component.localUnsignedSpendBlueprintJson();
+    expect(blueprintJson).not.toBeNull();
+    const blueprint = JSON.parse(blueprintJson ?? '{}') as Record<string, unknown>;
+    const singletonCoin = blueprint['singleton_coin'] as Record<string, unknown>;
+    const transition = blueprint['roster_transition'] as Record<string, unknown>;
+    const commitments = blueprint['verified_commitments'] as Record<string, unknown>;
+    const boundaries = blueprint['local_only_boundaries'] as string[];
+
+    expect(blueprint['kind']).toBe('admin_authority_v2_roster_update_local_unsigned_spend_blueprint');
+    expect(blueprint['construction_scope']).toBe('local_blueprint_only_no_clvm_spends_no_finalization_no_broadcast');
+    expect(blueprint['result']).toBe('ready_for_future_spend_builder');
+    expect(singletonCoin['coin_id']).toBe(coinId(H1, H2, 1));
+    expect(singletonCoin['parent_coin_info']).toBe(H1);
+    expect(singletonCoin['puzzle_hash']).toBe(H2);
+    expect(singletonCoin['amount']).toBe(1);
+    expect(transition['launcher_id']).toBe(H4);
+    expect(transition['current_state_hash']).toBe(H1);
+    expect(transition['new_state_hash']).toBe(H2);
+    expect(transition['roster_update_binding_hash']).toBe(H3);
+    expect(commitments['current_mips_puzzle_reveal_tree_hash']).toBe(H1);
+    expect(commitments['current_mips_quorum_solution_tree_hash']).toBe(H4);
+    expect(commitments['current_admin_authority_v2_inner_puzzle_reveal_tree_hash']).toBe(H3);
+    expect(commitments['computed_singleton_full_puzzle_hash']).toBe(H2);
+    expect(boundaries).toContain('clvm_spends_not_constructed');
+    expect(boundaries).toContain('transaction_not_broadcast');
+    expect(boundaries).toContain('backend_not_called');
+    expect(blueprintJson).not.toContain('ff80');
+    expect(blueprintJson).not.toContain('ff01');
+    expect(blueprintJson).not.toContain('ff02');
+    expect(blueprintJson?.toLowerCase()).not.toContain('jwt');
+    expect(blueprintJson?.toLowerCase()).not.toContain('nonce');
+    expect(blueprintJson?.toLowerCase()).not.toContain('bearer');
+    expect(blueprintJson?.toLowerCase()).not.toContain('secret');
+    expect(fixture.nativeElement.textContent).toContain('Local unsigned spend blueprint');
+    expect(fixture.nativeElement.textContent).toContain('does not construct coin spends or collect');
   });
 
   it('fails local hash checks when the MIPS reveal does not match current.mips_root_hash', () => {
