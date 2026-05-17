@@ -73,6 +73,12 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
           <a routerLink="/admin/launch-authority-v2" class="btn btn--ghost">
             Launch authority v2
           </a>
+          <a routerLink="/admin/authority-v2/add-admin-slot" class="btn btn--ghost">
+            Add admin slot
+          </a>
+          <a routerLink="/admin/authority-v2/roster-spend-package-review" class="btn btn--ghost">
+            Review roster package
+          </a>
           <a routerLink="/admin/mint/new" class="btn btn--primary">
             + New mint proposal
           </a>

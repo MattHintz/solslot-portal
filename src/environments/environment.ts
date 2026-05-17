@@ -102,7 +102,7 @@ export const environment = {
      * Live on testnet11 — see Phase 9-Hermes-D session summary.
      */
     adminAuthorityV2LauncherId:
-      '0xb18c4ee267b174b334efc836c3f10e535add1839fe13bf9cf1bc42f1f1e4b157',
+      '0xf3fd2dedfc77a5b8f65acdfaff04d3786844a8c4d0529d3dbc4d37dc4012bb84',
     /**
      * MIPS root hash of the v2 admin authority's CHIP-0043 quorum, in
      * 0x-prefixed lowercase hex.  Pinned at frontend deploy time so
@@ -125,7 +125,8 @@ export const environment = {
      * (matches the legacy ``POPULIS_ADMIN_PUBKEY_ALLOWLIST``
      * semantics).
      */
-    adminAuthorityV2MipsRootHash: '',
+    adminAuthorityV2MipsRootHash:
+      '0x95cbfe1c977e0c82ccbc539fa25c295eff23af25900d4e8d9e9ff2eed35a15fe',
     /**
      * Quorum-tree mode used when the v2 launcher was created.
      *

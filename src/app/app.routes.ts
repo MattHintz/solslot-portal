@@ -89,6 +89,24 @@ export const routes: Routes = [
     title: 'Trust Roots · Populis',
   },
   {
+    path: 'admin/authority-v2/add-admin-slot',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/add-admin-slot/add-admin-slot.component').then(
+        (m) => m.AddAdminSlotComponent,
+      ),
+    title: 'Add Admin Slot · Populis',
+  },
+  {
+    path: 'admin/authority-v2/roster-spend-package-review',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import(
+        './pages/admin/roster-spend-package-review/roster-spend-package-review.component'
+      ).then((m) => m.RosterSpendPackageReviewComponent),
+    title: 'Review Roster Spend Package · Populis',
+  },
+  {
     // Phase 9-Hermes-D D-2.4: launch-v2 wizard.
     // Computes every deterministic output of a v2 admin-authority
     // genesis launch from operator inputs (parent coin id + admin
