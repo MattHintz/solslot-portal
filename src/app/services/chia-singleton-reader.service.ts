@@ -189,10 +189,11 @@ export class ChiaSingletonReaderService {
   /**
    * Convenience: replay the latest spend and return the
    * `CREATE_PUZZLE_ANNOUNCEMENT` body whose leading byte is
-   * {@link PROTOCOL_PREFIX} (0x50).  For every A.x trust-root puzzle,
-   * this body's structure is `PROTOCOL_PREFIX || state_hash`, so the
-   * tail (without the prefix byte) is the canonical state hash that
-   * off-chain consumers should verify against.
+   * {@link PROTOCOL_PREFIX} (0x50).  Most A.x trust-root puzzles use
+   * `PROTOCOL_PREFIX || state_hash`; admin-authority v2 includes an
+   * extra one-byte spend tag and emits `PROTOCOL_PREFIX || tag ||
+   * state_hash`.  In both cases the final 32 bytes are the canonical
+   * state hash that off-chain consumers should verify against.
    *
    * Returns null when no Populis-prefixed announcement exists in the
    * spend, or when prerequisites aren't met (WASM not ready, lineage
@@ -205,7 +206,8 @@ export class ChiaSingletonReaderService {
     if (!replay) return null;
     for (const body of replay.conditions.createPuzzleAnnouncements) {
       if (body.length >= 1 && body[0] === ChiaSingletonReaderService.PROTOCOL_PREFIX) {
-        return body.slice(1);
+        const tail = body.slice(1);
+        return tail.length > 32 ? tail.slice(tail.length - 32) : tail;
       }
     }
     return null;

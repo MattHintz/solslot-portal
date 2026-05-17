@@ -1,6 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import {
   AdminAuthorityResponse,
   AdminAuthorityV2Response,
@@ -14,6 +16,7 @@ import {
 } from '../../../services/chia-singleton-reader.service';
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
 import { formatError } from '../../../utils/format-error';
+import { environment } from '../../../../environments/environment';
 
 /**
  * Verification status for a single trust-root singleton card.
@@ -102,26 +105,25 @@ type VerifyStatus =
       </header>
 
       <!-- POP-CANON-021 Phase-2 disclaimer banner -->
-      @if (authority(); as a) {
-        <div
-          class="mt-8 rounded-card border border-amber-500/40 bg-amber-500/5 p-4 text-sm"
-          [class.hidden]="!a.informational_only"
-        >
-          <div class="font-display text-base text-amber-300 mb-1">
-            Phase {{ a.phase || '2-informational-only' }} — informational only
+      @if (primaryAuthority(); as a) {
+        @if (a.informational_only) {
+          <div class="mt-8 rounded-card border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+            <div class="font-display text-base text-amber-300 mb-1">
+              Phase {{ a.phase || '2-informational-only' }} — informational only
+            </div>
+            <p class="text-text-muted leading-relaxed">
+              The on-chain admin-authority state below is published as a
+              transparency surface.  Today the actual gating source for
+              <span class="mono text-text">/admin/*</span> is
+              <span class="mono text-text">{{ a.gating_source || 'POPULIS_ADMIN_PUBKEY_ALLOWLIST' }}</span>.
+              Phase 2.5 will swap the gating source to the on-chain
+              singleton; until then operators must keep the EVM ↔ BLS
+              allowlist mapping consistent off-chain (the API's startup
+              validator refuses to boot if it detects drift; see
+              <span class="mono">POP-CANON-021</span>).
+            </p>
           </div>
-          <p class="text-text-muted leading-relaxed">
-            The on-chain admin-authority state below is published as a
-            transparency surface.  Today the actual gating source for
-            <span class="mono text-text">/admin/*</span> is
-            <span class="mono text-text">{{ a.gating_source || 'POPULIS_ADMIN_PUBKEY_ALLOWLIST' }}</span>.
-            Phase 2.5 will swap the gating source to the on-chain
-            singleton; until then operators must keep the EVM ↔ BLS
-            allowlist mapping consistent off-chain (the API's startup
-            validator refuses to boot if it detects drift; see
-            <span class="mono">POP-CANON-021</span>).
-          </p>
-        </div>
+        }
       }
 
       @if (!chiaWasmReady()) {
@@ -142,10 +144,11 @@ type VerifyStatus =
         <h2 class="font-display text-xl md:col-span-2 mt-2 -mb-2">
           Admin authority
           <span class="mono text-[0.65rem] uppercase tracking-[0.2em] text-text-muted ml-2 align-middle">
-            A.2 / A.5
+            {{ authorityV2()?.launcher_id ? 'A.5' : 'A.2 / A.5' }}
           </span>
         </h2>
         <!-- A.2 admin authority -->
+        @if (showLegacyAuthority()) {
         <div class="card flex flex-col">
           <div class="flex items-center justify-between gap-4">
             <div>
@@ -162,7 +165,7 @@ type VerifyStatus =
 
           @if (!authority()?.launcher_id) {
             <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
-              Not deployed.  Populate
+              Legacy v1 is not configured.  Populate
               <span class="mono">POPULIS_ADMIN_AUTHORITY_*</span>
               on the API to enable on-chain verification here.
             </p>
@@ -228,20 +231,23 @@ type VerifyStatus =
           </dl>
           }
 
-          <div class="mt-5 flex items-center gap-3 flex-wrap">
-            <button
-              type="button"
-              class="btn btn--ghost text-xs"
-              [disabled]="!authority()?.launcher_id || !chiaWasmReady() || isWalking(adminAuthorityStatus())"
-              (click)="verifyAdminAuthority()"
-            >
-              {{ verifyButtonLabel(adminAuthorityStatus()) }}
-            </button>
-            @if (verifyDetail(adminAuthorityStatus()); as detail) {
-              <span class="text-xs text-text-muted">{{ detail }}</span>
-            }
-          </div>
+          @if (authority()?.launcher_id) {
+            <div class="mt-5 flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                class="btn btn--ghost text-xs"
+                [disabled]="!chiaWasmReady() || isWalking(adminAuthorityStatus())"
+                (click)="verifyAdminAuthority()"
+              >
+                {{ verifyButtonLabel(adminAuthorityStatus()) }}
+              </button>
+              @if (verifyDetail(adminAuthorityStatus()); as detail) {
+                <span class="text-xs text-text-muted">{{ detail }}</span>
+              }
+            </div>
+          }
         </div>
+        }
 
         <!-- A.5 admin authority v2 (Phase 9-Hermes-C) -->
         <div class="card flex flex-col">
@@ -261,8 +267,8 @@ type VerifyStatus =
 
           @if (!authorityV2()?.launcher_id) {
             <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
-              Not deployed.  v2 surfaces are inert until the launch
-              ceremony writes a launcher into the runtime config.
+              Launch the v2 admin-authority singleton to enable
+              chain verification here.
             </p>
           } @else {
           <dl class="mt-5 space-y-3 text-sm flex-1">
@@ -324,19 +330,21 @@ type VerifyStatus =
           </dl>
           }
 
-          <div class="mt-5 flex items-center gap-3 flex-wrap">
-            <button
-              type="button"
-              class="btn btn--ghost text-xs"
-              [disabled]="!authorityV2()?.launcher_id || !chiaWasmReady() || isWalking(adminAuthorityV2Status())"
-              (click)="verifyAdminAuthorityV2()"
-            >
-              {{ verifyButtonLabel(adminAuthorityV2Status()) }}
-            </button>
-            @if (verifyDetail(adminAuthorityV2Status()); as detail) {
-              <span class="text-xs text-text-muted">{{ detail }}</span>
-            }
-          </div>
+          @if (authorityV2()?.launcher_id) {
+            <div class="mt-5 flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                class="btn btn--ghost text-xs"
+                [disabled]="!chiaWasmReady() || isWalking(adminAuthorityV2Status())"
+                (click)="verifyAdminAuthorityV2()"
+              >
+                {{ verifyButtonLabel(adminAuthorityV2Status()) }}
+              </button>
+              @if (verifyDetail(adminAuthorityV2Status()); as detail) {
+                <span class="text-xs text-text-muted">{{ detail }}</span>
+              }
+            </div>
+          }
         </div>
 
         <h2 class="font-display text-xl md:col-span-2 mt-6 -mb-2">
@@ -360,8 +368,9 @@ type VerifyStatus =
 
           @if (!protocol()?.protocol_config_launcher_id) {
             <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
-              Not deployed.  Network: <span class="mono">{{ protocol()?.network || '—' }}</span>.
-              Genesis ceremony writes the protocol-config singleton.
+              Network: <span class="mono">{{ protocol()?.network || '—' }}</span>.
+              Launch the protocol-config singleton, then set
+              <span class="mono">POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID</span>.
             </p>
           } @else {
           <dl class="mt-5 space-y-3 text-sm flex-1">
@@ -402,19 +411,21 @@ type VerifyStatus =
           </dl>
           }
 
-          <div class="mt-5 flex items-center gap-3 flex-wrap">
-            <button
-              type="button"
-              class="btn btn--ghost text-xs"
-              [disabled]="!protocol()?.protocol_config_launcher_id || !chiaWasmReady() || isWalking(protocolConfigStatus())"
-              (click)="verifyProtocolConfig()"
-            >
-              {{ verifyButtonLabel(protocolConfigStatus()) }}
-            </button>
-            @if (verifyDetail(protocolConfigStatus()); as detail) {
-              <span class="text-xs text-text-muted">{{ detail }}</span>
-            }
-          </div>
+          @if (protocol()?.protocol_config_launcher_id) {
+            <div class="mt-5 flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                class="btn btn--ghost text-xs"
+                [disabled]="!chiaWasmReady() || isWalking(protocolConfigStatus())"
+                (click)="verifyProtocolConfig()"
+              >
+                {{ verifyButtonLabel(protocolConfigStatus()) }}
+              </button>
+              @if (verifyDetail(protocolConfigStatus()); as detail) {
+                <span class="text-xs text-text-muted">{{ detail }}</span>
+              }
+            </div>
+          }
         </div>
 
         <!-- A.4 property registry -->
@@ -432,8 +443,8 @@ type VerifyStatus =
 
           @if (!protocol()?.property_registry_launcher_id) {
             <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
-              Not deployed.  Property registration is unavailable until
-              this singleton is launched.
+              Launch the property-registry singleton, then set
+              <span class="mono">POPULIS_PROTOCOL_PROPERTY_REGISTRY_LAUNCHER_ID</span>.
             </p>
           } @else {
           <dl class="mt-5 space-y-3 text-sm flex-1">
@@ -456,19 +467,21 @@ type VerifyStatus =
           </dl>
           }
 
-          <div class="mt-5 flex items-center gap-3 flex-wrap">
-            <button
-              type="button"
-              class="btn btn--ghost text-xs"
-              [disabled]="!protocol()?.property_registry_launcher_id || !chiaWasmReady() || isWalking(propertyRegistryStatus())"
-              (click)="verifyPropertyRegistry()"
-            >
-              {{ verifyButtonLabel(propertyRegistryStatus()) }}
-            </button>
-            @if (verifyDetail(propertyRegistryStatus()); as detail) {
-              <span class="text-xs text-text-muted">{{ detail }}</span>
-            }
-          </div>
+          @if (protocol()?.property_registry_launcher_id) {
+            <div class="mt-5 flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                class="btn btn--ghost text-xs"
+                [disabled]="!chiaWasmReady() || isWalking(propertyRegistryStatus())"
+                (click)="verifyPropertyRegistry()"
+              >
+                {{ verifyButtonLabel(propertyRegistryStatus()) }}
+              </button>
+              @if (verifyDetail(propertyRegistryStatus()); as detail) {
+                <span class="text-xs text-text-muted">{{ detail }}</span>
+              }
+            </div>
+          }
         </div>
 
         <h2 class="font-display text-xl md:col-span-2 mt-6 -mb-2">
@@ -566,6 +579,7 @@ type VerifyStatus =
   ],
 })
 export class TrustRootsComponent {
+  private readonly http = inject(HttpClient);
   private readonly onChain = inject(OnChainStateService);
   private readonly session = inject(AdminSessionService);
   private readonly singleton = inject(ChiaSingletonReaderService);
@@ -581,6 +595,12 @@ export class TrustRootsComponent {
   readonly propertyRegistryStatus = signal<VerifyStatus>({ kind: 'pending' });
 
   readonly chiaWasmReady = computed(() => this.wasm.ready());
+  readonly primaryAuthority = computed(() =>
+    this.authorityV2()?.launcher_id ? this.authorityV2() : this.authority(),
+  );
+  readonly showLegacyAuthority = computed(
+    () => this.authorityV2() !== null && !this.authorityV2()?.launcher_id,
+  );
 
   constructor() {
     void this.loadInitial();
@@ -598,11 +618,7 @@ export class TrustRootsComponent {
    * "verify" button) which surfaces walking/replay errors per card.
    */
   private async loadInitial(): Promise<void> {
-    const [auth, proto, authV2] = await Promise.all([
-      this.onChain.getAuthority(),
-      this.onChain.getProtocolInfo(),
-      this.onChain.getAuthorityV2(),
-    ]);
+    const [auth, proto, authV2] = await this.loadPublishedSnapshots();
     this.authority.set(auth);
     this.protocol.set(proto);
     this.authorityV2.set(authV2);
@@ -618,6 +634,34 @@ export class TrustRootsComponent {
     }
     if (!proto.property_registry_launcher_id) {
       this.propertyRegistryStatus.set({ kind: 'not-configured' });
+    }
+  }
+
+  private async loadPublishedSnapshots(): Promise<
+    [AdminAuthorityResponse, ProtocolInfo, AdminAuthorityV2Response]
+  > {
+    try {
+      return await Promise.all([
+        firstValueFrom(
+          this.http.get<AdminAuthorityResponse>(
+            `${environment.faucetApi}/admin/auth/authority`,
+          ),
+        ),
+        firstValueFrom(
+          this.http.get<ProtocolInfo>(`${environment.faucetApi}/protocol`),
+        ),
+        firstValueFrom(
+          this.http.get<AdminAuthorityV2Response>(
+            `${environment.faucetApi}/admin/auth/authority_v2`,
+          ),
+        ),
+      ]);
+    } catch {
+      return Promise.all([
+        this.onChain.getAuthority(),
+        this.onChain.getProtocolInfo(),
+        this.onChain.getAuthorityV2(),
+      ]);
     }
   }
 
@@ -690,8 +734,10 @@ export class TrustRootsComponent {
         return;
       }
 
-      const hasSpends = lineage.nodes.some((n) => n.spentBlockIndex !== null);
-      if (!hasSpends) {
+      const hasStateSpends = lineage.nodes.some(
+        (n) => !n.isLauncher && n.spentBlockIndex !== null,
+      );
+      if (!hasStateSpends) {
         target.set({ kind: 'no-spends-yet', lineageDepth: lineage.nodes.length });
         return;
       }
