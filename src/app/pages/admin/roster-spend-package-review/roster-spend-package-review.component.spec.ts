@@ -87,6 +87,25 @@ function validPackage(overrides: Record<string, unknown> = {}): Record<string, u
   return { ...pkg, ...overrides };
 }
 
+function packageWithFullRosterMaterialPrefill(): Record<string, unknown> {
+  const pkg = validPackage();
+  return {
+    ...pkg,
+    current: {
+      ...(pkg['current'] as Record<string, unknown>),
+      pending_ops: [],
+    },
+    live_singleton: {
+      ...(pkg['live_singleton'] as Record<string, unknown>),
+      singleton_lineage_proof: {
+        parent_parent_coin_info: H1,
+        parent_inner_puzzle_hash: null,
+        parent_amount: 1,
+      },
+    },
+  };
+}
+
 function fillSignerInputs(component: RosterSpendPackageReviewComponent, amount = '1'): void {
   component.setSignerInput('currentMipsPuzzleReveal', 'ff80');
   component.setSignerInput('currentMipsQuorumSolution', 'ff01');
@@ -446,10 +465,52 @@ describe('RosterSpendPackageReviewComponent', () => {
     fixture.detectChanges();
 
     expect(component.rosterUpdateMaterialReadiness().ok).toBeFalse();
-    expect(component.rosterUpdateMaterialReadiness().failures).toContain('current admin records JSON array is required');
+    expect(JSON.parse(component.effectiveCurrentAdminRecordsJson())).toEqual([
+      { admin_idx: 0, m_within: 1, leaves: [{ leaf_hash: H1 }] },
+    ]);
+    expect(JSON.parse(component.effectiveNewAdminRecordJson())).toEqual(
+      { admin_idx: 1, m_within: 1, leaves: [{ leaf_hash: H2 }] },
+    );
+    expect(component.rosterUpdateMaterialReadiness().failures).toContain('current pending ops JSON array is required');
+    expect(component.rosterUpdateMaterialReadiness().failures).toContain('singleton lineage proof JSON object is required');
     expect(component.localUnsignedCoinSpendCandidateJson()).toBeNull();
     expect(mipsCandidate.build).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Roster material readiness: incomplete');
+  });
+
+  it('prefills complete public roster material from the package for candidate construction', () => {
+    component.setPackageText(JSON.stringify(packageWithFullRosterMaterialPrefill(), null, 2));
+    fillSignerInputs(component);
+    fixture.detectChanges();
+
+    const call = mipsCandidate.build.calls.mostRecent().args[0];
+
+    expect(component.currentAdminRecordsJson()).toBe('');
+    expect(component.currentPendingOpsJson()).toBe('');
+    expect(component.newAdminRecordJson()).toBe('');
+    expect(component.singletonLineageProofJson()).toBe('');
+    expect(component.rosterUpdateMaterialReadiness().ok).toBeTrue();
+    expect(call.rosterUpdateMaterial).toEqual({
+      current_admin_records: [{ admin_idx: 0, m_within: 1, leaves: [{ leaf_hash: H1 }] }],
+      current_pending_ops: [],
+      new_admin_record: { admin_idx: 1, m_within: 1, leaves: [{ leaf_hash: H2 }] },
+      singleton_lineage_proof: { parent_parent_coin_info: H1, parent_inner_puzzle_hash: null, parent_amount: 1 },
+    });
+  });
+
+  it('lets manual roster material inputs override package prefill', () => {
+    const manualNewAdmin = { admin_idx: 1, m_within: 1, leaves: [{ leaf_hash: H4 }] };
+    component.setPackageText(JSON.stringify(packageWithFullRosterMaterialPrefill(), null, 2));
+    component.setRosterMaterialInput('newAdminRecordJson', JSON.stringify(manualNewAdmin));
+    fillSignerInputs(component);
+    fixture.detectChanges();
+
+    const call = mipsCandidate.build.calls.mostRecent().args[0];
+
+    expect(component.rosterUpdateMaterialReadiness().ok).toBeTrue();
+    expect(call.rosterUpdateMaterial).toEqual(jasmine.objectContaining({
+      new_admin_record: manualNewAdmin,
+    }));
   });
 
   it('renders a local unsigned CoinSpend candidate after material parsing and candidate rechecks pass', () => {

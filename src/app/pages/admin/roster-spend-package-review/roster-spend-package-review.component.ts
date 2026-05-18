@@ -187,7 +187,7 @@ import { coinId } from '../../../utils/chia-hash';
                   #currentAdminRecords
                   class="min-h-28 w-full rounded-card border border-white/10 bg-black/30 p-3 mono text-xs text-text outline-none focus:border-brand"
                   spellcheck="false"
-                  [value]="currentAdminRecordsJson()"
+                  [value]="effectiveCurrentAdminRecordsJson()"
                   (input)="setRosterMaterialInput('currentAdminRecordsJson', currentAdminRecords.value)"
                   placeholder='[{"admin_idx":0,"leaves":[{"leaf_hash":"0x..."}],"m_within":1}]'
                 ></textarea>
@@ -199,7 +199,7 @@ import { coinId } from '../../../utils/chia-hash';
                   #currentPendingOps
                   class="min-h-24 w-full rounded-card border border-white/10 bg-black/30 p-3 mono text-xs text-text outline-none focus:border-brand"
                   spellcheck="false"
-                  [value]="currentPendingOpsJson()"
+                  [value]="effectiveCurrentPendingOpsJson()"
                   (input)="setRosterMaterialInput('currentPendingOpsJson', currentPendingOps.value)"
                   placeholder="[]"
                 ></textarea>
@@ -211,7 +211,7 @@ import { coinId } from '../../../utils/chia-hash';
                   #newAdminRecord
                   class="min-h-28 w-full rounded-card border border-white/10 bg-black/30 p-3 mono text-xs text-text outline-none focus:border-brand"
                   spellcheck="false"
-                  [value]="newAdminRecordJson()"
+                  [value]="effectiveNewAdminRecordJson()"
                   (input)="setRosterMaterialInput('newAdminRecordJson', newAdminRecord.value)"
                   placeholder='{"admin_idx":1,"leaves":[{"leaf_hash":"0x..."}],"m_within":1}'
                 ></textarea>
@@ -223,7 +223,7 @@ import { coinId } from '../../../utils/chia-hash';
                   #singletonLineageProof
                   class="min-h-28 w-full rounded-card border border-white/10 bg-black/30 p-3 mono text-xs text-text outline-none focus:border-brand"
                   spellcheck="false"
-                  [value]="singletonLineageProofJson()"
+                  [value]="effectiveSingletonLineageProofJson()"
                   (input)="setRosterMaterialInput('singletonLineageProofJson', singletonLineageProof.value)"
                   placeholder='{"parent_parent_coin_info":"0x...","parent_inner_puzzle_hash":null,"parent_amount":1}'
                 ></textarea>
@@ -504,6 +504,26 @@ export class RosterSpendPackageReviewComponent {
     return pkg ? summarizePackage(pkg) : null;
   });
 
+  readonly rosterMaterialPrefill = computed<RosterMaterialPrefill>(() => {
+    return rosterMaterialPrefillFromPackage(this.parsedPackage());
+  });
+
+  readonly effectiveCurrentAdminRecordsJson = computed(() => {
+    return effectiveMaterialJson(this.currentAdminRecordsJson(), this.rosterMaterialPrefill().currentAdminRecordsJson);
+  });
+
+  readonly effectiveCurrentPendingOpsJson = computed(() => {
+    return effectiveMaterialJson(this.currentPendingOpsJson(), this.rosterMaterialPrefill().currentPendingOpsJson);
+  });
+
+  readonly effectiveNewAdminRecordJson = computed(() => {
+    return effectiveMaterialJson(this.newAdminRecordJson(), this.rosterMaterialPrefill().newAdminRecordJson);
+  });
+
+  readonly effectiveSingletonLineageProofJson = computed(() => {
+    return effectiveMaterialJson(this.singletonLineageProofJson(), this.rosterMaterialPrefill().singletonLineageProofJson);
+  });
+
   readonly signerInputReadiness = computed<SignerInputReadiness>(() => {
     const failures: string[] = [];
     let hashCheckFailed = false;
@@ -612,22 +632,22 @@ export class RosterSpendPackageReviewComponent {
   readonly rosterUpdateMaterialReadiness = computed<RosterMaterialReadiness>(() => {
     const failures: string[] = [];
     const currentAdminRecords = parseRequiredJson(
-      this.currentAdminRecordsJson(),
+      this.effectiveCurrentAdminRecordsJson(),
       'current admin records JSON array',
       failures,
     );
     const currentPendingOps = parseRequiredJson(
-      this.currentPendingOpsJson(),
+      this.effectiveCurrentPendingOpsJson(),
       'current pending ops JSON array',
       failures,
     );
     const newAdminRecord = parseRequiredJson(
-      this.newAdminRecordJson(),
+      this.effectiveNewAdminRecordJson(),
       'new admin record JSON object',
       failures,
     );
     const singletonLineageProof = parseRequiredJson(
-      this.singletonLineageProofJson(),
+      this.effectiveSingletonLineageProofJson(),
       'singleton lineage proof JSON object',
       failures,
     );
@@ -1029,6 +1049,13 @@ type RosterUpdateMaterial = {
   singleton_lineage_proof: Record<string, unknown>;
 };
 
+type RosterMaterialPrefill = {
+  currentAdminRecordsJson: string;
+  currentPendingOpsJson: string;
+  newAdminRecordJson: string;
+  singletonLineageProofJson: string;
+};
+
 type RosterMaterialReadiness = SignerInputReadiness & {
   material: RosterUpdateMaterial | null;
 };
@@ -1075,6 +1102,57 @@ function summarizePackage(pkg: unknown): ReviewSummary | null {
     apiCrossCheckStatus: displayValue(optionalAttachments?.['api_cross_check_status']),
     requiredInputs,
   };
+}
+
+function rosterMaterialPrefillFromPackage(pkg: unknown): RosterMaterialPrefill {
+  const root = asRecord(pkg);
+  const current = root ? asRecord(root['current']) : null;
+  const update = root ? asRecord(root['update']) : null;
+  const liveSingleton = root ? asRecord(root['live_singleton']) : null;
+  const selectedCoin = liveSingleton ? asRecord(liveSingleton['selected_coin']) : null;
+  const optionalAttachments = root ? asRecord(root['optional_attachments']) : null;
+  const currentAdminRecords = current ? arrayValue(current['admin_records']) : null;
+  const explicitPendingOps = current ? arrayValue(current['pending_ops']) : null;
+  const currentPendingOpsHash = current ? stringValue(current['pending_ops_hash']) : null;
+  const currentPendingOps = explicitPendingOps
+    ?? (currentPendingOpsHash && sameHex(currentPendingOpsHash, AdminAuthorityV2Service.EMPTY_LIST_HASH) ? [] : null);
+  const newAdminRecord = update ? asRecord(update['new_admin_record']) : null;
+  const singletonLineageProof = firstRecordValue([
+    root?.['singleton_lineage_proof'],
+    liveSingleton?.['singleton_lineage_proof'],
+    liveSingleton?.['lineage_proof'],
+    selectedCoin?.['singleton_lineage_proof'],
+    selectedCoin?.['lineage_proof'],
+    optionalAttachments?.['singleton_lineage_proof'],
+    optionalAttachments?.['lineage_proof'],
+  ]);
+
+  return {
+    currentAdminRecordsJson: materialJson(currentAdminRecords),
+    currentPendingOpsJson: materialJson(currentPendingOps),
+    newAdminRecordJson: materialJson(newAdminRecord),
+    singletonLineageProofJson: materialJson(singletonLineageProof),
+  };
+}
+
+function effectiveMaterialJson(manual: string, prefill: string): string {
+  return manual.trim() ? manual : prefill;
+}
+
+function materialJson(value: unknown[] | Record<string, unknown> | null): string {
+  return value === null ? '' : JSON.stringify(value, null, 2);
+}
+
+function firstRecordValue(values: unknown[]): Record<string, unknown> | null {
+  for (const value of values) {
+    const record = asRecord(value);
+    if (record) return record;
+  }
+  return null;
+}
+
+function arrayValue(value: unknown): unknown[] | null {
+  return Array.isArray(value) ? value : null;
 }
 
 function signerInputReadinessResult(failures: string[], hashCheckFailed = false): SignerInputReadiness {
