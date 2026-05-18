@@ -17,6 +17,8 @@ type V2ReviewSpy = Pick<
     | 'computeSerializedProgramTreeHash'
     | 'makeInnerPuzzleHash'
     | 'singletonFullPuzzleHash'
+    | 'computeStateHash'
+    | 'computeRosterUpdateBindingHash'
 >;
 
 function validPackage(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -110,6 +112,8 @@ describe('RosterSpendPackageReviewComponent', () => {
       'computeSerializedProgramTreeHash',
       'makeInnerPuzzleHash',
       'singletonFullPuzzleHash',
+      'computeStateHash',
+      'computeRosterUpdateBindingHash',
     ]);
     v2.validateUnsignedRosterSpendPackage.and.returnValue({
       ok: true,
@@ -123,6 +127,10 @@ describe('RosterSpendPackageReviewComponent', () => {
     });
     v2.makeInnerPuzzleHash.and.returnValue(hexBytes(H3));
     v2.singletonFullPuzzleHash.and.returnValue(hexBytes(H2));
+    v2.computeStateHash.and.callFake((args: { authorityVersion: number | bigint }) => {
+      return hexBytes(Number(args.authorityVersion) === 1 ? H1 : H2);
+    });
+    v2.computeRosterUpdateBindingHash.and.returnValue(hexBytes(H3));
     rosterUpdate = jasmine.createSpyObj('AdminRosterUpdateService', [
       'prepare',
       'requestAdminChallenge',
@@ -213,6 +221,7 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(component.signerInputReadiness().ok).toBeFalse();
     expect(component.localVerificationReportJson()).toBeNull();
     expect(component.localUnsignedSpendBlueprintJson()).toBeNull();
+    expect(component.localUnsignedClvmConstructionPlanJson()).toBeNull();
     expect(component.signerInputReadiness().status).toBe('incomplete');
     expect(component.signerInputReadiness().failures).toContain('current MIPS puzzle reveal is required');
     expect(component.signerInputReadiness().failures).toContain('current MIPS quorum solution is required');
@@ -320,6 +329,67 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(blueprintJson?.toLowerCase()).not.toContain('secret');
     expect(fixture.nativeElement.textContent).toContain('Local unsigned spend blueprint');
     expect(fixture.nativeElement.textContent).toContain('does not construct coin spends or collect');
+  });
+
+  it('renders a local unsigned CLVM construction plan after intake rechecks pass', () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fixture.detectChanges();
+
+    const planJson = component.localUnsignedClvmConstructionPlanJson();
+    expect(planJson).not.toBeNull();
+    const plan = JSON.parse(planJson ?? '{}') as Record<string, unknown>;
+    const sourceIntake = plan['source_intake'] as Record<string, unknown>;
+    const adminShape = plan['unsigned_admin_authority_v2_spend_shape'] as Record<string, unknown>;
+    const mipsShape = plan['unsigned_mips_spend_shape'] as Record<string, unknown>;
+    const conditions = plan['expected_conditions_summary'] as Record<string, unknown>;
+    const stateAnnouncement = conditions['state_announcement'] as Record<string, unknown>;
+    const summary = plan['deterministic_unsigned_construction_summary'] as Record<string, unknown>;
+    const boundaries = plan['local_only_boundaries'] as string[];
+
+    expect(plan['kind']).toBe('admin_authority_v2_roster_update_unsigned_clvm_construction_plan');
+    expect(plan['boundary']).toBe('derive_unsigned_clvm_construction_plan_without_coin_spend_serialization');
+    expect(plan['result']).toBe('unsigned_clvm_construction_plan_only_no_coin_spends');
+    expect(sourceIntake['result']).toBe('verified_intake_only_no_signed_bundle');
+    expect(adminShape['current_inner_puzzle_hash']).toBe(H3);
+    expect(adminShape['new_state_hash']).toBe(H2);
+    expect(adminShape['roster_update_binding_hash']).toBe(H3);
+    expect(mipsShape['execution_status']).toBe('not_executed');
+    expect(stateAnnouncement['body_shape']).toBe('protocol_prefix_spend_tag_state_hash');
+    expect(stateAnnouncement['state_hash']).toBe(H2);
+    expect(summary['current_mips_puzzle_reveal_tree_hash']).toBe(H1);
+    expect(summary['current_mips_quorum_solution_tree_hash']).toBe(H4);
+    expect(summary['current_admin_authority_v2_inner_puzzle_reveal_tree_hash']).toBe(H3);
+    expect(boundaries).toContain('mips_not_executed');
+    expect(boundaries).toContain('coin_spends_not_serialized');
+    expect(boundaries).toContain('wallet_signature_not_collected');
+    expect(boundaries).toContain('transaction_not_broadcast');
+    expect(boundaries).toContain('backend_not_called');
+    expect(boundaries).toContain('raw_reveal_bytes_not_output');
+    expect(planJson).not.toContain('ff80');
+    expect(planJson).not.toContain('ff01');
+    expect(planJson).not.toContain('ff02');
+    expect(planJson?.toLowerCase()).not.toContain('jwt');
+    expect(planJson?.toLowerCase()).not.toContain('nonce');
+    expect(planJson?.toLowerCase()).not.toContain('bearer');
+    expect(planJson?.toLowerCase()).not.toContain('secret');
+    expect(fixture.nativeElement.textContent).toContain('Local unsigned CLVM construction plan');
+    expect(fixture.nativeElement.textContent).toContain('does not execute MIPS, serialize coin spends');
+    expect(v2.computeStateHash).toHaveBeenCalledWith({
+      mipsRootHash: H2,
+      adminsHash: H3,
+      pendingOpsHash: H3,
+      authorityVersion: 2,
+    });
+    expect(v2.computeRosterUpdateBindingHash).toHaveBeenCalledWith({
+      currentMipsRootHash: H1,
+      currentAdminsHash: H2,
+      currentPendingOpsHash: H3,
+      currentAuthorityVersion: 1,
+      newAdminsHash: H3,
+      newMipsRootHash: H2,
+      newAuthorityVersion: 2,
+    });
   });
 
   it('fails local hash checks when the MIPS reveal does not match current.mips_root_hash', () => {

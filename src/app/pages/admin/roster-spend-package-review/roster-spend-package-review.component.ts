@@ -7,6 +7,8 @@ import {
   AdminRosterSpendPackagePreflight,
   bytesToHexPrefixed,
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
+import { AdminRosterSpendBuilderIntakeService } from '../../../services/admin-authority-v2/admin-roster-spend-builder-intake.service';
+import { AdminRosterUnsignedClvmConstructionService } from '../../../services/admin-authority-v2/admin-roster-unsigned-clvm-construction.service';
 import { coinId } from '../../../utils/chia-hash';
 
 @Component({
@@ -204,6 +206,27 @@ import { coinId } from '../../../utils/chia-hash';
               </p>
             }
           </div>
+
+          <div class="card">
+            <div class="font-display text-lg">Local unsigned CLVM construction plan</div>
+            @if (localUnsignedClvmConstructionPlanJson(); as plan) {
+              <p class="mt-2 text-sm text-text-muted">
+                Deterministic plan-only artifact for unsigned admin_authority_v2 and MIPS spend
+                shapes. It replays the verified-intake checks, derives expected conditions, and
+                still does not execute MIPS, serialize coin spends, collect signatures, broadcast,
+                or call the backend.
+              </p>
+              <textarea
+                class="mt-3 min-h-72 w-full rounded-card border border-white/10 bg-black/30 p-4 mono text-xs text-text outline-none"
+                readonly
+                [value]="plan"
+              ></textarea>
+            } @else {
+              <p class="mt-2 text-sm text-text-muted">
+                Available after local verification, unsigned blueprint generation, and spend-builder intake rechecks pass.
+              </p>
+            }
+          </div>
         </div>
 
         <div class="grid gap-4 content-start">
@@ -321,6 +344,8 @@ import { coinId } from '../../../utils/chia-hash';
 })
 export class RosterSpendPackageReviewComponent {
   private readonly v2 = inject(AdminAuthorityV2Service);
+  private readonly intake = inject(AdminRosterSpendBuilderIntakeService);
+  private readonly unsignedClvm = inject(AdminRosterUnsignedClvmConstructionService);
 
   readonly packageText = signal('');
   readonly currentMipsPuzzleReveal = signal('');
@@ -615,6 +640,43 @@ export class RosterSpendPackageReviewComponent {
         null,
         2,
       );
+    } catch {
+      return null;
+    }
+  });
+
+  readonly localUnsignedClvmConstructionPlanJson = computed<string | null>(() => {
+    const blueprint = this.localUnsignedSpendBlueprintJson();
+    const report = this.localVerificationReportJson();
+    if (!blueprint || !report) return null;
+    const liveParent = this.liveSingletonParentCoinId().trim();
+    const livePuzzleHash = this.liveSingletonPuzzleHash().trim();
+    const liveAmount = Number(this.liveSingletonAmount().trim());
+    try {
+      const liveSingletonCoinMetadata = {
+        coin_id: coinId(liveParent, livePuzzleHash, liveAmount),
+        parent_coin_info: liveParent,
+        puzzle_hash: livePuzzleHash,
+        amount: liveAmount,
+      };
+      const intake = this.intake.verify({
+        localUnsignedSpendBlueprint: blueprint,
+        localVerificationReport: report,
+        rawCurrentMipsPuzzleReveal: this.currentMipsPuzzleReveal(),
+        rawCurrentMipsQuorumSolution: this.currentMipsQuorumSolution(),
+        rawCurrentAdminAuthorityV2InnerPuzzleReveal: this.currentAuthorityInnerPuzzleReveal(),
+        liveSingletonCoinMetadata,
+      });
+      if (!intake.ok || !intake.intake) return null;
+      const plan = this.unsignedClvm.plan({
+        verifiedSpendBuilderIntake: intake.intake,
+        rawCurrentMipsPuzzleReveal: this.currentMipsPuzzleReveal(),
+        rawCurrentMipsQuorumSolution: this.currentMipsQuorumSolution(),
+        rawCurrentAdminAuthorityV2InnerPuzzleReveal: this.currentAuthorityInnerPuzzleReveal(),
+        liveSingletonCoinMetadata,
+      });
+      if (!plan.ok || !plan.plan) return null;
+      return JSON.stringify(plan.plan, null, 2);
     } catch {
       return null;
     }
