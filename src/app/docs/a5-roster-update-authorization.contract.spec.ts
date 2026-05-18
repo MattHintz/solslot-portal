@@ -4,6 +4,7 @@ import {
   A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT,
   A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT,
   A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT,
+  A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT,
 } from './a5-roster-update-authorization.contract';
 
 describe('A.5 roster update authorization contract', () => {
@@ -260,5 +261,61 @@ describe('A.5 roster update authorization contract', () => {
     ]);
     expect(text).toContain('must not collect wallet signatures, sign, broadcast, treat the backend as roster authority');
     expect(text).toContain('wallet signatures, aggregated signatures, signed spend bundles, API credentials, JWTs, nonces, secrets, or private keys');
+  });
+
+  it('pins wallet signature collection as signing-only without broadcast', () => {
+    expect(A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT.boundary).toBe(
+      'collect_wallet_signature_for_unsigned_spend_bundle_without_broadcast',
+    );
+    expect(A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT.result).toBe(
+      'signed_spend_bundle_candidate_not_broadcast',
+    );
+    expect(A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT.requiredInputs).toEqual([
+      'unsigned_coin_spend_candidate',
+      'unsigned_spend_bundle_candidate',
+      'deterministic_pre_signing_review',
+      'wallet_signature_provider',
+    ]);
+    expect(A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT.requiredRechecks).toEqual([
+      'unsigned_candidate_result_is_unsigned_coin_spend_candidate_only_no_signatures',
+      'unsigned_spend_bundle_candidate_contains_expected_coin_spends',
+      'coin_spend_bytes_match_pre_signing_candidate',
+      'deterministic_pre_signing_review_matches_unsigned_candidate',
+      'no_existing_signatures_or_signed_bundle_are_supplied',
+      'wallet_signature_is_collected_over_final_spend_bundle_only',
+    ]);
+    expect(A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT.allowedMaterial).toEqual([
+      'wallet_signature',
+      'aggregated_signature',
+    ]);
+    expect(A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT.allowedOutputs).toEqual([
+      'signed_spend_bundle_candidate',
+      'wallet_signature_summary',
+      'deterministic_post_signing_review',
+    ]);
+    expect(text).toContain('may collect a wallet signature for an already-reviewed unsigned_spend_bundle_candidate');
+    expect(text).toContain('signed_spend_bundle_candidate_not_broadcast');
+    expect(text).toContain('wallet signs only the final spend bundle');
+  });
+
+  it('keeps wallet signature collection outside broadcast, backend authority, and mutation', () => {
+    expect(A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT.forbiddenActions).toEqual([
+      'broadcast',
+      'call_backend_as_roster_authority',
+      'mutate_coin_spends',
+      'recompute_roster_transition',
+    ]);
+    expect(A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT.forbiddenMaterial).toEqual([
+      'private_key',
+      'mnemonic',
+      'api_credentials',
+      'jwt',
+      'nonce',
+      'secret',
+      'backend_authority_attestation',
+    ]);
+    expect(text).toContain('must not broadcast, call the backend as roster authority');
+    expect(text).toContain('mutate CoinSpends');
+    expect(text).toContain('private keys, mnemonics, API credentials, JWTs, nonces, secrets, or backend authority attestations');
   });
 });

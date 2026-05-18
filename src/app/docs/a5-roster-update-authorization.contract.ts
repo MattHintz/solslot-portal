@@ -167,6 +167,49 @@ export const A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT = {
   ],
 } as const;
 
+export const A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT = {
+  boundary: 'collect_wallet_signature_for_unsigned_spend_bundle_without_broadcast',
+  result: 'signed_spend_bundle_candidate_not_broadcast',
+  requiredInputs: [
+    'unsigned_coin_spend_candidate',
+    'unsigned_spend_bundle_candidate',
+    'deterministic_pre_signing_review',
+    'wallet_signature_provider',
+  ],
+  requiredRechecks: [
+    'unsigned_candidate_result_is_unsigned_coin_spend_candidate_only_no_signatures',
+    'unsigned_spend_bundle_candidate_contains_expected_coin_spends',
+    'coin_spend_bytes_match_pre_signing_candidate',
+    'deterministic_pre_signing_review_matches_unsigned_candidate',
+    'no_existing_signatures_or_signed_bundle_are_supplied',
+    'wallet_signature_is_collected_over_final_spend_bundle_only',
+  ],
+  allowedMaterial: [
+    'wallet_signature',
+    'aggregated_signature',
+  ],
+  allowedOutputs: [
+    'signed_spend_bundle_candidate',
+    'wallet_signature_summary',
+    'deterministic_post_signing_review',
+  ],
+  forbiddenActions: [
+    'broadcast',
+    'call_backend_as_roster_authority',
+    'mutate_coin_spends',
+    'recompute_roster_transition',
+  ],
+  forbiddenMaterial: [
+    'private_key',
+    'mnemonic',
+    'api_credentials',
+    'jwt',
+    'nonce',
+    'secret',
+    'backend_authority_attestation',
+  ],
+} as const;
+
 export const A5_ROSTER_UPDATE_AUTHORIZATION_TEXT = [
   'A.5 roster updates are admin_authority_v2 singleton spends with SPEND_ADMIN_ROSTER_UPDATE = 0x07 and spend_name ADMIN_ROSTER_UPDATE.',
   'The only protocol authorizer for this A.5 add-admin path is the current admin_authority_v2 MIPS quorum committed in current.mips_root_hash.',
@@ -189,4 +232,7 @@ export const A5_ROSTER_UPDATE_AUTHORIZATION_TEXT = [
   'MIPS execution and unsigned CoinSpend serialization must recheck that the unsigned CLVM plan result is unsigned_clvm_construction_plan_only_no_coin_spends, the verified intake result is verified_intake_only_no_signed_bundle, raw material hashes match plan and intake commitments, full admin records plus pending ops hash to the committed state, singleton lineage proof is supplied, MIPS execution cost is within limit, execution conditions match the expected roster update, and serialized unsigned CoinSpends match the planned shapes without signatures.',
   'Raw reveal and solution bytes may appear only inside unsigned CoinSpend puzzle_reveal and solution fields at this boundary.',
   'MIPS execution and unsigned CoinSpend serialization must not collect wallet signatures, sign, broadcast, treat the backend as roster authority, or include wallet signatures, aggregated signatures, signed spend bundles, API credentials, JWTs, nonces, secrets, or private keys.',
+  'The wallet signature collection boundary may collect a wallet signature for an already-reviewed unsigned_spend_bundle_candidate and output a signed_spend_bundle_candidate_not_broadcast.',
+  'Wallet signature collection must recheck that the unsigned candidate result is unsigned_coin_spend_candidate_only_no_signatures, the unsigned spend bundle candidate contains the expected CoinSpends, CoinSpend bytes match the pre-signing candidate, deterministic pre-signing review data still matches, no existing signatures or signed bundle were supplied, and the wallet signs only the final spend bundle.',
+  'Wallet signature collection must not broadcast, call the backend as roster authority, mutate CoinSpends, recompute the roster transition, or include private keys, mnemonics, API credentials, JWTs, nonces, secrets, or backend authority attestations.',
 ] as const;
