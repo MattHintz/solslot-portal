@@ -476,6 +476,9 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(component.localUnsignedCoinSpendCandidateJson()).toBeNull();
     expect(mipsCandidate.build).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Roster material readiness: incomplete');
+    expect(fixture.nativeElement.textContent).toContain('Public roster material may be prefilled from the package when present.');
+    expect(fixture.nativeElement.textContent).toContain('Manual edits override prefilled values');
+    expect(fixture.nativeElement.textContent).toContain('rechecked fail-closed');
   });
 
   it('prefills complete public roster material from the package for candidate construction', () => {

@@ -179,6 +179,11 @@ import { coinId } from '../../../utils/chia-hash';
               MIPS execution and unsigned CoinSpend serialization only; wallet signatures are still
               not accepted, signing is not performed, and nothing is broadcast.
             </p>
+            <div class="mt-3 rounded-card border border-white/10 bg-black/20 p-3 text-xs text-text-muted">
+              Public roster material may be prefilled from the package when present. Manual edits
+              override prefilled values, and every effective value is still rechecked fail-closed
+              before an unsigned CoinSpend candidate is shown.
+            </div>
 
             <div class="mt-4 grid gap-3">
               <label class="grid gap-2 text-sm">
