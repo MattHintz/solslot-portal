@@ -554,6 +554,29 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('it is not signed and is not broadcast');
   });
 
+  it('surfaces unsigned CoinSpend candidate fail-closed recheck failures', () => {
+    mipsCandidate.build.and.returnValue({
+      ok: false,
+      status: 'fails_mips_execution_coin_spend_rechecks',
+      failures: ['MIPS AGG_SIG_ME messages must bind to roster update binding hash'],
+      candidate: null,
+    });
+
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    expect(component.localUnsignedCoinSpendCandidateJson()).toBeNull();
+    expect(component.localUnsignedCoinSpendCandidateResult()?.ok).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Unsigned CoinSpend candidate: fails_mips_execution_coin_spend_rechecks',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'MIPS AGG_SIG_ME messages must bind to roster update binding hash',
+    );
+  });
+
   it('fails local hash checks when the MIPS reveal does not match current.mips_root_hash', () => {
     v2.computeSerializedProgramTreeHash.and.callFake((programHex: string) => {
       if (programHex === 'ff80') return H4;
