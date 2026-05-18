@@ -70,6 +70,48 @@ export const A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT = {
   ],
 } as const;
 
+export const A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT = {
+  boundary: 'derive_unsigned_clvm_construction_plan_without_coin_spend_serialization',
+  result: 'unsigned_clvm_construction_plan_only_no_coin_spends',
+  requiredInputs: [
+    'verified_spend_builder_intake',
+    'raw_current_mips_puzzle_reveal',
+    'raw_current_mips_quorum_solution',
+    'raw_current_admin_authority_v2_inner_puzzle_reveal',
+    'live_singleton_coin_metadata',
+  ],
+  requiredRechecks: [
+    'verified_intake_result_is_verified_intake_only_no_signed_bundle',
+    'raw_material_hashes_match_verified_intake_commitments',
+    'live_singleton_coin_matches_verified_intake',
+    'current_state_commitments_match_verified_intake',
+    'singleton_full_puzzle_hash_matches_live_coin_puzzle_hash',
+  ],
+  allowedOutputs: [
+    'unsigned_admin_authority_v2_spend_shape',
+    'unsigned_mips_spend_shape',
+    'expected_conditions_summary',
+    'deterministic_unsigned_construction_summary',
+  ],
+  forbiddenActions: [
+    'execute_mips',
+    'serialize_coin_spends',
+    'collect_wallet_signature',
+    'sign',
+    'broadcast',
+    'call_backend',
+  ],
+  forbiddenMaterial: [
+    'raw_reveal_bytes_in_output',
+    'wallet_signature',
+    'signed_spend_bundle',
+    'api_credentials',
+    'jwt',
+    'nonce',
+    'secret',
+  ],
+} as const;
+
 export const A5_ROSTER_UPDATE_AUTHORIZATION_TEXT = [
   'A.5 roster updates are admin_authority_v2 singleton spends with SPEND_ADMIN_ROSTER_UPDATE = 0x07 and spend_name ADMIN_ROSTER_UPDATE.',
   'The only protocol authorizer for this A.5 add-admin path is the current admin_authority_v2 MIPS quorum committed in current.mips_root_hash.',
@@ -85,4 +127,7 @@ export const A5_ROSTER_UPDATE_AUTHORIZATION_TEXT = [
   'The spend-builder intake boundary may normalize and reverify the local unsigned spend blueprint, local verification report, raw current MIPS puzzle reveal, raw current MIPS quorum solution, raw current admin_authority_v2 inner puzzle reveal, and live singleton coin metadata.',
   'Spend-builder intake must recheck that blueprint commitments match the verification report, raw reveals match verified commitment hashes, the live singleton coin id matches parent puzzle hash and amount, the current inner puzzle hash matches the current state commitment, and the singleton full puzzle hash matches the live coin puzzle hash.',
   'Spend-builder intake may only output a normalized intake, deterministic commitment summary, or unsigned construction plan; it must not execute MIPS, construct CLVM spends, collect wallet signatures, sign, broadcast, call the backend, or include wallet signatures, signed spend bundles, API credentials, JWTs, nonces, or secrets.',
+  'The unsigned CLVM construction boundary may derive unsigned admin_authority_v2 and MIPS spend shapes, expected conditions, and a deterministic unsigned construction summary from a verified spend-builder intake without serializing coin spends.',
+  'Unsigned CLVM construction must recheck that the verified intake result is verified_intake_only_no_signed_bundle, raw material hashes match verified intake commitments, live singleton coin metadata matches the verified intake, current state commitments match the verified intake, and the singleton full puzzle hash matches the live coin puzzle hash.',
+  'Unsigned CLVM construction must not execute MIPS, serialize coin spends, collect wallet signatures, sign, broadcast, call the backend, output raw reveal bytes, or include wallet signatures, signed spend bundles, API credentials, JWTs, nonces, or secrets.',
 ] as const;

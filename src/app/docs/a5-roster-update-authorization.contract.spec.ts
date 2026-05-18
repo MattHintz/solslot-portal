@@ -2,6 +2,7 @@ import {
   A5_ROSTER_UPDATE_AUTHORIZATION_MODEL,
   A5_ROSTER_UPDATE_AUTHORIZATION_TEXT,
   A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT,
+  A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT,
 } from './a5-roster-update-authorization.contract';
 
 describe('A.5 roster update authorization contract', () => {
@@ -133,6 +134,61 @@ describe('A.5 roster update authorization contract', () => {
     ]);
     expect(text).toContain('may only output a normalized intake, deterministic commitment summary, or unsigned construction plan');
     expect(text).toContain('must not execute MIPS, construct CLVM spends, collect wallet signatures, sign, broadcast, call the backend');
+    expect(text).toContain('wallet signatures, signed spend bundles, API credentials, JWTs, nonces, or secrets');
+  });
+
+  it('pins unsigned CLVM construction as plan-only without coin spend serialization', () => {
+    expect(A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT.boundary).toBe(
+      'derive_unsigned_clvm_construction_plan_without_coin_spend_serialization',
+    );
+    expect(A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT.result).toBe(
+      'unsigned_clvm_construction_plan_only_no_coin_spends',
+    );
+    expect(A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT.requiredInputs).toEqual([
+      'verified_spend_builder_intake',
+      'raw_current_mips_puzzle_reveal',
+      'raw_current_mips_quorum_solution',
+      'raw_current_admin_authority_v2_inner_puzzle_reveal',
+      'live_singleton_coin_metadata',
+    ]);
+    expect(A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT.requiredRechecks).toEqual([
+      'verified_intake_result_is_verified_intake_only_no_signed_bundle',
+      'raw_material_hashes_match_verified_intake_commitments',
+      'live_singleton_coin_matches_verified_intake',
+      'current_state_commitments_match_verified_intake',
+      'singleton_full_puzzle_hash_matches_live_coin_puzzle_hash',
+    ]);
+    expect(A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT.allowedOutputs).toEqual([
+      'unsigned_admin_authority_v2_spend_shape',
+      'unsigned_mips_spend_shape',
+      'expected_conditions_summary',
+      'deterministic_unsigned_construction_summary',
+    ]);
+    expect(text).toContain('unsigned CLVM construction boundary may derive unsigned admin_authority_v2 and MIPS spend shapes');
+    expect(text).toContain('from a verified spend-builder intake without serializing coin spends');
+    expect(text).toContain('verified intake result is verified_intake_only_no_signed_bundle');
+  });
+
+  it('keeps unsigned CLVM construction outside execution, signatures, broadcast, backend, and raw output', () => {
+    expect(A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT.forbiddenActions).toEqual([
+      'execute_mips',
+      'serialize_coin_spends',
+      'collect_wallet_signature',
+      'sign',
+      'broadcast',
+      'call_backend',
+    ]);
+    expect(A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT.forbiddenMaterial).toEqual([
+      'raw_reveal_bytes_in_output',
+      'wallet_signature',
+      'signed_spend_bundle',
+      'api_credentials',
+      'jwt',
+      'nonce',
+      'secret',
+    ]);
+    expect(text).toContain('must not execute MIPS, serialize coin spends, collect wallet signatures, sign, broadcast, call the backend');
+    expect(text).toContain('output raw reveal bytes');
     expect(text).toContain('wallet signatures, signed spend bundles, API credentials, JWTs, nonces, or secrets');
   });
 });
