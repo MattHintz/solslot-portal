@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 
 import { RosterSpendPackageReviewComponent } from './roster-spend-package-review.component';
 import { AdminAuthorityV2Service } from '../../../services/admin-authority-v2/admin-authority-v2.service';
+import { AdminRosterMipsExecutionCoinSpendService } from '../../../services/admin-authority-v2/admin-roster-mips-execution-coin-spend.service';
 import { AdminRosterUpdateService } from '../../../services/admin-roster-update.service';
 import { coinId } from '../../../utils/chia-hash';
 
@@ -95,6 +96,22 @@ function fillSignerInputs(component: RosterSpendPackageReviewComponent, amount =
   component.setSignerInput('liveSingletonAmount', amount);
 }
 
+function fillRosterMaterialInputs(component: RosterSpendPackageReviewComponent): void {
+  component.setRosterMaterialInput(
+    'currentAdminRecordsJson',
+    JSON.stringify([{ admin_idx: 0, m_within: 1, leaves: [{ leaf_hash: H1 }] }]),
+  );
+  component.setRosterMaterialInput('currentPendingOpsJson', JSON.stringify([]));
+  component.setRosterMaterialInput(
+    'newAdminRecordJson',
+    JSON.stringify({ admin_idx: 1, m_within: 1, leaves: [{ leaf_hash: H2 }] }),
+  );
+  component.setRosterMaterialInput(
+    'singletonLineageProofJson',
+    JSON.stringify({ parent_parent_coin_info: H1, parent_inner_puzzle_hash: null, parent_amount: 1 }),
+  );
+}
+
 function hexBytes(hex: string): Uint8Array {
   const s = hex.startsWith('0x') ? hex.slice(2) : hex;
   return Uint8Array.from({ length: s.length / 2 }, (_, i) => parseInt(s.slice(i * 2, i * 2 + 2), 16));
@@ -105,6 +122,7 @@ describe('RosterSpendPackageReviewComponent', () => {
   let component: RosterSpendPackageReviewComponent;
   let v2: jasmine.SpyObj<V2ReviewSpy>;
   let rosterUpdate: jasmine.SpyObj<Pick<AdminRosterUpdateService, 'prepare' | 'requestAdminChallenge' | 'loginAdmin' | 'lookupLiveSingleton'>>;
+  let mipsCandidate: jasmine.SpyObj<Pick<AdminRosterMipsExecutionCoinSpendService, 'build'>>;
 
   beforeEach(async () => {
     v2 = jasmine.createSpyObj('AdminAuthorityV2Service', [
@@ -137,6 +155,35 @@ describe('RosterSpendPackageReviewComponent', () => {
       'loginAdmin',
       'lookupLiveSingleton',
     ]);
+    mipsCandidate = jasmine.createSpyObj('AdminRosterMipsExecutionCoinSpendService', ['build']);
+    mipsCandidate.build.and.returnValue({
+      ok: true,
+      status: 'unsigned_coin_spend_candidate_only_no_signatures',
+      failures: [],
+      candidate: {
+        version: 1,
+        kind: 'admin_authority_v2_roster_update_unsigned_coin_spend_candidate',
+        boundary: 'execute_mips_and_serialize_unsigned_coin_spends_without_signing_or_broadcast',
+        result: 'unsigned_coin_spend_candidate_only_no_signatures',
+        unsigned_spend_bundle_candidate: {
+          coin_spends: [
+            {
+              coin: { parentCoinInfo: H1, puzzleHash: H2, amount: 1 },
+              puzzleReveal: '0xfeed',
+              solution: '0xbeef',
+            },
+          ],
+          signing_status: 'unsigned_no_signature_material',
+          broadcast_status: 'not_broadcast',
+        },
+        boundary_guards: [
+          'wallet_signature_not_collected',
+          'transaction_not_signed',
+          'transaction_not_broadcast',
+        ],
+      },
+    } as unknown as ReturnType<AdminRosterMipsExecutionCoinSpendService['build']>);
+
 
     await TestBed.configureTestingModule({
       imports: [RosterSpendPackageReviewComponent],
@@ -144,6 +191,7 @@ describe('RosterSpendPackageReviewComponent', () => {
         provideRouter([]),
         { provide: AdminAuthorityV2Service, useValue: v2 },
         { provide: AdminRosterUpdateService, useValue: rosterUpdate },
+        { provide: AdminRosterMipsExecutionCoinSpendService, useValue: mipsCandidate },
       ],
     }).compileComponents();
 
@@ -390,6 +438,56 @@ describe('RosterSpendPackageReviewComponent', () => {
       newMipsRootHash: H2,
       newAuthorityVersion: 2,
     });
+  });
+
+  it('keeps unsigned CoinSpend candidate unavailable until full roster material is supplied', () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fixture.detectChanges();
+
+    expect(component.rosterUpdateMaterialReadiness().ok).toBeFalse();
+    expect(component.rosterUpdateMaterialReadiness().failures).toContain('current admin records JSON array is required');
+    expect(component.localUnsignedCoinSpendCandidateJson()).toBeNull();
+    expect(mipsCandidate.build).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Roster material readiness: incomplete');
+  });
+
+  it('renders a local unsigned CoinSpend candidate after material parsing and candidate rechecks pass', () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    const candidateJson = component.localUnsignedCoinSpendCandidateJson();
+    expect(candidateJson).not.toBeNull();
+    const candidate = JSON.parse(candidateJson ?? '{}') as Record<string, unknown>;
+    const bundle = candidate['unsigned_spend_bundle_candidate'] as Record<string, unknown>;
+    const call = mipsCandidate.build.calls.mostRecent().args[0];
+
+    expect(component.rosterUpdateMaterialReadiness().ok).toBeTrue();
+    expect(candidate['kind']).toBe('admin_authority_v2_roster_update_unsigned_coin_spend_candidate');
+    expect(candidate['result']).toBe('unsigned_coin_spend_candidate_only_no_signatures');
+    expect(bundle['signing_status']).toBe('unsigned_no_signature_material');
+    expect(bundle['broadcast_status']).toBe('not_broadcast');
+    expect(call.rosterUpdateMaterial).toEqual({
+      current_admin_records: [{ admin_idx: 0, m_within: 1, leaves: [{ leaf_hash: H1 }] }],
+      current_pending_ops: [],
+      new_admin_record: { admin_idx: 1, m_within: 1, leaves: [{ leaf_hash: H2 }] },
+      singleton_lineage_proof: { parent_parent_coin_info: H1, parent_inner_puzzle_hash: null, parent_amount: 1 },
+    });
+    expect(call.unsignedClvmConstructionPlan).toEqual(jasmine.objectContaining({
+      result: 'unsigned_clvm_construction_plan_only_no_coin_spends',
+    }));
+    expect(call.verifiedSpendBuilderIntake).toEqual(jasmine.objectContaining({
+      result: 'verified_intake_only_no_signed_bundle',
+    }));
+    expect(candidateJson).toContain('0xfeed');
+    expect(candidateJson).toContain('0xbeef');
+    expect(candidateJson?.toLowerCase()).not.toContain('aggregatedsignature');
+    expect(candidateJson?.toLowerCase()).not.toContain('jwt');
+    expect(candidateJson?.toLowerCase()).not.toContain('secret');
+    expect(fixture.nativeElement.textContent).toContain('Local unsigned CoinSpend candidate');
+    expect(fixture.nativeElement.textContent).toContain('it is not signed and is not broadcast');
   });
 
   it('fails local hash checks when the MIPS reveal does not match current.mips_root_hash', () => {

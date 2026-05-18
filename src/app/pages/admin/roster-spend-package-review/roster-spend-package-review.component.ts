@@ -7,6 +7,10 @@ import {
   AdminRosterSpendPackagePreflight,
   bytesToHexPrefixed,
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
+import {
+  AdminRosterMipsExecutionCoinSpendResult,
+  AdminRosterMipsExecutionCoinSpendService,
+} from '../../../services/admin-authority-v2/admin-roster-mips-execution-coin-spend.service';
 import { AdminRosterSpendBuilderIntakeService } from '../../../services/admin-authority-v2/admin-roster-spend-builder-intake.service';
 import { AdminRosterUnsignedClvmConstructionService } from '../../../services/admin-authority-v2/admin-roster-unsigned-clvm-construction.service';
 import { coinId } from '../../../utils/chia-hash';
@@ -169,6 +173,84 @@ import { coinId } from '../../../utils/chia-hash';
           </div>
 
           <div class="card">
+            <div class="font-display text-lg">Roster update material for unsigned CoinSpend candidate</div>
+            <p class="mt-2 text-sm text-text-muted">
+              Paste the full records needed by the protocol solution shape. This enables local
+              MIPS execution and unsigned CoinSpend serialization only; wallet signatures are still
+              not accepted, signing is not performed, and nothing is broadcast.
+            </p>
+
+            <div class="mt-4 grid gap-3">
+              <label class="grid gap-2 text-sm">
+                <span class="text-text-muted">Current admin records JSON array</span>
+                <textarea
+                  #currentAdminRecords
+                  class="min-h-28 w-full rounded-card border border-white/10 bg-black/30 p-3 mono text-xs text-text outline-none focus:border-brand"
+                  spellcheck="false"
+                  [value]="currentAdminRecordsJson()"
+                  (input)="setRosterMaterialInput('currentAdminRecordsJson', currentAdminRecords.value)"
+                  placeholder='[{"admin_idx":0,"leaves":[{"leaf_hash":"0x..."}],"m_within":1}]'
+                ></textarea>
+              </label>
+
+              <label class="grid gap-2 text-sm">
+                <span class="text-text-muted">Current pending ops JSON array</span>
+                <textarea
+                  #currentPendingOps
+                  class="min-h-24 w-full rounded-card border border-white/10 bg-black/30 p-3 mono text-xs text-text outline-none focus:border-brand"
+                  spellcheck="false"
+                  [value]="currentPendingOpsJson()"
+                  (input)="setRosterMaterialInput('currentPendingOpsJson', currentPendingOps.value)"
+                  placeholder="[]"
+                ></textarea>
+              </label>
+
+              <label class="grid gap-2 text-sm">
+                <span class="text-text-muted">New admin record JSON object</span>
+                <textarea
+                  #newAdminRecord
+                  class="min-h-28 w-full rounded-card border border-white/10 bg-black/30 p-3 mono text-xs text-text outline-none focus:border-brand"
+                  spellcheck="false"
+                  [value]="newAdminRecordJson()"
+                  (input)="setRosterMaterialInput('newAdminRecordJson', newAdminRecord.value)"
+                  placeholder='{"admin_idx":1,"leaves":[{"leaf_hash":"0x..."}],"m_within":1}'
+                ></textarea>
+              </label>
+
+              <label class="grid gap-2 text-sm">
+                <span class="text-text-muted">Singleton lineage proof JSON object</span>
+                <textarea
+                  #singletonLineageProof
+                  class="min-h-28 w-full rounded-card border border-white/10 bg-black/30 p-3 mono text-xs text-text outline-none focus:border-brand"
+                  spellcheck="false"
+                  [value]="singletonLineageProofJson()"
+                  (input)="setRosterMaterialInput('singletonLineageProofJson', singletonLineageProof.value)"
+                  placeholder='{"parent_parent_coin_info":"0x...","parent_inner_puzzle_hash":null,"parent_amount":1}'
+                ></textarea>
+              </label>
+            </div>
+
+            <div class="mt-4 rounded-card border border-white/10 bg-black/20 p-3 text-sm">
+              @if (rosterUpdateMaterialReadiness(); as r) {
+                <div class="font-display" [class.text-brand]="r.ok" [class.text-yellow-100]="!r.ok">
+                  Roster material readiness: {{ r.status }}
+                </div>
+                @if (r.failures.length) {
+                  <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-yellow-100/80">
+                    @for (failure of r.failures; track failure) {
+                      <li>{{ failure }}</li>
+                    }
+                  </ul>
+                } @else {
+                  <p class="mt-2 text-xs text-text-muted">
+                    Full records parse locally for fail-closed MIPS execution and unsigned CoinSpend candidate checks.
+                  </p>
+                }
+              }
+            </div>
+          </div>
+
+          <div class="card">
             <div class="font-display text-lg">Local verification report</div>
             @if (localVerificationReportJson(); as report) {
               <p class="mt-2 text-sm text-text-muted">
@@ -225,6 +307,40 @@ import { coinId } from '../../../utils/chia-hash';
               <p class="mt-2 text-sm text-text-muted">
                 Available after local verification, unsigned blueprint generation, and spend-builder intake rechecks pass.
               </p>
+            }
+          </div>
+
+          <div class="card">
+            <div class="font-display text-lg">Local unsigned CoinSpend candidate</div>
+            @if (localUnsignedCoinSpendCandidateJson(); as candidate) {
+              <p class="mt-2 text-sm text-text-muted">
+                Pre-signing candidate produced after bounded local execution and condition checks.
+                It contains raw reveal and solution bytes only inside unsigned CoinSpend fields;
+                it is not signed and is not broadcast.
+              </p>
+              <textarea
+                class="mt-3 min-h-72 w-full rounded-card border border-white/10 bg-black/30 p-4 mono text-xs text-text outline-none"
+                readonly
+                [value]="candidate"
+              ></textarea>
+            } @else {
+              <p class="mt-2 text-sm text-text-muted">
+                Available only after local verification, CLVM planning, full roster material parsing, bounded execution, and candidate rechecks pass.
+              </p>
+              @if (localUnsignedCoinSpendCandidateResult(); as r) {
+                @if (r.failures.length) {
+                  <div class="mt-3 rounded-card border border-yellow-500/30 bg-yellow-500/10 p-3">
+                    <div class="font-display text-sm text-yellow-100">
+                      Unsigned CoinSpend candidate: {{ r.status }}
+                    </div>
+                    <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-yellow-100/80">
+                      @for (failure of r.failures; track failure) {
+                        <li>{{ failure }}</li>
+                      }
+                    </ul>
+                  </div>
+                }
+              }
             }
           </div>
         </div>
@@ -346,6 +462,7 @@ export class RosterSpendPackageReviewComponent {
   private readonly v2 = inject(AdminAuthorityV2Service);
   private readonly intake = inject(AdminRosterSpendBuilderIntakeService);
   private readonly unsignedClvm = inject(AdminRosterUnsignedClvmConstructionService);
+  private readonly mipsCandidate = inject(AdminRosterMipsExecutionCoinSpendService);
 
   readonly packageText = signal('');
   readonly currentMipsPuzzleReveal = signal('');
@@ -354,6 +471,10 @@ export class RosterSpendPackageReviewComponent {
   readonly liveSingletonParentCoinId = signal('');
   readonly liveSingletonPuzzleHash = signal('');
   readonly liveSingletonAmount = signal('');
+  readonly currentAdminRecordsJson = signal('');
+  readonly currentPendingOpsJson = signal('');
+  readonly newAdminRecordJson = signal('');
+  readonly singletonLineageProofJson = signal('');
 
   readonly parseError = computed(() => {
     const text = this.packageText().trim();
@@ -486,6 +607,51 @@ export class RosterSpendPackageReviewComponent {
       hashCheckFailed = true;
     }
     return signerInputReadinessResult(failures, hashCheckFailed);
+  });
+
+  readonly rosterUpdateMaterialReadiness = computed<RosterMaterialReadiness>(() => {
+    const failures: string[] = [];
+    const currentAdminRecords = parseRequiredJson(
+      this.currentAdminRecordsJson(),
+      'current admin records JSON array',
+      failures,
+    );
+    const currentPendingOps = parseRequiredJson(
+      this.currentPendingOpsJson(),
+      'current pending ops JSON array',
+      failures,
+    );
+    const newAdminRecord = parseRequiredJson(
+      this.newAdminRecordJson(),
+      'new admin record JSON object',
+      failures,
+    );
+    const singletonLineageProof = parseRequiredJson(
+      this.singletonLineageProofJson(),
+      'singleton lineage proof JSON object',
+      failures,
+    );
+
+    if (currentAdminRecords !== null && !Array.isArray(currentAdminRecords)) {
+      failures.push('current admin records must be a JSON array');
+    }
+    if (currentPendingOps !== null && !Array.isArray(currentPendingOps)) {
+      failures.push('current pending ops must be a JSON array');
+    }
+    if (newAdminRecord !== null && !asRecord(newAdminRecord)) {
+      failures.push('new admin record must be a JSON object');
+    }
+    if (singletonLineageProof !== null && !asRecord(singletonLineageProof)) {
+      failures.push('singleton lineage proof must be a JSON object');
+    }
+
+    const material = failures.length ? null : {
+      current_admin_records: currentAdminRecords as unknown[],
+      current_pending_ops: currentPendingOps as unknown[],
+      new_admin_record: newAdminRecord as Record<string, unknown>,
+      singleton_lineage_proof: singletonLineageProof as Record<string, unknown>,
+    };
+    return rosterMaterialReadinessResult(failures, material);
   });
 
   readonly localVerificationReportJson = computed<string | null>(() => {
@@ -682,6 +848,78 @@ export class RosterSpendPackageReviewComponent {
     }
   });
 
+  readonly localUnsignedCoinSpendCandidateResult = computed<AdminRosterMipsExecutionCoinSpendResult | null>(() => {
+    const materialReadiness = this.rosterUpdateMaterialReadiness();
+    const blueprint = this.localUnsignedSpendBlueprintJson();
+    const report = this.localVerificationReportJson();
+    if (!blueprint || !report || !materialReadiness.ok || !materialReadiness.material) return null;
+
+    const liveParent = this.liveSingletonParentCoinId().trim();
+    const livePuzzleHash = this.liveSingletonPuzzleHash().trim();
+    const liveAmount = Number(this.liveSingletonAmount().trim());
+    try {
+      const liveSingletonCoinMetadata = {
+        coin_id: coinId(liveParent, livePuzzleHash, liveAmount),
+        parent_coin_info: liveParent,
+        puzzle_hash: livePuzzleHash,
+        amount: liveAmount,
+      };
+      const intake = this.intake.verify({
+        localUnsignedSpendBlueprint: blueprint,
+        localVerificationReport: report,
+        rawCurrentMipsPuzzleReveal: this.currentMipsPuzzleReveal(),
+        rawCurrentMipsQuorumSolution: this.currentMipsQuorumSolution(),
+        rawCurrentAdminAuthorityV2InnerPuzzleReveal: this.currentAuthorityInnerPuzzleReveal(),
+        liveSingletonCoinMetadata,
+      });
+      if (!intake.ok || !intake.intake) {
+        return {
+          ok: false,
+          status: intake.status,
+          failures: intake.failures,
+          candidate: null,
+        };
+      }
+      const plan = this.unsignedClvm.plan({
+        verifiedSpendBuilderIntake: intake.intake,
+        rawCurrentMipsPuzzleReveal: this.currentMipsPuzzleReveal(),
+        rawCurrentMipsQuorumSolution: this.currentMipsQuorumSolution(),
+        rawCurrentAdminAuthorityV2InnerPuzzleReveal: this.currentAuthorityInnerPuzzleReveal(),
+        liveSingletonCoinMetadata,
+      });
+      if (!plan.ok || !plan.plan) {
+        return {
+          ok: false,
+          status: plan.status,
+          failures: plan.failures,
+          candidate: null,
+        };
+      }
+      return this.mipsCandidate.build({
+        unsignedClvmConstructionPlan: plan.plan,
+        verifiedSpendBuilderIntake: intake.intake,
+        rawCurrentMipsPuzzleReveal: this.currentMipsPuzzleReveal(),
+        rawCurrentMipsQuorumSolution: this.currentMipsQuorumSolution(),
+        rawCurrentAdminAuthorityV2InnerPuzzleReveal: this.currentAuthorityInnerPuzzleReveal(),
+        liveSingletonCoinMetadata,
+        rosterUpdateMaterial: materialReadiness.material,
+      });
+    } catch (e) {
+      return {
+        ok: false,
+        status: 'fails_mips_execution_coin_spend_rechecks',
+        failures: [`unsigned CoinSpend candidate construction failed: ${errorMessage(e)}`],
+        candidate: null,
+      };
+    }
+  });
+
+  readonly localUnsignedCoinSpendCandidateJson = computed<string | null>(() => {
+    const result = this.localUnsignedCoinSpendCandidateResult();
+    if (!result?.ok || !result.candidate) return null;
+    return JSON.stringify(result.candidate, null, 2);
+  });
+
   setPackageText(value: string): void {
     this.packageText.set(value);
   }
@@ -709,6 +947,23 @@ export class RosterSpendPackageReviewComponent {
         break;
       case 'liveSingletonAmount':
         this.liveSingletonAmount.set(value);
+        break;
+    }
+  }
+
+  setRosterMaterialInput(name: RosterMaterialInputName, value: string): void {
+    switch (name) {
+      case 'currentAdminRecordsJson':
+        this.currentAdminRecordsJson.set(value);
+        break;
+      case 'currentPendingOpsJson':
+        this.currentPendingOpsJson.set(value);
+        break;
+      case 'newAdminRecordJson':
+        this.newAdminRecordJson.set(value);
+        break;
+      case 'singletonLineageProofJson':
+        this.singletonLineageProofJson.set(value);
         break;
     }
   }
@@ -759,6 +1014,23 @@ type SignerInputReadiness = {
   ok: boolean;
   status: string;
   failures: string[];
+};
+
+type RosterMaterialInputName =
+  | 'currentAdminRecordsJson'
+  | 'currentPendingOpsJson'
+  | 'newAdminRecordJson'
+  | 'singletonLineageProofJson';
+
+type RosterUpdateMaterial = {
+  current_admin_records: unknown[];
+  current_pending_ops: unknown[];
+  new_admin_record: Record<string, unknown>;
+  singleton_lineage_proof: Record<string, unknown>;
+};
+
+type RosterMaterialReadiness = SignerInputReadiness & {
+  material: RosterUpdateMaterial | null;
 };
 
 type ReviewSummary = {
@@ -815,8 +1087,34 @@ function signerInputReadinessResult(failures: string[], hashCheckFailed = false)
   };
 }
 
+function rosterMaterialReadinessResult(
+  failures: string[],
+  material: RosterUpdateMaterial | null,
+): RosterMaterialReadiness {
+  return {
+    ok: failures.length === 0,
+    status: failures.length === 0 ? 'parsed for unsigned CoinSpend candidate builder' : 'incomplete',
+    failures,
+    material,
+  };
+}
+
 function isBlank(value: string): boolean {
   return value.trim().length === 0;
+}
+
+function parseRequiredJson(text: string, label: string, failures: string[]): unknown | null {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    failures.push(`${label} is required`);
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch (e) {
+    failures.push(`${label} must be valid JSON: ${errorMessage(e)}`);
+    return null;
+  }
 }
 
 function isHex32(value: string): boolean {
