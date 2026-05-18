@@ -1,6 +1,7 @@
 import {
   A5_ROSTER_UPDATE_AUTHORIZATION_MODEL,
   A5_ROSTER_UPDATE_AUTHORIZATION_TEXT,
+  A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT,
   A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT,
   A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT,
 } from './a5-roster-update-authorization.contract';
@@ -190,5 +191,66 @@ describe('A.5 roster update authorization contract', () => {
     expect(text).toContain('must not execute MIPS, serialize coin spends, collect wallet signatures, sign, broadcast, call the backend');
     expect(text).toContain('output raw reveal bytes');
     expect(text).toContain('wallet signatures, signed spend bundles, API credentials, JWTs, nonces, or secrets');
+  });
+
+  it('pins MIPS execution and unsigned CoinSpend serialization without signatures or broadcast', () => {
+    expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.boundary).toBe(
+      'execute_mips_and_serialize_unsigned_coin_spends_without_signing_or_broadcast',
+    );
+    expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.result).toBe(
+      'unsigned_coin_spend_candidate_only_no_signatures',
+    );
+    expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.requiredInputs).toEqual([
+      'unsigned_clvm_construction_plan',
+      'verified_spend_builder_intake',
+      'raw_current_mips_puzzle_reveal',
+      'raw_current_mips_quorum_solution',
+      'raw_current_admin_authority_v2_inner_puzzle_reveal',
+      'live_singleton_coin_metadata',
+    ]);
+    expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.requiredRechecks).toEqual([
+      'unsigned_clvm_plan_result_is_unsigned_clvm_construction_plan_only_no_coin_spends',
+      'verified_intake_result_is_verified_intake_only_no_signed_bundle',
+      'raw_material_hashes_match_plan_and_intake_commitments',
+      'mips_execution_cost_within_limit',
+      'mips_execution_conditions_match_expected_roster_update',
+      'serialized_unsigned_coin_spends_match_plan_shapes',
+      'serialized_unsigned_coin_spends_contain_no_signatures',
+    ]);
+    expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.allowedMaterial).toEqual([
+      'raw_reveal_bytes_inside_unsigned_coin_spend_puzzle_reveal_only',
+      'raw_solution_bytes_inside_unsigned_coin_spend_solution_only',
+    ]);
+    expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.allowedOutputs).toEqual([
+      'bounded_mips_execution_report',
+      'unsigned_admin_authority_v2_coin_spend',
+      'unsigned_mips_coin_spend',
+      'unsigned_spend_bundle_candidate',
+      'deterministic_pre_signing_review',
+    ]);
+    expect(text).toContain('may execute the current MIPS puzzle under explicit cost limits');
+    expect(text).toContain('serialize unsigned admin_authority_v2 and MIPS CoinSpend candidates');
+    expect(text).toContain('Raw reveal and solution bytes may appear only inside unsigned CoinSpend puzzle_reveal and solution fields');
+  });
+
+  it('keeps MIPS execution and unsigned CoinSpend serialization outside signatures, broadcast, and credentials', () => {
+    expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.forbiddenActions).toEqual([
+      'collect_wallet_signature',
+      'sign',
+      'broadcast',
+      'call_backend_as_roster_authority',
+    ]);
+    expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.forbiddenMaterial).toEqual([
+      'wallet_signature',
+      'aggregated_signature',
+      'signed_spend_bundle',
+      'api_credentials',
+      'jwt',
+      'nonce',
+      'secret',
+      'private_key',
+    ]);
+    expect(text).toContain('must not collect wallet signatures, sign, broadcast, treat the backend as roster authority');
+    expect(text).toContain('wallet signatures, aggregated signatures, signed spend bundles, API credentials, JWTs, nonces, secrets, or private keys');
   });
 });

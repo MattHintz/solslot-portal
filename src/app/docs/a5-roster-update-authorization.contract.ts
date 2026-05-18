@@ -112,6 +112,55 @@ export const A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT = {
   ],
 } as const;
 
+export const A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT = {
+  boundary: 'execute_mips_and_serialize_unsigned_coin_spends_without_signing_or_broadcast',
+  result: 'unsigned_coin_spend_candidate_only_no_signatures',
+  requiredInputs: [
+    'unsigned_clvm_construction_plan',
+    'verified_spend_builder_intake',
+    'raw_current_mips_puzzle_reveal',
+    'raw_current_mips_quorum_solution',
+    'raw_current_admin_authority_v2_inner_puzzle_reveal',
+    'live_singleton_coin_metadata',
+  ],
+  requiredRechecks: [
+    'unsigned_clvm_plan_result_is_unsigned_clvm_construction_plan_only_no_coin_spends',
+    'verified_intake_result_is_verified_intake_only_no_signed_bundle',
+    'raw_material_hashes_match_plan_and_intake_commitments',
+    'mips_execution_cost_within_limit',
+    'mips_execution_conditions_match_expected_roster_update',
+    'serialized_unsigned_coin_spends_match_plan_shapes',
+    'serialized_unsigned_coin_spends_contain_no_signatures',
+  ],
+  allowedMaterial: [
+    'raw_reveal_bytes_inside_unsigned_coin_spend_puzzle_reveal_only',
+    'raw_solution_bytes_inside_unsigned_coin_spend_solution_only',
+  ],
+  allowedOutputs: [
+    'bounded_mips_execution_report',
+    'unsigned_admin_authority_v2_coin_spend',
+    'unsigned_mips_coin_spend',
+    'unsigned_spend_bundle_candidate',
+    'deterministic_pre_signing_review',
+  ],
+  forbiddenActions: [
+    'collect_wallet_signature',
+    'sign',
+    'broadcast',
+    'call_backend_as_roster_authority',
+  ],
+  forbiddenMaterial: [
+    'wallet_signature',
+    'aggregated_signature',
+    'signed_spend_bundle',
+    'api_credentials',
+    'jwt',
+    'nonce',
+    'secret',
+    'private_key',
+  ],
+} as const;
+
 export const A5_ROSTER_UPDATE_AUTHORIZATION_TEXT = [
   'A.5 roster updates are admin_authority_v2 singleton spends with SPEND_ADMIN_ROSTER_UPDATE = 0x07 and spend_name ADMIN_ROSTER_UPDATE.',
   'The only protocol authorizer for this A.5 add-admin path is the current admin_authority_v2 MIPS quorum committed in current.mips_root_hash.',
@@ -130,4 +179,8 @@ export const A5_ROSTER_UPDATE_AUTHORIZATION_TEXT = [
   'The unsigned CLVM construction boundary may derive unsigned admin_authority_v2 and MIPS spend shapes, expected conditions, and a deterministic unsigned construction summary from a verified spend-builder intake without serializing coin spends.',
   'Unsigned CLVM construction must recheck that the verified intake result is verified_intake_only_no_signed_bundle, raw material hashes match verified intake commitments, live singleton coin metadata matches the verified intake, current state commitments match the verified intake, and the singleton full puzzle hash matches the live coin puzzle hash.',
   'Unsigned CLVM construction must not execute MIPS, serialize coin spends, collect wallet signatures, sign, broadcast, call the backend, output raw reveal bytes, or include wallet signatures, signed spend bundles, API credentials, JWTs, nonces, or secrets.',
+  'The MIPS execution and unsigned CoinSpend serialization boundary may execute the current MIPS puzzle under explicit cost limits and serialize unsigned admin_authority_v2 and MIPS CoinSpend candidates from the unsigned CLVM construction plan.',
+  'MIPS execution and unsigned CoinSpend serialization must recheck that the unsigned CLVM plan result is unsigned_clvm_construction_plan_only_no_coin_spends, the verified intake result is verified_intake_only_no_signed_bundle, raw material hashes match plan and intake commitments, MIPS execution cost is within limit, execution conditions match the expected roster update, and serialized unsigned CoinSpends match the planned shapes without signatures.',
+  'Raw reveal and solution bytes may appear only inside unsigned CoinSpend puzzle_reveal and solution fields at this boundary.',
+  'MIPS execution and unsigned CoinSpend serialization must not collect wallet signatures, sign, broadcast, treat the backend as roster authority, or include wallet signatures, aggregated signatures, signed spend bundles, API credentials, JWTs, nonces, secrets, or private keys.',
 ] as const;
