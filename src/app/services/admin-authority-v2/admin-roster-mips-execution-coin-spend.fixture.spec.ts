@@ -10,7 +10,7 @@ import {
 } from './admin-roster-mips-execution-coin-spend.service';
 import fixtureJson from './admin-roster-mips-execution-coin-spend.fixture.json';
 
-interface FixtureFile {
+interface FixtureCase {
   case: string;
   request: AdminRosterMipsExecutionCoinSpendRequest;
   expected: {
@@ -37,7 +37,12 @@ interface FixtureFile {
   };
 }
 
-const fixture = fixtureJson as FixtureFile;
+interface FixtureFile {
+  schema: string;
+  cases: FixtureCase[];
+}
+
+const fixtureCases = (fixtureJson as FixtureFile).cases;
 
 describe('AdminRosterMipsExecutionCoinSpendService protocol fixture', () => {
   let service: AdminRosterMipsExecutionCoinSpendService;
@@ -73,47 +78,66 @@ describe('AdminRosterMipsExecutionCoinSpendService protocol fixture', () => {
     service = TestBed.inject(AdminRosterMipsExecutionCoinSpendService);
   });
 
-  it('matches the Python driver fixture for a local unsigned roster-update CoinSpend candidate', () => {
-    const result = service.build(fixture.request);
+  for (const fixture of fixtureCases) {
+    it(`matches the Python driver fixture for ${fixture.case}`, () => {
+      const result = service.build(fixture.request);
 
-    expect(result.ok).withContext(result.failures.join('\n')).toBeTrue();
-    expect(result.failures).toEqual([]);
-    const candidate = result.candidate;
-    expect(candidate).not.toBeNull();
-    if (!candidate) return;
+      expect(result.ok).withContext(result.failures.join('\n')).toBeTrue();
+      expect(result.failures).toEqual([]);
+      const candidate = result.candidate;
+      expect(candidate).not.toBeNull();
+      if (!candidate) return;
 
-    expect(candidate.result).toBe('unsigned_coin_spend_candidate_only_no_signatures');
-    expect(candidate.unsigned_admin_authority_v2_coin_spend).toEqual(fixture.expected.coin_spend);
-    expect(candidate.unsigned_spend_bundle_candidate).toEqual({
-      coin_spends: [fixture.expected.coin_spend],
-      signing_status: 'unsigned_no_signature_material',
-      broadcast_status: 'not_broadcast',
+      expect(candidate.result).toBe('unsigned_coin_spend_candidate_only_no_signatures');
+      expect(candidate.unsigned_admin_authority_v2_coin_spend).toEqual(fixture.expected.coin_spend);
+      expect(candidate.unsigned_spend_bundle_candidate).toEqual({
+        coin_spends: [fixture.expected.coin_spend],
+        signing_status: 'unsigned_no_signature_material',
+        broadcast_status: 'not_broadcast',
+      });
+      expect(candidate.bounded_mips_execution_report.cost).toBe(
+        fixture.expected.bounded_mips_execution_report.cost,
+      );
+      expect(candidate.bounded_mips_execution_report.opcodes).toEqual(
+        fixture.expected.bounded_mips_execution_report.opcodes,
+      );
+      expect(candidate.bounded_mips_execution_report.create_puzzle_announcements).toEqual(
+        fixture.expected.bounded_mips_execution_report.create_puzzle_announcements,
+      );
+      expect(candidate.bounded_mips_execution_report.create_coins).toEqual(
+        fixture.expected.bounded_mips_execution_report.create_coins,
+      );
+      expect(candidate.bounded_mips_execution_report.agg_sig_me_conditions).toEqual(
+        fixture.expected.bounded_mips_execution_report.agg_sig_me_conditions,
+      );
+      expect(candidate.bounded_mips_execution_report.asserted_my_amount).toEqual(
+        fixture.expected.bounded_mips_execution_report.asserted_my_amount,
+      );
+      expect(candidate.deterministic_pre_signing_review).toEqual({
+        ...fixture.expected.review,
+        mips_execution_cost: fixture.expected.bounded_mips_execution_report.cost,
+      });
+      expect(candidate.boundary_guards).toContain('wallet_signature_not_collected');
+      expect(candidate.boundary_guards).toContain('transaction_not_signed');
+      expect(candidate.boundary_guards).toContain('transaction_not_broadcast');
+      for (const aggSigMe of candidate.bounded_mips_execution_report.agg_sig_me_conditions) {
+        expect(aggSigMe.message).toBe(fixture.expected.review.roster_update_binding_hash);
+      }
+      expect(JSON.stringify(candidate)).not.toContain('aggregatedSignature');
     });
-    expect(candidate.bounded_mips_execution_report.cost).toBe(
-      fixture.expected.bounded_mips_execution_report.cost,
+  }
+
+  it('includes a real AGG_SIG_ME fixture case', () => {
+    const aggSigCases = fixtureCases.filter(
+      (fixture) => fixture.expected.bounded_mips_execution_report.agg_sig_me_conditions.length > 0,
     );
-    expect(candidate.bounded_mips_execution_report.opcodes).toEqual(
-      fixture.expected.bounded_mips_execution_report.opcodes,
-    );
-    expect(candidate.bounded_mips_execution_report.create_puzzle_announcements).toEqual(
-      fixture.expected.bounded_mips_execution_report.create_puzzle_announcements,
-    );
-    expect(candidate.bounded_mips_execution_report.create_coins).toEqual(
-      fixture.expected.bounded_mips_execution_report.create_coins,
-    );
-    expect(candidate.bounded_mips_execution_report.agg_sig_me_conditions).toEqual(
-      fixture.expected.bounded_mips_execution_report.agg_sig_me_conditions,
-    );
-    expect(candidate.bounded_mips_execution_report.asserted_my_amount).toEqual(
-      fixture.expected.bounded_mips_execution_report.asserted_my_amount,
-    );
-    expect(candidate.deterministic_pre_signing_review).toEqual({
-      ...fixture.expected.review,
-      mips_execution_cost: fixture.expected.bounded_mips_execution_report.cost,
-    });
-    expect(candidate.boundary_guards).toContain('wallet_signature_not_collected');
-    expect(candidate.boundary_guards).toContain('transaction_not_signed');
-    expect(candidate.boundary_guards).toContain('transaction_not_broadcast');
-    expect(JSON.stringify(candidate)).not.toContain('aggregatedSignature');
+
+    expect(aggSigCases.length).toBe(1);
+    expect(aggSigCases[0].expected.bounded_mips_execution_report.agg_sig_me_conditions).toEqual([
+      {
+        public_key: '0x' + '42'.repeat(48),
+        message: aggSigCases[0].expected.review.roster_update_binding_hash,
+      },
+    ]);
   });
 });
