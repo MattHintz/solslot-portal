@@ -140,4 +140,30 @@ describe('AdminRosterMipsExecutionCoinSpendService protocol fixture', () => {
       },
     ]);
   });
+
+  it('fails closed when the real AGG_SIG_ME binding hash is tampered', () => {
+    const aggSigFixture = fixtureCases.find(
+      (fixture) => fixture.expected.bounded_mips_execution_report.agg_sig_me_conditions.length > 0,
+    );
+    expect(aggSigFixture).toBeDefined();
+    if (!aggSigFixture) return;
+
+    const request = deepClone(aggSigFixture.request);
+    const intake = request.verifiedSpendBuilderIntake as {
+      roster_transition: {
+        roster_update_binding_hash: string;
+      };
+    };
+    intake.roster_transition.roster_update_binding_hash = '0x' + 'ab'.repeat(32);
+
+    const result = service.build(request);
+
+    expect(result.ok).toBeFalse();
+    expect(result.candidate).toBeNull();
+    expect(result.failures).toContain('MIPS AGG_SIG_ME messages must bind to roster update binding hash');
+  });
 });
+
+function deepClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
