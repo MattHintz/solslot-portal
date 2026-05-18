@@ -207,11 +207,17 @@ describe('A.5 roster update authorization contract', () => {
       'raw_current_mips_quorum_solution',
       'raw_current_admin_authority_v2_inner_puzzle_reveal',
       'live_singleton_coin_metadata',
+      'current_admin_records',
+      'current_pending_ops',
+      'new_admin_record',
+      'singleton_lineage_proof',
     ]);
     expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.requiredRechecks).toEqual([
       'unsigned_clvm_plan_result_is_unsigned_clvm_construction_plan_only_no_coin_spends',
       'verified_intake_result_is_verified_intake_only_no_signed_bundle',
       'raw_material_hashes_match_plan_and_intake_commitments',
+      'admin_and_pending_records_hash_to_committed_state',
+      'singleton_lineage_proof_is_supplied_for_unsigned_coin_spend_solution',
       'mips_execution_cost_within_limit',
       'mips_execution_conditions_match_expected_roster_update',
       'serialized_unsigned_coin_spends_match_plan_shapes',
@@ -224,12 +230,14 @@ describe('A.5 roster update authorization contract', () => {
     expect(A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT.allowedOutputs).toEqual([
       'bounded_mips_execution_report',
       'unsigned_admin_authority_v2_coin_spend',
-      'unsigned_mips_coin_spend',
+      'embedded_mips_authorization_payload',
       'unsigned_spend_bundle_candidate',
       'deterministic_pre_signing_review',
     ]);
-    expect(text).toContain('may execute the current MIPS puzzle under explicit cost limits');
-    expect(text).toContain('serialize unsigned admin_authority_v2 and MIPS CoinSpend candidates');
+    expect(text).toContain('may execute the current MIPS authorization path under explicit cost limits');
+    expect(text).toContain('serialize an unsigned admin_authority_v2 CoinSpend candidate');
+    expect(text).toContain('full admin records plus pending ops hash to the committed state');
+    expect(text).toContain('singleton lineage proof is supplied');
     expect(text).toContain('Raw reveal and solution bytes may appear only inside unsigned CoinSpend puzzle_reveal and solution fields');
   });
 
