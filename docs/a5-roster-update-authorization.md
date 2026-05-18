@@ -44,3 +44,24 @@ Before any future spend builder runs, the review screen verifies signer inputs l
 - live singleton coin metadata and puzzle hash must match the package
 
 This local hash verification step does not execute MIPS, construct CLVM spends, collect wallet signatures, sign, broadcast, or call the backend.
+
+## Spend-builder intake boundary
+
+The next spend-builder boundary may normalize and reverify only these inputs:
+
+- local unsigned spend blueprint
+- local verification report
+- raw current MIPS puzzle reveal
+- raw current MIPS quorum solution
+- raw current `admin_authority_v2` inner puzzle reveal
+- live singleton coin metadata
+
+The intake step must recheck:
+
+- blueprint commitments match the local verification report
+- raw reveals match the verified commitment hashes
+- live singleton coin id matches parent coin id, puzzle hash, and amount
+- current inner puzzle hash matches the current state commitment
+- singleton full puzzle hash matches the live coin puzzle hash
+
+This intake step may output a normalized intake, deterministic commitment summary, or unsigned construction plan only. It must not execute MIPS, construct CLVM spends, collect wallet signatures, sign, broadcast, call the backend, or include wallet signatures, signed spend bundles, API credentials, JWTs, nonces, or secrets.

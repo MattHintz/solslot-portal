@@ -1,6 +1,7 @@
 import {
   A5_ROSTER_UPDATE_AUTHORIZATION_MODEL,
   A5_ROSTER_UPDATE_AUTHORIZATION_TEXT,
+  A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT,
 } from './a5-roster-update-authorization.contract';
 
 describe('A.5 roster update authorization contract', () => {
@@ -78,5 +79,60 @@ describe('A.5 roster update authorization contract', () => {
     expect(text).toContain('inner puzzle reveal tree hash must match the recomputed current inner puzzle hash');
     expect(text).toContain('live singleton coin metadata plus puzzle hash must match the package');
     expect(text).toContain('does not execute MIPS, construct CLVM spends, collect wallet signatures, sign, broadcast, or call the backend');
+  });
+
+  it('pins spend-builder intake as normalize-and-reverify only', () => {
+    expect(A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT.boundary).toBe(
+      'normalize_and_reverify_inputs_without_spend_construction',
+    );
+    expect(A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT.result).toBe(
+      'verified_intake_only_no_signed_bundle',
+    );
+    expect(A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT.requiredInputs).toEqual([
+      'local_unsigned_spend_blueprint',
+      'local_verification_report',
+      'raw_current_mips_puzzle_reveal',
+      'raw_current_mips_quorum_solution',
+      'raw_current_admin_authority_v2_inner_puzzle_reveal',
+      'live_singleton_coin_metadata',
+    ]);
+    expect(A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT.requiredRechecks).toEqual([
+      'blueprint_matches_verification_report',
+      'raw_reveals_match_verified_commitment_hashes',
+      'live_singleton_coin_id_matches_parent_puzzle_hash_amount',
+      'current_inner_puzzle_hash_matches_current_state_commitment',
+      'singleton_full_puzzle_hash_matches_live_coin_puzzle_hash',
+    ]);
+    expect(text).toContain('spend-builder intake boundary may normalize and reverify');
+    expect(text).toContain('raw current admin_authority_v2 inner puzzle reveal');
+    expect(text).toContain('blueprint commitments match the verification report');
+    expect(text).toContain('singleton full puzzle hash matches the live coin puzzle hash');
+  });
+
+  it('keeps spend-builder intake outside signing, backend, and broadcast material', () => {
+    expect(A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT.allowedOutputs).toEqual([
+      'normalized_spend_builder_intake',
+      'deterministic_commitment_summary',
+      'unsigned_construction_plan',
+    ]);
+    expect(A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT.forbiddenActions).toEqual([
+      'execute_mips',
+      'construct_clvm_spends',
+      'collect_wallet_signature',
+      'sign',
+      'broadcast',
+      'call_backend',
+    ]);
+    expect(A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT.forbiddenMaterial).toEqual([
+      'wallet_signature',
+      'signed_spend_bundle',
+      'api_credentials',
+      'jwt',
+      'nonce',
+      'secret',
+    ]);
+    expect(text).toContain('may only output a normalized intake, deterministic commitment summary, or unsigned construction plan');
+    expect(text).toContain('must not execute MIPS, construct CLVM spends, collect wallet signatures, sign, broadcast, call the backend');
+    expect(text).toContain('wallet signatures, signed spend bundles, API credentials, JWTs, nonces, or secrets');
   });
 });
