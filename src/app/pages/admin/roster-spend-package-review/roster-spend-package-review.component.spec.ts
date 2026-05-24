@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { RosterSpendPackageReviewComponent } from './roster-spend-package-review.component';
 import { AdminAuthorityV2Service } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import { AdminRosterMipsExecutionCoinSpendService } from '../../../services/admin-authority-v2/admin-roster-mips-execution-coin-spend.service';
+import { AdminRosterWalletSignatureCollectionService } from '../../../services/admin-authority-v2/admin-roster-wallet-signature-collection.service';
 import { AdminRosterUpdateService } from '../../../services/admin-roster-update.service';
 import { coinId } from '../../../utils/chia-hash';
 
@@ -11,6 +12,7 @@ const H1 = '0x' + '11'.repeat(32);
 const H2 = '0x' + '22'.repeat(32);
 const H3 = '0x' + '33'.repeat(32);
 const H4 = '0x' + '44'.repeat(32);
+const SIG = '0x' + 'aa'.repeat(96);
 
 type V2ReviewSpy = Pick<
   AdminAuthorityV2Service,
@@ -142,6 +144,7 @@ describe('RosterSpendPackageReviewComponent', () => {
   let v2: jasmine.SpyObj<V2ReviewSpy>;
   let rosterUpdate: jasmine.SpyObj<Pick<AdminRosterUpdateService, 'prepare' | 'requestAdminChallenge' | 'loginAdmin' | 'lookupLiveSingleton'>>;
   let mipsCandidate: jasmine.SpyObj<Pick<AdminRosterMipsExecutionCoinSpendService, 'build'>>;
+  let walletSignatureCollection: jasmine.SpyObj<Pick<AdminRosterWalletSignatureCollectionService, 'collect'>>;
 
   beforeEach(async () => {
     v2 = jasmine.createSpyObj('AdminAuthorityV2Service', [
@@ -202,6 +205,61 @@ describe('RosterSpendPackageReviewComponent', () => {
         ],
       },
     } as unknown as ReturnType<AdminRosterMipsExecutionCoinSpendService['build']>);
+    walletSignatureCollection = jasmine.createSpyObj('AdminRosterWalletSignatureCollectionService', ['collect']);
+    walletSignatureCollection.collect.and.resolveTo({
+      ok: true,
+      status: 'signed_spend_bundle_candidate_not_broadcast',
+      failures: [],
+      signedCandidate: {
+        version: 1,
+        kind: 'admin_authority_v2_roster_update_signed_spend_bundle_candidate',
+        boundary: 'collect_wallet_signature_for_unsigned_spend_bundle_without_broadcast',
+        result: 'signed_spend_bundle_candidate_not_broadcast',
+        source_candidate: {
+          kind: 'admin_authority_v2_roster_update_unsigned_coin_spend_candidate',
+          result: 'unsigned_coin_spend_candidate_only_no_signatures',
+          singleton_coin_id: H4,
+          roster_update_binding_hash: H3,
+        },
+        signed_spend_bundle_candidate: {
+          coin_spends: [
+            {
+              coin: { parentCoinInfo: H1, puzzleHash: H2, amount: 1 },
+              puzzleReveal: '0xfeed',
+              solution: '0xbeef',
+            },
+          ],
+          aggregated_signature: SIG,
+          signing_status: 'signed_by_wallet',
+          broadcast_status: 'not_broadcast',
+        },
+        wallet_signature_summary: {
+          signature_type: 'bls_aggregated_signature',
+          signature_bytes: 96,
+          signed_coin_spend_count: 1,
+          provider: 'connected_chia_wallet_signSpendBundle',
+        },
+        deterministic_post_signing_review: {
+          singleton_coin_id: H4,
+          roster_update_binding_hash: H3,
+          signed_coin_spend_count: 1,
+          broadcast_status: 'not_broadcast',
+        },
+        allowed_material: ['wallet_signature', 'aggregated_signature'],
+        allowed_outputs: [
+          'signed_spend_bundle_candidate',
+          'wallet_signature_summary',
+          'deterministic_post_signing_review',
+        ],
+        boundary_guards: [
+          'transaction_not_broadcast',
+          'backend_not_used_as_roster_authority',
+          'coin_spends_not_mutated',
+          'roster_transition_not_recomputed',
+          'private_keys_not_requested',
+        ],
+      },
+    });
 
 
     await TestBed.configureTestingModule({
@@ -211,6 +269,7 @@ describe('RosterSpendPackageReviewComponent', () => {
         { provide: AdminAuthorityV2Service, useValue: v2 },
         { provide: AdminRosterUpdateService, useValue: rosterUpdate },
         { provide: AdminRosterMipsExecutionCoinSpendService, useValue: mipsCandidate },
+        { provide: AdminRosterWalletSignatureCollectionService, useValue: walletSignatureCollection },
       ],
     }).compileComponents();
 
@@ -232,7 +291,7 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('current MIPS puzzle reveal matching current.mips_root_hash');
     const disabledButton = Array.from(
       fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
-    ).find((button) => button.textContent?.includes('Build/sign roster spend unavailable'));
+    ).find((button) => button.textContent?.includes('Sign after unsigned candidate review'));
     expect(disabledButton?.disabled).toBeTrue();
   });
 
@@ -577,6 +636,83 @@ describe('RosterSpendPackageReviewComponent', () => {
     );
   });
 
+  it('collects a wallet signature for the reviewed unsigned candidate without broadcasting', async () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    fixture.detectChanges();
+
+    const signedJson = component.localSignedSpendBundleCandidateJson();
+    const signed = JSON.parse(signedJson ?? '{}') as Record<string, unknown>;
+    const bundle = signed['signed_spend_bundle_candidate'] as Record<string, unknown>;
+    const guards = signed['boundary_guards'] as string[];
+
+    expect(walletSignatureCollection.collect).toHaveBeenCalledOnceWith({
+      unsignedCoinSpendCandidate: component.localUnsignedCoinSpendCandidateResult()?.candidate,
+    });
+    expect(component.walletSignatureCollectionResult()?.ok).toBeTrue();
+    expect(signed['kind']).toBe('admin_authority_v2_roster_update_signed_spend_bundle_candidate');
+    expect(signed['result']).toBe('signed_spend_bundle_candidate_not_broadcast');
+    expect(bundle['aggregated_signature']).toBe(SIG);
+    expect(bundle['signing_status']).toBe('signed_by_wallet');
+    expect(bundle['broadcast_status']).toBe('not_broadcast');
+    expect(guards).toContain('transaction_not_broadcast');
+    expect(guards).toContain('backend_not_used_as_roster_authority');
+    expect(guards).toContain('coin_spends_not_mutated');
+    expect(fixture.nativeElement.textContent).toContain('Wallet signature collection: signed_spend_bundle_candidate_not_broadcast');
+    expect(fixture.nativeElement.textContent).toContain('Signed spend bundle candidate is ready for operator review. It is not broadcast.');
+    expect(fixture.nativeElement.textContent).toContain('Broadcast/push remains a later separate boundary.');
+    expect(signedJson).toContain(SIG);
+    expect(signedJson?.toLowerCase()).not.toContain('jwt');
+    expect(signedJson?.toLowerCase()).not.toContain('mnemonic');
+  });
+
+  it('surfaces wallet signature collection failures without a signed preview', async () => {
+    walletSignatureCollection.collect.and.resolveTo({
+      ok: false,
+      status: 'fails_wallet_signature_collection_rechecks',
+      failures: ['wallet signature collection failed: User rejected request'],
+      signedCandidate: null,
+    });
+
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    fixture.detectChanges();
+
+    expect(component.localSignedSpendBundleCandidateJson()).toBeNull();
+    expect(component.walletSignatureCollectionResult()?.ok).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Wallet signature collection: fails_wallet_signature_collection_rechecks',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'wallet signature collection failed: User rejected request',
+    );
+  });
+
+  it('clears signed wallet candidate when upstream signer inputs change', async () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    fixture.detectChanges();
+    expect(component.localSignedSpendBundleCandidateJson()).not.toBeNull();
+
+    component.setSignerInput('currentMipsQuorumSolution', 'ff03');
+    fixture.detectChanges();
+
+    expect(component.walletSignatureCollectionResult()).toBeNull();
+    expect(component.localSignedSpendBundleCandidateJson()).toBeNull();
+  });
+
   it('fails local hash checks when the MIPS reveal does not match current.mips_root_hash', () => {
     v2.computeSerializedProgramTreeHash.and.callFake((programHex: string) => {
       if (programHex === 'ff80') return H4;
@@ -654,7 +790,7 @@ describe('RosterSpendPackageReviewComponent', () => {
 
     expect(fields.some((field) => field.placeholder.toLowerCase().includes('signature'))).toBeFalse();
     expect(fixture.nativeElement.textContent).toContain(
-      'Final wallet signature is a future step and is not accepted or stored on this screen.',
+      'No manual signature field is accepted here.',
     );
   });
 
@@ -697,5 +833,6 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(rosterUpdate.loginAdmin).not.toHaveBeenCalled();
     expect(rosterUpdate.prepare).not.toHaveBeenCalled();
     expect(rosterUpdate.lookupLiveSingleton).not.toHaveBeenCalled();
+    expect(walletSignatureCollection.collect).not.toHaveBeenCalled();
   });
 });

@@ -13,6 +13,10 @@ import {
 } from '../../../services/admin-authority-v2/admin-roster-mips-execution-coin-spend.service';
 import { AdminRosterSpendBuilderIntakeService } from '../../../services/admin-authority-v2/admin-roster-spend-builder-intake.service';
 import { AdminRosterUnsignedClvmConstructionService } from '../../../services/admin-authority-v2/admin-roster-unsigned-clvm-construction.service';
+import {
+  AdminRosterWalletSignatureCollectionResult,
+  AdminRosterWalletSignatureCollectionService,
+} from '../../../services/admin-authority-v2/admin-roster-wallet-signature-collection.service';
 import { coinId } from '../../../utils/chia-hash';
 
 @Component({
@@ -34,8 +38,8 @@ import { coinId } from '../../../utils/chia-hash';
           </h1>
           <p class="mt-3 max-w-3xl text-sm text-text-muted">
             Paste an exported A.5 unsigned roster-spend package, run local preflight checks,
-            and review the signer-facing summary. This screen does not sign, build, broadcast,
-            or call the backend.
+            review the signer-facing summary, and optionally collect a wallet signature after
+            unsigned candidate rechecks pass. This screen does not broadcast, push, or call the backend.
           </p>
         </div>
         <a routerLink="/admin/authority-v2/add-admin-slot" class="btn btn--ghost">
@@ -63,7 +67,7 @@ import { coinId } from '../../../utils/chia-hash';
                 Clear
               </button>
               <button class="btn btn--ghost" type="button" disabled>
-                Build/sign roster spend unavailable
+                Sign after unsigned candidate review
               </button>
             </div>
           </div>
@@ -168,7 +172,8 @@ import { coinId } from '../../../utils/chia-hash';
             </div>
 
             <div class="mt-4 rounded-card border border-white/10 bg-black/20 p-3 text-xs text-text-muted">
-              Final wallet signature is a future step and is not accepted or stored on this screen.
+              Wallet signature collection is a separate explicit action after unsigned candidate
+              rechecks pass. No manual signature field is accepted here.
             </div>
           </div>
 
@@ -176,8 +181,8 @@ import { coinId } from '../../../utils/chia-hash';
             <div class="font-display text-lg">Roster update material for unsigned CoinSpend candidate</div>
             <p class="mt-2 text-sm text-text-muted">
               Paste the full records needed by the protocol solution shape. This enables local
-              MIPS execution and unsigned CoinSpend serialization only; wallet signatures are still
-              not accepted, signing is not performed, and nothing is broadcast.
+              MIPS execution and unsigned CoinSpend serialization only; wallet signature collection
+              remains a separate explicit action after candidate rechecks, and nothing is broadcast.
             </p>
             <div class="mt-3 rounded-card border border-white/10 bg-black/20 p-3 text-xs text-text-muted">
               Public roster material may be prefilled from the package when present. Manual edits
@@ -348,6 +353,71 @@ import { coinId } from '../../../utils/chia-hash';
               }
             }
           </div>
+
+          <div class="card">
+            <div class="font-display text-lg">Wallet signature collection</div>
+            <p class="mt-2 text-sm text-text-muted">
+              Collect a wallet signature for the already-reviewed unsigned spend bundle candidate.
+              This signs only through the connected Chia wallet; it does not broadcast, push, call
+              the backend, or mutate CoinSpends.
+            </p>
+
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                class="btn btn--primary"
+                type="button"
+                (click)="collectWalletSignature()"
+                [disabled]="!localUnsignedCoinSpendCandidateJson() || walletSignatureCollectionInFlight()"
+              >
+                @if (walletSignatureCollectionInFlight()) {
+                  Collecting wallet signature…
+                } @else {
+                  Sign spend bundle
+                }
+              </button>
+              <span class="text-xs text-text-muted">
+                Broadcast/push remains a later separate boundary.
+              </span>
+            </div>
+
+            @if (!localUnsignedCoinSpendCandidateJson()) {
+              <p class="mt-3 text-xs text-text-muted">
+                Available only after local verification, full roster material parsing, bounded MIPS execution, and unsigned CoinSpend candidate rechecks pass.
+              </p>
+            }
+
+            @if (walletSignatureCollectionResult(); as r) {
+              @if (r.ok) {
+                <div class="mt-4 rounded-card border border-brand/30 bg-brand/10 p-3">
+                  <div class="font-display text-sm text-brand">
+                    Wallet signature collection: {{ r.status }}
+                  </div>
+                  <p class="mt-2 text-xs text-text-muted">
+                    Signed spend bundle candidate is ready for operator review. It is not broadcast.
+                  </p>
+                </div>
+              } @else {
+                <div class="mt-4 rounded-card border border-yellow-500/30 bg-yellow-500/10 p-3">
+                  <div class="font-display text-sm text-yellow-100">
+                    Wallet signature collection: {{ r.status }}
+                  </div>
+                  <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-yellow-100/80">
+                    @for (failure of r.failures; track failure) {
+                      <li>{{ failure }}</li>
+                    }
+                  </ul>
+                </div>
+              }
+            }
+
+            @if (localSignedSpendBundleCandidateJson(); as signedCandidate) {
+              <textarea
+                class="mt-3 min-h-72 w-full rounded-card border border-white/10 bg-black/30 p-4 mono text-xs text-text outline-none"
+                readonly
+                [value]="signedCandidate"
+              ></textarea>
+            }
+          </div>
         </div>
 
         <div class="grid gap-4 content-start">
@@ -468,6 +538,7 @@ export class RosterSpendPackageReviewComponent {
   private readonly intake = inject(AdminRosterSpendBuilderIntakeService);
   private readonly unsignedClvm = inject(AdminRosterUnsignedClvmConstructionService);
   private readonly mipsCandidate = inject(AdminRosterMipsExecutionCoinSpendService);
+  private readonly walletSignatureCollection = inject(AdminRosterWalletSignatureCollectionService);
 
   readonly packageText = signal('');
   readonly currentMipsPuzzleReveal = signal('');
@@ -480,6 +551,8 @@ export class RosterSpendPackageReviewComponent {
   readonly currentPendingOpsJson = signal('');
   readonly newAdminRecordJson = signal('');
   readonly singletonLineageProofJson = signal('');
+  readonly walletSignatureCollectionResult = signal<AdminRosterWalletSignatureCollectionResult | null>(null);
+  readonly walletSignatureCollectionInFlight = signal(false);
 
   readonly parseError = computed(() => {
     const text = this.packageText().trim();
@@ -945,15 +1018,53 @@ export class RosterSpendPackageReviewComponent {
     return JSON.stringify(result.candidate, null, 2);
   });
 
+  readonly localSignedSpendBundleCandidateJson = computed<string | null>(() => {
+    const result = this.walletSignatureCollectionResult();
+    if (!result?.ok || !result.signedCandidate) return null;
+    return JSON.stringify(result.signedCandidate, null, 2);
+  });
+
+  async collectWalletSignature(): Promise<void> {
+    const candidateResult = this.localUnsignedCoinSpendCandidateResult();
+    if (!candidateResult?.ok || !candidateResult.candidate) {
+      this.walletSignatureCollectionResult.set({
+        ok: false,
+        status: 'fails_wallet_signature_collection_rechecks',
+        failures: ['unsigned CoinSpend candidate must pass before wallet signature collection'],
+        signedCandidate: null,
+      });
+      return;
+    }
+    this.walletSignatureCollectionInFlight.set(true);
+    try {
+      const result = await this.walletSignatureCollection.collect({
+        unsignedCoinSpendCandidate: candidateResult.candidate,
+      });
+      this.walletSignatureCollectionResult.set(result);
+    } catch (e) {
+      this.walletSignatureCollectionResult.set({
+        ok: false,
+        status: 'fails_wallet_signature_collection_rechecks',
+        failures: [`wallet signature collection failed: ${errorMessage(e)}`],
+        signedCandidate: null,
+      });
+    } finally {
+      this.walletSignatureCollectionInFlight.set(false);
+    }
+  }
+
   setPackageText(value: string): void {
+    this.clearWalletSignatureCollection();
     this.packageText.set(value);
   }
 
   clearPackageText(): void {
+    this.clearWalletSignatureCollection();
     this.packageText.set('');
   }
 
   setSignerInput(name: SignerInputName, value: string): void {
+    this.clearWalletSignatureCollection();
     switch (name) {
       case 'currentMipsPuzzleReveal':
         this.currentMipsPuzzleReveal.set(value);
@@ -977,6 +1088,7 @@ export class RosterSpendPackageReviewComponent {
   }
 
   setRosterMaterialInput(name: RosterMaterialInputName, value: string): void {
+    this.clearWalletSignatureCollection();
     switch (name) {
       case 'currentAdminRecordsJson':
         this.currentAdminRecordsJson.set(value);
@@ -991,6 +1103,10 @@ export class RosterSpendPackageReviewComponent {
         this.singletonLineageProofJson.set(value);
         break;
     }
+  }
+
+  private clearWalletSignatureCollection(): void {
+    this.walletSignatureCollectionResult.set(null);
   }
 
   private compareSerializedProgramHash(
