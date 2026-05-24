@@ -372,6 +372,46 @@ type VerifyStatus =
               Launch the protocol-config singleton, then set
               <span class="mono">POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID</span>.
             </p>
+            <div class="mt-4 rounded-card border border-yellow-500/30 bg-yellow-500/5 p-3 text-xs text-text-muted">
+              <div class="font-display text-sm text-yellow-100">Vault registration is locked</div>
+              <p class="mt-2 leading-relaxed">
+                A.3 is the protocol configuration trust root.  It records the pool, governance,
+                network, and version on chain so a broker or auditor can later verify that users
+                registered against the intended protocol.
+              </p>
+              <div class="mt-3 grid gap-3">
+                <div>
+                  <div class="font-display text-sm text-text">Who launches it</div>
+                  <p class="mt-1 leading-relaxed">
+                    An authorized technical protocol operator launches this singleton after the
+                    firm's off-chain approval record is complete.  This page does not create legal
+                    approval, register a vault, mint securities, or ask for private keys.
+                  </p>
+                </div>
+                <div>
+                  <div class="font-display text-sm text-text">What must be ready</div>
+                  <ul class="mt-1 list-disc space-y-1 pl-5">
+                    <li>Approved pool launcher id.</li>
+                    <li>Approved governance launcher id.</li>
+                    <li>Correct network, such as testnet11 or mainnet.</li>
+                    <li>Governance public key and a funded Chia wallet coin for the singleton launch.</li>
+                  </ul>
+                </div>
+                <div>
+                  <div class="font-display text-sm text-text">After launch</div>
+                  <ul class="mt-1 list-disc space-y-1 pl-5">
+                    <li>Capture the A.3 launcher id.</li>
+                    <li>Set <span class="mono">POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID</span> in the API environment.</li>
+                    <li>Restart the API, then verify <span class="mono">/protocol</span> and this Trust Roots card.</li>
+                    <li>Keep the approval record, launcher id, environment change, and verification result for audit review.</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="mt-3 leading-relaxed">
+                Technical support procedure: <span class="mono">populis_api/GENESIS_README.md §A.3</span>
+                and <span class="mono">populis_api/SECURITY.md §A.3</span>.
+              </p>
+            </div>
           } @else {
           <dl class="mt-5 space-y-3 text-sm flex-1">
             <div>
