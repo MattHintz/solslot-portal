@@ -463,13 +463,18 @@ import { coinId } from '../../../utils/chia-hash';
                   Expected network from package: <span class="mono text-brand">{{ expectedBroadcastNetwork() }}</span>
                 </p>
               }
+              @if (broadcastNetworkMismatch()) {
+                <p class="text-xs text-yellow-100">
+                  Network confirmation must exactly match expected network {{ expectedBroadcastNetwork() }}.
+                </p>
+              }
 
               <div class="flex flex-wrap items-center gap-3">
                 <button
                   class="btn btn--primary"
                   type="button"
                   (click)="submitSignedBundleToRelay()"
-                  [disabled]="!localSignedSpendBundleCandidateJson() || !operatorBroadcastConfirmed() || !operatorBroadcastNetwork().trim() || broadcastSubmissionInFlight()"
+                  [disabled]="!canSubmitSignedBundleToRelay()"
                 >
                   @if (broadcastSubmissionInFlight()) {
                     Submitting to relay…
@@ -691,6 +696,22 @@ export class RosterSpendPackageReviewComponent {
   });
 
   readonly expectedBroadcastNetwork = computed(() => this.summary()?.network ?? '');
+
+  readonly broadcastNetworkMismatch = computed(() => {
+    const expected = this.expectedBroadcastNetwork().trim();
+    const actual = this.operatorBroadcastNetwork().trim();
+    return Boolean(expected && actual && expected !== actual);
+  });
+
+  readonly canSubmitSignedBundleToRelay = computed(() => {
+    return Boolean(
+      this.localSignedSpendBundleCandidateJson() &&
+      this.operatorBroadcastConfirmed() &&
+      this.operatorBroadcastNetwork().trim() &&
+      !this.broadcastNetworkMismatch() &&
+      !this.broadcastSubmissionInFlight()
+    );
+  });
 
   readonly rosterMaterialPrefill = computed<RosterMaterialPrefill>(() => {
     return rosterMaterialPrefillFromPackage(this.parsedPackage());
@@ -1196,6 +1217,15 @@ export class RosterSpendPackageReviewComponent {
         ok: false,
         status: 'fails_signed_bundle_broadcast_rechecks',
         failures: ['operator network confirmation is required before relay submission'],
+        submissionRecord: null,
+      });
+      return;
+    }
+    if (this.broadcastNetworkMismatch()) {
+      this.broadcastSubmissionResult.set({
+        ok: false,
+        status: 'fails_signed_bundle_broadcast_rechecks',
+        failures: ['operator network confirmation must exactly match expected network before relay submission'],
         submissionRecord: null,
       });
       return;

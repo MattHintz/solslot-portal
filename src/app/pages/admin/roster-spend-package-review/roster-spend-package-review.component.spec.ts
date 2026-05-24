@@ -134,6 +134,14 @@ function fillRosterMaterialInputs(component: RosterSpendPackageReviewComponent):
   );
 }
 
+function findButtonByText(fixture: ComponentFixture<RosterSpendPackageReviewComponent>, text: string): HTMLButtonElement {
+  const button = Array.from(
+    fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+  ).find((candidate) => candidate.textContent?.includes(text));
+  if (!button) throw new Error(`button not found: ${text}`);
+  return button;
+}
+
 function hexBytes(hex: string): Uint8Array {
   const s = hex.startsWith('0x') ? hex.slice(2) : hex;
   return Uint8Array.from({ length: s.length / 2 }, (_, i) => parseInt(s.slice(i * 2, i * 2 + 2), 16));
@@ -836,6 +844,67 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(component.broadcastSubmissionRecordJson()).toBeNull();
     expect(component.broadcastSubmissionResult()?.ok).toBeFalse();
     expect(fixture.nativeElement.textContent).toContain('operator broadcast confirmation is required before relay submission');
+  });
+
+  it('keeps relay submit disabled until signed candidate, confirmation, and matching network are present', async () => {
+    fixture.detectChanges();
+    expect(findButtonByText(fixture, 'Submit signed bundle to relay').disabled).toBeTrue();
+
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+    await component.collectWalletSignature();
+    fixture.detectChanges();
+
+    expect(component.localSignedSpendBundleCandidateJson()).not.toBeNull();
+    expect(findButtonByText(fixture, 'Submit signed bundle to relay').disabled).toBeTrue();
+
+    component.setOperatorBroadcastNetwork('testnet11');
+    fixture.detectChanges();
+    expect(component.canSubmitSignedBundleToRelay()).toBeFalse();
+    expect(findButtonByText(fixture, 'Submit signed bundle to relay').disabled).toBeTrue();
+
+    component.setOperatorBroadcastConfirmed(true);
+    component.setOperatorBroadcastNetwork('mainnet');
+    fixture.detectChanges();
+    expect(component.broadcastNetworkMismatch()).toBeTrue();
+    expect(component.canSubmitSignedBundleToRelay()).toBeFalse();
+    expect(findButtonByText(fixture, 'Submit signed bundle to relay').disabled).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Network confirmation must exactly match expected network testnet11.',
+    );
+
+    component.setOperatorBroadcastNetwork('testnet11');
+    fixture.detectChanges();
+    expect(component.broadcastNetworkMismatch()).toBeFalse();
+    expect(component.canSubmitSignedBundleToRelay()).toBeTrue();
+    expect(findButtonByText(fixture, 'Submit signed bundle to relay').disabled).toBeFalse();
+  });
+
+  it('blocks relay submission locally when network confirmation mismatches expected network', async () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    component.setOperatorBroadcastConfirmed(true);
+    component.setOperatorBroadcastNetwork('mainnet');
+    await component.submitSignedBundleToRelay();
+    fixture.detectChanges();
+
+    expect(component.broadcastNetworkMismatch()).toBeTrue();
+    expect(component.canSubmitSignedBundleToRelay()).toBeFalse();
+    expect(signedBundleBroadcast.submit).not.toHaveBeenCalled();
+    expect(component.broadcastSubmissionRecordJson()).toBeNull();
+    expect(component.broadcastSubmissionResult()?.ok).toBeFalse();
+    expect(component.broadcastSubmissionResult()?.failures).toContain(
+      'operator network confirmation must exactly match expected network before relay submission',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Network confirmation must exactly match expected network testnet11.',
+    );
   });
 
   it('surfaces relay submission failures without a submission record', async () => {
