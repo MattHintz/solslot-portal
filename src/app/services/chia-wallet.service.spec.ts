@@ -160,12 +160,12 @@ describe('ChiaWalletService.signSpendBundle', () => {
           coin_spends: [
             {
               coin: {
-                parent_coin_info: 'a1'.repeat(32),
-                puzzle_hash: 'b2'.repeat(32),
-                amount: 1,
+                parent_coin_info: 'd1'.repeat(32),
+                puzzle_hash: 'd2'.repeat(32),
+                amount: 2,
               },
-              puzzle_reveal: 'ff01ff80',
-              solution: 'ff8080',
+              puzzle_reveal: 'ff02ff80',
+              solution: 'ff8180',
             },
           ],
         },
@@ -176,7 +176,7 @@ describe('ChiaWalletService.signSpendBundle', () => {
     const result: SignedSpendBundle = await service.signSpendBundle(SAMPLE_COIN_SPENDS);
     expect(result.aggregatedSignature).toBe(SAMPLE_SIG);
     expect(result.coinSpends.length).toBe(1);
-    expect(result.coinSpends[0].coin.amount).toBe(1);
+    expect(result.coinSpends[0]).toEqual(SAMPLE_COIN_SPENDS[0]);
     expect(mock.calls.length).toBe(1);
     expect(mock.calls[0].method).toBe('signCoinSpends');
   });
@@ -192,12 +192,12 @@ describe('ChiaWalletService.signSpendBundle', () => {
         coinSpends: [
           {
             coin: {
-              parentCoinInfo: 'a1'.repeat(32),
-              puzzleHash: 'b2'.repeat(32),
-              amount: 1,
+              parentCoinInfo: 'd1'.repeat(32),
+              puzzleHash: 'd2'.repeat(32),
+              amount: 2,
             },
-            puzzleReveal: 'ff01ff80',
-            solution: 'ff8080',
+            puzzleReveal: 'ff02ff80',
+            solution: 'ff8180',
           },
         ],
       };
@@ -207,6 +207,7 @@ describe('ChiaWalletService.signSpendBundle', () => {
     const result = await service.signSpendBundle(SAMPLE_COIN_SPENDS);
     expect(result.aggregatedSignature).toBe(SAMPLE_SIG);
     expect(result.coinSpends.length).toBe(1);
+    expect(result.coinSpends[0]).toEqual(SAMPLE_COIN_SPENDS[0]);
   });
 
   it('accepts a string-only signature (Goby docs.goby.app/methods shape)', async () => {

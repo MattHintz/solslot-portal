@@ -9,6 +9,7 @@ import {
 import { CoinsetService, PushTxResponse } from '../coinset.service';
 import { WalletCoinPickerService } from '../wallet-coin-picker.service';
 import { ADMIN_AUTHORITY_V2_INNER_PUZZLE_HEX } from './admin-authority-v2.puzzle-hex';
+import { environment } from '../../../environments/environment';
 
 /**
  * TS port of selected helpers from
@@ -687,15 +688,27 @@ export class AdminAuthorityV2Service {
     amount: bigint;
   }): Promise<SignedSpendBundle> {
     const sdk = this.sdk();
-    if (!sdk.Clvm || !sdk.Coin || !sdk.PublicKey) {
+    if (!sdk.Clvm || !sdk.Coin || !sdk.PublicKey || !sdk.standardPuzzleHash) {
       throw new Error(
         'buildAndSignFundingSpend: chia-wallet-sdk-wasm is missing ' +
-          'Clvm/Coin/PublicKey exports — cannot construct funding spend.',
+          'Clvm/Coin/PublicKey/standardPuzzleHash exports — cannot construct funding spend.',
       );
     }
 
+    const pubkeyHex = this.chiaWallet.pubkey();
+    if (!pubkeyHex) {
+      throw new Error('buildAndSignFundingSpend: wallet not connected');
+    }
+    const syntheticKey = sdk.PublicKey.fromBytes(hexToBytes(pubkeyHex));
+    const fundingPuzzleHashBytes = sdk.standardPuzzleHash(syntheticKey);
+    const fundingPuzzleHash = bytesToHexPrefixed(fundingPuzzleHashBytes);
+    const fundingAddress = this.encodeAddress(fundingPuzzleHashBytes);
+
     // 1. Pick a coin via the wallet bridge + coinset.
-    const pick = await this.coinPicker.pickLargestUnspentCoinId();
+    const pick = await this.coinPicker.pickLargestUnspentCoinForPuzzleHash({
+      puzzleHash: fundingPuzzleHash,
+      displayAddress: fundingAddress,
+    });
 
     // 2. Fetch the full coin record (need parent_coin_info + amount).
     const record = await this.coinset.getCoinRecordByName(pick.coinId);
@@ -707,6 +720,13 @@ export class AdminAuthorityV2Service {
     }
     const coinAmount = BigInt(record.coin.amount);
     const sendAmount = args.amount;
+    if (!sameHexValue(record.coin.puzzle_hash, fundingPuzzleHash)) {
+      throw new Error(
+        'buildAndSignFundingSpend: selected coin puzzle hash no longer matches ' +
+          'the connected wallet public key. Retry with an unlocked coin at ' +
+          `${fundingPuzzleHash}.`,
+      );
+    }
     if (coinAmount < sendAmount) {
       throw new Error(
         `buildAndSignFundingSpend: picked coin holds only ${coinAmount} ` +
@@ -718,21 +738,13 @@ export class AdminAuthorityV2Service {
     // 3-5. Build the spend via WASM.
     const clvm = new sdk.Clvm();
     const launcherPhBytes = hexToBytes(args.targetPuzzleHash);
-    const changePhBytes = hexToBytes(pick.puzzleHash);
+    const changePhBytes = fundingPuzzleHashBytes;
 
     const conditions = [clvm.createCoin(launcherPhBytes, sendAmount, undefined)];
     if (changeAmount > 0n) {
       conditions.push(clvm.createCoin(changePhBytes, changeAmount, undefined));
     }
     const innerSpend = clvm.delegatedSpend(conditions);
-
-    // Wallet pubkey is already synthetic — Goby/Sage's getPublicKeys
-    // returns synthetic keys per CHIP-0002.  Strip the 0x prefix.
-    const pubkeyHex = this.chiaWallet.pubkey();
-    if (!pubkeyHex) {
-      throw new Error('buildAndSignFundingSpend: wallet not connected');
-    }
-    const syntheticKey = sdk.PublicKey.fromBytes(hexToBytes(pubkeyHex));
 
     // Build the source coin object + spend it as a standard coin.
     const sourceCoin = new sdk.Coin(
@@ -753,6 +765,15 @@ export class AdminAuthorityV2Service {
       );
     }
     const cs = coinSpends[0];
+    const puzzleRevealHash = bytesToHexPrefixed(clvm.deserialize(cs.puzzleReveal).treeHash());
+    const coinPuzzleHash = bytesToHexPrefixed(cs.coin.puzzleHash);
+    if (!sameHexValue(puzzleRevealHash, coinPuzzleHash)) {
+      throw new Error(
+        `buildAndSignFundingSpend: local funding spend would fail WRONG_PUZZLE_HASH ` +
+          `(coin puzzle hash ${coinPuzzleHash}, puzzle reveal hash ${puzzleRevealHash}). ` +
+          `Fund an unlocked standard wallet coin at ${fundingPuzzleHash} and retry.`,
+      );
+    }
     const unsigned: UnsignedCoinSpend[] = [
       {
         coin: {
@@ -1043,6 +1064,13 @@ export class AdminAuthorityV2Service {
   private sdk(): SdkShape {
     return this.wasm.sdk() as SdkShape;
   }
+
+  private encodeAddress(puzzleHash: Uint8Array): string {
+    const sdk = this.sdk();
+    const prefix = environment.chiaNetwork === 'mainnet' ? 'xch' : 'txch';
+    if (typeof sdk.Address !== 'function') return bytesToHexPrefixed(puzzleHash);
+    return new sdk.Address(puzzleHash, prefix).encode();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1284,6 +1312,8 @@ interface SdkShape {
   Coin?: new (parent: Uint8Array, puzzleHash: Uint8Array, amount: bigint) => CoinShape;
   /** Static ``PublicKey.fromBytes`` constructor (CHIP-0002 synthetic keys are 48-byte G1 elements). */
   PublicKey?: PublicKeyCtor;
+  standardPuzzleHash?: (syntheticKey: PublicKeyShape) => Uint8Array;
+  Address?: new (puzzleHash: Uint8Array, prefix: string) => { encode: () => string };
   /**
    * Static-only namespace exposing canonical chia constants.  In WASM 0.33
    * this lives at ``ChiaSDK.Constants`` (NOT ``ChiaSDK.Program``).

@@ -108,6 +108,37 @@ export class WalletCoinPickerService {
     );
     const puzzleHashHex = bytesToHex(puzzleHashBytes);
 
+    return this.pickLargestUnspentCoinForPuzzleHash({
+      puzzleHash: puzzleHashHex,
+      displayAddress,
+    });
+  }
+
+  async pickLargestUnspentCoinForPuzzleHash(args: {
+    puzzleHash: string;
+    displayAddress?: string;
+  }): Promise<{
+    coinId: string;
+    address: string;
+    puzzleHash: string;
+    amount: bigint;
+  }> {
+    const sdk = this.chiaWasm.sdk();
+    const CoinClass = sdk['Coin'] as
+      | (new (
+          parentCoinInfo: Uint8Array,
+          puzzleHash: Uint8Array,
+          amount: bigint,
+        ) => { coinId: () => Uint8Array })
+      | undefined;
+    if (typeof CoinClass !== 'function') {
+      throw new Error(
+        'chia-wallet-sdk-wasm is missing coin helpers. ' +
+          'Required export: Coin (constructor + coinId()).',
+      );
+    }
+    const puzzleHashHex = ensure0xHex(args.puzzleHash);
+    const displayAddress = args.displayAddress ?? puzzleHashHex;
     const records = await this.coinset.getCoinRecordsByPuzzleHash(
       puzzleHashHex,
       false, // include_spent_coins=false — we only want spendable coins

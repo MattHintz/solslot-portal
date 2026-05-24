@@ -609,11 +609,7 @@ export class ChiaWalletService {
           params: { coinSpends: wireSpends },
         });
         const parsed = parseSignCoinSpendsResult(result);
-        // String-only / no-spend replies (Goby's documented shape) get
-        // their coin spends populated from what we sent in.  The
-        // signature commits to these specific spends, so this is safe
-        // and saves us a round-trip serialisation.
-        if (parsed.coinSpends.length === 0 && inputCoinSpends.length > 0) {
+        if (inputCoinSpends.length > 0) {
           return {
             coinSpends: [...inputCoinSpends],
             aggregatedSignature: parsed.aggregatedSignature,

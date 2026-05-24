@@ -227,6 +227,26 @@ describe('WalletCoinPickerService', () => {
     expect(result.amount).toBe(7n);
   });
 
+  it('can pick directly from an explicit puzzle hash without reading the current address', async () => {
+    coinsetSpy.getCoinRecordsByPuzzleHash.and.resolveTo([makeRecord(321)]);
+
+    const service = TestBed.inject(WalletCoinPickerService);
+    const result = await service.pickLargestUnspentCoinForPuzzleHash({
+      puzzleHash: '0x' + 'ef'.repeat(32),
+      displayAddress: 'txch1funding',
+    });
+
+    expect(walletSpy.getCurrentAddress).not.toHaveBeenCalled();
+    expect(addressDecodeSpy).not.toHaveBeenCalled();
+    expect(coinsetSpy.getCoinRecordsByPuzzleHash).toHaveBeenCalledOnceWith(
+      '0x' + 'ef'.repeat(32),
+      false,
+    );
+    expect(result.address).toBe('txch1funding');
+    expect(result.puzzleHash).toBe('0x' + 'ef'.repeat(32));
+    expect(result.amount).toBe(321n);
+  });
+
   it('rejects unrecognised address formats with a clear error', async () => {
     walletSpy.getCurrentAddress.and.resolveTo('not-a-valid-address');
     const service = TestBed.inject(WalletCoinPickerService);

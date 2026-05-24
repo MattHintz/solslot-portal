@@ -465,6 +465,9 @@ describe('AdminAuthorityV2Service', () => {
       // chia-wallet-sdk-wasm and may change across SDK releases).
       expect(spend.puzzleReveal.startsWith('0x')).toBe(true);
       expect(spend.puzzleReveal.length).toBeGreaterThan(10);
+      expect(service.computeSerializedProgramTreeHash(spend.puzzleReveal)).toBe(
+        AdminAuthorityV2Service.SINGLETON_LAUNCHER_HASH,
+      );
       expect(spend.solution.startsWith('0x')).toBe(true);
     });
 
