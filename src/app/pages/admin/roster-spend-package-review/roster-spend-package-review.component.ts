@@ -11,6 +11,10 @@ import {
   AdminRosterMipsExecutionCoinSpendResult,
   AdminRosterMipsExecutionCoinSpendService,
 } from '../../../services/admin-authority-v2/admin-roster-mips-execution-coin-spend.service';
+import {
+  AdminRosterSignedBundleBroadcastResult,
+  AdminRosterSignedBundleBroadcastService,
+} from '../../../services/admin-authority-v2/admin-roster-signed-bundle-broadcast.service';
 import { AdminRosterSpendBuilderIntakeService } from '../../../services/admin-authority-v2/admin-roster-spend-builder-intake.service';
 import { AdminRosterUnsignedClvmConstructionService } from '../../../services/admin-authority-v2/admin-roster-unsigned-clvm-construction.service';
 import {
@@ -39,7 +43,8 @@ import { coinId } from '../../../utils/chia-hash';
           <p class="mt-3 max-w-3xl text-sm text-text-muted">
             Paste an exported A.5 unsigned roster-spend package, run local preflight checks,
             review the signer-facing summary, and optionally collect a wallet signature after
-            unsigned candidate rechecks pass. This screen does not broadcast, push, or call the backend.
+            unsigned candidate rechecks pass. Relay submission requires a separate operator
+            confirmation and never claims chain confirmation or backend authority.
           </p>
         </div>
         <a routerLink="/admin/authority-v2/add-admin-slot" class="btn btn--ghost">
@@ -182,7 +187,7 @@ import { coinId } from '../../../utils/chia-hash';
             <p class="mt-2 text-sm text-text-muted">
               Paste the full records needed by the protocol solution shape. This enables local
               MIPS execution and unsigned CoinSpend serialization only; wallet signature collection
-              remains a separate explicit action after candidate rechecks, and nothing is broadcast.
+              and relay submission remain separate explicit actions after candidate rechecks.
             </p>
             <div class="mt-3 rounded-card border border-white/10 bg-black/20 p-3 text-xs text-text-muted">
               Public roster material may be prefilled from the package when present. Manual edits
@@ -376,7 +381,7 @@ import { coinId } from '../../../utils/chia-hash';
                 }
               </button>
               <span class="text-xs text-text-muted">
-                Broadcast/push remains a later separate boundary.
+                Broadcast/push is a separate explicit confirmation below.
               </span>
             </div>
 
@@ -415,6 +420,104 @@ import { coinId } from '../../../utils/chia-hash';
                 class="mt-3 min-h-72 w-full rounded-card border border-white/10 bg-black/30 p-4 mono text-xs text-text outline-none"
                 readonly
                 [value]="signedCandidate"
+              ></textarea>
+            }
+          </div>
+
+          <div class="card">
+            <div class="font-display text-lg">Signed bundle relay submission</div>
+            <p class="mt-2 text-sm text-text-muted">
+              Push the signed spend bundle candidate to the transaction relay only after explicit
+              operator confirmation. Relay acceptance is not roster authority and is not chain confirmation.
+            </p>
+
+            <div class="mt-4 grid gap-3">
+              <label class="flex items-start gap-3 rounded-card border border-white/10 bg-black/20 p-3 text-sm">
+                <input
+                  #broadcastConfirm
+                  class="mt-1"
+                  type="checkbox"
+                  [checked]="operatorBroadcastConfirmed()"
+                  (change)="setOperatorBroadcastConfirmed(broadcastConfirm.checked)"
+                  [disabled]="!localSignedSpendBundleCandidateJson() || broadcastSubmissionInFlight()"
+                />
+                <span>
+                  I explicitly confirm broadcast intent for this signed roster update spend bundle and understand relay acceptance is not chain confirmation.
+                </span>
+              </label>
+
+              <label class="grid gap-2 text-sm">
+                <span class="text-text-muted">Network confirmation</span>
+                <input
+                  #broadcastNetwork
+                  class="w-full rounded-card border border-white/10 bg-black/30 p-3 mono text-xs text-text outline-none focus:border-brand"
+                  [value]="operatorBroadcastNetwork()"
+                  (input)="setOperatorBroadcastNetwork(broadcastNetwork.value)"
+                  [placeholder]="expectedBroadcastNetwork() || 'testnet11'"
+                  [disabled]="!localSignedSpendBundleCandidateJson() || broadcastSubmissionInFlight()"
+                />
+              </label>
+
+              @if (expectedBroadcastNetwork()) {
+                <p class="text-xs text-text-muted">
+                  Expected network from package: <span class="mono text-brand">{{ expectedBroadcastNetwork() }}</span>
+                </p>
+              }
+
+              <div class="flex flex-wrap items-center gap-3">
+                <button
+                  class="btn btn--primary"
+                  type="button"
+                  (click)="submitSignedBundleToRelay()"
+                  [disabled]="!localSignedSpendBundleCandidateJson() || !operatorBroadcastConfirmed() || !operatorBroadcastNetwork().trim() || broadcastSubmissionInFlight()"
+                >
+                  @if (broadcastSubmissionInFlight()) {
+                    Submitting to relay…
+                  } @else {
+                    Submit signed bundle to relay
+                  }
+                </button>
+                <span class="text-xs text-text-muted">
+                  Chain confirmation monitoring remains a separate follow-up.
+                </span>
+              </div>
+            </div>
+
+            @if (!localSignedSpendBundleCandidateJson()) {
+              <p class="mt-3 text-xs text-text-muted">
+                Available only after wallet signature collection returns a signed spend bundle candidate.
+              </p>
+            }
+
+            @if (broadcastSubmissionResult(); as r) {
+              @if (r.ok) {
+                <div class="mt-4 rounded-card border border-brand/30 bg-brand/10 p-3">
+                  <div class="font-display text-sm text-brand">
+                    Broadcast submission: {{ r.status }}
+                  </div>
+                  <p class="mt-2 text-xs text-text-muted">
+                    Submitted to transaction relay. Chain confirmation is not claimed here.
+                  </p>
+                </div>
+              } @else {
+                <div class="mt-4 rounded-card border border-yellow-500/30 bg-yellow-500/10 p-3">
+                  <div class="font-display text-sm text-yellow-100">
+                    Broadcast submission: {{ r.status }}
+                  </div>
+                  <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-yellow-100/80">
+                    @for (failure of r.failures; track failure) {
+                      <li>{{ failure }}</li>
+                    }
+                  </ul>
+                </div>
+              }
+            }
+
+            @if (broadcastSubmissionRecordJson(); as submissionRecord) {
+              <textarea
+                class="mt-3 min-h-72 w-full rounded-card border border-white/10 bg-black/30 p-4 mono text-xs text-text outline-none"
+                readonly
+                [value]="submissionRecord"
               ></textarea>
             }
           </div>
@@ -539,6 +642,7 @@ export class RosterSpendPackageReviewComponent {
   private readonly unsignedClvm = inject(AdminRosterUnsignedClvmConstructionService);
   private readonly mipsCandidate = inject(AdminRosterMipsExecutionCoinSpendService);
   private readonly walletSignatureCollection = inject(AdminRosterWalletSignatureCollectionService);
+  private readonly signedBundleBroadcast = inject(AdminRosterSignedBundleBroadcastService);
 
   readonly packageText = signal('');
   readonly currentMipsPuzzleReveal = signal('');
@@ -553,6 +657,10 @@ export class RosterSpendPackageReviewComponent {
   readonly singletonLineageProofJson = signal('');
   readonly walletSignatureCollectionResult = signal<AdminRosterWalletSignatureCollectionResult | null>(null);
   readonly walletSignatureCollectionInFlight = signal(false);
+  readonly operatorBroadcastConfirmed = signal(false);
+  readonly operatorBroadcastNetwork = signal('');
+  readonly broadcastSubmissionResult = signal<AdminRosterSignedBundleBroadcastResult | null>(null);
+  readonly broadcastSubmissionInFlight = signal(false);
 
   readonly parseError = computed(() => {
     const text = this.packageText().trim();
@@ -581,6 +689,8 @@ export class RosterSpendPackageReviewComponent {
     const pkg = this.parsedPackage();
     return pkg ? summarizePackage(pkg) : null;
   });
+
+  readonly expectedBroadcastNetwork = computed(() => this.summary()?.network ?? '');
 
   readonly rosterMaterialPrefill = computed<RosterMaterialPrefill>(() => {
     return rosterMaterialPrefillFromPackage(this.parsedPackage());
@@ -1024,7 +1134,14 @@ export class RosterSpendPackageReviewComponent {
     return JSON.stringify(result.signedCandidate, null, 2);
   });
 
+  readonly broadcastSubmissionRecordJson = computed<string | null>(() => {
+    const result = this.broadcastSubmissionResult();
+    if (!result?.ok || !result.submissionRecord) return null;
+    return JSON.stringify(result.submissionRecord, null, 2);
+  });
+
   async collectWalletSignature(): Promise<void> {
+    this.resetBroadcastSubmission();
     const candidateResult = this.localUnsignedCoinSpendCandidateResult();
     if (!candidateResult?.ok || !candidateResult.candidate) {
       this.walletSignatureCollectionResult.set({
@@ -1051,6 +1168,70 @@ export class RosterSpendPackageReviewComponent {
     } finally {
       this.walletSignatureCollectionInFlight.set(false);
     }
+  }
+
+  async submitSignedBundleToRelay(): Promise<void> {
+    const signedCandidate = this.walletSignatureCollectionResult()?.signedCandidate;
+    if (!signedCandidate) {
+      this.broadcastSubmissionResult.set({
+        ok: false,
+        status: 'fails_signed_bundle_broadcast_rechecks',
+        failures: ['signed spend bundle candidate must be available before relay submission'],
+        submissionRecord: null,
+      });
+      return;
+    }
+    if (!this.operatorBroadcastConfirmed()) {
+      this.broadcastSubmissionResult.set({
+        ok: false,
+        status: 'fails_signed_bundle_broadcast_rechecks',
+        failures: ['operator broadcast confirmation is required before relay submission'],
+        submissionRecord: null,
+      });
+      return;
+    }
+    const network = this.operatorBroadcastNetwork().trim();
+    if (!network) {
+      this.broadcastSubmissionResult.set({
+        ok: false,
+        status: 'fails_signed_bundle_broadcast_rechecks',
+        failures: ['operator network confirmation is required before relay submission'],
+        submissionRecord: null,
+      });
+      return;
+    }
+    this.clearBroadcastSubmission();
+    this.broadcastSubmissionInFlight.set(true);
+    try {
+      const result = await this.signedBundleBroadcast.submit({
+        signedSpendBundleCandidate: signedCandidate,
+        operatorBroadcastConfirmation: {
+          confirmed: true,
+          network,
+          expectedNetwork: this.expectedBroadcastNetwork() || undefined,
+        },
+      });
+      this.broadcastSubmissionResult.set(result);
+    } catch (e) {
+      this.broadcastSubmissionResult.set({
+        ok: false,
+        status: 'fails_signed_bundle_broadcast_rechecks',
+        failures: [`signed bundle relay submission failed: ${errorMessage(e)}`],
+        submissionRecord: null,
+      });
+    } finally {
+      this.broadcastSubmissionInFlight.set(false);
+    }
+  }
+
+  setOperatorBroadcastConfirmed(value: boolean): void {
+    this.clearBroadcastSubmission();
+    this.operatorBroadcastConfirmed.set(value);
+  }
+
+  setOperatorBroadcastNetwork(value: string): void {
+    this.clearBroadcastSubmission();
+    this.operatorBroadcastNetwork.set(value);
   }
 
   setPackageText(value: string): void {
@@ -1106,7 +1287,17 @@ export class RosterSpendPackageReviewComponent {
   }
 
   private clearWalletSignatureCollection(): void {
+    this.resetBroadcastSubmission();
     this.walletSignatureCollectionResult.set(null);
+  }
+
+  private clearBroadcastSubmission(): void {
+    this.broadcastSubmissionResult.set(null);
+  }
+
+  private resetBroadcastSubmission(): void {
+    this.broadcastSubmissionResult.set(null);
+    this.operatorBroadcastConfirmed.set(false);
   }
 
   private compareSerializedProgramHash(

@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { RosterSpendPackageReviewComponent } from './roster-spend-package-review.component';
 import { AdminAuthorityV2Service } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import { AdminRosterMipsExecutionCoinSpendService } from '../../../services/admin-authority-v2/admin-roster-mips-execution-coin-spend.service';
+import { AdminRosterSignedBundleBroadcastService } from '../../../services/admin-authority-v2/admin-roster-signed-bundle-broadcast.service';
 import { AdminRosterWalletSignatureCollectionService } from '../../../services/admin-authority-v2/admin-roster-wallet-signature-collection.service';
 import { AdminRosterUpdateService } from '../../../services/admin-roster-update.service';
 import { coinId } from '../../../utils/chia-hash';
@@ -145,6 +146,7 @@ describe('RosterSpendPackageReviewComponent', () => {
   let rosterUpdate: jasmine.SpyObj<Pick<AdminRosterUpdateService, 'prepare' | 'requestAdminChallenge' | 'loginAdmin' | 'lookupLiveSingleton'>>;
   let mipsCandidate: jasmine.SpyObj<Pick<AdminRosterMipsExecutionCoinSpendService, 'build'>>;
   let walletSignatureCollection: jasmine.SpyObj<Pick<AdminRosterWalletSignatureCollectionService, 'collect'>>;
+  let signedBundleBroadcast: jasmine.SpyObj<Pick<AdminRosterSignedBundleBroadcastService, 'submit'>>;
 
   beforeEach(async () => {
     v2 = jasmine.createSpyObj('AdminAuthorityV2Service', [
@@ -260,6 +262,68 @@ describe('RosterSpendPackageReviewComponent', () => {
         ],
       },
     });
+    signedBundleBroadcast = jasmine.createSpyObj('AdminRosterSignedBundleBroadcastService', ['submit']);
+    signedBundleBroadcast.submit.and.resolveTo({
+      ok: true,
+      status: 'submitted_spend_bundle_push_result_not_confirmation',
+      failures: [],
+      submissionRecord: {
+        version: 1,
+        kind: 'admin_authority_v2_roster_update_broadcast_submission_record',
+        boundary: 'push_signed_spend_bundle_after_operator_confirmation',
+        result: 'submitted_spend_bundle_push_result_not_confirmation',
+        source_candidate: {
+          kind: 'admin_authority_v2_roster_update_signed_spend_bundle_candidate',
+          result: 'signed_spend_bundle_candidate_not_broadcast',
+          singleton_coin_id: H4,
+          roster_update_binding_hash: H3,
+        },
+        submitted_spend_bundle: {
+          coin_spends: [
+            {
+              coin: { parentCoinInfo: H1, puzzleHash: H2, amount: 1 },
+              puzzleReveal: '0xfeed',
+              solution: '0xbeef',
+            },
+          ],
+          aggregated_signature: SIG,
+          signing_status: 'signed_by_wallet',
+          broadcast_status: 'submitted_to_transaction_relay',
+        },
+        operator_broadcast_confirmation: {
+          confirmed: true,
+          network: 'testnet11',
+          expected_network: 'testnet11',
+        },
+        push_transaction_response: { success: true, status: 'SUCCESS' },
+        deterministic_broadcast_review: {
+          singleton_coin_id: H4,
+          roster_update_binding_hash: H3,
+          signed_coin_spend_count: 1,
+          relay_status: 'SUCCESS',
+          chain_confirmation_status: 'not_claimed',
+        },
+        allowed_material: [
+          'signed_spend_bundle_candidate',
+          'aggregated_signature',
+          'push_transaction_response',
+        ],
+        allowed_outputs: [
+          'broadcast_submission_record',
+          'push_transaction_response',
+          'post_broadcast_monitoring_hints',
+        ],
+        boundary_guards: [
+          'operator_confirmed_broadcast',
+          'wallet_signature_not_collected',
+          'transaction_relay_acceptance_not_chain_confirmation',
+          'backend_not_used_as_roster_authority',
+          'coin_spends_not_mutated',
+          'roster_transition_not_recomputed',
+          'private_keys_not_requested',
+        ],
+      },
+    });
 
 
     await TestBed.configureTestingModule({
@@ -270,6 +334,7 @@ describe('RosterSpendPackageReviewComponent', () => {
         { provide: AdminRosterUpdateService, useValue: rosterUpdate },
         { provide: AdminRosterMipsExecutionCoinSpendService, useValue: mipsCandidate },
         { provide: AdminRosterWalletSignatureCollectionService, useValue: walletSignatureCollection },
+        { provide: AdminRosterSignedBundleBroadcastService, useValue: signedBundleBroadcast },
       ],
     }).compileComponents();
 
@@ -664,7 +729,7 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(guards).toContain('coin_spends_not_mutated');
     expect(fixture.nativeElement.textContent).toContain('Wallet signature collection: signed_spend_bundle_candidate_not_broadcast');
     expect(fixture.nativeElement.textContent).toContain('Signed spend bundle candidate is ready for operator review. It is not broadcast.');
-    expect(fixture.nativeElement.textContent).toContain('Broadcast/push remains a later separate boundary.');
+    expect(fixture.nativeElement.textContent).toContain('Broadcast/push is a separate explicit confirmation below.');
     expect(signedJson).toContain(SIG);
     expect(signedJson?.toLowerCase()).not.toContain('jwt');
     expect(signedJson?.toLowerCase()).not.toContain('mnemonic');
@@ -711,6 +776,114 @@ describe('RosterSpendPackageReviewComponent', () => {
 
     expect(component.walletSignatureCollectionResult()).toBeNull();
     expect(component.localSignedSpendBundleCandidateJson()).toBeNull();
+  });
+
+  it('submits a signed bundle to relay only after explicit operator and network confirmation', async () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    component.setOperatorBroadcastConfirmed(true);
+    component.setOperatorBroadcastNetwork('testnet11');
+    await component.submitSignedBundleToRelay();
+    fixture.detectChanges();
+
+    const recordJson = component.broadcastSubmissionRecordJson();
+    const record = JSON.parse(recordJson ?? '{}') as Record<string, unknown>;
+    const submittedBundle = record['submitted_spend_bundle'] as Record<string, unknown>;
+    const review = record['deterministic_broadcast_review'] as Record<string, unknown>;
+    const guards = record['boundary_guards'] as string[];
+
+    expect(signedBundleBroadcast.submit).toHaveBeenCalledOnceWith({
+      signedSpendBundleCandidate: component.walletSignatureCollectionResult()?.signedCandidate,
+      operatorBroadcastConfirmation: {
+        confirmed: true,
+        network: 'testnet11',
+        expectedNetwork: 'testnet11',
+      },
+    });
+    expect(component.broadcastSubmissionResult()?.ok).toBeTrue();
+    expect(record['kind']).toBe('admin_authority_v2_roster_update_broadcast_submission_record');
+    expect(record['result']).toBe('submitted_spend_bundle_push_result_not_confirmation');
+    expect(submittedBundle['broadcast_status']).toBe('submitted_to_transaction_relay');
+    expect(review['chain_confirmation_status']).toBe('not_claimed');
+    expect(guards).toContain('operator_confirmed_broadcast');
+    expect(guards).toContain('transaction_relay_acceptance_not_chain_confirmation');
+    expect(guards).toContain('backend_not_used_as_roster_authority');
+    expect(fixture.nativeElement.textContent).toContain('Signed bundle relay submission');
+    expect(fixture.nativeElement.textContent).toContain('Broadcast submission: submitted_spend_bundle_push_result_not_confirmation');
+    expect(fixture.nativeElement.textContent).toContain('Submitted to transaction relay. Chain confirmation is not claimed here.');
+    expect(fixture.nativeElement.textContent).toContain('Expected network from package: testnet11');
+    expect(recordJson).toContain('SUCCESS');
+    expect(recordJson?.toLowerCase()).not.toContain('mnemonic');
+    expect(recordJson?.toLowerCase()).not.toContain('jwt');
+  });
+
+  it('does not submit to relay without explicit broadcast confirmation', async () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    component.setOperatorBroadcastNetwork('testnet11');
+    await component.submitSignedBundleToRelay();
+    fixture.detectChanges();
+
+    expect(signedBundleBroadcast.submit).not.toHaveBeenCalled();
+    expect(component.broadcastSubmissionRecordJson()).toBeNull();
+    expect(component.broadcastSubmissionResult()?.ok).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('operator broadcast confirmation is required before relay submission');
+  });
+
+  it('surfaces relay submission failures without a submission record', async () => {
+    signedBundleBroadcast.submit.and.resolveTo({
+      ok: false,
+      status: 'fails_signed_bundle_broadcast_rechecks',
+      failures: ['push_transaction failed: ASSERT_MY_COIN_ID failed'],
+      submissionRecord: null,
+    });
+
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    component.setOperatorBroadcastConfirmed(true);
+    component.setOperatorBroadcastNetwork('testnet11');
+    await component.submitSignedBundleToRelay();
+    fixture.detectChanges();
+
+    expect(component.broadcastSubmissionRecordJson()).toBeNull();
+    expect(component.broadcastSubmissionResult()?.ok).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Broadcast submission: fails_signed_bundle_broadcast_rechecks');
+    expect(fixture.nativeElement.textContent).toContain('push_transaction failed: ASSERT_MY_COIN_ID failed');
+  });
+
+  it('clears relay submission and operator confirmation when upstream inputs change', async () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    component.setOperatorBroadcastConfirmed(true);
+    component.setOperatorBroadcastNetwork('testnet11');
+    await component.submitSignedBundleToRelay();
+    fixture.detectChanges();
+    expect(component.broadcastSubmissionRecordJson()).not.toBeNull();
+    expect(component.operatorBroadcastConfirmed()).toBeTrue();
+
+    component.setRosterMaterialInput('currentPendingOpsJson', '[{"op":"changed"}]');
+    fixture.detectChanges();
+
+    expect(component.walletSignatureCollectionResult()).toBeNull();
+    expect(component.broadcastSubmissionResult()).toBeNull();
+    expect(component.broadcastSubmissionRecordJson()).toBeNull();
+    expect(component.operatorBroadcastConfirmed()).toBeFalse();
   });
 
   it('fails local hash checks when the MIPS reveal does not match current.mips_root_hash', () => {
