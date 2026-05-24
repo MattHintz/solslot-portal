@@ -6,6 +6,10 @@ import { Observable, of } from 'rxjs';
 
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
+import {
+  AdminProtocolConfigService,
+  ProtocolConfigFinalizeResponse,
+} from '../../../services/admin-protocol-config.service';
 import { ProtocolInfo } from '../../../services/populis-api.service';
 import {
   ProtocolConfigLaunchResult,
@@ -18,6 +22,7 @@ describe('LaunchProtocolConfigComponent', () => {
   let http: jasmine.SpyObj<{ get: (url: string) => Observable<ProtocolInfo> }>;
   let wallet: jasmine.SpyObj<ChiaWalletService>;
   let launch: jasmine.SpyObj<ProtocolConfigLaunchService>;
+  let adminProtocolConfig: jasmine.SpyObj<AdminProtocolConfigService>;
   const walletConnected = signal(false);
   const walletPubkey = signal<string | null>(null);
   const walletConnectionKind = signal<'goby' | 'sage' | 'sage-walletconnect' | null>(null);
@@ -64,6 +69,11 @@ describe('LaunchProtocolConfigComponent', () => {
       },
     });
     launch.submit.and.resolveTo(submittedResult());
+    adminProtocolConfig = jasmine.createSpyObj<AdminProtocolConfigService>(
+      'AdminProtocolConfigService',
+      ['finalizeProtocolConfig'],
+    );
+    adminProtocolConfig.finalizeProtocolConfig.and.resolveTo(finalizeResult());
 
     await TestBed.configureTestingModule({
       imports: [LaunchProtocolConfigComponent],
@@ -73,6 +83,7 @@ describe('LaunchProtocolConfigComponent', () => {
         { provide: ChiaWalletService, useValue: wallet },
         { provide: ChiaWasmService, useValue: { ready: signal(true).asReadonly() } },
         { provide: ProtocolConfigLaunchService, useValue: launch },
+        { provide: AdminProtocolConfigService, useValue: adminProtocolConfig },
       ],
     }).compileComponents();
 
@@ -128,6 +139,31 @@ describe('LaunchProtocolConfigComponent', () => {
     });
     expect(text).toContain('A.3 launch submitted');
     expect(text).toContain(`POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID=0x${'aa'.repeat(32)}`);
+    expect(text).toContain('Finalize API configuration');
+  });
+
+  it('finalizes the API A.3 env after a successful launch', async () => {
+    const component = fixture.componentInstance;
+
+    await component.connectChia('goby');
+    component.useConnectedGovernanceKey();
+    component.operatorConfirmed.set(true);
+    await component.submitLaunch();
+    component.finalizeAdminTokenInput.set('operator-token');
+
+    expect(component.canFinalizeApiConfig()).toBeTrue();
+    await component.finalizeApiConfig();
+    fixture.detectChanges();
+
+    expect(adminProtocolConfig.finalizeProtocolConfig).toHaveBeenCalledOnceWith(
+      'operator-token',
+      `0x${'aa'.repeat(32)}`,
+    );
+    expect(component.finalizedConfig()?.protocol_config_launcher_id).toBe(`0x${'aa'.repeat(32)}`);
+    expect(http.get).toHaveBeenCalledTimes(2);
+    expect(normalizeText(fixture.nativeElement.textContent as string)).toContain(
+      'API finalize complete',
+    );
   });
 
   it('shows the Sage WalletConnect pairing URI while approval is pending', () => {
@@ -209,6 +245,18 @@ function submittedResult(): ProtocolConfigLaunchResult {
     },
     pushResponse: { success: true, status: 'SUCCESS' },
     fullSpendBundle: { coinSpends: [], aggregatedSignature: `0x${'88'.repeat(96)}` },
+  };
+}
+
+function finalizeResult(): ProtocolConfigFinalizeResponse {
+  return {
+    updated: true,
+    env_file_path: '.env',
+    previous_protocol_config_launcher_id: null,
+    protocol_config_launcher_id: `0x${'aa'.repeat(32)}`,
+    protocol_config_hash: `0x${'55'.repeat(32)}`,
+    protocol_config_version: 1,
+    network: 'testnet11',
   };
 }
 

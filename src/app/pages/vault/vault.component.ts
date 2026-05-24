@@ -186,6 +186,9 @@ interface ZkPassportEnrollmentPreview {
               <div class="text-xs text-text-muted">
                 Proof flow URL:
                 <span class="mono break-all">{{ zkPassportProofUrl() }}</span>
+                <a class="btn btn--ghost text-xs mt-3 inline-flex" [href]="zkPassportProofUrl()" target="_blank" rel="noopener">
+                  Open proof flow
+                </a>
               </div>
             }
 
@@ -429,8 +432,13 @@ export class VaultComponent implements OnDestroy {
       }
       this.attestationStartedAtMs = Date.now();
       const proofUrl = this.evmPoller.proofLaunchUrl(session.vaultLauncherId);
+      if (!proofUrl) {
+        throw new Error(
+          'zkPassport verification URL is not configured. Set environment.zkPassport.verificationUrl before starting verification.',
+        );
+      }
       this.zkPassportProofUrl.set(proofUrl);
-      if (proofUrl && typeof window !== 'undefined') {
+      if (typeof window !== 'undefined') {
         window.open(proofUrl, '_blank', 'noopener');
       }
       await this.checkZkPassportAttestation();

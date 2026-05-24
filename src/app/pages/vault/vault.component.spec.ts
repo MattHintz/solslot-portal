@@ -227,6 +227,15 @@ describe('VaultComponent zkPassport enrollment preview', () => {
     expect(fixture.nativeElement.textContent).toContain('Waiting for the EVM');
   });
 
+  it('does not poll when the zkPassport proof URL is not configured', async () => {
+    await component.startZkPassportEnrollment();
+    fixture.detectChanges();
+
+    expect(component.enrollmentStatus()).toBe('idle');
+    expect(component.enrollmentError()).toContain('verification URL is not configured');
+    expect(evmPollerMock.pollOnce).not.toHaveBeenCalled();
+  });
+
   it('builds canonical enrollment preview data from a polled EVM event', async () => {
     evmPollerMock.pollOnce.and.resolveTo(foundResult());
     await component.checkZkPassportAttestation();

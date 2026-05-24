@@ -6,6 +6,10 @@ import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
+import {
+  AdminProtocolConfigService,
+  ProtocolConfigFinalizeResponse,
+} from '../../../services/admin-protocol-config.service';
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
 import { ProtocolInfo } from '../../../services/populis-api.service';
@@ -275,6 +279,56 @@ import { formatError } from '../../../utils/format-error';
                 <p class="text-xs text-green-200 mt-3">{{ copyConfirmation() }}</p>
               }
             </div>
+
+            <div class="rounded-card border border-brand/30 bg-brand/5 p-4">
+              <h3 class="font-display text-xl text-brand">Finalize API configuration</h3>
+              <p class="text-sm text-text-muted mt-2 leading-relaxed">
+                Paste the one-shot API admin token to set
+                <span class="mono">POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID</span> in the API
+                environment and verify the live <span class="mono">/protocol</span> response.
+              </p>
+              <label class="block mt-4">
+                <span class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">One-shot API admin token</span>
+                <input
+                  class="input mt-2"
+                  type="password"
+                  autocomplete="off"
+                  [ngModel]="finalizeAdminTokenInput()"
+                  (ngModelChange)="finalizeAdminTokenInput.set($event)"
+                  placeholder="POPULIS_ADMIN_TOKEN"
+                />
+              </label>
+              <div class="mt-4 flex flex-wrap gap-3">
+                <button type="button" class="btn btn--primary text-xs" (click)="finalizeApiConfig()" [disabled]="!canFinalizeApiConfig()">
+                  {{ finalizeButtonLabel() }}
+                </button>
+                @if (finalizeState().kind === 'idle' && !finalizeAdminTokenInput().trim()) {
+                  <span class="text-xs text-text-muted self-center">Token is required for this API mutation.</span>
+                }
+              </div>
+              @if (finalizeError()) {
+                <p class="text-sm text-red-300 mt-3">{{ finalizeError() }}</p>
+              }
+              @if (finalizedConfig(); as finalized) {
+                <dl class="mt-4 space-y-3 text-sm">
+                  <div>
+                    <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Verified launcher id</dt>
+                    <dd class="mono text-xs break-all mt-1">{{ finalized.protocol_config_launcher_id }}</dd>
+                  </div>
+                  <div>
+                    <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Protocol config hash</dt>
+                    <dd class="mono text-xs break-all mt-1">{{ finalized.protocol_config_hash || 'not available' }}</dd>
+                  </div>
+                  <div>
+                    <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Env file</dt>
+                    <dd class="mono text-xs break-all mt-1">{{ finalized.env_file_path }}</dd>
+                  </div>
+                </dl>
+                <p class="text-xs text-green-200 mt-3">
+                  API finalize complete. Refresh Trust Roots or retry vault creation.
+                </p>
+              }
+            </div>
           }
         </section>
       </section>
@@ -286,6 +340,7 @@ export class LaunchProtocolConfigComponent {
   private readonly wallet = inject(ChiaWalletService);
   private readonly wasm = inject(ChiaWasmService);
   private readonly launch = inject(ProtocolConfigLaunchService);
+  private readonly adminProtocolConfig = inject(AdminProtocolConfigService);
 
   readonly protocol = signal<ProtocolInfo | null>(null);
   readonly loadingProtocol = signal(false);
@@ -299,6 +354,8 @@ export class LaunchProtocolConfigComponent {
   readonly connectingChia = signal<'goby' | 'sage' | 'sage-walletconnect' | null>(null);
   readonly chiaConnectError = signal<string | null>(null);
   readonly submitState = signal<SubmitState>({ kind: 'idle' });
+  readonly finalizeAdminTokenInput = signal('');
+  readonly finalizeState = signal<FinalizeState>({ kind: 'idle' });
   readonly copyConfirmation = signal<string | null>(null);
 
   readonly walletConnected = computed(() => this.wallet.isConnected());
@@ -335,6 +392,14 @@ export class LaunchProtocolConfigComponent {
     const s = this.submitState();
     return s.kind === 'error' ? s.message : null;
   });
+  readonly finalizedConfig = computed(() => {
+    const s = this.finalizeState();
+    return s.kind === 'finalized' ? s.result : null;
+  });
+  readonly finalizeError = computed(() => {
+    const s = this.finalizeState();
+    return s.kind === 'error' ? s.message : null;
+  });
   readonly canSubmit = computed(() =>
     this.walletConnected()
     && !!this.preview()
@@ -351,6 +416,17 @@ export class LaunchProtocolConfigComponent {
     if (s.kind === 'submitting') return 'Signing and broadcasting…';
     if (s.kind === 'submitted') return 'Launch submitted';
     return 'Launch A.3 on chain';
+  });
+  readonly canFinalizeApiConfig = computed(() =>
+    !!this.submittedResult()
+    && !!this.finalizeAdminTokenInput().trim()
+    && this.finalizeState().kind !== 'finalizing',
+  );
+  readonly finalizeButtonLabel = computed(() => {
+    const s = this.finalizeState();
+    if (s.kind === 'finalizing') return 'Finalizing API…';
+    if (s.kind === 'finalized') return 'Finalize again';
+    return 'Finalize API A.3 config';
   });
 
   constructor() {
@@ -450,6 +526,23 @@ export class LaunchProtocolConfigComponent {
     }
   }
 
+  async finalizeApiConfig(): Promise<void> {
+    if (!this.canFinalizeApiConfig()) return;
+    const result = this.submittedResult();
+    if (!result) return;
+    this.finalizeState.set({ kind: 'finalizing' });
+    try {
+      const finalized = await this.adminProtocolConfig.finalizeProtocolConfig(
+        this.finalizeAdminTokenInput(),
+        result.launcherId,
+      );
+      this.finalizeState.set({ kind: 'finalized', result: finalized });
+      await this.refreshProtocol();
+    } catch (e) {
+      this.finalizeState.set({ kind: 'error', message: formatError(e) });
+    }
+  }
+
   private launchInputs(): ProtocolConfigLaunchInputs | null {
     const poolLauncherId = this.poolLauncherIdInput().trim();
     const governanceLauncherId = this.governanceLauncherIdInput().trim();
@@ -469,4 +562,10 @@ type SubmitState =
   | { kind: 'idle' }
   | { kind: 'submitting' }
   | { kind: 'submitted'; result: ProtocolConfigLaunchResult }
+  | { kind: 'error'; message: string };
+
+type FinalizeState =
+  | { kind: 'idle' }
+  | { kind: 'finalizing' }
+  | { kind: 'finalized'; result: ProtocolConfigFinalizeResponse }
   | { kind: 'error'; message: string };
