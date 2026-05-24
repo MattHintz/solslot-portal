@@ -622,6 +622,27 @@ import { coinId } from '../../../utils/chia-hash';
                 [value]="observationJson"
               ></textarea>
             }
+
+            @if (chainConfirmationObservationHistory().length) {
+              <div class="mt-4 rounded-card border border-white/10 bg-black/20 p-3">
+                <div class="font-display text-sm">Manual observation history</div>
+                <p class="mt-1 text-xs text-text-muted">
+                  Each entry is an operator-triggered public coin-record read for this relay submission only.
+                </p>
+                <ol class="mt-3 grid gap-2 text-xs text-text-muted">
+                  @for (entry of chainConfirmationObservationHistory(); track entry.sequence) {
+                    <li class="rounded-card border border-white/10 bg-black/20 p-2">
+                      <div class="mono break-all" [class.text-brand]="entry.ok" [class.text-yellow-100]="!entry.ok">
+                        {{ entry.observedAt }} · {{ entry.status }}
+                      </div>
+                      <div class="mt-1">
+                        {{ entry.summary }}
+                      </div>
+                    </li>
+                  }
+                </ol>
+              </div>
+            }
           </div>
         </div>
 
@@ -794,6 +815,7 @@ export class RosterSpendPackageReviewComponent {
   readonly broadcastSubmissionInFlight = signal(false);
   readonly chainConfirmationMonitoringResult = signal<AdminRosterChainConfirmationMonitoringResult | null>(null);
   readonly chainConfirmationMonitoringInFlight = signal(false);
+  readonly chainConfirmationObservationHistory = signal<ChainConfirmationObservationHistoryItem[]>([]);
 
   readonly parseError = computed(() => {
     const text = this.packageText().trim();
@@ -1453,7 +1475,7 @@ export class RosterSpendPackageReviewComponent {
       });
       return;
     }
-    this.clearChainConfirmationObservation();
+    this.clearLatestChainConfirmationObservation();
     this.chainConfirmationMonitoringInFlight.set(true);
     try {
       const result = await this.chainConfirmationMonitoring.observe({
@@ -1461,13 +1483,16 @@ export class RosterSpendPackageReviewComponent {
         sourceSingletonCoinId: submissionRecord.source_candidate.singleton_coin_id,
       });
       this.chainConfirmationMonitoringResult.set(result);
+      this.recordChainConfirmationObservation(result);
     } catch (e) {
-      this.chainConfirmationMonitoringResult.set({
+      const result: AdminRosterChainConfirmationMonitoringResult = {
         ok: false,
         status: 'fails_chain_confirmation_monitoring_rechecks',
         failures: [`chain confirmation observation failed: ${errorMessage(e)}`],
         observation: null,
-      });
+      };
+      this.chainConfirmationMonitoringResult.set(result);
+      this.recordChainConfirmationObservation(result);
     } finally {
       this.chainConfirmationMonitoringInFlight.set(false);
     }
@@ -1541,18 +1566,41 @@ export class RosterSpendPackageReviewComponent {
   }
 
   private clearBroadcastSubmission(): void {
-    this.clearChainConfirmationObservation();
+    this.resetChainConfirmationObservation();
     this.broadcastSubmissionResult.set(null);
   }
 
   private resetBroadcastSubmission(): void {
-    this.clearChainConfirmationObservation();
+    this.resetChainConfirmationObservation();
     this.broadcastSubmissionResult.set(null);
     this.operatorBroadcastConfirmed.set(false);
   }
 
-  private clearChainConfirmationObservation(): void {
+  private clearLatestChainConfirmationObservation(): void {
     this.chainConfirmationMonitoringResult.set(null);
+  }
+
+  private resetChainConfirmationObservation(): void {
+    this.clearLatestChainConfirmationObservation();
+    this.chainConfirmationObservationHistory.set([]);
+  }
+
+  private recordChainConfirmationObservation(result: AdminRosterChainConfirmationMonitoringResult): void {
+    const observationStatus = result.observation?.chain_confirmation_observation.observation_status;
+    const childCount = result.observation?.observed_coin_record_summary.child_coin_record_count;
+    const summary = result.ok && observationStatus
+      ? `${observationStatus}; child_records=${childCount ?? 0}; relay_acceptance=not_chain_confirmation`
+      : result.failures[0] ?? 'chain observation failed without detail';
+    this.chainConfirmationObservationHistory.update((entries) => [
+      ...entries,
+      {
+        sequence: entries.length + 1,
+        observedAt: new Date().toISOString(),
+        ok: result.ok,
+        status: result.status,
+        summary,
+      },
+    ]);
   }
 
   private compareSerializedProgramHash(
@@ -1646,6 +1694,14 @@ type OperatorFlowStep = {
   title: string;
   complete: boolean;
   status: string;
+};
+
+type ChainConfirmationObservationHistoryItem = {
+  sequence: number;
+  observedAt: string;
+  ok: boolean;
+  status: string;
+  summary: string;
 };
 
 function summarizePackage(pkg: unknown): ReviewSummary | null {

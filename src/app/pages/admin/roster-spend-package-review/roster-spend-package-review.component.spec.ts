@@ -991,6 +991,34 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(observationJson?.toLowerCase()).not.toContain('jwt');
   });
 
+  it('keeps manual observation history for repeated operator-triggered chain reads', async () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    component.setOperatorBroadcastConfirmed(true);
+    component.setOperatorBroadcastNetwork('testnet11');
+    await component.submitSignedBundleToRelay();
+    await component.observeChainConfirmation();
+    await component.observeChainConfirmation();
+    fixture.detectChanges();
+
+    expect(chainConfirmationMonitoring.observe).toHaveBeenCalledTimes(2);
+    expect(signedBundleBroadcast.submit).toHaveBeenCalledTimes(1);
+    expect(component.chainConfirmationObservationHistory().length).toBe(2);
+    expect(component.chainConfirmationObservationHistory().every((entry) => entry.ok)).toBeTrue();
+    expect(component.chainConfirmationObservationHistory().every((entry) => (
+      entry.summary === 'source_singleton_spend_observed_on_chain; child_records=1; relay_acceptance=not_chain_confirmation'
+    ))).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('Manual observation history');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Each entry is an operator-triggered public coin-record read for this relay submission only.',
+    );
+    expect(fixture.nativeElement.textContent).toContain('relay_acceptance=not_chain_confirmation');
+  });
+
   it('surfaces chain observation failures without an observation preview', async () => {
     chainConfirmationMonitoring.observe.and.resolveTo({
       ok: false,
@@ -1030,6 +1058,7 @@ describe('RosterSpendPackageReviewComponent', () => {
     await component.observeChainConfirmation();
     fixture.detectChanges();
     expect(component.chainConfirmationObservationJson()).not.toBeNull();
+    expect(component.chainConfirmationObservationHistory().length).toBe(1);
 
     component.setOperatorBroadcastNetwork('testnet11 ');
     fixture.detectChanges();
@@ -1037,6 +1066,7 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(component.broadcastSubmissionResult()).toBeNull();
     expect(component.chainConfirmationMonitoringResult()).toBeNull();
     expect(component.chainConfirmationObservationJson()).toBeNull();
+    expect(component.chainConfirmationObservationHistory()).toEqual([]);
   });
 
   it('does not submit to relay without explicit broadcast confirmation', async () => {
