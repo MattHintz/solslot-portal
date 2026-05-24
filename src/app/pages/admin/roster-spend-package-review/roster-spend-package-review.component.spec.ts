@@ -448,6 +448,24 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(disabledButton?.disabled).toBeTrue();
   });
 
+  it('shows the admin operator flow status and boundary exclusions', () => {
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('A.5 operator flow status');
+    expect(fixture.nativeElement.textContent).toContain(
+      'This build can take an A.5 add-admin package from local review through wallet',
+    );
+    expect(fixture.nativeElement.textContent).toContain('1. Local package review');
+    expect(fixture.nativeElement.textContent).toContain('2. Unsigned CoinSpend candidate');
+    expect(fixture.nativeElement.textContent).toContain('3. Wallet signature collection');
+    expect(fixture.nativeElement.textContent).toContain('4. Explicit relay submission');
+    expect(fixture.nativeElement.textContent).toContain('5. Manual chain observation');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Not included: backend authority, automatic chain-confirmation claims, hidden',
+    );
+    expect(component.operatorFlowSteps().every((step) => !step.complete)).toBeTrue();
+  });
+
   it('renders invalid JSON parse errors without running preflight', () => {
     component.setPackageText('{ invalid json');
     fixture.detectChanges();

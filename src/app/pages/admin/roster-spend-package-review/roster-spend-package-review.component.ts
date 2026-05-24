@@ -626,6 +626,34 @@ import { coinId } from '../../../utils/chia-hash';
         </div>
 
         <div class="grid gap-4 content-start">
+          <div class="card border-brand/30 bg-brand/5">
+            <div class="font-display text-lg">A.5 operator flow status</div>
+            <p class="mt-2 text-sm text-text-muted">
+              This build can take an A.5 add-admin package from local review through wallet
+              signature, explicit relay submission, and manual public-chain observation.
+            </p>
+            <ol class="mt-4 grid gap-3">
+              @for (step of operatorFlowSteps(); track step.title) {
+                <li class="rounded-card border border-white/10 bg-black/20 p-3">
+                  <div
+                    class="font-display text-sm"
+                    [class.text-brand]="step.complete"
+                    [class.text-yellow-100]="!step.complete"
+                  >
+                    {{ step.title }}
+                  </div>
+                  <p class="mt-1 text-xs text-text-muted">
+                    {{ step.status }}
+                  </p>
+                </li>
+              }
+            </ol>
+            <p class="mt-4 text-xs text-text-muted">
+              Not included: backend authority, automatic chain-confirmation claims, hidden
+              resubmission, private-key handling, or roster transition recomputation after signing.
+            </p>
+          </div>
+
           <div class="card">
             <div class="font-display text-lg">Local preflight</div>
             @if (!packageText().trim()) {
@@ -819,6 +847,52 @@ export class RosterSpendPackageReviewComponent {
       this.broadcastSubmissionResult()?.submissionRecord &&
       !this.chainConfirmationMonitoringInFlight()
     );
+  });
+
+  readonly operatorFlowSteps = computed<OperatorFlowStep[]>(() => {
+    const preflight = this.preflight();
+    const signerReady = this.signerInputReadiness();
+    const candidate = this.localUnsignedCoinSpendCandidateResult();
+    const signature = this.walletSignatureCollectionResult();
+    const broadcast = this.broadcastSubmissionResult();
+    const observation = this.chainConfirmationMonitoringResult();
+    return [
+      {
+        title: '1. Local package review',
+        complete: Boolean(preflight?.ok && signerReady.ok),
+        status: preflight?.ok && signerReady.ok
+          ? 'Package and signer inputs pass local hash checks.'
+          : 'Paste a package and verify required signer inputs before spend construction.',
+      },
+      {
+        title: '2. Unsigned CoinSpend candidate',
+        complete: Boolean(candidate?.ok && candidate.candidate),
+        status: candidate?.ok && candidate.candidate
+          ? 'Unsigned candidate is available for wallet signing.'
+          : 'Build remains before signing until candidate rechecks pass.',
+      },
+      {
+        title: '3. Wallet signature collection',
+        complete: Boolean(signature?.ok && signature.signedCandidate),
+        status: signature?.ok && signature.signedCandidate
+          ? 'Signed bundle candidate exists and is still not broadcast.'
+          : 'Operator must explicitly collect a wallet signature after candidate review.',
+      },
+      {
+        title: '4. Explicit relay submission',
+        complete: Boolean(broadcast?.ok && broadcast.submissionRecord),
+        status: broadcast?.ok && broadcast.submissionRecord
+          ? 'Relay submission record exists; relay acceptance is not confirmation.'
+          : 'Operator confirmation and matching network are required before relay submission.',
+      },
+      {
+        title: '5. Manual chain observation',
+        complete: Boolean(observation?.ok && observation.observation),
+        status: observation?.ok && observation.observation
+          ? 'Public coin-record observation exists without resubmission or roster authority claims.'
+          : 'After relay submission, manually observe public coin records for spent/unspent status.',
+      },
+    ];
   });
 
   readonly rosterMaterialPrefill = computed<RosterMaterialPrefill>(() => {
@@ -1566,6 +1640,12 @@ type ReviewSummary = {
   liveSingletonSource: string;
   apiCrossCheckStatus: string;
   requiredInputs: string[];
+};
+
+type OperatorFlowStep = {
+  title: string;
+  complete: boolean;
+  status: string;
 };
 
 function summarizePackage(pkg: unknown): ReviewSummary | null {
