@@ -74,6 +74,7 @@ describe('TrustRootsComponent', () => {
     );
     expect(text).toContain('Technical support procedure: populis_api/GENESIS_README.md §A.3');
     expect(text).toContain('populis_api/SECURITY.md §A.3');
+    expect(text).toContain('Launch A.3 in portal');
     expect(component().protocolConfigStatus()).toEqual({ kind: 'not-configured' });
   });
 

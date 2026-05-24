@@ -70,6 +70,9 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
           <a routerLink="/admin/trust-roots" class="btn btn--ghost">
             Trust roots
           </a>
+          <a routerLink="/admin/launch-protocol-config" class="btn btn--ghost">
+            Launch A.3
+          </a>
           <a routerLink="/admin/launch-authority-v2" class="btn btn--ghost">
             Launch authority v2
           </a>

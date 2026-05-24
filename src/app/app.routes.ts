@@ -89,6 +89,15 @@ export const routes: Routes = [
     title: 'Trust Roots · Populis',
   },
   {
+    path: 'admin/launch-protocol-config',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import(
+        './pages/admin/launch-protocol-config/launch-protocol-config.component'
+      ).then((m) => m.LaunchProtocolConfigComponent),
+    title: 'Launch Protocol Config · Populis',
+  },
+  {
     path: 'admin/authority-v2/add-admin-slot',
     canActivate: [adminAuthGuard],
     loadComponent: () =>

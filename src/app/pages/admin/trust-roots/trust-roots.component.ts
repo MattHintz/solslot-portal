@@ -411,6 +411,9 @@ type VerifyStatus =
                 Technical support procedure: <span class="mono">populis_api/GENESIS_README.md §A.3</span>
                 and <span class="mono">populis_api/SECURITY.md §A.3</span>.
               </p>
+              <a routerLink="/admin/launch-protocol-config" class="btn btn--primary text-xs mt-4">
+                Launch A.3 in portal
+              </a>
             </div>
           } @else {
           <dl class="mt-5 space-y-3 text-sm flex-1">
