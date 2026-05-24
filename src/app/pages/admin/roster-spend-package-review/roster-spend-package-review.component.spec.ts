@@ -466,6 +466,32 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(component.operatorFlowSteps().every((step) => !step.complete)).toBeTrue();
   });
 
+  it('shows plain-English legal and broker-dealer admin guidance', () => {
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Plain-English guide');
+    expect(fixture.nativeElement.textContent).toContain('For legal and broker-dealer administrators');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Use this screen only after your off-chain approval process says this roster change is authorized.',
+    );
+    expect(fixture.nativeElement.textContent).toContain('What you do');
+    expect(fixture.nativeElement.textContent).toContain('Sign only when the reviewed change matches your approval record.');
+    expect(fixture.nativeElement.textContent).toContain('How to read the status');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Yellow or red means stop and ask technical support before signing or submitting.',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Chain observation is a public look-up only; it does not approve or change the roster.',
+    );
+    expect(fixture.nativeElement.textContent).toContain('Safety rules');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Never paste a seed phrase, private key, wallet password, API token, JWT, or customer confidential information.',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Keep the approval record, the package, the signature result, relay result, and observation history for audit review.',
+    );
+  });
+
   it('renders invalid JSON parse errors without running preflight', () => {
     component.setPackageText('{ invalid json');
     fixture.detectChanges();

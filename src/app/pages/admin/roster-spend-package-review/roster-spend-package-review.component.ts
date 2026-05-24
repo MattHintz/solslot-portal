@@ -45,10 +45,9 @@ import { coinId } from '../../../utils/chia-hash';
             Review unsigned roster spend package.
           </h1>
           <p class="mt-3 max-w-3xl text-sm text-text-muted">
-            Paste an exported A.5 unsigned roster-spend package, run local preflight checks,
-            review the signer-facing summary, and optionally collect a wallet signature after
-            unsigned candidate rechecks pass. Relay submission requires a separate operator
-            confirmation and never claims chain confirmation or backend authority.
+            Plain-English admin workflow for reviewing an authorized roster change, signing it
+            with a connected wallet, submitting it only after explicit confirmation, and checking
+            public-chain observation afterward.
           </p>
         </div>
         <a routerLink="/admin/authority-v2/add-admin-slot" class="btn btn--ghost">
@@ -647,6 +646,45 @@ import { coinId } from '../../../utils/chia-hash';
         </div>
 
         <div class="grid gap-4 content-start">
+          <div class="card border-yellow-500/30 bg-yellow-500/5">
+            <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-yellow-100/80">
+              Plain-English guide
+            </div>
+            <div class="font-display mt-2 text-lg">For legal and broker-dealer administrators</div>
+            <p class="mt-2 text-sm text-text-muted">
+              Use this screen only after your off-chain approval process says this roster change is authorized.
+              This page helps you carry out that approved protocol action; it does not provide legal approval.
+            </p>
+            <div class="mt-4 grid gap-3 text-xs text-text-muted">
+              <div class="rounded-card border border-white/10 bg-black/20 p-3">
+                <div class="font-display text-sm text-text">What you do</div>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                  <li>Paste the prepared roster-change package.</li>
+                  <li>Wait for the page checks before using your wallet.</li>
+                  <li>Sign only when the reviewed change matches your approval record.</li>
+                  <li>Submit only after checking the confirmation box and network name.</li>
+                  <li>Use chain observation to check public network status afterward.</li>
+                </ul>
+              </div>
+              <div class="rounded-card border border-white/10 bg-black/20 p-3">
+                <div class="font-display text-sm text-text">How to read the status</div>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                  <li>Green means the current step passed the page checks.</li>
+                  <li>Yellow or red means stop and ask technical support before signing or submitting.</li>
+                  <li>Submitted to relay means sent to the network relay, not final on-chain confirmation.</li>
+                  <li>Chain observation is a public look-up only; it does not approve or change the roster.</li>
+                </ul>
+              </div>
+              <div class="rounded-card border border-white/10 bg-black/20 p-3">
+                <div class="font-display text-sm text-text">Safety rules</div>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                  <li>Never paste a seed phrase, private key, wallet password, API token, JWT, or customer confidential information.</li>
+                  <li>Keep the approval record, the package, the signature result, relay result, and observation history for audit review.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           <div class="card border-brand/30 bg-brand/5">
             <div class="font-display text-lg">A.5 operator flow status</div>
             <p class="mt-2 text-sm text-text-muted">
