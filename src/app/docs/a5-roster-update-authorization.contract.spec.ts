@@ -1,6 +1,7 @@
 import {
   A5_ROSTER_UPDATE_AUTHORIZATION_MODEL,
   A5_ROSTER_UPDATE_AUTHORIZATION_TEXT,
+  A5_ROSTER_UPDATE_CHAIN_CONFIRMATION_MONITORING_CONTRACT,
   A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT,
   A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT,
   A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT,
@@ -379,6 +380,68 @@ describe('A.5 roster update authorization contract', () => {
     expect(text).toContain('relay acceptance is not roster authority and is not chain confirmation');
     expect(text).toContain('must not collect wallet signatures, sign, mutate CoinSpends');
     expect(text).toContain('call the backend as roster authority, claim chain confirmation');
+    expect(text).toContain('wallet signature providers, API credentials, JWTs, nonces, secrets, or backend authority attestations');
+  });
+
+  it('pins chain confirmation monitoring as observation-only from public coin records', () => {
+    expect(A5_ROSTER_UPDATE_CHAIN_CONFIRMATION_MONITORING_CONTRACT.boundary).toBe(
+      'observe_chain_confirmation_from_submission_record_without_resubmission',
+    );
+    expect(A5_ROSTER_UPDATE_CHAIN_CONFIRMATION_MONITORING_CONTRACT.result).toBe(
+      'chain_confirmation_observation_only',
+    );
+    expect(A5_ROSTER_UPDATE_CHAIN_CONFIRMATION_MONITORING_CONTRACT.requiredInputs).toEqual([
+      'broadcast_submission_record',
+      'source_singleton_coin_id',
+      'coinset_coin_record_client',
+    ]);
+    expect(A5_ROSTER_UPDATE_CHAIN_CONFIRMATION_MONITORING_CONTRACT.requiredRechecks).toEqual([
+      'broadcast_submission_record_result_is_submitted_spend_bundle_push_result_not_confirmation',
+      'relay_acceptance_is_not_treated_as_chain_confirmation',
+      'source_singleton_coin_id_matches_submission_record',
+      'source_singleton_coin_record_is_observed_from_chain',
+      'spent_block_index_or_unspent_status_is_reported_without_roster_authority_claim',
+      'optional_child_records_are_observed_without_recomputing_roster_transition',
+    ]);
+    expect(A5_ROSTER_UPDATE_CHAIN_CONFIRMATION_MONITORING_CONTRACT.allowedMaterial).toEqual([
+      'broadcast_submission_record',
+      'public_coin_records',
+      'chain_height_metadata',
+    ]);
+    expect(A5_ROSTER_UPDATE_CHAIN_CONFIRMATION_MONITORING_CONTRACT.allowedOutputs).toEqual([
+      'chain_confirmation_observation',
+      'observed_coin_record_summary',
+      'post_confirmation_monitoring_hints',
+    ]);
+    expect(text).toContain('may observe public coin records for a broadcast submission record');
+    expect(text).toContain('chain_confirmation_observation_only');
+    expect(text).toContain('source singleton coin record is observed from chain');
+  });
+
+  it('keeps chain confirmation monitoring outside resubmission, signing, backend authority, and relay-confirmation conflation', () => {
+    expect(A5_ROSTER_UPDATE_CHAIN_CONFIRMATION_MONITORING_CONTRACT.forbiddenActions).toEqual([
+      'push_transaction',
+      'resubmit_spend_bundle',
+      'collect_wallet_signature',
+      'sign',
+      'mutate_coin_spends',
+      'recompute_roster_transition',
+      'call_backend_as_roster_authority',
+      'treat_relay_acceptance_as_confirmation',
+    ]);
+    expect(A5_ROSTER_UPDATE_CHAIN_CONFIRMATION_MONITORING_CONTRACT.forbiddenMaterial).toEqual([
+      'private_key',
+      'mnemonic',
+      'wallet_signature_provider',
+      'api_credentials',
+      'jwt',
+      'nonce',
+      'secret',
+      'backend_authority_attestation',
+    ]);
+    expect(text).toContain('relay acceptance is not treated as chain confirmation');
+    expect(text).toContain('must not push transactions, resubmit spend bundles');
+    expect(text).toContain('treat relay acceptance as confirmation');
     expect(text).toContain('wallet signature providers, API credentials, JWTs, nonces, secrets, or backend authority attestations');
   });
 });
