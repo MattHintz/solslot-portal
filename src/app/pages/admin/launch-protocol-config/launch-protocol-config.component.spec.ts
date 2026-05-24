@@ -21,6 +21,7 @@ describe('LaunchProtocolConfigComponent', () => {
   const walletConnected = signal(false);
   const walletPubkey = signal<string | null>(null);
   const walletConnectionKind = signal<'goby' | 'sage' | 'sage-walletconnect' | null>(null);
+  const sageWalletConnectUri = signal<string | null>(null);
 
   beforeEach(async () => {
     http = jasmine.createSpyObj('HttpClient', ['get']);
@@ -35,7 +36,7 @@ describe('LaunchProtocolConfigComponent', () => {
       isConnected: walletConnected.asReadonly(),
       pubkey: walletPubkey.asReadonly(),
       connectionKind: walletConnectionKind.asReadonly(),
-      sageWalletConnectUri: signal(null).asReadonly(),
+      sageWalletConnectUri: sageWalletConnectUri.asReadonly(),
     });
     wallet.hasGoby.and.returnValue(true);
     wallet.hasSage.and.returnValue(true);
@@ -78,6 +79,7 @@ describe('LaunchProtocolConfigComponent', () => {
     walletConnected.set(false);
     walletPubkey.set(null);
     walletConnectionKind.set(null);
+    sageWalletConnectUri.set(null);
     fixture = TestBed.createComponent(LaunchProtocolConfigComponent);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -126,6 +128,28 @@ describe('LaunchProtocolConfigComponent', () => {
     });
     expect(text).toContain('A.3 launch submitted');
     expect(text).toContain(`POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID=0x${'aa'.repeat(32)}`);
+  });
+
+  it('shows the Sage WalletConnect pairing URI while approval is pending', () => {
+    sageWalletConnectUri.set('wc:populis-test-pairing');
+    fixture.detectChanges();
+
+    const text = normalizeText(fixture.nativeElement.textContent as string);
+
+    expect(text).toContain('Sage WalletConnect is waiting.');
+    expect(text).toContain('Copy pairing URI');
+    expect(text).toContain('Cancel');
+    expect(text).toContain('wc:populis-test-pairing');
+  });
+
+  it('cancels a pending Sage WalletConnect pairing from the A.3 wizard', () => {
+    wallet.disconnect = jasmine.createSpy('disconnect');
+    fixture.componentInstance.connectingChia.set('sage-walletconnect');
+
+    fixture.componentInstance.cancelSagePairing();
+
+    expect(wallet.disconnect).toHaveBeenCalledOnceWith();
+    expect(fixture.componentInstance.connectingChia()).toBeNull();
   });
 });
 

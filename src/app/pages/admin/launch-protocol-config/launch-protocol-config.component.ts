@@ -155,8 +155,29 @@ import { formatError } from '../../../utils/format-error';
               @if (connectingChia()) {
                 <p class="text-xs text-text-muted mt-3">Connecting {{ connectingChia() }}…</p>
               }
+              @if (sageWalletConnectUri(); as uri) {
+                <div class="mt-4 rounded-card border border-brand/30 bg-brand/10 p-3">
+                  <div class="font-display text-lg">Sage WalletConnect is waiting.</div>
+                  <p class="text-xs text-text-muted mt-2 leading-relaxed">
+                    Open Sage, choose WalletConnect, then paste this pairing URI if Sage does
+                    not open automatically.
+                  </p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button type="button" class="btn btn--primary text-xs" (click)="copySagePairUri(uri)">
+                      Copy pairing URI
+                    </button>
+                    <button type="button" class="btn btn--ghost text-xs" (click)="cancelSagePairing()">
+                      Cancel
+                    </button>
+                  </div>
+                  <pre class="mono mt-3 max-h-32 overflow-auto rounded-card border border-white/10 bg-black/30 p-3 text-[0.65rem] text-text-muted">{{ uri }}</pre>
+                </div>
+              }
               @if (chiaConnectError()) {
                 <p class="text-xs text-red-300 mt-3">{{ chiaConnectError() }}</p>
+              }
+              @if (copyConfirmation()) {
+                <p class="text-xs text-green-200 mt-3">{{ copyConfirmation() }}</p>
               }
               @if (!chiaWasmReady()) {
                 <p class="text-xs text-yellow-200 mt-3">Chia WASM is still loading.  Reload if this does not clear.</p>
@@ -283,6 +304,7 @@ export class LaunchProtocolConfigComponent {
   readonly walletConnected = computed(() => this.wallet.isConnected());
   readonly walletPubkey = computed(() => this.wallet.pubkey());
   readonly walletConnectionKind = computed(() => this.wallet.connectionKind());
+  readonly sageWalletConnectUri = this.wallet.sageWalletConnectUri;
   readonly chiaWasmReady = computed(() => this.wasm.ready());
 
   readonly previewResult = computed<
@@ -387,6 +409,21 @@ export class LaunchProtocolConfigComponent {
   useConnectedGovernanceKey(): void {
     const pubkey = this.walletPubkey();
     if (pubkey) this.governancePubkeyInput.set(pubkey);
+  }
+
+  async copySagePairUri(uri: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(uri);
+      this.copyConfirmation.set('Sage pairing URI copied.');
+    } catch {
+      this.chiaConnectError.set('Could not copy pairing URI. Select and copy it manually.');
+    }
+  }
+
+  cancelSagePairing(): void {
+    this.wallet.disconnect();
+    this.connectingChia.set(null);
+    this.chiaConnectError.set(null);
   }
 
   async submitLaunch(): Promise<void> {

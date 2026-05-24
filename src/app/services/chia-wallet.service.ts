@@ -105,23 +105,15 @@ export class ChiaWalletService {
     const client = await this.getOrInitSageWalletConnectClient();
     const chainId = chiaWalletConnectChainId();
     const { uri, approval } = await client.connect({
-      requiredNamespaces: {
-        chia: {
-          methods: [
-            'chip0002_getPublicKeys',
-            'chia_getAddress',
-            'chip0002_signCoinSpends',
-          ],
-          chains: [chainId],
-          events: [],
-        },
-      },
       optionalNamespaces: {
         chia: {
           methods: [
+            'chip0002_getPublicKeys',
             'chia_getPublicKeys',
+            'chia_getAddress',
             'chia_getCurrentAddress',
             'chip0002_getCurrentAddress',
+            'chip0002_signCoinSpends',
             'chia_signCoinSpends',
             'chia_filterUnlockedCoins',
             'chip0002_filterUnlockedCoins',
