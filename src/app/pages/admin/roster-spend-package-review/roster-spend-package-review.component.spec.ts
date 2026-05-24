@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 
 import { RosterSpendPackageReviewComponent } from './roster-spend-package-review.component';
 import { AdminAuthorityV2Service } from '../../../services/admin-authority-v2/admin-authority-v2.service';
+import { AdminRosterChainConfirmationMonitoringService } from '../../../services/admin-authority-v2/admin-roster-chain-confirmation-monitoring.service';
 import { AdminRosterMipsExecutionCoinSpendService } from '../../../services/admin-authority-v2/admin-roster-mips-execution-coin-spend.service';
 import { AdminRosterSignedBundleBroadcastService } from '../../../services/admin-authority-v2/admin-roster-signed-bundle-broadcast.service';
 import { AdminRosterWalletSignatureCollectionService } from '../../../services/admin-authority-v2/admin-roster-wallet-signature-collection.service';
@@ -155,6 +156,7 @@ describe('RosterSpendPackageReviewComponent', () => {
   let mipsCandidate: jasmine.SpyObj<Pick<AdminRosterMipsExecutionCoinSpendService, 'build'>>;
   let walletSignatureCollection: jasmine.SpyObj<Pick<AdminRosterWalletSignatureCollectionService, 'collect'>>;
   let signedBundleBroadcast: jasmine.SpyObj<Pick<AdminRosterSignedBundleBroadcastService, 'submit'>>;
+  let chainConfirmationMonitoring: jasmine.SpyObj<Pick<AdminRosterChainConfirmationMonitoringService, 'observe'>>;
 
   beforeEach(async () => {
     v2 = jasmine.createSpyObj('AdminAuthorityV2Service', [
@@ -332,7 +334,84 @@ describe('RosterSpendPackageReviewComponent', () => {
         ],
       },
     });
-
+    chainConfirmationMonitoring = jasmine.createSpyObj('AdminRosterChainConfirmationMonitoringService', ['observe']);
+    chainConfirmationMonitoring.observe.and.resolveTo({
+      ok: true,
+      status: 'chain_confirmation_observation_only',
+      failures: [],
+      observation: {
+        version: 1,
+        kind: 'admin_authority_v2_roster_update_chain_confirmation_observation',
+        boundary: 'observe_chain_confirmation_from_submission_record_without_resubmission',
+        result: 'chain_confirmation_observation_only',
+        source_submission: {
+          kind: 'admin_authority_v2_roster_update_broadcast_submission_record',
+          result: 'submitted_spend_bundle_push_result_not_confirmation',
+          singleton_coin_id: H4,
+          roster_update_binding_hash: H3,
+          relay_status: 'SUCCESS',
+          relay_acceptance_is_chain_confirmation: false,
+        },
+        source_coin_record: {
+          coin: {
+            parent_coin_info: H1,
+            puzzle_hash: H2,
+            amount: 1,
+          },
+          confirmed_block_index: 100,
+          spent_block_index: 123,
+          coinbase: false,
+          timestamp: 1_700_000_000,
+        },
+        child_coin_records: [
+          {
+            coin: {
+              parent_coin_info: H4,
+              puzzle_hash: H2,
+              amount: 1,
+            },
+            confirmed_block_index: 123,
+            spent_block_index: 0,
+            coinbase: false,
+            timestamp: 1_700_000_100,
+          },
+        ],
+        observed_coin_record_summary: {
+          source_singleton_coin_id: H4,
+          source_coin_confirmed_block_index: 100,
+          source_coin_spent_block_index: 123,
+          source_coin_spent_on_chain: true,
+          source_coin_observation_status: 'source_singleton_coin_spent_on_chain',
+          child_coin_record_count: 1,
+        },
+        chain_confirmation_observation: {
+          relay_acceptance_status: 'not_chain_confirmation',
+          roster_authority_claim: 'not_made',
+          roster_transition_recomputed: false,
+          observation_status: 'source_singleton_spend_observed_on_chain',
+        },
+        allowed_material: [
+          'broadcast_submission_record',
+          'public_coin_records',
+          'chain_height_metadata',
+        ],
+        allowed_outputs: [
+          'chain_confirmation_observation',
+          'observed_coin_record_summary',
+          'post_confirmation_monitoring_hints',
+        ],
+        boundary_guards: [
+          'transaction_not_resubmitted',
+          'wallet_signature_not_collected',
+          'transaction_not_signed',
+          'coin_spends_not_mutated',
+          'roster_transition_not_recomputed',
+          'backend_not_used_as_roster_authority',
+          'relay_acceptance_not_treated_as_confirmation',
+          'private_keys_not_requested',
+        ],
+      },
+    });
 
     await TestBed.configureTestingModule({
       imports: [RosterSpendPackageReviewComponent],
@@ -343,6 +422,7 @@ describe('RosterSpendPackageReviewComponent', () => {
         { provide: AdminRosterMipsExecutionCoinSpendService, useValue: mipsCandidate },
         { provide: AdminRosterWalletSignatureCollectionService, useValue: walletSignatureCollection },
         { provide: AdminRosterSignedBundleBroadcastService, useValue: signedBundleBroadcast },
+        { provide: AdminRosterChainConfirmationMonitoringService, useValue: chainConfirmationMonitoring },
       ],
     }).compileComponents();
 
@@ -827,6 +907,118 @@ describe('RosterSpendPackageReviewComponent', () => {
     expect(recordJson).toContain('SUCCESS');
     expect(recordJson?.toLowerCase()).not.toContain('mnemonic');
     expect(recordJson?.toLowerCase()).not.toContain('jwt');
+  });
+
+  it('keeps chain observation disabled until a relay submission record exists', async () => {
+    fixture.detectChanges();
+    expect(findButtonByText(fixture, 'Check chain observation').disabled).toBeTrue();
+
+    await component.observeChainConfirmation();
+    fixture.detectChanges();
+
+    expect(chainConfirmationMonitoring.observe).not.toHaveBeenCalled();
+    expect(component.chainConfirmationMonitoringResult()?.ok).toBeFalse();
+    expect(component.chainConfirmationMonitoringResult()?.failures).toContain(
+      'broadcast submission record must be available before chain observation',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Available only after a signed bundle has been submitted to the transaction relay.',
+    );
+  });
+
+  it('observes chain confirmation from the relay submission record without resubmitting', async () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    component.setOperatorBroadcastConfirmed(true);
+    component.setOperatorBroadcastNetwork('testnet11');
+    await component.submitSignedBundleToRelay();
+    fixture.detectChanges();
+
+    expect(findButtonByText(fixture, 'Check chain observation').disabled).toBeFalse();
+    await component.observeChainConfirmation();
+    fixture.detectChanges();
+
+    const observationJson = component.chainConfirmationObservationJson();
+    const observation = JSON.parse(observationJson ?? '{}') as Record<string, unknown>;
+    const sourceSubmission = observation['source_submission'] as Record<string, unknown>;
+    const chainObservation = observation['chain_confirmation_observation'] as Record<string, unknown>;
+    const summary = observation['observed_coin_record_summary'] as Record<string, unknown>;
+    const guards = observation['boundary_guards'] as string[];
+
+    expect(chainConfirmationMonitoring.observe).toHaveBeenCalledOnceWith({
+      broadcastSubmissionRecord: component.broadcastSubmissionResult()?.submissionRecord,
+      sourceSingletonCoinId: H4,
+    });
+    expect(signedBundleBroadcast.submit).toHaveBeenCalledTimes(1);
+    expect(component.chainConfirmationMonitoringResult()?.ok).toBeTrue();
+    expect(observation['kind']).toBe('admin_authority_v2_roster_update_chain_confirmation_observation');
+    expect(observation['result']).toBe('chain_confirmation_observation_only');
+    expect(sourceSubmission['relay_acceptance_is_chain_confirmation']).toBeFalse();
+    expect(chainObservation['relay_acceptance_status']).toBe('not_chain_confirmation');
+    expect(chainObservation['roster_authority_claim']).toBe('not_made');
+    expect(chainObservation['roster_transition_recomputed']).toBeFalse();
+    expect(chainObservation['observation_status']).toBe('source_singleton_spend_observed_on_chain');
+    expect(summary['source_coin_observation_status']).toBe('source_singleton_coin_spent_on_chain');
+    expect(summary['child_coin_record_count']).toBe(1);
+    expect(guards).toContain('transaction_not_resubmitted');
+    expect(guards).toContain('relay_acceptance_not_treated_as_confirmation');
+    expect(fixture.nativeElement.textContent).toContain('Chain observation: chain_confirmation_observation_only');
+    expect(fixture.nativeElement.textContent).toContain('source_singleton_spend_observed_on_chain');
+    expect(fixture.nativeElement.textContent).toContain('Relay acceptance remains not chain confirmation; this is an observation-only record.');
+    expect(observationJson?.toLowerCase()).not.toContain('mnemonic');
+    expect(observationJson?.toLowerCase()).not.toContain('jwt');
+  });
+
+  it('surfaces chain observation failures without an observation preview', async () => {
+    chainConfirmationMonitoring.observe.and.resolveTo({
+      ok: false,
+      status: 'fails_chain_confirmation_monitoring_rechecks',
+      failures: ['source singleton coin record must be observed from chain'],
+      observation: null,
+    });
+
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    component.setOperatorBroadcastConfirmed(true);
+    component.setOperatorBroadcastNetwork('testnet11');
+    await component.submitSignedBundleToRelay();
+    await component.observeChainConfirmation();
+    fixture.detectChanges();
+
+    expect(component.chainConfirmationObservationJson()).toBeNull();
+    expect(component.chainConfirmationMonitoringResult()?.ok).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Chain observation: fails_chain_confirmation_monitoring_rechecks');
+    expect(fixture.nativeElement.textContent).toContain('source singleton coin record must be observed from chain');
+  });
+
+  it('clears chain observation when relay submission inputs change', async () => {
+    component.setPackageText(JSON.stringify(validPackage(), null, 2));
+    fillSignerInputs(component);
+    fillRosterMaterialInputs(component);
+    fixture.detectChanges();
+
+    await component.collectWalletSignature();
+    component.setOperatorBroadcastConfirmed(true);
+    component.setOperatorBroadcastNetwork('testnet11');
+    await component.submitSignedBundleToRelay();
+    await component.observeChainConfirmation();
+    fixture.detectChanges();
+    expect(component.chainConfirmationObservationJson()).not.toBeNull();
+
+    component.setOperatorBroadcastNetwork('testnet11 ');
+    fixture.detectChanges();
+
+    expect(component.broadcastSubmissionResult()).toBeNull();
+    expect(component.chainConfirmationMonitoringResult()).toBeNull();
+    expect(component.chainConfirmationObservationJson()).toBeNull();
   });
 
   it('does not submit to relay without explicit broadcast confirmation', async () => {

@@ -8,6 +8,10 @@ import {
   bytesToHexPrefixed,
 } from '../../../services/admin-authority-v2/admin-authority-v2.service';
 import {
+  AdminRosterChainConfirmationMonitoringResult,
+  AdminRosterChainConfirmationMonitoringService,
+} from '../../../services/admin-authority-v2/admin-roster-chain-confirmation-monitoring.service';
+import {
   AdminRosterMipsExecutionCoinSpendResult,
   AdminRosterMipsExecutionCoinSpendService,
 } from '../../../services/admin-authority-v2/admin-roster-mips-execution-coin-spend.service';
@@ -526,6 +530,99 @@ import { coinId } from '../../../utils/chia-hash';
               ></textarea>
             }
           </div>
+
+          <div class="card">
+            <div class="font-display text-lg">Chain confirmation observation</div>
+            <p class="mt-2 text-sm text-text-muted">
+              Observe public coin records for the submitted roster update. This does not resubmit,
+              sign, call backend authority, mutate CoinSpends, recompute the roster transition, or
+              treat relay acceptance as chain confirmation.
+            </p>
+
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                class="btn btn--primary"
+                type="button"
+                (click)="observeChainConfirmation()"
+                [disabled]="!canObserveChainConfirmation()"
+              >
+                @if (chainConfirmationMonitoringInFlight()) {
+                  Observing chain records…
+                } @else {
+                  Check chain observation
+                }
+              </button>
+              <span class="text-xs text-text-muted">
+                Manual public-chain read only; no broadcast or wallet action is performed.
+              </span>
+            </div>
+
+            @if (!broadcastSubmissionRecordJson()) {
+              <p class="mt-3 text-xs text-text-muted">
+                Available only after a signed bundle has been submitted to the transaction relay.
+              </p>
+            }
+
+            @if (chainConfirmationMonitoringResult(); as r) {
+              @if (r.ok) {
+                @if (r.observation; as observation) {
+                  <div class="mt-4 rounded-card border border-brand/30 bg-brand/10 p-3">
+                    <div class="font-display text-sm text-brand">
+                      Chain observation: {{ r.status }}
+                    </div>
+                    <dl class="mt-3 grid gap-2 text-xs text-text-muted md:grid-cols-2">
+                      <div>
+                        <dt>Source singleton coin</dt>
+                        <dd class="mono break-all text-brand">
+                          {{ observation.observed_coin_record_summary.source_coin_observation_status }}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Observation status</dt>
+                        <dd class="mono break-all text-brand">
+                          {{ observation.chain_confirmation_observation.observation_status }}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>spent_block_index</dt>
+                        <dd class="mono break-all text-brand">
+                          {{ observation.observed_coin_record_summary.source_coin_spent_block_index }}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Observed child records</dt>
+                        <dd class="mono break-all text-brand">
+                          {{ observation.observed_coin_record_summary.child_coin_record_count }}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p class="mt-3 text-xs text-text-muted">
+                      Relay acceptance remains not chain confirmation; this is an observation-only record.
+                    </p>
+                  </div>
+                }
+              } @else {
+                <div class="mt-4 rounded-card border border-yellow-500/30 bg-yellow-500/10 p-3">
+                  <div class="font-display text-sm text-yellow-100">
+                    Chain observation: {{ r.status }}
+                  </div>
+                  <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-yellow-100/80">
+                    @for (failure of r.failures; track failure) {
+                      <li>{{ failure }}</li>
+                    }
+                  </ul>
+                </div>
+              }
+            }
+
+            @if (chainConfirmationObservationJson(); as observationJson) {
+              <textarea
+                class="mt-3 min-h-72 w-full rounded-card border border-white/10 bg-black/30 p-4 mono text-xs text-text outline-none"
+                readonly
+                [value]="observationJson"
+              ></textarea>
+            }
+          </div>
         </div>
 
         <div class="grid gap-4 content-start">
@@ -648,6 +745,7 @@ export class RosterSpendPackageReviewComponent {
   private readonly mipsCandidate = inject(AdminRosterMipsExecutionCoinSpendService);
   private readonly walletSignatureCollection = inject(AdminRosterWalletSignatureCollectionService);
   private readonly signedBundleBroadcast = inject(AdminRosterSignedBundleBroadcastService);
+  private readonly chainConfirmationMonitoring = inject(AdminRosterChainConfirmationMonitoringService);
 
   readonly packageText = signal('');
   readonly currentMipsPuzzleReveal = signal('');
@@ -666,6 +764,8 @@ export class RosterSpendPackageReviewComponent {
   readonly operatorBroadcastNetwork = signal('');
   readonly broadcastSubmissionResult = signal<AdminRosterSignedBundleBroadcastResult | null>(null);
   readonly broadcastSubmissionInFlight = signal(false);
+  readonly chainConfirmationMonitoringResult = signal<AdminRosterChainConfirmationMonitoringResult | null>(null);
+  readonly chainConfirmationMonitoringInFlight = signal(false);
 
   readonly parseError = computed(() => {
     const text = this.packageText().trim();
@@ -710,6 +810,14 @@ export class RosterSpendPackageReviewComponent {
       this.operatorBroadcastNetwork().trim() &&
       !this.broadcastNetworkMismatch() &&
       !this.broadcastSubmissionInFlight()
+    );
+  });
+
+  readonly canObserveChainConfirmation = computed(() => {
+    return Boolean(
+      this.broadcastSubmissionResult()?.ok &&
+      this.broadcastSubmissionResult()?.submissionRecord &&
+      !this.chainConfirmationMonitoringInFlight()
     );
   });
 
@@ -1161,6 +1269,12 @@ export class RosterSpendPackageReviewComponent {
     return JSON.stringify(result.submissionRecord, null, 2);
   });
 
+  readonly chainConfirmationObservationJson = computed<string | null>(() => {
+    const result = this.chainConfirmationMonitoringResult();
+    if (!result?.ok || !result.observation) return null;
+    return JSON.stringify(result.observation, null, 2);
+  });
+
   async collectWalletSignature(): Promise<void> {
     this.resetBroadcastSubmission();
     const candidateResult = this.localUnsignedCoinSpendCandidateResult();
@@ -1254,6 +1368,37 @@ export class RosterSpendPackageReviewComponent {
     }
   }
 
+  async observeChainConfirmation(): Promise<void> {
+    const submissionRecord = this.broadcastSubmissionResult()?.submissionRecord;
+    if (!submissionRecord) {
+      this.chainConfirmationMonitoringResult.set({
+        ok: false,
+        status: 'fails_chain_confirmation_monitoring_rechecks',
+        failures: ['broadcast submission record must be available before chain observation'],
+        observation: null,
+      });
+      return;
+    }
+    this.clearChainConfirmationObservation();
+    this.chainConfirmationMonitoringInFlight.set(true);
+    try {
+      const result = await this.chainConfirmationMonitoring.observe({
+        broadcastSubmissionRecord: submissionRecord,
+        sourceSingletonCoinId: submissionRecord.source_candidate.singleton_coin_id,
+      });
+      this.chainConfirmationMonitoringResult.set(result);
+    } catch (e) {
+      this.chainConfirmationMonitoringResult.set({
+        ok: false,
+        status: 'fails_chain_confirmation_monitoring_rechecks',
+        failures: [`chain confirmation observation failed: ${errorMessage(e)}`],
+        observation: null,
+      });
+    } finally {
+      this.chainConfirmationMonitoringInFlight.set(false);
+    }
+  }
+
   setOperatorBroadcastConfirmed(value: boolean): void {
     this.clearBroadcastSubmission();
     this.operatorBroadcastConfirmed.set(value);
@@ -1322,12 +1467,18 @@ export class RosterSpendPackageReviewComponent {
   }
 
   private clearBroadcastSubmission(): void {
+    this.clearChainConfirmationObservation();
     this.broadcastSubmissionResult.set(null);
   }
 
   private resetBroadcastSubmission(): void {
+    this.clearChainConfirmationObservation();
     this.broadcastSubmissionResult.set(null);
     this.operatorBroadcastConfirmed.set(false);
+  }
+
+  private clearChainConfirmationObservation(): void {
+    this.chainConfirmationMonitoringResult.set(null);
   }
 
   private compareSerializedProgramHash(
