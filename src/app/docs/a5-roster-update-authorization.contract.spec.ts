@@ -2,6 +2,7 @@ import {
   A5_ROSTER_UPDATE_AUTHORIZATION_MODEL,
   A5_ROSTER_UPDATE_AUTHORIZATION_TEXT,
   A5_ROSTER_UPDATE_MIPS_EXECUTION_COIN_SPEND_CONTRACT,
+  A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT,
   A5_ROSTER_UPDATE_SPEND_BUILDER_INTAKE_CONTRACT,
   A5_ROSTER_UPDATE_UNSIGNED_CLVM_CONSTRUCTION_CONTRACT,
   A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT,
@@ -317,5 +318,67 @@ describe('A.5 roster update authorization contract', () => {
     expect(text).toContain('must not broadcast, call the backend as roster authority');
     expect(text).toContain('mutate CoinSpends');
     expect(text).toContain('private keys, mnemonics, API credentials, JWTs, nonces, secrets, or backend authority attestations');
+  });
+
+  it('pins signed-bundle broadcast as explicit operator-confirmed push only', () => {
+    expect(A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT.boundary).toBe(
+      'push_signed_spend_bundle_after_operator_confirmation',
+    );
+    expect(A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT.result).toBe(
+      'submitted_spend_bundle_push_result_not_confirmation',
+    );
+    expect(A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT.requiredInputs).toEqual([
+      'signed_spend_bundle_candidate',
+      'deterministic_post_signing_review',
+      'operator_broadcast_confirmation',
+      'coinset_push_transaction_client',
+    ]);
+    expect(A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT.requiredRechecks).toEqual([
+      'signed_candidate_result_is_signed_spend_bundle_candidate_not_broadcast',
+      'signed_spend_bundle_contains_expected_coin_spends',
+      'aggregated_signature_is_present_and_96_bytes',
+      'deterministic_post_signing_review_matches_signed_candidate',
+      'operator_confirms_broadcast_intent_and_network',
+      'no_private_keys_wallet_provider_or_backend_authority_material_are_supplied',
+      'push_response_is_recorded_without_claiming_chain_confirmation',
+    ]);
+    expect(A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT.allowedMaterial).toEqual([
+      'signed_spend_bundle_candidate',
+      'aggregated_signature',
+      'push_transaction_response',
+    ]);
+    expect(A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT.allowedOutputs).toEqual([
+      'broadcast_submission_record',
+      'push_transaction_response',
+      'post_broadcast_monitoring_hints',
+    ]);
+    expect(text).toContain('only after explicit operator broadcast confirmation');
+    expect(text).toContain('submitted_spend_bundle_push_result_not_confirmation');
+    expect(text).toContain('push response is recorded without claiming chain confirmation');
+  });
+
+  it('keeps signed-bundle broadcast outside signing, wallet authority, backend authority, and confirmation claims', () => {
+    expect(A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT.forbiddenActions).toEqual([
+      'collect_wallet_signature',
+      'sign',
+      'mutate_coin_spends',
+      'recompute_roster_transition',
+      'call_backend_as_roster_authority',
+      'claim_chain_confirmation',
+    ]);
+    expect(A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT.forbiddenMaterial).toEqual([
+      'private_key',
+      'mnemonic',
+      'wallet_signature_provider',
+      'api_credentials',
+      'jwt',
+      'nonce',
+      'secret',
+      'backend_authority_attestation',
+    ]);
+    expect(text).toContain('relay acceptance is not roster authority and is not chain confirmation');
+    expect(text).toContain('must not collect wallet signatures, sign, mutate CoinSpends');
+    expect(text).toContain('call the backend as roster authority, claim chain confirmation');
+    expect(text).toContain('wallet signature providers, API credentials, JWTs, nonces, secrets, or backend authority attestations');
   });
 });

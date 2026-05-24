@@ -210,6 +210,54 @@ export const A5_ROSTER_UPDATE_WALLET_SIGNATURE_COLLECTION_CONTRACT = {
   ],
 } as const;
 
+export const A5_ROSTER_UPDATE_SIGNED_BUNDLE_BROADCAST_CONTRACT = {
+  boundary: 'push_signed_spend_bundle_after_operator_confirmation',
+  result: 'submitted_spend_bundle_push_result_not_confirmation',
+  requiredInputs: [
+    'signed_spend_bundle_candidate',
+    'deterministic_post_signing_review',
+    'operator_broadcast_confirmation',
+    'coinset_push_transaction_client',
+  ],
+  requiredRechecks: [
+    'signed_candidate_result_is_signed_spend_bundle_candidate_not_broadcast',
+    'signed_spend_bundle_contains_expected_coin_spends',
+    'aggregated_signature_is_present_and_96_bytes',
+    'deterministic_post_signing_review_matches_signed_candidate',
+    'operator_confirms_broadcast_intent_and_network',
+    'no_private_keys_wallet_provider_or_backend_authority_material_are_supplied',
+    'push_response_is_recorded_without_claiming_chain_confirmation',
+  ],
+  allowedMaterial: [
+    'signed_spend_bundle_candidate',
+    'aggregated_signature',
+    'push_transaction_response',
+  ],
+  allowedOutputs: [
+    'broadcast_submission_record',
+    'push_transaction_response',
+    'post_broadcast_monitoring_hints',
+  ],
+  forbiddenActions: [
+    'collect_wallet_signature',
+    'sign',
+    'mutate_coin_spends',
+    'recompute_roster_transition',
+    'call_backend_as_roster_authority',
+    'claim_chain_confirmation',
+  ],
+  forbiddenMaterial: [
+    'private_key',
+    'mnemonic',
+    'wallet_signature_provider',
+    'api_credentials',
+    'jwt',
+    'nonce',
+    'secret',
+    'backend_authority_attestation',
+  ],
+} as const;
+
 export const A5_ROSTER_UPDATE_AUTHORIZATION_TEXT = [
   'A.5 roster updates are admin_authority_v2 singleton spends with SPEND_ADMIN_ROSTER_UPDATE = 0x07 and spend_name ADMIN_ROSTER_UPDATE.',
   'The only protocol authorizer for this A.5 add-admin path is the current admin_authority_v2 MIPS quorum committed in current.mips_root_hash.',
@@ -235,4 +283,8 @@ export const A5_ROSTER_UPDATE_AUTHORIZATION_TEXT = [
   'The wallet signature collection boundary may collect a wallet signature for an already-reviewed unsigned_spend_bundle_candidate and output a signed_spend_bundle_candidate_not_broadcast.',
   'Wallet signature collection must recheck that the unsigned candidate result is unsigned_coin_spend_candidate_only_no_signatures, the unsigned spend bundle candidate contains the expected CoinSpends, CoinSpend bytes match the pre-signing candidate, deterministic pre-signing review data still matches, no existing signatures or signed bundle were supplied, and the wallet signs only the final spend bundle.',
   'Wallet signature collection must not broadcast, call the backend as roster authority, mutate CoinSpends, recompute the roster transition, or include private keys, mnemonics, API credentials, JWTs, nonces, secrets, or backend authority attestations.',
+  'The signed-bundle broadcast boundary may push an already-signed signed_spend_bundle_candidate only after explicit operator broadcast confirmation and must output a submitted_spend_bundle_push_result_not_confirmation.',
+  'Signed-bundle broadcast must recheck that the signed candidate result is signed_spend_bundle_candidate_not_broadcast, the signed spend bundle contains the expected CoinSpends, the aggregated signature is present and 96 bytes, deterministic post-signing review data still matches, the operator confirms broadcast intent and network, no private keys, wallet provider, or backend authority material are supplied, and the push response is recorded without claiming chain confirmation.',
+  'Signed-bundle broadcast may call a transaction relay such as coinset push_transaction, but relay acceptance is not roster authority and is not chain confirmation.',
+  'Signed-bundle broadcast must not collect wallet signatures, sign, mutate CoinSpends, recompute the roster transition, call the backend as roster authority, claim chain confirmation, or include private keys, mnemonics, wallet signature providers, API credentials, JWTs, nonces, secrets, or backend authority attestations.',
 ] as const;
