@@ -22,6 +22,7 @@ import {
   ZkPassportVaultEnrollmentCommitService,
 } from '../../services/zkpassport-vault-enrollment-commit.service';
 import { ZkPassportProofStoreService } from '../../services/zkpassport-proof-store.service';
+import { ZkPassportValidatorSignerService } from '../../services/zkpassport-validator-signer.service';
 import { AUTH_TYPE_BLS, AUTH_TYPE_SECP256K1, AUTH_TYPE_SECP256R1, bytesToHex, hexToBytes } from '../../utils/chia-hash';
 
 /** Polling cadence while the vault is still unconfirmed.  Testnet11 blocks
@@ -359,6 +360,7 @@ export class VaultComponent implements OnDestroy {
   private readonly enrollmentSpend = inject(ZkPassportVaultEnrollmentSpendService);
   private readonly enrollmentAuthorize = inject(ZkPassportVaultEnrollmentAuthorizeService);
   private readonly enrollmentCommit = inject(ZkPassportVaultEnrollmentCommitService);
+  private readonly validatorSigner = inject(ZkPassportValidatorSignerService);
   readonly refreshing = signal(false);
   readonly enrollmentStatus = signal<EnrollmentStatus>('idle');
   readonly enrollmentError = signal<string | null>(null);
@@ -462,7 +464,25 @@ export class VaultComponent implements OnDestroy {
       const result = await this.evmPoller.pollOnce(session.vaultLauncherId, {
         startedAtMs: this.attestationStartedAtMs ?? undefined,
       });
-      await this.applyAttestationPollResult(result, vault.current_coin_id);
+      let validatorSignatures = undefined;
+      if (result.kind === 'found' && result.bridgeSpendPackage.status === 'insufficient_signatures') {
+        try {
+          validatorSignatures = await this.validatorSigner.collectSignatures(
+            result.enrollment.validatorMessage,
+          );
+        } catch (sigErr) {
+          this.enrollmentError.set(
+            'Validator signer unavailable: ' + (sigErr instanceof Error ? sigErr.message : String(sigErr)),
+          );
+        }
+      }
+      const finalResult = validatorSignatures
+        ? await this.evmPoller.pollOnce(session.vaultLauncherId, {
+            startedAtMs: this.attestationStartedAtMs ?? undefined,
+            validatorSignatures,
+          })
+        : result;
+      await this.applyAttestationPollResult(finalResult, vault.current_coin_id);
     } catch (err) {
       this.enrollmentStatus.set('idle');
       this.enrollmentError.set(err instanceof Error ? err.message : String(err));
