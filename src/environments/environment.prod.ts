@@ -15,6 +15,7 @@ export const environment = {
     bridgeAmount: 1,
     validatorPubkeys: [] as string[],
     validatorThreshold: 0,
+    devMode: false,
   },
   /**
    * On-chain singleton coordinates.  See environment.ts for full

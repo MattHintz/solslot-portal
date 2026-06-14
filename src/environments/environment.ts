@@ -67,7 +67,7 @@ export const environment = {
      * integration is set up.  Must include ``?vault_launcher_id=`` as
      * a query param template that the portal fills at runtime.
      */
-    verificationUrl: '',
+    verificationUrl: '/verify',
 
     /**
      * JSON-RPC endpoint for the EVM chain where the attestation emitter
@@ -122,6 +122,12 @@ export const environment = {
 
     /** Minimum number of validator signatures required (1-of-1 for testnet11). */
     validatorThreshold: 1,
+
+    /**
+     * Enable zkPassport dev mode — allows mock/dev proofs from the ZKR
+     * dev passport app.  Must be false on mainnet.
+     */
+    devMode: true,
   },
 
   /**

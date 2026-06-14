@@ -392,6 +392,7 @@ export class VaultComponent implements OnDestroy {
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private attestationStartedAtMs: number | null = null;
   private readonly visibilityHandler = () => this.onVisibilityChange();
+  private readonly proofMessageHandler = (ev: MessageEvent) => this.onVerifyPopupMessage(ev);
 
   constructor() {
     if (this.session.session() && !this.session.vault()) {
@@ -409,6 +410,9 @@ export class VaultComponent implements OnDestroy {
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.visibilityHandler);
     }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('message', this.proofMessageHandler);
+    }
   }
 
   ngOnDestroy(): void {
@@ -416,12 +420,24 @@ export class VaultComponent implements OnDestroy {
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.visibilityHandler);
     }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('message', this.proofMessageHandler);
+    }
   }
 
   /** Manual refresh (button click). */
   async manualRefresh(): Promise<void> {
     await this.refresh();
     this.reschedulePoll();
+  }
+
+  private onVerifyPopupMessage(ev: MessageEvent): void {
+    if (ev.origin !== window.location.origin) {
+      return;
+    }
+    if (ev.data?.type === 'zkpassport_proof' && ev.data?.verified === true) {
+      void this.checkZkPassportAttestation();
+    }
   }
 
   async startZkPassportEnrollment(): Promise<void> {

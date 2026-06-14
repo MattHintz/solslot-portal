@@ -150,6 +150,13 @@ export const routes: Routes = [
   },
 
   {
+    path: 'verify',
+    loadComponent: () =>
+      import('./pages/verify/verify.component').then((m) => m.VerifyComponent),
+    title: 'Verify Identity · Populis',
+  },
+
+  {
     path: '**',
     redirectTo: '',
   },
