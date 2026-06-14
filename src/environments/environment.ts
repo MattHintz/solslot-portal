@@ -58,7 +58,7 @@ export const environment = {
    * Chain id that Populis EIP-712 signatures are bound to.
    * MUST match EIP712_DOMAIN_CHAIN_ID in populis_protocol/populis_puzzles/vault_driver.py.
    */
-  eip712ChainId: 1,
+  eip712ChainId: 84532,
 
   zkPassport: {
     /**
@@ -246,6 +246,6 @@ export const environment = {
     /** Tree hash of ``mint_proposal_inner.clsp``. */
     mintProposalModHash: '',
     /** Tree hash of the uncurried vault inner puzzle. */
-    vaultInnerModHash: '0x04b8a1ec0b942b8b6d55df25d4153a3cc5ee90392121c9a432122d5619f3ccd9',
+    vaultInnerModHash: '0xaf321c6a531ff04f7d151f6ccb6c9b900f253703ce7f439be7c7077bffb5df32',
   },
 };

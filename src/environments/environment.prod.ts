@@ -4,7 +4,7 @@ export const environment = {
   coinsetRpc: 'https://testnet11.api.coinset.org',
   chiaNetwork: 'testnet11' as 'testnet11' | 'mainnet',
   walletConnectProjectId: '',
-  eip712ChainId: 1,
+  eip712ChainId: 84532,
   zkPassport: {
     verificationUrl: '',
     evmRpcUrl: '',
