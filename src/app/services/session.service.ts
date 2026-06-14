@@ -1,6 +1,12 @@
 import { Injectable, inject, signal, effect } from '@angular/core';
 import { VaultState } from './populis-api.service';
 import { VaultDiscoveryService } from './vault-discovery.service';
+import { ChiaWasmService } from './chia-wasm.service';
+import { hexToBytes, bytesToHex } from '../utils/chia-hash';
+import { P2_VAULT_PUZZLE_HEX } from './p2-vault.puzzle-hex';
+
+const SINGLETON_MOD_HASH = '7faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9f';
+const SINGLETON_LAUNCHER_HASH = 'eff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9';
 
 const STORAGE_KEY = 'populis_session_v1';
 
@@ -25,6 +31,7 @@ const STORAGE_KEY = 'populis_session_v1';
 @Injectable({ providedIn: 'root' })
 export class SessionService {
   private readonly discovery = inject(VaultDiscoveryService);
+  private readonly wasm = inject(ChiaWasmService);
 
   readonly session = signal<PersistedSession | null>(this.load());
   readonly vault = signal<VaultState | null>(null);
@@ -104,6 +111,23 @@ export class SessionService {
    *     ``populis_protocol.populis_puzzles.vault_driver.puzzle_for_p2_vault``
    *     (same currying pattern AdminAuthorityV2Service uses).
    */
+  private deriveP2VaultPuzhash(vaultLauncherId: string): string {
+    try {
+      const sdk = this.wasm.sdk() as { Clvm: new () => { deserialize: (b: Uint8Array) => { curry: (args: unknown[]) => { treeHash: () => Uint8Array } }; atom: (b: Uint8Array) => unknown } };
+      const clvm = new sdk.Clvm();
+      const p2Mod = clvm.deserialize(hexToBytes(P2_VAULT_PUZZLE_HEX));
+      const launcherId = hexToBytes(vaultLauncherId.replace(/^0x/, ''));
+      const curried = p2Mod.curry([
+        clvm.atom(hexToBytes(SINGLETON_MOD_HASH)),
+        clvm.atom(launcherId),
+        clvm.atom(hexToBytes(SINGLETON_LAUNCHER_HASH)),
+      ]);
+      return '0x' + bytesToHex(curried.treeHash());
+    } catch {
+      return '';
+    }
+  }
+
   async refreshVault(): Promise<VaultState | null> {
     const s = this.session();
     if (!s?.vaultLauncherId) return null;
@@ -114,12 +138,12 @@ export class SessionService {
       return null;
     }
 
+    const p2VaultPuzhash = this.deriveP2VaultPuzhash(s.vaultLauncherId);
+
     const synthesized: VaultState = {
       vault_launcher_id: onChain.vaultLauncherId,
       vault_full_puzhash: onChain.vaultFullPuzhash,
-      // TODO(Phase 9-Hermes-D follow-up): derive client-side via TS port
-      // of ``puzzle_for_p2_vault`` (curry of p2_vault.clsp with launcher id).
-      p2_vault_puzhash: '',
+      p2_vault_puzhash: p2VaultPuzhash,
       auth_type: s.authType,
       owner_address: s.authType === 'evm' ? s.address : null,
       owner_pubkey: s.compressedPubkey ?? '',
