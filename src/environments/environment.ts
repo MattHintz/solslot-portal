@@ -233,9 +233,9 @@ export const environment = {
     /** A.4 property-registry singleton.  Empty = not deployed. */
     propertyRegistryLauncherId: '',
     /** Pool singleton launcher id (deeded-XCH pool).  Empty = not deployed. */
-    poolLauncherId: '',
+    poolLauncherId: '0xc756590abdd408ceeed708005d79d36b4a7279c22af22ce613849e36163339c3',
     /** Governance DID singleton launcher id.  Empty = not deployed. */
-    governanceLauncherId: '',
+    governanceLauncherId: '0xc23df863a5e3bc5dd7620a88cedfd93691a971251319c74397e271d2b7e0a881',
     /**
      * Tree hash of ``protocol_config_inner.clsp`` — pinned so the
      * trust-roots page can verify it found the canonical puzzle.
@@ -246,6 +246,6 @@ export const environment = {
     /** Tree hash of ``mint_proposal_inner.clsp``. */
     mintProposalModHash: '',
     /** Tree hash of the uncurried vault inner puzzle. */
-    vaultInnerModHash: '',
+    vaultInnerModHash: '0x04b8a1ec0b942b8b6d55df25d4153a3cc5ee90392121c9a432122d5619f3ccd9',
   },
 };
