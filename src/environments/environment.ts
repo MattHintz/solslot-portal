@@ -61,15 +61,67 @@ export const environment = {
   eip712ChainId: 1,
 
   zkPassport: {
+    /**
+     * zkPassport hosted proof URL — paste the per-deployment URL from
+     * the zkPassport developer dashboard (app.zkpassport.id) once the
+     * integration is set up.  Must include ``?vault_launcher_id=`` as
+     * a query param template that the portal fills at runtime.
+     */
     verificationUrl: '',
+
+    /**
+     * JSON-RPC endpoint for the EVM chain where the attestation emitter
+     * is deployed.  Set to a Base Sepolia public endpoint once the
+     * contract is deployed.
+     *
+     * Example: 'https://sepolia.base.org'
+     */
     evmRpcUrl: '',
+
+    /**
+     * Address of PopulisZkPassportAttestationEmitter on Base Sepolia.
+     * Filled in after running:
+     *   npx hardhat run populis_evm/scripts/deploy-emitter.js --network baseSepolia
+     *
+     * Leave empty until deployed; the portal shows a clear "not configured"
+     * message when this is empty.
+     */
     attestationEmitterAddress: '',
+
+    /** Block number of the emitter's deployment transaction (gas optimisation).
+     *  Set to the block returned by deploy-emitter.js after deploy. */
     attestationEmitterFromBlock: 0,
+
     evmPollTimeoutMs: 120_000,
+
+    /**
+     * Chia-side bridge coin parent id.  This is the coin id of the
+     * standard-puzzle coin that will be the parent of the ephemeral
+     * bridge coin.  The operator creates and funds this coin once the
+     * protocol is live; its puzzle hash must equal the bridge policy hash.
+     *
+     * Defaults to zero (not configured) — update after the bridge coin is
+     * created on testnet11.
+     */
     bridgeParentId: '0x0000000000000000000000000000000000000000000000000000000000000000',
+
+    /** Amount in mojos for the bridge coin (1 mojo = standard minimum). */
     bridgeAmount: 1,
-    validatorPubkeys: [] as string[],
-    validatorThreshold: 0,
+
+    /**
+     * BLS G1 public keys of the validator nodes that countersign EVM
+     * attestation events.  Order must match the order used when computing
+     * the bridge policy hash.
+     *
+     * Testnet11 validator (1-of-1, pinned from populis_protocol):
+     *   seed stored as POPULIS_ZKPASSPORT_VALIDATOR_SEED_HEX in populis_api/.env
+     */
+    validatorPubkeys: [
+      '0xa8f9b0c1f992c49210fc726fc610885b966f84747126753659c6c3f8ae5bf3baf5b6e1a399fc8a749daf45dd74efac4c',
+    ] as string[],
+
+    /** Minimum number of validator signatures required (1-of-1 for testnet11). */
+    validatorThreshold: 1,
   },
 
   /**
