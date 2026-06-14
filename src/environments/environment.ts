@@ -103,7 +103,7 @@ export const environment = {
      * Defaults to zero (not configured) — update after the bridge coin is
      * created on testnet11.
      */
-    bridgeParentId: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    bridgeParentId: '0xc17c5ec22db8c526a99ef77d899d0134d06cef4992f4b3d67fa2caf25aa52ee2',
 
     /** Amount in mojos for the bridge coin (1 mojo = standard minimum). */
     bridgeAmount: 1,
