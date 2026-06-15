@@ -232,11 +232,6 @@ export class VerifyComponent implements OnInit, OnDestroy {
       const vaultId = customData?.startsWith('vault:0x') ? customData.slice(6) : '';
       const result = queryBuilder
         .gte('age', 18)
-        .disclose('nationality')
-        .disclose('issuing_country')
-        .disclose('document_number')
-        .disclose('gender')
-        .disclose('document_type')
         .bind('custom_data', vaultId || 'populis')
         .done();
 
