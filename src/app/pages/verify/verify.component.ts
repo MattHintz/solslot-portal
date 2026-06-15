@@ -28,6 +28,7 @@ export type VerifyStatus =
 
 interface BridgeDiagnostics {
   onRawMessage?: (cb: (data: unknown) => void) => void;
+  onSecureMessage?: (cb: (msg: unknown) => void) => void;
   onError?: (cb: (err: unknown) => void) => void;
   onDisconnect?: (cb: (evt: unknown) => void) => void;
   onConnect?: (cb: (reconnected: boolean) => void) => void;
@@ -261,8 +262,19 @@ export class VerifyComponent implements OnInit, OnDestroy {
           let rawCount = 0;
           bridge.onRawMessage?.((data: unknown) => {
             rawCount += 1;
-            const len = typeof data === 'string' ? data.length : -1;
-            console.log(`[bridge] raw message #${rawCount} (len=${len})`);
+            const str = typeof data === 'string' ? data : JSON.stringify(data);
+            const len = str ? str.length : -1;
+            const preview = str ? str.slice(0, 400) : '(non-string)';
+            console.log(`[bridge] raw #${rawCount} (len=${len}):`, preview);
+          });
+          bridge.onSecureMessage?.((msg: unknown) => {
+            const m = msg as { method?: string; params?: unknown };
+            console.log(
+              '[bridge] DECRYPTED message-received — method=',
+              m?.method,
+              'paramsType=',
+              typeof m?.params,
+            );
           });
           bridge.onError?.((err: unknown) => {
             console.error('[bridge] ERROR (swallowed by SDK):', err);
