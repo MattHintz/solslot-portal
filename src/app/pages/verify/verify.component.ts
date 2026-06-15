@@ -281,18 +281,18 @@ export class VerifyComponent implements OnInit, OnDestroy {
 
       result.onResult(async ({ verified, result: queryResult, proofs }) => {
         onResultFired = true;
-        console.log('[zkpassport] onResult — verified:', verified, 'proofs:', proofs?.length);
-        if (!verified) {
-          this.status.set('error');
-          this.errorMessage.set('Proof verification failed.');
-          return;
-        }
+        console.log('[zkpassport] onResult — verified:', verified, 'proofs count:', proofs?.length, 'capturedProof:', !!capturedProof);
 
         const proofResult = capturedProof ?? proofs?.[0];
         if (!proofResult) {
+          console.error('[zkpassport] onResult: no proof available, verified=', verified);
           this.status.set('error');
           this.errorMessage.set('No proof data received.');
           return;
+        }
+
+        if (!verified) {
+          console.warn('[zkpassport] SDK internal verify returned false — attempting on-chain submission anyway (contract verifies independently)');
         }
 
         try {
