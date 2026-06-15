@@ -222,13 +222,22 @@ export class VerifyComponent implements OnInit, OnDestroy {
       this.zkp = zkp;
 
       const queryBuilder = await zkp.request({
+        name: 'Populis',
+        purpose: 'Age verification',
         devMode: environment.zkPassport.devMode ?? false,
         scope: customData ?? 'populis.app',
         mode: 'compressed-evm',
-        evmChain: 'base_sepolia',
-      } as Parameters<typeof zkp.request>[0]);
+      });
 
-      const result = queryBuilder.policy(POLICY_ID).done();
+      const result = queryBuilder
+        .gte('age', 18)
+        .disclose('nationality')
+        .disclose('issuing_country')
+        .disclose('document_number')
+        .disclose('gender')
+        .disclose('document_type')
+        .sanctions()
+        .done();
 
       this.proofUrl.set(result.url);
       this.status.set('ready');
