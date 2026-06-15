@@ -10,6 +10,13 @@ import {
 import { ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { ZKPassport, type ProofResult, type SolidityVerifierParameters } from '@zkpassport/sdk';
+import {
+  getCurrentDateFromOuterProof,
+  getNullifierFromOuterProof,
+  getNullifierTypeFromOuterProof,
+  getScopeFromOuterProof,
+  getSubscopeFromOuterProof,
+} from '@zkpassport/utils';
 import QRCode from 'qrcode';
 import { ethers } from 'ethers';
 
@@ -313,14 +320,15 @@ export class VerifyComponent implements OnInit, OnDestroy {
       });
 
       let capturedProof: ProofResult | null = null;
-      let onResultFired = false;
+      let submitted = false;
       result.onProofGenerated((proof: ProofResult) => {
         console.log('[zkpassport] proof generated', proof);
         capturedProof = proof;
         // Fallback: if onResult never fires (WebSocket drop after proof), submit after 5s
         setTimeout(async () => {
           const fallbackProof = capturedProof;
-          if (onResultFired || !fallbackProof) return;
+          if (submitted || !fallbackProof) return;
+          submitted = true;
           console.warn('[zkpassport] onResult timeout — proceeding with captured proof');
           try {
             this.status.set('submitting');
@@ -342,7 +350,6 @@ export class VerifyComponent implements OnInit, OnDestroy {
       });
 
       result.onResult(async ({ verified, result: queryResult, proofs }) => {
-        onResultFired = true;
         console.log('[zkpassport] onResult — verified:', verified, 'proofs count:', proofs?.length, 'capturedProof:', !!capturedProof);
 
         const proofResult = capturedProof ?? proofs?.[0];
@@ -352,6 +359,12 @@ export class VerifyComponent implements OnInit, OnDestroy {
           this.errorMessage.set('No proof data received.');
           return;
         }
+
+        if (submitted) {
+          console.log('[zkpassport] onResult: already submitted via fallback — skipping duplicate');
+          return;
+        }
+        submitted = true;
 
         if (!verified) {
           console.warn('[zkpassport] SDK internal verify returned false — attempting on-chain submission anyway (contract verifies independently)');
@@ -431,17 +444,21 @@ export class VerifyComponent implements OnInit, OnDestroy {
       devMode: environment.zkPassport.devMode ?? false,
     });
 
-    // Extract public inputs — layout: [certRoot, circuitRoot, date, svcScope, svcSubscope, ...paramCommits, nullifierType, scopedNullifier]
-    const pubs = solidityParams.proofVerificationData.publicInputs;
-    // N = total - 7 (fixed-position fields before and after param_commitments)
-    const N = pubs.length - 7;
-    if (N < 0) throw new Error(`Unexpected publicInputs length: ${pubs.length}`);
-
-    const proofTimestamp = Number(BigInt(pubs[2]));
-    const serviceScopeHash = pubs[3] as `0x${string}`;
-    const serviceSubscopeHash = pubs[4] as `0x${string}`;
-    const nullifierType = Number(BigInt(pubs[5 + N]));
-    const scopedNullifier = pubs[6 + N] as `0x${string}`;
+    // Extract attestation fields with the SDK's canonical outer-proof getters instead
+    // of hand-indexing publicInputs. Outer circuit public-input layout is:
+    //   [0] certRoot [1] circuitRoot [2] date [3] serviceScope [4] serviceSubscope
+    //   [5..len-4] paramCommitments [len-3] nullifierType [len-2] scopedNullifier [len-1] oprfPkHash
+    // The old manual math read [len-2] (the scoped-nullifier hash) as the type, which is
+    // why submitOnChain threw "nullifierType ... got 7.44e+75". The getters own the indices.
+    const outerProof = {
+      publicInputs: solidityParams.proofVerificationData.publicInputs,
+      proof: [] as string[],
+    };
+    const proofTimestamp = Math.floor(getCurrentDateFromOuterProof(outerProof).getTime() / 1000);
+    const serviceScopeHash = ethers.toBeHex(getScopeFromOuterProof(outerProof), 32) as `0x${string}`;
+    const serviceSubscopeHash = ethers.toBeHex(getSubscopeFromOuterProof(outerProof), 32) as `0x${string}`;
+    const nullifierType = Number(getNullifierTypeFromOuterProof(outerProof));
+    const scopedNullifier = ethers.toBeHex(getNullifierFromOuterProof(outerProof), 32) as `0x${string}`;
 
     // vaultLauncherId from custom_data = "vault:0x<hex>"
     if (!customData?.startsWith('vault:0x')) {

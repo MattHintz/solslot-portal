@@ -37,6 +37,7 @@
     "@walletconnect/sign-client": "^2.23.9",
     "@zkpassport/sdk": "^0.15.1",
     "@zkpassport/ui": "^0.15.2",
+    "@zkpassport/utils": "^0.36.1",
     "chia-bls": "^1.0.3",
     "chia-wallet-sdk": "^0.33.0",
     "chia-wallet-sdk-wasm": "^0.33.0",
