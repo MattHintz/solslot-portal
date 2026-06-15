@@ -226,7 +226,16 @@ export class VerifyComponent implements OnInit, OnDestroy {
       const params = this.route.snapshot.queryParamMap;
       const customData = params.get('custom_data') ?? undefined;
 
-      const zkp = new ZKPassport('populis.app');
+      // Use the actual serving origin as the zkPassport domain, exactly like the
+      // official example (app/page.tsx: `new ZKPassport(window.location.hostname)`).
+      // Locally this resolves to 127.0.0.1 -> no registered project -> SELF-SERVE mode
+      // (no origin allowlist enforcement), so dev-mode mock proofs are delivered back.
+      // In production it resolves to populis.app automatically (DNS-verify it there).
+      // Hardcoding 'populis.app' here made the phone enforce that registered+unverified
+      // project's origin allowlist and silently refuse to deliver proofs to localhost.
+      const zkDomain = window.location.hostname;
+      const zkp = new ZKPassport(zkDomain);
+      console.log('[zkpassport] SDK domain =', zkDomain);
       this.zkp = zkp;
 
       const queryBuilder = await zkp.request({
