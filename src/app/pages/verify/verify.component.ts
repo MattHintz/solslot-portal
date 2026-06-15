@@ -223,13 +223,12 @@ export class VerifyComponent implements OnInit, OnDestroy {
 
       const queryBuilder = await zkp.request({
         devMode: environment.zkPassport.devMode ?? false,
-        scope: 'populis.app',
+        scope: customData ?? 'populis.app',
         mode: 'compressed-evm',
         evmChain: 'base_sepolia',
       } as Parameters<typeof zkp.request>[0]);
 
-      const builder = queryBuilder.policy(POLICY_ID);
-      const result = (customData ? builder.bind('custom_data', customData) : builder).done();
+      const result = queryBuilder.policy(POLICY_ID).done();
 
       this.proofUrl.set(result.url);
       this.status.set('ready');
@@ -330,7 +329,7 @@ export class VerifyComponent implements OnInit, OnDestroy {
 
     const solidityParams: SolidityVerifierParameters = zkp.getSolidityVerifierParameters({
       proof,
-      scope: 'populis.app',
+      scope: customData ?? 'populis.app',
       devMode: environment.zkPassport.devMode ?? false,
     });
 
