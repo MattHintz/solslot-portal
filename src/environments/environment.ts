@@ -86,11 +86,11 @@ export const environment = {
      * Leave empty until deployed; the portal shows a clear "not configured"
      * message when this is empty.
      */
-    attestationEmitterAddress: '0xf7c401f2d7Fd683B62d26498f0DDa66D205fa4f4',
+    attestationEmitterAddress: '0xDACBE733A26eEF47823052e4FCbeEB017aB24d57',
 
     /** Block number of the emitter's deployment transaction (gas optimisation).
      *  Set to the block returned by deploy-emitter.js after deploy. */
-    attestationEmitterFromBlock: 11062912,
+    attestationEmitterFromBlock: 11063052,
 
     evmPollTimeoutMs: 120_000,
 

@@ -439,6 +439,7 @@ export class VerifyComponent implements OnInit, OnDestroy {
     const abiCoder = ethers.AbiCoder.defaultAbiCoder();
     const encodedProof = abiCoder.encode(
       ['tuple(bytes32 version, tuple(bytes32 vkeyHash, bytes proof, bytes32[] publicInputs) proofVerificationData, bytes committedInputs, tuple(uint256 validityPeriodInSeconds, string domain, string scope, bool devMode) serviceConfig)'],
+      // serviceConfig: 4 fields matching SDK output (validityPeriodInSeconds, domain, scope, devMode)
       [[
         solidityParams.version,
         [
