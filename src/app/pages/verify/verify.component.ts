@@ -245,19 +245,46 @@ export class VerifyComponent implements OnInit, OnDestroy {
       await this.renderQr(result.url);
 
       result.onRequestReceived(() => {
+        console.log('[zkpassport] QR scanned / request received');
         this.status.set('scanned');
       });
 
       result.onGeneratingProof(() => {
+        console.log('[zkpassport] generating proof');
         this.status.set('generating');
       });
 
       let capturedProof: ProofResult | null = null;
+      let onResultFired = false;
       result.onProofGenerated((proof: ProofResult) => {
+        console.log('[zkpassport] proof generated', proof);
         capturedProof = proof;
+        // Fallback: if onResult never fires (WebSocket drop after proof), submit after 5s
+        setTimeout(async () => {
+          if (onResultFired || !capturedProof) return;
+          console.warn('[zkpassport] onResult timeout — proceeding with captured proof');
+          try {
+            this.status.set('submitting');
+            await this.submitOnChain(capturedProof, customData, zkp);
+            this.status.set('success');
+            if (window.opener) {
+              window.opener.postMessage(
+                { type: 'zkpassport_proof', verified: true },
+                window.location.origin,
+              );
+            }
+            setTimeout(() => window.close(), 2000);
+          } catch (err) {
+            console.error('[zkpassport] fallback submitOnChain error:', err);
+            this.status.set('error');
+            this.errorMessage.set(err instanceof Error ? err.message : 'On-chain submission failed.');
+          }
+        }, 5000);
       });
 
       result.onResult(async ({ verified, result: queryResult, proofs }) => {
+        onResultFired = true;
+        console.log('[zkpassport] onResult — verified:', verified, 'proofs:', proofs?.length);
         if (!verified) {
           this.status.set('error');
           this.errorMessage.set('Proof verification failed.');
@@ -283,6 +310,7 @@ export class VerifyComponent implements OnInit, OnDestroy {
           }
           setTimeout(() => window.close(), 2000);
         } catch (err) {
+          console.error('[zkpassport] submitOnChain error:', err);
           this.status.set('error');
           this.errorMessage.set(
             err instanceof Error ? err.message : 'On-chain submission failed.',
@@ -291,13 +319,15 @@ export class VerifyComponent implements OnInit, OnDestroy {
       });
 
       result.onReject(() => {
+        console.log('[zkpassport] rejected');
         this.status.set('rejected');
       });
 
       result.onError((err: unknown) => {
+        console.error('[zkpassport] onError:', err);
         this.status.set('error');
         this.errorMessage.set(
-          err instanceof Error ? err.message : 'An error occurred.',
+          err instanceof Error ? err.message : String(err),
         );
       });
 
