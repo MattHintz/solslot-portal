@@ -225,7 +225,7 @@ export class VerifyComponent implements OnInit, OnDestroy {
         name: 'Populis',
         purpose: 'Age verification',
         devMode: environment.zkPassport.devMode ?? false,
-        scope: customData ?? 'populis.app',
+        scope: customData?.startsWith('vault:0x') ? customData.slice(6) : (customData ?? 'populis.app'),
         mode: 'compressed-evm',
       });
 
@@ -233,10 +233,6 @@ export class VerifyComponent implements OnInit, OnDestroy {
         .gte('age', 18)
         .disclose('nationality')
         .disclose('issuing_country')
-        .disclose('document_number')
-        .disclose('gender')
-        .disclose('document_type')
-        .sanctions()
         .done();
 
       this.proofUrl.set(result.url);
@@ -368,7 +364,7 @@ export class VerifyComponent implements OnInit, OnDestroy {
 
     const solidityParams: SolidityVerifierParameters = zkp.getSolidityVerifierParameters({
       proof,
-      scope: customData ?? 'populis.app',
+      scope: customData?.startsWith('vault:0x') ? customData.slice(6) : (customData ?? 'populis.app'),
       devMode: environment.zkPassport.devMode ?? false,
     });
 
