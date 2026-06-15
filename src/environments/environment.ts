@@ -58,7 +58,7 @@ export const environment = {
    * Chain id that Populis EIP-712 signatures are bound to.
    * MUST match EIP712_DOMAIN_CHAIN_ID in populis_protocol/populis_puzzles/vault_driver.py.
    */
-  eip712ChainId: 84532,
+  eip712ChainId: 11155111,
 
   zkPassport: {
     /**
@@ -76,7 +76,7 @@ export const environment = {
      *
      * Example: 'https://sepolia.base.org'
      */
-    evmRpcUrl: 'https://sepolia.base.org',
+    evmRpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
 
     /**
      * Address of PopulisZkPassportAttestationEmitter on Base Sepolia.
@@ -90,7 +90,7 @@ export const environment = {
 
     /** Block number of the emitter's deployment transaction (gas optimisation).
      *  Set to the block returned by deploy-emitter.js after deploy. */
-    attestationEmitterFromBlock: 42845297,
+    attestationEmitterFromBlock: 11062912,
 
     evmPollTimeoutMs: 120_000,
 

@@ -356,11 +356,11 @@ export class VerifyComponent implements OnInit, OnDestroy {
     const provider = new ethers.BrowserProvider(ethereum);
 
     const network = await provider.getNetwork();
-    const baseSepolia = 84532n;
-    if (network.chainId !== baseSepolia) {
+    const ethSepolia = 11155111n;
+    if (network.chainId !== ethSepolia) {
       await ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0x14a34' }],
+        params: [{ chainId: '0xaa36a7' }],
       });
     }
 
