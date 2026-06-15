@@ -26,6 +26,13 @@ export type VerifyStatus =
   | 'rejected'
   | 'error';
 
+interface BridgeDiagnostics {
+  onRawMessage?: (cb: (data: unknown) => void) => void;
+  onError?: (cb: (err: unknown) => void) => void;
+  onDisconnect?: (cb: (evt: unknown) => void) => void;
+  onConnect?: (cb: (reconnected: boolean) => void) => void;
+}
+
 const POLICY_ID = 'compliance-check-kyc';
 
 const EMITTER_ABI = [
@@ -239,6 +246,40 @@ export class VerifyComponent implements OnInit, OnDestroy {
       this.status.set('ready');
 
       await this.renderQr(result.url);
+
+      // --- Bridge-level diagnostics ---
+      // The SDK wires only onConnect/onSecureChannelEstablished/onSecureMessage and
+      // silently ignores the bridge's error/disconnect/raw-message events. Tap the
+      // internal connection so we can see why a generated proof never reaches us.
+      try {
+        const requestId = (result as { requestId?: string }).requestId;
+        const bridgeMap = (zkp as unknown as {
+          topicToBridge?: Record<string, BridgeDiagnostics | undefined>;
+        }).topicToBridge;
+        const bridge = requestId ? bridgeMap?.[requestId] : undefined;
+        if (bridge) {
+          let rawCount = 0;
+          bridge.onRawMessage?.((data: unknown) => {
+            rawCount += 1;
+            const len = typeof data === 'string' ? data.length : -1;
+            console.log(`[bridge] raw message #${rawCount} (len=${len})`);
+          });
+          bridge.onError?.((err: unknown) => {
+            console.error('[bridge] ERROR (swallowed by SDK):', err);
+          });
+          bridge.onDisconnect?.((evt: unknown) => {
+            console.warn('[bridge] DISCONNECTED:', evt);
+          });
+          bridge.onConnect?.((reconnected: boolean) => {
+            console.log(`[bridge] connected (reconnected=${reconnected})`);
+          });
+          console.log('[bridge] diagnostics attached for', requestId);
+        } else {
+          console.warn('[bridge] could not access bridge connection for diagnostics');
+        }
+      } catch (diagErr) {
+        console.warn('[bridge] diagnostics attach failed:', diagErr);
+      }
 
       result.onRequestReceived(() => {
         console.log('[zkpassport] QR scanned / request received');
