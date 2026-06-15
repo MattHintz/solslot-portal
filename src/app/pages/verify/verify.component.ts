@@ -232,6 +232,12 @@ export class VerifyComponent implements OnInit, OnDestroy {
       const vaultId = customData?.startsWith('vault:0x') ? customData.slice(6) : '';
       const result = queryBuilder
         .gte('age', 18)
+        .disclose('nationality')
+        .disclose('issuing_country')
+        .disclose('document_number')
+        .disclose('gender')
+        .disclose('document_type')
+        .sanctions()
         .bind('custom_data', vaultId || 'populis')
         .done();
 
@@ -352,11 +358,11 @@ export class VerifyComponent implements OnInit, OnDestroy {
     const provider = new ethers.BrowserProvider(ethereum);
 
     const network = await provider.getNetwork();
-    const ethMainnet = 1n;
-    if (network.chainId !== ethMainnet) {
+    const ethSepolia = 11155111n;
+    if (network.chainId !== ethSepolia) {
       await ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0x1' }],
+        params: [{ chainId: '0xaa36a7' }],
       });
     }
 
