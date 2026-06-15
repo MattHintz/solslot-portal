@@ -209,12 +209,11 @@ export class VerifyComponent implements OnInit, OnDestroy {
 
       const queryBuilder = await zkp.request({
         devMode: environment.zkPassport.devMode ?? false,
-        ...(customData ? { scope: customData } : {}),
+        scope: 'populis.app',
       });
 
-      const result = queryBuilder
-        .policy(POLICY_ID)
-        .done();
+      const builder = queryBuilder.policy(POLICY_ID);
+      const result = (customData ? builder.bind('custom_data', customData) : builder).done();
 
       this.proofUrl.set(result.url);
       this.status.set('ready');
