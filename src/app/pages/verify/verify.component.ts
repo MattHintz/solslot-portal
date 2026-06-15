@@ -9,21 +9,28 @@ import {
 } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import { ZKPassport } from '@zkpassport/sdk';
+import { ZKPassport, type ProofResult, type SolidityVerifierParameters } from '@zkpassport/sdk';
 import QRCode from 'qrcode';
+import { ethers } from 'ethers';
 
 import { environment } from '../../../environments/environment';
+import { ZkPassportAttestationService } from '../../services/zkpassport-attestation.service';
 
 export type VerifyStatus =
   | 'loading'
   | 'ready'
   | 'scanned'
   | 'generating'
+  | 'submitting'
   | 'success'
   | 'rejected'
   | 'error';
 
 const POLICY_ID = 'compliance-check-kyc';
+
+const EMITTER_ABI = [
+  'function verifyAndEmit((bytes32 vaultLauncherId, bytes32 scopedNullifier, uint16 nullifierType, bytes32 serviceScopeHash, bytes32 serviceSubscopeHash, uint64 proofTimestamp, bytes32 attestationLeafHash, bytes32 attestationRoot, bytes32 bridgeParentId, uint64 bridgeAmount, bytes32 bridgeCoinId, bytes32 bridgeMessage) attestation, bytes proof) external',
+];
 
 @Component({
   selector: 'app-verify',
@@ -63,6 +70,12 @@ const POLICY_ID = 'compliance-check-kyc';
           <ng-container *ngSwitchCase="'generating'">
             <div class="verify-spinner"></div>
             <p class="verify-hint">Generating proof — this may take a moment…</p>
+          </ng-container>
+
+          <ng-container *ngSwitchCase="'submitting'">
+            <div class="verify-spinner"></div>
+            <p class="verify-hint">Submitting proof on-chain…</p>
+            <p class="verify-hint" style="font-size:12px">Approve the transaction in your wallet.</p>
           </ng-container>
 
           <ng-container *ngSwitchCase="'success'">
@@ -180,6 +193,7 @@ export class VerifyComponent implements OnInit, OnDestroy {
   errorMessage = signal<string>('');
 
   private route = inject(ActivatedRoute);
+  private attestation = inject(ZkPassportAttestationService);
   private zkp: ZKPassport | null = null;
   private cleanup: (() => void) | null = null;
 
@@ -210,7 +224,9 @@ export class VerifyComponent implements OnInit, OnDestroy {
       const queryBuilder = await zkp.request({
         devMode: environment.zkPassport.devMode ?? false,
         scope: 'populis.app',
-      });
+        mode: 'compressed-evm',
+        evmChain: 'base_sepolia',
+      } as Parameters<typeof zkp.request>[0]);
 
       const builder = queryBuilder.policy(POLICY_ID);
       const result = (customData ? builder.bind('custom_data', customData) : builder).done();
@@ -228,24 +244,41 @@ export class VerifyComponent implements OnInit, OnDestroy {
         this.status.set('generating');
       });
 
-      result.onResult(({ verified, result: queryResult, proofs }) => {
-        if (verified) {
+      let capturedProof: ProofResult | null = null;
+      result.onProofGenerated((proof: ProofResult) => {
+        capturedProof = proof;
+      });
+
+      result.onResult(async ({ verified, result: queryResult, proofs }) => {
+        if (!verified) {
+          this.status.set('error');
+          this.errorMessage.set('Proof verification failed.');
+          return;
+        }
+
+        const proofResult = capturedProof ?? proofs?.[0];
+        if (!proofResult) {
+          this.status.set('error');
+          this.errorMessage.set('No proof data received.');
+          return;
+        }
+
+        try {
+          this.status.set('submitting');
+          await this.submitOnChain(proofResult, customData, zkp);
           this.status.set('success');
           if (window.opener) {
             window.opener.postMessage(
-              {
-                type: 'zkpassport_proof',
-                verified: true,
-                result: queryResult,
-                proofs,
-              },
+              { type: 'zkpassport_proof', verified: true, result: queryResult },
               window.location.origin,
             );
           }
-          setTimeout(() => window.close(), 1500);
-        } else {
+          setTimeout(() => window.close(), 2000);
+        } catch (err) {
           this.status.set('error');
-          this.errorMessage.set('Proof verification failed.');
+          this.errorMessage.set(
+            err instanceof Error ? err.message : 'On-chain submission failed.',
+          );
         }
       });
 
@@ -271,6 +304,130 @@ export class VerifyComponent implements OnInit, OnDestroy {
     }
   }
 
+  private async submitOnChain(
+    proof: ProofResult,
+    customData: string | undefined,
+    zkp: ZKPassport,
+  ): Promise<void> {
+    const { ethereum } = window as unknown as { ethereum?: ethers.Eip1193Provider };
+    if (!ethereum) {
+      throw new Error('MetaMask not found. Please install MetaMask to submit the proof on-chain.');
+    }
+
+    await ethereum.request({ method: 'eth_requestAccounts' });
+    const provider = new ethers.BrowserProvider(ethereum);
+
+    const network = await provider.getNetwork();
+    const baseSepolia = 84532n;
+    if (network.chainId !== baseSepolia) {
+      await ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: '0x14a34' }],
+      });
+    }
+
+    const signer = await provider.getSigner();
+
+    const solidityParams: SolidityVerifierParameters = zkp.getSolidityVerifierParameters({
+      proof,
+      scope: 'populis.app',
+      devMode: environment.zkPassport.devMode ?? false,
+    });
+
+    // Extract public inputs — layout: [certRoot, circuitRoot, date, svcScope, svcSubscope, ...paramCommits, nullifierType, scopedNullifier]
+    const pubs = solidityParams.proofVerificationData.publicInputs;
+    // N = total - 7 (fixed-position fields before and after param_commitments)
+    const N = pubs.length - 7;
+    if (N < 0) throw new Error(`Unexpected publicInputs length: ${pubs.length}`);
+
+    const proofTimestamp = Number(BigInt(pubs[2]));
+    const serviceScopeHash = pubs[3] as `0x${string}`;
+    const serviceSubscopeHash = pubs[4] as `0x${string}`;
+    const nullifierType = Number(BigInt(pubs[5 + N]));
+    const scopedNullifier = pubs[6 + N] as `0x${string}`;
+
+    // vaultLauncherId from custom_data = "vault:0x<hex>"
+    if (!customData?.startsWith('vault:0x')) {
+      throw new Error(`Invalid custom_data for vault subscope: ${customData}`);
+    }
+    const vaultLauncherId = `0x${customData.slice(8)}` as `0x${string}`;
+
+    // Compute attestation leaf + root
+    const attestationLeafHash = this.attestation.computeAttestationLeaf({
+      vaultLauncherId,
+      scopedNullifier,
+      nullifierType,
+      serviceScopeHash,
+      serviceSubscopeHash,
+      proofTimestamp,
+    });
+    const attestationRoot = this.attestation.computeAttestationRoot([attestationLeafHash]);
+
+    // Bridge fields from environment
+    const bridgeParentId = environment.zkPassport.bridgeParentId as `0x${string}`;
+    const bridgeAmount = BigInt(environment.zkPassport.bridgeAmount);
+    const bridgePolicyHash = '0xc87f45cd23d052c88256de8823a4a01f40da4e2066156f48f3b3dfc0a50350d7';
+
+    // bridgeCoinId = sha256(parentId ++ puzzleHash ++ clvmUint64(amount))
+    const bridgeCoinId = ethers.sha256(ethers.concat([
+      ethers.getBytes(bridgeParentId),
+      ethers.getBytes(bridgePolicyHash),
+      clvmUint64Bytes(bridgeAmount),
+    ]));
+
+    // bridgeMessage = attestation bridge message hash
+    const bridgeMessage = this.attestation.computeAttestationBridgeMessage({
+      vaultLauncherId,
+      attestationRoot,
+      bridgePolicyHash,
+    });
+
+    const attestationStruct = {
+      vaultLauncherId,
+      scopedNullifier,
+      nullifierType,
+      serviceScopeHash,
+      serviceSubscopeHash,
+      proofTimestamp,
+      attestationLeafHash,
+      attestationRoot,
+      bridgeParentId,
+      bridgeAmount,
+      bridgeCoinId,
+      bridgeMessage,
+    };
+
+    // Encode the SolidityVerifierParameters as bytes for the proof arg
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+    const encodedProof = abiCoder.encode(
+      ['tuple(bytes32 version, tuple(bytes32 vkeyHash, bytes proof, bytes32[] publicInputs) proofVerificationData, bytes committedInputs, tuple(uint256 validityPeriodInSeconds, string domain, string scope, bool devMode) serviceConfig)'],
+      [[
+        solidityParams.version,
+        [
+          solidityParams.proofVerificationData.vkeyHash,
+          solidityParams.proofVerificationData.proof,
+          solidityParams.proofVerificationData.publicInputs,
+        ],
+        solidityParams.committedInputs,
+        [
+          solidityParams.serviceConfig.validityPeriodInSeconds,
+          solidityParams.serviceConfig.domain,
+          solidityParams.serviceConfig.scope,
+          solidityParams.serviceConfig.devMode,
+        ],
+      ]],
+    );
+
+    const emitter = new ethers.Contract(
+      environment.zkPassport.attestationEmitterAddress,
+      EMITTER_ABI,
+      signer,
+    );
+
+    const tx = await emitter['verifyAndEmit'](attestationStruct, encodedProof);
+    await tx.wait();
+  }
+
   private async renderQr(url: string): Promise<void> {
     for (let i = 0; i < 10; i++) {
       if (this.qrCanvas?.nativeElement) {
@@ -284,4 +441,17 @@ export class VerifyComponent implements OnInit, OnDestroy {
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }
   }
+}
+
+/** Mirrors Solidity _clvmUint64: minimal big-endian bytes with leading 0x00 if high bit set. */
+function clvmUint64Bytes(value: bigint): Uint8Array {
+  if (value === 0n) return new Uint8Array(0);
+  const bytes: number[] = [];
+  let remaining = value;
+  while (remaining > 0n) {
+    bytes.unshift(Number(remaining & 0xffn));
+    remaining >>= 8n;
+  }
+  if (bytes[0] & 0x80) bytes.unshift(0);
+  return new Uint8Array(bytes);
 }
