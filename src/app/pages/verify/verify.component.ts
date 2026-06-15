@@ -237,7 +237,6 @@ export class VerifyComponent implements OnInit, OnDestroy {
         .disclose('document_number')
         .disclose('gender')
         .disclose('document_type')
-        .sanctions()
         .bind('custom_data', vaultId || 'populis')
         .done();
 
@@ -263,11 +262,12 @@ export class VerifyComponent implements OnInit, OnDestroy {
         capturedProof = proof;
         // Fallback: if onResult never fires (WebSocket drop after proof), submit after 5s
         setTimeout(async () => {
-          if (onResultFired || !capturedProof) return;
+          const fallbackProof = capturedProof;
+          if (onResultFired || !fallbackProof) return;
           console.warn('[zkpassport] onResult timeout — proceeding with captured proof');
           try {
             this.status.set('submitting');
-            await this.submitOnChain(capturedProof, customData, zkp);
+            await this.submitOnChain(fallbackProof, customData, zkp);
             this.status.set('success');
             if (window.opener) {
               window.opener.postMessage(
