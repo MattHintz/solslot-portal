@@ -245,18 +245,24 @@ export class VerifyComponent implements OnInit, OnDestroy {
       console.log('[zkpassport] SDK domain =', zkDomain);
       this.zkp = zkp;
 
+      // The on-chain adapter (ZkPassportRealVerifierAdapter) forces the proof's
+      // service subscope to equal PopulisZkPassportAttestationEmitter.expectedVaultSubscope():
+      //   "vault:0x<vaultLauncherId>"  — exactly the custom_data query param, lowercase.
+      // zkPassport derives the proof's subscope from the request `scope`, so `scope`
+      // MUST be that vault subscope or the root verifier reverts "Invalid domain or scope".
+      const vaultSubscope =
+        customData?.toLowerCase().startsWith('vault:0x') ? customData.toLowerCase() : undefined;
+
       const queryBuilder = await zkp.request({
         name: 'Populis',
         purpose: 'Age verification',
         devMode: environment.zkPassport.devMode ?? false,
-        scope: 'populis-verify',
+        scope: vaultSubscope ?? 'populis-verify',
         mode: 'compressed-evm',
       });
 
-      const vaultId = customData?.startsWith('vault:0x') ? customData.slice(6) : '';
       const result = queryBuilder
         .gte('age', 18)
-        .bind('custom_data', vaultId || 'populis')
         .done();
 
       this.proofUrl.set(result.url);
