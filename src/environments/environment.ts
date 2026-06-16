@@ -86,11 +86,16 @@ export const environment = {
      * Leave empty until deployed; the portal shows a clear "not configured"
      * message when this is empty.
      */
-    attestationEmitterAddress: '0x720e4dFedF7cb9c6d032F6a10eADaa6987Ab2436',
+    attestationEmitterAddress: '0x77bD869AB5e363eb5Fe533B2852D1693C8448EdF',
 
     /** Block number of the emitter's deployment transaction (gas optimisation).
      *  Set to the block returned by deploy-emitter.js after deploy. */
-    attestationEmitterFromBlock: 11069656,
+    attestationEmitterFromBlock: 11069833,
+
+    /** ERC-2771 trusted forwarder for gasless meta-tx submission. Users sign an
+     *  EIP-712 ForwardRequest (no gas); the operator relayer (POST
+     *  {faucetApi}/zkpassport/relay) submits forwarder.execute() and pays gas. */
+    trustedForwarderAddress: '0x84DBC9bcEDfD9920da91eDcfBeb0eebd44104aB3',
 
     evmPollTimeoutMs: 120_000,
 

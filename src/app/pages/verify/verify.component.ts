@@ -90,7 +90,7 @@ const EMITTER_ABI = [
           <ng-container *ngSwitchCase="'submitting'">
             <div class="verify-spinner"></div>
             <p class="verify-hint">Submitting proof on-chain…</p>
-            <p class="verify-hint" style="font-size:12px">Approve the transaction in your wallet.</p>
+            <p class="verify-hint" style="font-size:12px">Approve the signature in your wallet — no gas needed.</p>
           </ng-container>
 
           <ng-container *ngSwitchCase="'success'">
@@ -389,10 +389,14 @@ export class VerifyComponent implements OnInit, OnDestroy {
           setTimeout(() => window.close(), 2000);
         } catch (err) {
           console.error('[zkpassport] submitOnChain error:', err);
-          this.status.set('error');
-          this.errorMessage.set(
-            err instanceof Error ? err.message : 'On-chain submission failed.',
-          );
+          if (isUserRejection(err)) {
+            this.status.set('rejected');
+          } else {
+            this.status.set('error');
+            this.errorMessage.set(
+              err instanceof Error ? err.message : 'On-chain submission failed.',
+            );
+          }
         }
       });
 
@@ -539,14 +543,88 @@ export class VerifyComponent implements OnInit, OnDestroy {
       ]],
     );
 
-    const emitter = new ethers.Contract(
-      environment.zkPassport.attestationEmitterAddress,
-      EMITTER_ABI,
-      signer,
-    );
+    // ── Gasless submission via ERC-2771 meta-transaction ────────────────
+    // The user signs an EIP-712 ForwardRequest (no gas); the operator relayer
+    // submits forwarder.execute() and pays the gas. The emitter attributes the
+    // event to the user's address via _msgSender(), so the relayer is never the
+    // logical author.
+    const emitterAddress = environment.zkPassport.attestationEmitterAddress;
+    const forwarderAddress = environment.zkPassport.trustedForwarderAddress;
+    if (!forwarderAddress) {
+      throw new Error('Gasless relayer is not configured (trustedForwarderAddress missing).');
+    }
 
-    const tx = await emitter['verifyAndEmit'](attestationStruct, encodedProof);
-    await tx.wait();
+    const data = new ethers.Interface(EMITTER_ABI).encodeFunctionData('verifyAndEmit', [
+      attestationStruct,
+      encodedProof,
+    ]);
+    const from = await signer.getAddress();
+
+    // Gas the forwarded verifyAndEmit call needs (+20% for ERC2771 _checkForwardedGas).
+    let innerGas: bigint;
+    try {
+      innerGas = await provider.estimateGas({ from, to: emitterAddress, data });
+    } catch {
+      innerGas = 1_500_000n; // verifyAndEmit measures ~1.05M; generous fallback
+    }
+    const gas = (innerGas * 12n) / 10n;
+
+    const forwarder = new ethers.Contract(
+      forwarderAddress,
+      ['function nonces(address) view returns (uint256)'],
+      provider,
+    );
+    const nonce: bigint = await forwarder['nonces'](from);
+    const deadline = Math.floor(Date.now() / 1000) + 1800; // 30 minutes
+
+    // EIP-712 domain + types MUST match OpenZeppelin ERC2771Forwarder exactly.
+    const domain = {
+      name: 'PopulisForwarder',
+      version: '1',
+      chainId: ethSepolia,
+      verifyingContract: forwarderAddress,
+    };
+    const types = {
+      ForwardRequest: [
+        { name: 'from', type: 'address' },
+        { name: 'to', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'gas', type: 'uint256' },
+        { name: 'deadline', type: 'uint48' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'data', type: 'bytes' },
+      ],
+    };
+    const message = { from, to: emitterAddress, value: 0n, gas, deadline, nonce, data };
+
+    // Gasless: MetaMask shows a typed-data signature request, not a transaction.
+    const signature = await signer.signTypedData(domain, types, message);
+
+    const resp = await fetch(`${environment.faucetApi}/zkpassport/relay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to: emitterAddress,
+        value: '0',
+        gas: gas.toString(),
+        deadline,
+        data,
+        signature,
+      }),
+    });
+    if (!resp.ok) {
+      let detail = `${resp.status}`;
+      try {
+        const body = await resp.json();
+        detail = body?.detail ? `${resp.status}: ${body.detail}` : detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new Error(`Relayer could not submit the proof (${detail}).`);
+    }
+    const relayResult = (await resp.json()) as { tx_hash?: string };
+    console.log('[zkpassport] relayed tx:', relayResult?.tx_hash);
   }
 
   private async renderQr(url: string): Promise<void> {
@@ -562,6 +640,15 @@ export class VerifyComponent implements OnInit, OnDestroy {
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }
   }
+}
+
+/** True when a wallet error represents the user rejecting the signature. */
+function isUserRejection(err: unknown): boolean {
+  const e = err as { code?: unknown; info?: { error?: { code?: unknown } } } | null;
+  return (
+    !!e &&
+    (e.code === 'ACTION_REJECTED' || e.code === 4001 || e.info?.error?.code === 4001)
+  );
 }
 
 /** Mirrors Solidity _clvmUint64: minimal big-endian bytes with leading 0x00 if high bit set. */
