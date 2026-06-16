@@ -590,12 +590,12 @@ export class VerifyComponent implements OnInit, OnDestroy {
         { name: 'to', type: 'address' },
         { name: 'value', type: 'uint256' },
         { name: 'gas', type: 'uint256' },
-        { name: 'deadline', type: 'uint48' },
         { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint48' },
         { name: 'data', type: 'bytes' },
       ],
     };
-    const message = { from, to: emitterAddress, value: 0n, gas, deadline, nonce, data };
+    const message = { from, to: emitterAddress, value: 0n, gas, nonce, deadline, data };
 
     // Gasless: MetaMask shows a typed-data signature request, not a transaction.
     const signature = await signer.signTypedData(domain, types, message);
