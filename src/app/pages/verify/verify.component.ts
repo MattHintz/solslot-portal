@@ -438,10 +438,10 @@ export class VerifyComponent implements OnInit, OnDestroy {
 
     const signer = await provider.getSigner();
 
+    // Let SDK extract domain/scope/devMode from the proof itself; don't override.
+    // The proof contains the exact serviceConfig values used during generation.
     const solidityParams: SolidityVerifierParameters = zkp.getSolidityVerifierParameters({
       proof,
-      scope: 'populis-verify',
-      devMode: environment.zkPassport.devMode ?? false,
     });
 
     // Extract attestation fields with the SDK's canonical outer-proof getters instead
