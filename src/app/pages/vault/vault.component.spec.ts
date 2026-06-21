@@ -14,6 +14,7 @@ import { ZkPassportVaultEnrollmentSpendService } from '../../services/zkpassport
 import { ZkPassportVaultEnrollmentAuthorizeService } from '../../services/zkpassport-vault-enrollment-authorize.service';
 import { ZkPassportVaultEnrollmentCommitService } from '../../services/zkpassport-vault-enrollment-commit.service';
 import { VaultVersionStatusService } from '../../services/vault-version-status.service';
+import { VaultUpgradeRunnerService } from '../../services/vault-upgrade-runner.service';
 import { VaultComponent } from './vault.component';
 
 const VAULT_LAUNCHER_ID = '0x' + '11'.repeat(32);
@@ -138,8 +139,9 @@ function foundResult(): ZkPassportEvmPollResult {
 describe('VaultComponent zkPassport enrollment preview', () => {
   let fixture: ComponentFixture<VaultComponent>;
   let component: VaultComponent;
-  let sessionMock: Pick<SessionService, 'session' | 'vault' | 'refreshVault'>;
+  let sessionMock: Pick<SessionService, 'session' | 'vault' | 'refreshVault' | 'setVaultLauncherId'>;
   let evmPollerMock: jasmine.SpyObj<ZkPassportEvmAttestationPollerService>;
+  let upgradeRunnerMock: jasmine.SpyObj<VaultUpgradeRunnerService>;
   let enrollmentSpendMock: jasmine.SpyObj<ZkPassportVaultEnrollmentSpendService>;
   let enrollmentAuthorizeMock: jasmine.SpyObj<ZkPassportVaultEnrollmentAuthorizeService>;
   let enrollmentCommitMock: jasmine.SpyObj<ZkPassportVaultEnrollmentCommitService>;
@@ -157,7 +159,8 @@ describe('VaultComponent zkPassport enrollment preview', () => {
       }),
       vault: signal(vaultState()),
       refreshVault: async () => vaultState(),
-    } as unknown as Pick<SessionService, 'session' | 'vault' | 'refreshVault'>;
+      setVaultLauncherId: jasmine.createSpy('setVaultLauncherId'),
+    } as unknown as Pick<SessionService, 'session' | 'vault' | 'refreshVault' | 'setVaultLauncherId'>;
     evmPollerMock = jasmine.createSpyObj<ZkPassportEvmAttestationPollerService>(
       'ZkPassportEvmAttestationPollerService',
       ['pollOnce', 'proofLaunchUrl'],
@@ -198,6 +201,10 @@ describe('VaultComponent zkPassport enrollment preview', () => {
       ['checkVault'],
     );
     vaultVersionStatusMock.checkVault.and.resolveTo({ kind: 'current', registryVersion: 1 });
+    upgradeRunnerMock = jasmine.createSpyObj<VaultUpgradeRunnerService>(
+      'VaultUpgradeRunnerService',
+      ['runUpgrade'],
+    );
 
     await TestBed.configureTestingModule({
       imports: [VaultComponent],
@@ -211,6 +218,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
         { provide: ZkPassportVaultEnrollmentAuthorizeService, useValue: enrollmentAuthorizeMock },
         { provide: ZkPassportVaultEnrollmentCommitService, useValue: enrollmentCommitMock },
         { provide: VaultVersionStatusService, useValue: vaultVersionStatusMock },
+        { provide: VaultUpgradeRunnerService, useValue: upgradeRunnerMock },
       ],
     }).compileComponents();
 
@@ -389,5 +397,76 @@ describe('VaultComponent zkPassport enrollment preview', () => {
     expect(component.versionStatus()).toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('Upgrade available');
     expect(fixture.nativeElement.textContent).not.toContain('up to date');
+  });
+
+  it('enables the Upgrade vault button when the vault is outdated', async () => {
+    vaultVersionStatusMock.checkVault.and.resolveTo({ kind: 'outdated', reason: 'params', registryVersion: 5 });
+    await component.manualRefresh();
+    fixture.detectChanges();
+    const button: HTMLButtonElement | null = fixture.nativeElement.querySelector('button.btn--primary');
+    expect(button?.textContent).toContain('Upgrade vault');
+    expect(button?.disabled).toBeFalse();
+  });
+
+  it('runs the one-click upgrade, streams progress, and re-points the session', async () => {
+    vaultVersionStatusMock.checkVault.and.resolveTo({ kind: 'outdated', reason: 'params', registryVersion: 5 });
+    await component.manualRefresh();
+    fixture.detectChanges();
+
+    const newLauncher = '0x' + '99'.repeat(32);
+    const seenPhases: string[] = [];
+    upgradeRunnerMock.runUpgrade.and.callFake(async (_id, onProgress) => {
+      onProgress?.({ phase: 'launching', message: 'Funding and signing the new vault launch…' });
+      seenPhases.push('launching');
+      onProgress?.({ phase: 'migrating_deed', message: 'Migrating deed 1 of 1…', deedIndex: 1, deedTotal: 1 });
+      seenPhases.push('migrating_deed');
+      onProgress?.({ phase: 'done', message: 'Upgrade complete. 1 deed(s) migrated.', newVaultLauncherId: newLauncher });
+      seenPhases.push('done');
+      return {
+        newVaultLauncherId: newLauncher,
+        launchPushResponse: { success: true, status: 'SUCCESS' },
+        migratedDeeds: [{ deedLauncherId: '0x' + 'd1'.repeat(32), pushResponse: { success: true, status: 'SUCCESS' } }],
+        deedsUnmigratable: false,
+      };
+    });
+
+    await component.upgradeVault();
+    fixture.detectChanges();
+
+    expect(upgradeRunnerMock.runUpgrade).toHaveBeenCalledWith(VAULT_LAUNCHER_ID, jasmine.any(Function));
+    expect(seenPhases).toEqual(['launching', 'migrating_deed', 'done']);
+    expect(component.upgrading()).toBeFalse();
+    expect(component.upgradeResult()?.newVaultLauncherId).toBe(newLauncher);
+    expect(sessionMock.setVaultLauncherId).toHaveBeenCalledWith(newLauncher);
+    expect(fixture.nativeElement.textContent).toContain('New vault launched');
+    expect(fixture.nativeElement.textContent).toContain('1 deed(s) migrated');
+  });
+
+  it('shows the freely-transferable note when deeds are unmigratable', async () => {
+    vaultVersionStatusMock.checkVault.and.resolveTo({ kind: 'outdated', reason: 'code', registryVersion: 6 });
+    await component.manualRefresh();
+    const newLauncher = '0x' + '99'.repeat(32);
+    upgradeRunnerMock.runUpgrade.and.resolveTo({
+      newVaultLauncherId: newLauncher,
+      launchPushResponse: { success: true, status: 'SUCCESS' },
+      migratedDeeds: [],
+      deedsUnmigratable: true,
+    });
+    await component.upgradeVault();
+    fixture.detectChanges();
+    expect(component.upgradeResult()?.deedsUnmigratable).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('predates the migrate upgrade');
+  });
+
+  it('surfaces upgrade errors without re-pointing the session', async () => {
+    vaultVersionStatusMock.checkVault.and.resolveTo({ kind: 'outdated', reason: 'params', registryVersion: 5 });
+    await component.manualRefresh();
+    upgradeRunnerMock.runUpgrade.and.rejectWith(new Error('wallet rejected the funding spend'));
+    await component.upgradeVault();
+    fixture.detectChanges();
+    expect(component.upgradeError()).toContain('wallet rejected the funding spend');
+    expect(component.upgradeResult()).toBeNull();
+    expect(component.upgrading()).toBeFalse();
+    expect(sessionMock.setVaultLauncherId).not.toHaveBeenCalled();
   });
 });

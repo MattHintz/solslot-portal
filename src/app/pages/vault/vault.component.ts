@@ -24,6 +24,11 @@ import {
 } from '../../services/zkpassport-vault-enrollment-commit.service';
 import { ZkPassportProofStoreService } from '../../services/zkpassport-proof-store.service';
 import { ZkPassportValidatorSignerService } from '../../services/zkpassport-validator-signer.service';
+import {
+  UpgradeProgress,
+  UpgradeRunResult,
+  VaultUpgradeRunnerService,
+} from '../../services/vault-upgrade-runner.service';
 import { AUTH_TYPE_BLS, AUTH_TYPE_SECP256K1, AUTH_TYPE_SECP256R1, bytesToHex, hexToBytes } from '../../utils/chia-hash';
 
 /** Polling cadence while the vault is still unconfirmed.  Testnet11 blocks
@@ -99,10 +104,49 @@ interface ZkPassportEnrollmentPreview {
                   }
                 </p>
               </div>
-              <button class="btn btn--primary" type="button" disabled title="One-click upgrade coming in Brick 6">
-                Upgrade vault
+              <button
+                class="btn btn--primary"
+                type="button"
+                (click)="upgradeVault()"
+                [disabled]="upgrading()"
+              >
+                @if (upgrading()) { Upgrading… } @else { Upgrade vault }
               </button>
             </div>
+
+            @if (upgradeProgress(); as p) {
+              <div class="mt-4 text-sm text-amber-100/90 inline-flex items-center gap-2">
+                @if (upgrading()) { <span class="pp-spinner" aria-hidden="true"></span> }
+                <span>{{ p.message }}</span>
+                @if (p.deedTotal) {
+                  <span class="mono text-xs text-amber-200">({{ p.deedIndex }}/{{ p.deedTotal }})</span>
+                }
+              </div>
+            }
+
+            @if (upgradeError()) {
+              <div class="mt-4 rounded-card border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300 whitespace-pre-wrap">
+                {{ upgradeError() }}
+              </div>
+            }
+
+            @if (upgradeResult(); as r) {
+              <div class="mt-4 rounded-card border border-brand/30 bg-brand-soft p-4 text-sm">
+                <div class="text-brand">New vault launched:</div>
+                <div class="mono text-xs break-all mt-1">{{ r.newVaultLauncherId }}</div>
+                @if (r.deedsUnmigratable) {
+                  <p class="text-amber-200 mt-2">
+                    This vault predates the migrate upgrade, so its deeds could not be moved
+                    automatically. Transfer any freely-transferable XCH / pool-share assets
+                    from your wallet.
+                  </p>
+                } @else {
+                  <p class="text-text-muted mt-2">
+                    {{ r.migratedDeeds.length }} deed(s) migrated to the new vault.
+                  </p>
+                }
+              </div>
+            }
           </div>
         } @else {
           <div class="card mt-6 text-sm text-brand inline-flex items-center gap-2">
@@ -396,9 +440,14 @@ export class VaultComponent implements OnDestroy {
   private readonly enrollmentCommit = inject(ZkPassportVaultEnrollmentCommitService);
   private readonly validatorSigner = inject(ZkPassportValidatorSignerService);
   private readonly vaultVersionStatus = inject(VaultVersionStatusService);
+  private readonly upgradeRunner = inject(VaultUpgradeRunnerService);
   readonly refreshing = signal(false);
   readonly versionStatus = signal<VaultVersionStatus | null>(null);
   readonly checkingVersion = signal(false);
+  readonly upgrading = signal(false);
+  readonly upgradeProgress = signal<UpgradeProgress | null>(null);
+  readonly upgradeError = signal<string | null>(null);
+  readonly upgradeResult = signal<UpgradeRunResult | null>(null);
   readonly enrollmentStatus = signal<EnrollmentStatus>('idle');
   readonly enrollmentError = signal<string | null>(null);
   readonly enrollmentPreview = signal<ZkPassportEnrollmentPreview | null>(null);
@@ -466,6 +515,41 @@ export class VaultComponent implements OnDestroy {
   async manualRefresh(): Promise<void> {
     await this.refresh();
     this.reschedulePoll();
+  }
+
+  /**
+   * One-click vault upgrade (Brick 6): launch a new vault at the registry's
+   * canonical descriptor, migrate the deeds, then re-point the session onto
+   * the new vault.  Streams progress into ``upgradeProgress`` for the UI.
+   */
+  async upgradeVault(): Promise<void> {
+    if (this.upgrading()) {
+      return;
+    }
+    const vault = this.session.vault();
+    const launcherId = vault?.vault_launcher_id;
+    if (!launcherId) {
+      this.upgradeError.set('No vault is loaded to upgrade. Refresh and retry.');
+      return;
+    }
+    this.upgradeError.set(null);
+    this.upgradeResult.set(null);
+    this.upgradeProgress.set(null);
+    this.upgrading.set(true);
+    try {
+      const result = await this.upgradeRunner.runUpgrade(launcherId, (progress) => {
+        this.upgradeProgress.set(progress);
+      });
+      this.upgradeResult.set(result);
+      // Swap the session onto the freshly launched vault and re-check status.
+      this.session.setVaultLauncherId(result.newVaultLauncherId);
+      this.versionStatus.set(null);
+      await this.refresh();
+    } catch (err) {
+      this.upgradeError.set(err instanceof Error ? err.message : String(err));
+    } finally {
+      this.upgrading.set(false);
+    }
   }
 
   private onVerifyPopupMessage(ev: MessageEvent): void {

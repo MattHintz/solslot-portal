@@ -87,6 +87,22 @@ export class SessionService {
   }
 
   /**
+   * Re-point the active session at a different vault launcher id, preserving
+   * the owner identity (auth type / address / pubkey).  Used after a one-click
+   * vault upgrade (Brick 6) swaps the user onto their freshly launched vault;
+   * the stale vault state is cleared so the next refresh re-discovers the new
+   * singleton from chain.
+   */
+  setVaultLauncherId(vaultLauncherId: string): void {
+    const current = this.session();
+    if (!current) {
+      return;
+    }
+    this.session.set({ ...current, vaultLauncherId });
+    this.vault.set(null);
+  }
+
+  /**
    * Refresh vault state from chain alone.
    *
    * Walks the singleton lineage forward from the launcher id to locate
