@@ -79,7 +79,7 @@ export function coinId(
  *   128    → 0x0080    (leading 00 to preserve positivity)
  *   256    → 0x0100
  */
-function canonicalIntBytes(n: bigint): Uint8Array {
+export function canonicalIntBytes(n: bigint): Uint8Array {
   if (n < 0n) throw new Error('Negative amounts not supported');
   if (n === 0n) return new Uint8Array(0);
   const bytes: number[] = [];
