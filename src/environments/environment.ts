@@ -250,10 +250,15 @@ export const environment = {
     propertyRegistryModHash: '',
     /** Tree hash of ``mint_proposal_inner.clsp``. */
     mintProposalModHash: '',
-    /** Tree hash of the uncurried vault inner puzzle. */
-    vaultInnerModHash: '0xaf321c6a531ff04f7d151f6ccb6c9b900f253703ce7f439be7c7077bffb5df32',
+    /**
+     * Tree hash of the uncurried vault inner puzzle. Updated to the
+     * current vault code the registry publishes (Brick 3 migrate spend).
+     */
+    vaultInnerModHash:
+      '0x4176b7fa966f4c4a0fe2609d69e0411046228b3fac7335e6695402bbf926fd4c',
     /** Vault-version registry singleton. Empty = not deployed yet. */
-    vaultVersionRegistryLauncherId: '',
+    vaultVersionRegistryLauncherId:
+      '0x213592d7689076e712880ea5d11bda634350e8992577104d9165e4b7c3d5228e',
     /** Tree hash of vault_version_registry_inner.clsp — pinned to verify on-chain state. */
     vaultVersionRegistryModHash:
       '0x5cf39809296ad31bf906f7610912ac56fb8c339e0e98444f821f9e363df60d29',
