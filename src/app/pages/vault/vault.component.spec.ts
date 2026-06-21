@@ -1,3 +1,5 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -11,6 +13,7 @@ import {
 import { ZkPassportVaultEnrollmentSpendService } from '../../services/zkpassport-vault-enrollment-spend.service';
 import { ZkPassportVaultEnrollmentAuthorizeService } from '../../services/zkpassport-vault-enrollment-authorize.service';
 import { ZkPassportVaultEnrollmentCommitService } from '../../services/zkpassport-vault-enrollment-commit.service';
+import { VaultVersionStatusService } from '../../services/vault-version-status.service';
 import { VaultComponent } from './vault.component';
 
 const VAULT_LAUNCHER_ID = '0x' + '11'.repeat(32);
@@ -140,6 +143,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
   let enrollmentSpendMock: jasmine.SpyObj<ZkPassportVaultEnrollmentSpendService>;
   let enrollmentAuthorizeMock: jasmine.SpyObj<ZkPassportVaultEnrollmentAuthorizeService>;
   let enrollmentCommitMock: jasmine.SpyObj<ZkPassportVaultEnrollmentCommitService>;
+  let vaultVersionStatusMock: jasmine.SpyObj<VaultVersionStatusService>;
 
   beforeEach(async () => {
     localStorage.clear();
@@ -189,16 +193,24 @@ describe('VaultComponent zkPassport enrollment preview', () => {
       confirmedVaultCoinId: NEXT_VAULT_COIN_ID,
       confirmedBlockIndex: 124,
     });
+    vaultVersionStatusMock = jasmine.createSpyObj<VaultVersionStatusService>(
+      'VaultVersionStatusService',
+      ['checkVault'],
+    );
+    vaultVersionStatusMock.checkVault.and.resolveTo({ kind: 'current', registryVersion: 1 });
 
     await TestBed.configureTestingModule({
       imports: [VaultComponent],
       providers: [
         provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
         { provide: SessionService, useValue: sessionMock },
         { provide: ZkPassportEvmAttestationPollerService, useValue: evmPollerMock },
         { provide: ZkPassportVaultEnrollmentSpendService, useValue: enrollmentSpendMock },
         { provide: ZkPassportVaultEnrollmentAuthorizeService, useValue: enrollmentAuthorizeMock },
         { provide: ZkPassportVaultEnrollmentCommitService, useValue: enrollmentCommitMock },
+        { provide: VaultVersionStatusService, useValue: vaultVersionStatusMock },
       ],
     }).compileComponents();
 
@@ -329,5 +341,53 @@ describe('VaultComponent zkPassport enrollment preview', () => {
     expect(component.zkPassportProofUrl()).toBeNull();
     expect(component.enrollmentError()).toBeNull();
     expect(component.enrollmentStatus()).toBe('idle');
+  });
+
+  it('checks the vault version against the registry on refresh', async () => {
+    await component.manualRefresh();
+    expect(vaultVersionStatusMock.checkVault).toHaveBeenCalledWith(VAULT_LAUNCHER_ID);
+  });
+
+  it('renders the "up to date" indicator when the vault is current', async () => {
+    vaultVersionStatusMock.checkVault.and.resolveTo({ kind: 'current', registryVersion: 4 });
+    await component.manualRefresh();
+    fixture.detectChanges();
+    expect(component.versionStatus()).toEqual({ kind: 'current', registryVersion: 4 });
+    expect(fixture.nativeElement.textContent).toContain('up to date');
+    expect(fixture.nativeElement.textContent).not.toContain('Upgrade available');
+  });
+
+  it('renders the "Upgrade available" banner with the params-repair reason', async () => {
+    vaultVersionStatusMock.checkVault.and.resolveTo({
+      kind: 'outdated',
+      reason: 'params',
+      registryVersion: 5,
+    });
+    await component.manualRefresh();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Upgrade available');
+    expect(fixture.nativeElement.textContent).toContain('repairs protocol parameters');
+    expect(fixture.nativeElement.textContent).toContain('5');
+  });
+
+  it('renders the code-change upgrade reason for outdated vault code', async () => {
+    vaultVersionStatusMock.checkVault.and.resolveTo({
+      kind: 'outdated',
+      reason: 'code',
+      registryVersion: 6,
+    });
+    await component.manualRefresh();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Upgrade available');
+    expect(fixture.nativeElement.textContent).toContain('includes a code change');
+  });
+
+  it('keeps the banner hidden when the registry is unavailable', async () => {
+    vaultVersionStatusMock.checkVault.and.resolveTo(null);
+    await component.manualRefresh();
+    fixture.detectChanges();
+    expect(component.versionStatus()).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Upgrade available');
+    expect(fixture.nativeElement.textContent).not.toContain('up to date');
   });
 });

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { sha256 } from 'ethers';
 import { SessionService } from '../../services/session.service';
+import { VaultVersionStatusService, type VaultVersionStatus } from '../../services/vault-version-status.service';
 import { ZkPassportAttestationService } from '../../services/zkpassport-attestation.service';
 import {
   ValidatorBridgeSpendPackage,
@@ -77,6 +78,39 @@ interface ZkPassportEnrollmentPreview {
     <section class="container-p pt-16 pb-24 max-w-4xl">
       <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-4">Your Vault</div>
       <h1 class="font-display text-4xl md:text-5xl">Vault dashboard</h1>
+
+      @if (checkingVersion()) {
+        <div class="card mt-6 text-sm text-text-muted inline-flex items-center gap-3">
+          <span class="pp-spinner" aria-hidden="true"></span>
+          Checking vault version against the on-chain registry…
+        </div>
+      } @else if (versionStatus(); as status) {
+        @if (status.kind === 'outdated') {
+          <div class="rounded-card border border-amber-400/30 bg-amber-400/10 p-5 mt-6">
+            <div class="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <div class="font-display text-xl text-amber-100">Upgrade available</div>
+                <p class="text-sm text-amber-100/80 mt-1">
+                  A newer vault version ({{ status.registryVersion }}) is published on chain.
+                  @switch (status.reason) {
+                    @case ('code') { The upgrade includes a code change. }
+                    @case ('params') { The upgrade repairs protocol parameters. }
+                    @case ('both') { The upgrade includes a code change and parameter repairs. }
+                  }
+                </p>
+              </div>
+              <button class="btn btn--primary" type="button" disabled title="One-click upgrade coming in Brick 6">
+                Upgrade vault
+              </button>
+            </div>
+          </div>
+        } @else {
+          <div class="card mt-6 text-sm text-brand inline-flex items-center gap-2">
+            <span class="pp-dot" aria-hidden="true"></span>
+            Vault version {{ status.registryVersion }} — up to date
+          </div>
+        }
+      }
 
       @if (!session.session()) {
         <div class="card mt-10">
@@ -361,7 +395,10 @@ export class VaultComponent implements OnDestroy {
   private readonly enrollmentAuthorize = inject(ZkPassportVaultEnrollmentAuthorizeService);
   private readonly enrollmentCommit = inject(ZkPassportVaultEnrollmentCommitService);
   private readonly validatorSigner = inject(ZkPassportValidatorSignerService);
+  private readonly vaultVersionStatus = inject(VaultVersionStatusService);
   readonly refreshing = signal(false);
+  readonly versionStatus = signal<VaultVersionStatus | null>(null);
+  readonly checkingVersion = signal(false);
   readonly enrollmentStatus = signal<EnrollmentStatus>('idle');
   readonly enrollmentError = signal<string | null>(null);
   readonly enrollmentPreview = signal<ZkPassportEnrollmentPreview | null>(null);
@@ -689,8 +726,26 @@ export class VaultComponent implements OnDestroy {
     this.refreshing.set(true);
     try {
       await this.session.refreshVault();
+      await this.checkVersionStatus();
     } finally {
       this.refreshing.set(false);
+    }
+  }
+
+  private async checkVersionStatus(): Promise<void> {
+    const vault = this.session.vault();
+    if (!vault?.vault_launcher_id) {
+      return;
+    }
+    if (this.checkingVersion()) {
+      return;
+    }
+    this.checkingVersion.set(true);
+    try {
+      const status = await this.vaultVersionStatus.checkVault(vault.vault_launcher_id);
+      this.versionStatus.set(status);
+    } finally {
+      this.checkingVersion.set(false);
     }
   }
 

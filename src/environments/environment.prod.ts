@@ -39,5 +39,10 @@ export const environment = {
     propertyRegistryModHash: '',
     mintProposalModHash: '',
     vaultInnerModHash: '',
+    /** Vault-version registry singleton. Empty = not deployed yet. */
+    vaultVersionRegistryLauncherId: '',
+    /** Tree hash of vault_version_registry_inner.clsp. */
+    vaultVersionRegistryModHash:
+      '0x5cf39809296ad31bf906f7610912ac56fb8c339e0e98444f821f9e363df60d29',
   },
 };
