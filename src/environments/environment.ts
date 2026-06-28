@@ -239,8 +239,39 @@ export const environment = {
     propertyRegistryLauncherId: '',
     /** Pool singleton launcher id (deeded-XCH pool).  Empty = not deployed. */
     poolLauncherId: '0xc756590abdd408ceeed708005d79d36b4a7279c22af22ce613849e36163339c3',
-    /** Governance DID singleton launcher id.  Empty = not deployed. */
+    /**
+     * PGT-backed governance proposal-tracker singleton launcher id.  This is
+     * the on-chain state machine documented by
+     * ``governance_singleton_inner.clsp`` (IDLE → PROPOSE → VOTE* → EXECUTE
+     * /EXPIRE → IDLE).  The committee desk (``/committee``) walks this
+     * lineage to surface the live proposal (if any) for PGT-weighted voting.
+     *
+     * Name kept as ``governanceLauncherId`` for backwards-compat with the
+     * A.3 protocol-config launch wizard which curries this exact value in.
+     * It is **not** a DID — the DID lives on
+     * ``populis_api/.env`` as ``POPULIS_DID_LAUNCHER_ID``.
+     */
     governanceLauncherId: '0xc23df863a5e3bc5dd7620a88cedfd93691a971251319c74397e271d2b7e0a881',
+    /**
+     * Quorum threshold (basis points, 0–10000) curried into the live
+     * tracker.  Display-only mirror of the on-chain QUORUM_BPS — used to
+     * render "X of Y PGT" progress and to decide whether a proposal whose
+     * deadline has passed is execute-eligible or expired.
+     *
+     * MUST match the value the operator curried at tracker launch
+     * (mirrored from ``populis_api/deployment_manifest.json``); a stale
+     * value here causes the committee desk to mis-bucket post-deadline
+     * proposals.  The actual on-chain quorum check is enforced by the
+     * tracker puzzle itself — this constant is for UI only.
+     */
+    governanceQuorumBps: 5000,
+    /** Voting window in seconds (display).  Curried into tracker; mirror of
+     *  ``voting_window_seconds`` in deployment_manifest.json. */
+    governanceVotingWindowSeconds: 300,
+    /** Fixed PGT supply, denominator of the quorum check (display). */
+    governancePgtTotalSupply: 1_000_000,
+    /** Minimum first-vote PGT mojos to open a proposal (display). */
+    governanceMinProposalStake: 10_000,
     /**
      * Tree hash of ``protocol_config_inner.clsp`` — pinned so the
      * trust-roots page can verify it found the canonical puzzle.
