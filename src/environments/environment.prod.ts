@@ -39,6 +39,7 @@ export const environment = {
     governanceVotingWindowSeconds: 300,
     governancePgtTotalSupply: 1_000_000,
     governanceMinProposalStake: 10_000,
+    pgtTailGenesisCoinId: '',
     protocolConfigModHash: '',
     propertyRegistryModHash: '',
     mintProposalModHash: '',

@@ -273,6 +273,15 @@ export const environment = {
     /** Minimum first-vote PGT mojos to open a proposal (display). */
     governanceMinProposalStake: 10_000,
     /**
+     * PGT TAIL genesis coin id — the unique XCH coin id that bootstrapped
+     * PGT into circulation at protocol launch.  Curried into the PGT TAIL
+     * puzzle (``pgt_tail.clsp``); its tree hash is the CAT2 asset id every
+     * PGT coin carries.  Used by the committee desk's coin discovery
+     * service to derive the canonical CAT-wrapped PGT free puzzle hash
+     * for the connected voter.  Empty = PGT not yet issued.
+     */
+    pgtTailGenesisCoinId: '',
+    /**
      * Tree hash of ``protocol_config_inner.clsp`` — pinned so the
      * trust-roots page can verify it found the canonical puzzle.
      */
