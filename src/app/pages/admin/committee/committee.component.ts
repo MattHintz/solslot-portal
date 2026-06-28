@@ -1,11 +1,17 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import {
   DecodedBill,
   GovernanceTrackerReaderService,
   TrackerStateSnapshot,
 } from '../../../services/governance-tracker-reader.service';
+import {
+  CommitteeVoteRunnerService,
+  VoteRunResult,
+} from '../../../services/pgt-driver/committee-vote-runner.service';
 import { formatError } from '../../../utils/format-error';
 
 /**
@@ -26,15 +32,20 @@ import { formatError } from '../../../utils/format-error';
  * VOTING → EXECUTE / EXPIRE → IDLE) is reconstructed by decoding each
  * spend's solution in chain order.  No API call required.
  *
- * **Vote button.**  Disabled in this brick — the PGT-VOTE spend
- * builder lands in the follow-up phase.  The forwarder endpoint
- * (``POST /admin/committee/vote``) is already live as a publish-only
- * relay (Brick 3.5c-3).
+ * **Vote button.**  Wired (Phase 3e).  Delegates to
+ * {@link CommitteeVoteRunnerService} which discovers the voter's PGT
+ * coin, assembles a CAT2-wrapped PGT lock + singleton-wrapped tracker
+ * VOTE bundle via {@link PgtVoteSpendBuilderService}, asks the wallet
+ * to sign via {@link ChiaWalletService.signSpendBundle}, and POSTs
+ * the result to the publish-only ``/admin/committee/vote`` forwarder
+ * (Brick 3.5c-3).  Vote amount is the user-input PGT mojo count;
+ * LOCK is a full-coin operation so it must equal one of the voter's
+ * free PGT coin amounts exactly.
  */
 @Component({
   selector: 'pp-committee',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <section class="container-p pt-12 pb-24 max-w-5xl">
       <header>
@@ -127,15 +138,48 @@ import { formatError } from '../../../utils/format-error';
                       {{ billSubhead(snap.bill) }}
                     </div>
                   </div>
-                  <button
-                    class="btn btn--primary shrink-0"
-                    type="button"
-                    [disabled]="!canVote(snap)"
-                    [title]="voteButtonTitle(snap)"
-                  >
-                    Vote YES
-                  </button>
+                  <div class="flex items-end gap-2 shrink-0">
+                    <label class="flex flex-col gap-1 text-xs mono text-text-muted">
+                      Vote amount (PGT mojos)
+                      <input
+                        type="number"
+                        class="input mono text-sm w-40"
+                        min="1"
+                        step="1"
+                        [(ngModel)]="voteAmountInput"
+                        [disabled]="!canVote(snap) || voting()"
+                      />
+                    </label>
+                    <button
+                      class="btn btn--primary"
+                      type="button"
+                      [disabled]="!canVote(snap) || voting() || !hasValidAmount()"
+                      [title]="voteButtonTitle(snap)"
+                      (click)="submitVote()"
+                    >
+                      @if (voting()) { Casting&hellip; } @else { Vote YES }
+                    </button>
+                  </div>
                 </div>
+
+                @if (lastVoteResult(); as result) {
+                  <div
+                    class="rounded-card border p-3 text-sm"
+                    [class.border-emerald-500\\/40]="voteResultOk(result)"
+                    [class.bg-emerald-500\\/10]="voteResultOk(result)"
+                    [class.text-emerald-300]="voteResultOk(result)"
+                    [class.border-amber-500\\/40]="!voteResultOk(result)"
+                    [class.bg-amber-500\\/10]="!voteResultOk(result)"
+                    [class.text-amber-300]="!voteResultOk(result)"
+                  >
+                    <div class="font-display text-base mb-1">
+                      {{ voteResultHeadline(result) }}
+                    </div>
+                    <div class="mono text-xs whitespace-pre-wrap">
+                      {{ voteResultDetail(result) }}
+                    </div>
+                  </div>
+                }
 
                 <div class="max-w-xl">
                   <div class="flex items-center justify-between text-xs mono mb-1">
@@ -229,11 +273,22 @@ import { formatError } from '../../../utils/format-error';
 })
 export class CommitteeComponent {
   private readonly tracker = inject(GovernanceTrackerReaderService);
+  private readonly wallet = inject(ChiaWalletService);
+  private readonly runner = inject(CommitteeVoteRunnerService);
 
   readonly snapshot = signal<TrackerStateSnapshot | null>(null);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
   readonly lastCheckedAt = signal<number | null>(null);
+
+  /** Vote-cast input (PGT mojos).  ngModel-bound so users can edit. */
+  voteAmountInput = '';
+
+  /** True while a vote is being assembled / signed / submitted. */
+  readonly voting = signal(false);
+
+  /** Last completed vote result (success or any pre-flight failure). */
+  readonly lastVoteResult = signal<VoteRunResult | null>(null);
 
   /** Total open-state proposals (0 or 1). Convenience for templates/tests. */
   readonly openCount = computed(() => {
@@ -272,11 +327,9 @@ export class CommitteeComponent {
 
   // ── Vote-button gating ──────────────────────────────────────────────
 
-  canVote(_snap: TrackerStateSnapshot): boolean {
-    // Disabled in this brick — the PGT-VOTE spend builder lands in
-    // the follow-up phase.  Returning false uniformly so tests and
-    // the UI both reflect the contract.
-    return false;
+  canVote(snap: TrackerStateSnapshot): boolean {
+    if (snap.kind !== 'OPEN') return false;
+    return this.wallet.isConnected();
   }
 
   voteButtonTitle(snap: TrackerStateSnapshot): string {
@@ -286,7 +339,108 @@ export class CommitteeComponent {
     if (snap.kind === 'AWAITING_EXPIRE') {
       return 'Voting closed — proposal is awaiting EXPIRE';
     }
-    return 'PGT-VOTE spend builder lands in the next brick';
+    if (!this.wallet.isConnected()) {
+      return 'Connect a Chia wallet to vote';
+    }
+    return 'Cast a PGT-weighted vote on this proposal';
+  }
+
+  hasValidAmount(): boolean {
+    const v = this.voteAmountInput.trim();
+    if (!v) return false;
+    try {
+      return BigInt(v) > 0n;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Cast a vote with the input amount.  Delegates to
+   * {@link CommitteeVoteRunnerService} and stores the typed result so
+   * the template can render every outcome (success or pre-flight
+   * failure).  On a successful submission we also reload the tracker
+   * state so the quorum progress reflects the new tally as soon as
+   * the chain confirms.
+   */
+  async submitVote(): Promise<void> {
+    if (!this.hasValidAmount()) return;
+    this.voting.set(true);
+    this.lastVoteResult.set(null);
+    try {
+      const result = await this.runner.castVote({
+        additionalVoteAmount: BigInt(this.voteAmountInput.trim()),
+      });
+      this.lastVoteResult.set(result);
+      if (result.kind === 'submitted' && result.apiResponse.pushed) {
+        // Refresh tracker state so the bar updates once the chain
+        // confirms.  Fire-and-forget: the result panel is already
+        // showing success either way.
+        void this.reload();
+      }
+    } catch (e) {
+      // Synchronous throws from the runner (e.g. wallet signing
+      // failure) get reflected as a generic error result so the UI
+      // surfaces something instead of going silent.
+      this.lastVoteResult.set({
+        kind: 'spend-builder-failed',
+        error: formatError(e),
+      });
+    } finally {
+      this.voting.set(false);
+    }
+  }
+
+  voteResultOk(result: VoteRunResult): boolean {
+    return result.kind === 'submitted' && result.apiResponse.pushed;
+  }
+
+  voteResultHeadline(result: VoteRunResult): string {
+    switch (result.kind) {
+      case 'submitted':
+        return result.apiResponse.pushed
+          ? `Vote submitted (${result.apiResponse.status})`
+          : `Vote rejected by chain: ${result.apiResponse.status}`;
+      case 'invalid-input':
+        return 'Invalid vote amount.';
+      case 'wallet-not-connected':
+        return 'Connect a Chia wallet to vote.';
+      case 'tracker-not-open':
+        return 'Tracker is no longer in OPEN state.';
+      case 'pgt-not-deployed':
+        return 'PGT has not been issued on this network yet.';
+      case 'no-pgt-coins':
+        return "You don't appear to hold any free PGT.";
+      case 'no-coin-matches-vote-amount':
+        return 'No free PGT coin matches the requested vote amount.';
+      case 'spend-builder-failed':
+        return 'Could not build the vote spend.';
+    }
+  }
+
+  voteResultDetail(result: VoteRunResult): string {
+    switch (result.kind) {
+      case 'submitted':
+        return `bundle ${result.apiResponse.spendBundleId}\nlocked coin ${result.pickedCoin.amount} mojos`;
+      case 'invalid-input':
+        return 'Vote amount must be a positive integer.';
+      case 'wallet-not-connected':
+        return 'Use the wallet panel to connect Goby or Sage, then retry.';
+      case 'tracker-not-open':
+        return 'Refresh the page; the proposal may have moved to AWAITING_EXECUTE / EXPIRE.';
+      case 'pgt-not-deployed':
+        return 'Wait until PGT issuance lands, then refresh.';
+      case 'no-pgt-coins':
+        return `Discovery: ${result.discovery.kind}`;
+      case 'no-coin-matches-vote-amount':
+        return (
+          `LOCK is a full-coin operation. You can lock exactly one ` +
+          `coin's worth per vote. Available amounts (mojos): ` +
+          `${result.availableAmounts.join(', ') || '—'}`
+        );
+      case 'spend-builder-failed':
+        return result.error;
+    }
   }
 
   // ── Bill renderers ──────────────────────────────────────────────────
