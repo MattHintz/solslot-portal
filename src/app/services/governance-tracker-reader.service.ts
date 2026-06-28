@@ -295,6 +295,177 @@ export class GovernanceTrackerReaderService {
     };
   }
 
+  // ── Vote-spend inputs (Phase 3d) ─────────────────────────────────────
+
+  /**
+   * Return the inputs the PGT VOTE spend builder needs when the tracker
+   * is in OPEN state.  Returns ``null`` if the tracker isn't currently
+   * accepting votes (any non-OPEN state).
+   *
+   * **How the current inner puzzle is reconstructed.**  The on-chain
+   * unspent tracker coin's full puzzle hash =
+   * ``singleton(struct, current_inner)`` where ``current_inner`` is the
+   * tracker mod curried with the immutable params + the CURRENT state
+   * fields (proposal_hash, bill_op, vote_tally, voting_deadline).  We
+   * don't have ``current_inner``'s reveal directly — it doesn't exist on
+   * chain yet because the current coin hasn't been spent.  We
+   * reconstruct it by:
+   *
+   *   1. Fetching the LAST spend's full puzzle reveal (the previous
+   *      tracker singleton's puzzle).
+   *   2. Uncurrying ``singleton(struct, OLD_inner)`` → ``OLD_inner``.
+   *   3. Uncurrying ``OLD_inner`` → ``(MOD, [16 args])``.
+   *   4. Keeping the first 12 immutable args, substituting the last 4
+   *      with the CURRENT state fields the snapshot tracks.
+   *   5. Re-currying and re-wrapping in the singleton top layer.
+   *
+   * The resulting inner hash MUST equal the unspent coin's
+   * inner-singleton hash — we cross-check by verifying
+   * ``singleton(struct, current_inner).treeHash()`` equals
+   * ``currentCoin.puzzleHash``.  Mismatch throws.
+   *
+   * @returns ``null`` for non-OPEN snapshots; otherwise the spend inputs.
+   */
+  async getOpenStateVoteInputs(
+    nowSeconds: number = Math.floor(Date.now() / 1000),
+  ): Promise<OpenStateVoteInputs | null> {
+    const snapshot = await this.readCurrentState(nowSeconds);
+    if (snapshot.kind !== 'OPEN') {
+      return null;
+    }
+    const launcherId = environment.populisProtocol.governanceLauncherId;
+    const lineage = await this.reader.walkLineage(launcherId);
+    if (!lineage) {
+      throw new Error('getOpenStateVoteInputs: launcher not on chain');
+    }
+    const nonLauncher = lineage.nodes.filter((n) => !n.isLauncher);
+    const lastSpent = [...nonLauncher]
+      .reverse()
+      .find((n) => n.spentBlockIndex !== null);
+    const current = nonLauncher.find((n) => n.spentBlockIndex === null);
+    if (!lastSpent || !current) {
+      throw new Error(
+        'getOpenStateVoteInputs: lineage walk did not yield a spent parent ' +
+          'plus current unspent coin (required for VOTE).',
+      );
+    }
+    const ps = await this.coinset.getPuzzleAndSolution(
+      lastSpent.coinId,
+      lastSpent.spentBlockIndex!,
+    );
+    if (!ps) {
+      throw new Error(
+        `getOpenStateVoteInputs: missing puzzle/solution for last spent coin ${lastSpent.coinId}`,
+      );
+    }
+
+    const clvm = this.clvm();
+    const lastFullPuzzle = clvm.deserialize(hexToBytes(ps.puzzleReveal));
+    const fullUncurried = lastFullPuzzle.uncurry();
+    if (!fullUncurried || fullUncurried.args.length !== 2) {
+      throw new Error(
+        'getOpenStateVoteInputs: last spend puzzle reveal is not a curried singleton',
+      );
+    }
+    const singletonStruct = fullUncurried.args[0];
+    const oldInner = fullUncurried.args[1];
+    const innerUncurried = oldInner.uncurry();
+    if (!innerUncurried || innerUncurried.args.length !== 16) {
+      throw new Error(
+        `getOpenStateVoteInputs: tracker inner expects 16 curried args, ` +
+          `got ${innerUncurried?.args.length ?? 0}`,
+      );
+    }
+    // Replace the last 4 state args with the CURRENT state (post-transition).
+    const immutableArgs = innerUncurried.args.slice(0, 12);
+    const proposalHashBytes = hexToBytes(snapshot.proposalHash);
+    const billProgram = this.encodeBillProgram(clvm, snapshot.bill);
+    const newStateArgs = [
+      clvm.atom(proposalHashBytes),
+      billProgram,
+      clvm.int(snapshot.voteTally),
+      clvm.int(snapshot.votingDeadlineSeconds),
+    ];
+    const newInner = innerUncurried.program.curry([
+      ...immutableArgs,
+      ...newStateArgs,
+    ]);
+    const newFullPuzzle = fullUncurried.program.curry([singletonStruct, newInner]);
+    const newFullPuzzleHash = newFullPuzzle.treeHash();
+
+    // Cross-check: the reconstructed full puzzle hash MUST match what the
+    // unspent coin claims.  Otherwise we'd build a spend that misses the
+    // coin entirely (and the wallet would reject signing).
+    if (bytesToHex(newFullPuzzleHash) !== current.puzzleHash) {
+      throw new Error(
+        'getOpenStateVoteInputs: reconstructed tracker full puzzle hash ' +
+          `${bytesToHex(newFullPuzzleHash)} does not match unspent coin ` +
+          `${current.puzzleHash}. State decode or curry order has drifted.`,
+      );
+    }
+
+    return {
+      trackerCoin: {
+        parentCoinInfo: current.parentCoinId,
+        puzzleHash: current.puzzleHash,
+        amount: current.amount,
+      },
+      trackerInnerPuzzleHex: bytesToHex(newInner.serialize()),
+      lineageProof: {
+        parentName: lastSpent.parentCoinId,
+        innerPuzzleHash: bytesToHex(oldInner.treeHash()),
+        amount: lastSpent.amount,
+      },
+      proposalHash: snapshot.proposalHash,
+      deadlineSeconds: snapshot.votingDeadlineSeconds,
+    };
+  }
+
+  /**
+   * Encode a {@link DecodedBill} back into the canonical CLVM bill tuple
+   * the governance tracker curries as ``BILL_OPERATION``.
+   *
+   * Mirrors ``populis_puzzles.pgt_driver.bill_mint / bill_freeze / bill_settle /
+   * bill_vault_version``.  ``UNKNOWN`` bills throw — re-currying with an
+   * unknown bill would produce an inner hash that doesn't match the
+   * unspent coin (the cross-check in {@link getOpenStateVoteInputs} would
+   * catch this anyway, but throwing here gives a clearer error).
+   */
+  private encodeBillProgram(clvm: ClvmShape, bill: DecodedBill): ClvmNode {
+    switch (bill.kind) {
+      case 'MINT':
+        return clvm.list([
+          clvm.atom(new Uint8Array([GovernanceTrackerReaderService.BILL_MINT])),
+          clvm.atom(hexToBytes(bill.deedFullPuzzleHash)),
+        ]);
+      case 'FREEZE':
+        return clvm.list([
+          clvm.atom(new Uint8Array([GovernanceTrackerReaderService.BILL_FREEZE])),
+          clvm.int(BigInt(bill.newPoolStatus)),
+        ]);
+      case 'SETTLE':
+        return clvm.list([
+          clvm.atom(new Uint8Array([GovernanceTrackerReaderService.BILL_SETTLE])),
+          clvm.atom(hexToBytes(bill.splitxchRoot)),
+          clvm.int(bill.totalAmount),
+          clvm.int(bill.numDeeds),
+        ]);
+      case 'VAULT_VERSION':
+        return clvm.list([
+          clvm.atom(
+            new Uint8Array([GovernanceTrackerReaderService.BILL_VAULT_VERSION]),
+          ),
+          clvm.atom(hexToBytes(bill.newVaultInnerModHash)),
+          clvm.atom(hexToBytes(bill.newCanonicalParamsHash)),
+          clvm.int(bill.newVaultVersion),
+        ]);
+      case 'UNKNOWN':
+        throw new Error(
+          `encodeBillProgram: cannot encode UNKNOWN bill with tag ${bill.tagHex}`,
+        );
+    }
+  }
+
   // ── WASM accessor ────────────────────────────────────────────────────
 
   private clvm(): ClvmShape {
@@ -355,6 +526,35 @@ export interface DecodedSpend {
   params: ClvmNode;
 }
 
+/**
+ * Inputs the PGT VOTE spend builder needs.  Produced by
+ * {@link GovernanceTrackerReaderService.getOpenStateVoteInputs} only
+ * when the tracker is in OPEN state.
+ */
+export interface OpenStateVoteInputs {
+  /** The current unspent tracker singleton coin. */
+  trackerCoin: { parentCoinInfo: string; puzzleHash: string; amount: number };
+  /**
+   * Reconstructed OPEN-state tracker inner puzzle reveal (0x-hex).
+   * Tree hash, when wrapped in the singleton top layer with the same
+   * struct, equals ``trackerCoin.puzzleHash``.
+   */
+  trackerInnerPuzzleHex: string;
+  /**
+   * Lineage proof for the tracker spend — derived from the last spent
+   * coin (the parent of ``trackerCoin``).
+   */
+  lineageProof: {
+    parentName: string;
+    innerPuzzleHash: string;
+    amount: number;
+  };
+  /** Current proposal hash (mirrors ``snapshot.proposalHash``). */
+  proposalHash: string;
+  /** Voting deadline in absolute seconds (uint64). */
+  deadlineSeconds: bigint;
+}
+
 // ─── Internal types ──────────────────────────────────────────────────────
 
 type InternalState =
@@ -378,8 +578,17 @@ export interface ClvmNode {
   rest(): ClvmNode;
   toAtom(): Uint8Array | null;
   toInt(): bigint;
+  treeHash(): Uint8Array;
+  serialize(): Uint8Array;
+  curry(args: ClvmNode[]): ClvmNode;
+  uncurry(): { program: ClvmNode; args: ClvmNode[] } | null;
 }
 
 interface ClvmShape {
   deserialize(bytes: Uint8Array): ClvmNode;
+  atom(value: Uint8Array): ClvmNode;
+  int(value: bigint): ClvmNode;
+  list(value: ClvmNode[]): ClvmNode;
+  pair(first: ClvmNode, rest: ClvmNode): ClvmNode;
+  nil(): ClvmNode;
 }

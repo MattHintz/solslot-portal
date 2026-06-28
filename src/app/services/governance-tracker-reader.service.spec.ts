@@ -68,6 +68,10 @@ function atomNode(bytes: Uint8Array): ClvmNode {
       for (const b of bytes) n = (n << 8n) | BigInt(b);
       return n;
     },
+    treeHash: notImplementedClvm,
+    serialize: notImplementedClvm,
+    curry: notImplementedClvm,
+    uncurry: notImplementedClvm,
   };
 }
 
@@ -95,6 +99,10 @@ function intNode(value: bigint): ClvmNode {
     toInt(): bigint {
       return value;
     },
+    treeHash: notImplementedClvm,
+    serialize: notImplementedClvm,
+    curry: notImplementedClvm,
+    uncurry: notImplementedClvm,
   };
 }
 
@@ -119,7 +127,19 @@ function listNode(items: Sym[]): ClvmNode {
     toInt(): bigint {
       throw new Error('toInt() on pair');
     },
+    treeHash: notImplementedClvm,
+    serialize: notImplementedClvm,
+    curry: notImplementedClvm,
+    uncurry: notImplementedClvm,
   };
+}
+
+function notImplementedClvm(): never {
+  throw new Error(
+    'ClvmNode method not implemented in this synthetic test fixture — ' +
+      'only first/rest/toAtom/toInt are mocked because the existing tests ' +
+      'exercise solution decoding, not curry/treeHash paths.',
+  );
 }
 
 // ─── Test fixtures ──────────────────────────────────────────────────────
