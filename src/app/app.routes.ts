@@ -77,6 +77,15 @@ export const routes: Routes = [
     title: 'New Mint Proposal · Populis',
   },
   {
+    path: 'admin/pool-economics-v2',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/pool-economics-v2/pool-economics-v2.component').then(
+        (m) => m.PoolEconomicsV2Component,
+      ),
+    title: 'Pool Economic V2 · Populis',
+  },
+  {
     // Trust Roots admin page (Phase 3): surfaces /protocol +
     // /admin/auth/authority and verifies them against on-chain
     // state via ChiaSingletonReaderService.

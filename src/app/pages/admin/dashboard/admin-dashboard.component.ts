@@ -18,7 +18,7 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
   { value: 'PROPOSED', label: 'Proposed' },
   { value: 'VOTING', label: 'Voting' },
   { value: 'PASSED', label: 'Passed' },
-  { value: 'EXECUTING', label: 'Executing' },
+  { value: 'EXECUTED', label: 'Executed' },
   { value: 'MINTED', label: 'Minted' },
   { value: 'FAILED', label: 'Failed' },
   { value: 'CANCELED', label: 'Canceled' },
@@ -81,6 +81,9 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
           </a>
           <a routerLink="/admin/authority-v2/roster-spend-package-review" class="btn btn--ghost">
             Review roster package
+          </a>
+          <a routerLink="/admin/pool-economics-v2" class="btn btn--ghost">
+            Pool economics v2
           </a>
           <a routerLink="/admin/mint/new" class="btn btn--primary">
             + New mint proposal
@@ -223,7 +226,7 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
         background: rgba(44, 231, 255, 0.12);
       }
       .state-pill[data-state='PASSED'],
-      .state-pill[data-state='EXECUTING'] {
+      .state-pill[data-state='EXECUTED'] {
         color: #7cffb2;
         background: rgba(124, 255, 178, 0.14);
       }
