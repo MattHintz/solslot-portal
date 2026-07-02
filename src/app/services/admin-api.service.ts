@@ -31,7 +31,7 @@ export type MintProposalState =
   | 'PROPOSED'
   | 'VOTING'
   | 'PASSED'
-  | 'EXECUTING'
+  | 'EXECUTED'
   | 'MINTED'
   | 'FAILED'
   | 'CANCELED';
@@ -89,6 +89,8 @@ export interface ProposeMintRequest {
   par_value: number;
   asset_class: string;
   property_id: string;
+  collection_id: string;
+  share_ppm: number;
   jurisdiction: string;
   /** 0x-prefixed 32-byte royalty payee puzzle hash. */
   royalty_puzhash: string;
@@ -114,6 +116,10 @@ export interface MintProposalResponse {
   asset_class: string;
   /** Canonicalised (upper, stripped) per POP-CANON-014. */
   property_id: string;
+  /** Canonicalised (upper, stripped) collection identifier for NAV registry pricing. */
+  collection_id: string;
+  /** Share of the collection NAV in ppm; 1000000 = 100%. */
+  share_ppm: number;
   jurisdiction: string;
   royalty_puzhash: string;
   royalty_bps: number;

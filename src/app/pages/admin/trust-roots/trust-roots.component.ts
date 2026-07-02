@@ -478,7 +478,7 @@ type VerifyStatus =
               <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">A.4</div>
               <h3 class="font-display text-2xl mt-1">Property registry</h3>
               <p class="text-xs text-text-muted mt-1">
-                Append-only on-chain log of registered property ids.
+                Append-only, uniqueness-enforced property-id registry.
               </p>
             </div>
             <ng-container [ngTemplateOutlet]="statusBadge" [ngTemplateOutletContext]="{ s: propertyRegistryStatus() }"></ng-container>

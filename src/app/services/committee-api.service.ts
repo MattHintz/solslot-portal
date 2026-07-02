@@ -65,6 +65,62 @@ export class CommitteeApiService {
       proposalId: res.proposal_id ?? undefined,
     };
   }
+
+  /**
+   * Forward a signed MINT-proposal **publish** spend bundle to chain
+   * via populis_api → coinset.org.
+   *
+   * Mint PROPOSE shares the committee-action forwarder's trust model
+   * with VOTE (POP-CANON-013): publish-only, no admin JWT.  Authority
+   * comes from the bundle's own coin spends (the tracker IDLE → OPEN
+   * transition's announcements + the proposer's PGT-lock stake); the
+   * API only structurally validates before handing to the mempool,
+   * which enforces every semantic rule.
+   *
+   * Hits ``POST /admin/committee/propose`` (added server-side in
+   * Phase 4e).  Same wire + response shape as {@link castVote} so the
+   * UI renders ``status`` identically for either action.
+   *
+   * @param spendBundle  ``SpendBundle.to_json_dict()`` shape.
+   * @param proposalId   Optional informational correlation id (the
+   *   localStorage draft id); not used as authority.
+   * @param proposalMetadata  Optional server-side re-derivation guard
+   *   inputs (Brick 4e.2d).  When present, the API re-runs
+   *   ``mint_publish_driver.build_mint_publish_artifacts`` and rejects
+   *   the bundle (HTTP 400) if its on-chain commitments drift from the
+   *   canonical computation.  Absence preserves the publish-only
+   *   forwarder path for callers that predate the guard.
+   *
+   * @returns ``{ pushed, status, spendBundleId, proposalId? }``.
+   * @throws  ``HttpErrorResponse`` for transport / validation errors.
+   */
+  async publishProposal(
+    spendBundle: SpendBundleJson,
+    proposalId?: string,
+    proposalMetadata?: PublishProposalMetadataJson,
+  ): Promise<CommitteeVoteApiResponse> {
+    const body: {
+      spend_bundle: SpendBundleJson;
+      proposal_id?: string;
+      proposal_metadata?: PublishProposalMetadataJson;
+    } = {
+      spend_bundle: spendBundle,
+    };
+    if (proposalId) body.proposal_id = proposalId;
+    if (proposalMetadata) body.proposal_metadata = proposalMetadata;
+    const res = await firstValueFrom(
+      this.http.post<CommitteeVoteApiResponseWire>(
+        `${this.base}/admin/committee/propose`,
+        body,
+      ),
+    );
+    return {
+      pushed: res.pushed,
+      status: res.status,
+      spendBundleId: res.spend_bundle_id,
+      proposalId: res.proposal_id ?? undefined,
+    };
+  }
 }
 
 // ── Wire shapes ──────────────────────────────────────────────────────────
@@ -80,6 +136,33 @@ export interface SpendBundleJson {
     solution: string;
   }>;
   aggregated_signature: string;
+}
+
+/**
+ * Per-proposal metadata for the server-side re-derivation guard
+ * (``PublishProposalMetadataRequest`` in ``populis_api``, Brick 4e.2c.3).
+ *
+ * All ``*_hash`` / ``*_puzhash`` / ``property_id_canon`` fields are
+ * 0x-prefixed hex of exactly 32 bytes.  ``jurisdiction`` is hex of the
+ * UTF-8 encoded jurisdiction code (e.g. ``US-TX`` → ``0x55532d5458``).
+ * The integer fields are plain JSON numbers (the API uses Python
+ * arbitrary-precision ``int``; the runner narrows ``bigint`` inputs to
+ * ``number`` for JSON serialisation, matching the bundle's coin-amount
+ * precision compromise).
+ */
+export interface PublishProposalMetadataJson {
+  property_id_canon: string;
+  collection_id_canon: string;
+  share_ppm: number;
+  property_registry_puzzle_hash: string;
+  par_value_mojos: number;
+  asset_class: number;
+  jurisdiction: string;
+  royalty_puzhash: string;
+  royalty_bps: number;
+  quorum_threshold: number;
+  owner_member_hash: string;
+  gov_member_hash: string;
 }
 
 interface CommitteeVoteApiResponseWire {

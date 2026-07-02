@@ -24,9 +24,8 @@ import { MINT_PROPOSAL_INNER_V2_PUZZLE_HEX } from './mint-proposal-v2.puzzle-hex
  * **What this service exposes (compute path):**
  *   * {@link modHash} \u2014 tree hash of the uncurried V2 inner puzzle.
  *   * {@link computeProposalDataHash} \u2014 sha256tree of the
- *     immutable proposal fields (property_id, par, royalty, quorum).
- *     Wire-compatible with V1 so existing off-chain monitors
- *     decode V2 announcements without a schema change.
+ *     immutable proposal fields (property_id, collection_id, share_ppm,
+ *     par, royalty, quorum).
  *   * {@link computeBindingHash} \u2014 the 32-byte value the
  *     curve-specific member's signature commits to.  Locks the sig
  *     to (transition_case, new_state_version, proposal_data_hash);
@@ -85,20 +84,22 @@ export class MintProposalV2Service {
   }
 
   /**
-   * sha256tree of ``(property_id_canon, par_value_mojos, royalty_bps,
-   * quorum_threshold)``.  Wire-compatible with V1's
-   * ``compute_proposal_data_hash`` \u2014 off-chain consumers decoding
-   * a V2 launcher coin's spend bundle don't need to know whether the
-   * launched proposal is V1 or V2 to recompute this hash.
+   * sha256tree of ``(property_id_canon, collection_id_canon, share_ppm,
+   * par_value_mojos, royalty_bps, quorum_threshold)``.
    *
    * @param args.propertyIdCanon 0x-prefixed 32-byte hex from the
    *   property registry's canonicaliser.
+   * @param args.collectionIdCanon 0x-prefixed 32-byte hex identifying the
+   *   deed's Pool Economic V2 collection.
+   * @param args.sharePpm Deed share in parts-per-million; 1_000_000 is 100%.
    * @param args.parValueMojos uint64 par value in mojos.
    * @param args.royaltyBps 0\u201310000 inclusive (range guarded off-chain).
    * @param args.quorumThreshold PGT vote threshold for execution.
    */
   computeProposalDataHash(args: {
     propertyIdCanon: string;
+    collectionIdCanon: string;
+    sharePpm: number | bigint;
     parValueMojos: number | bigint;
     royaltyBps: number | bigint;
     quorumThreshold: number | bigint;
@@ -106,6 +107,8 @@ export class MintProposalV2Service {
     const clvm = this.clvm();
     const list = clvm.list([
       clvm.atom(hexToBytes(args.propertyIdCanon)),
+      clvm.atom(hexToBytes(args.collectionIdCanon)),
+      clvm.int(BigInt(args.sharePpm)),
       clvm.int(BigInt(args.parValueMojos)),
       clvm.int(BigInt(args.royaltyBps)),
       clvm.int(BigInt(args.quorumThreshold)),
@@ -189,9 +192,40 @@ export class MintProposalV2Service {
     proposalState: number;
     stateVersion: number | bigint;
   }): Uint8Array {
+    return this.makeInnerPuzzle(args).treeHash();
+  }
+
+  /**
+   * Build the curried V2 inner puzzle and return its **serialized**
+   * CLVM bytecode as 0x-hex.
+   *
+   * Same curry as {@link makeInnerPuzzleHash} (the hash variant just
+   * tree-hashes this program); exposed so spend builders that wrap the
+   * inner puzzle in a singleton (e.g. the Artifact A launcher → eve
+   * hop in
+   * {@link MintPublishSpendBuilderService.buildProposalEveLaunchSpend})
+   * have the actual puzzle reveal, not only its hash.
+   */
+  makeInnerPuzzleHex(args: {
+    ownerMemberHash: string;
+    govMemberHash: string;
+    proposalDataHash: string;
+    proposalState: number;
+    stateVersion: number | bigint;
+  }): string {
+    return bytesToHex(this.makeInnerPuzzle(args).serialize());
+  }
+
+  private makeInnerPuzzle(args: {
+    ownerMemberHash: string;
+    govMemberHash: string;
+    proposalDataHash: string;
+    proposalState: number;
+    stateVersion: number | bigint;
+  }): ClvmProgramShape {
     const clvm = this.clvm();
     const puzzle = clvm.deserialize(hexToBytes(MINT_PROPOSAL_INNER_V2_PUZZLE_HEX));
-    const curried = puzzle.curry([
+    return puzzle.curry([
       clvm.atom(this.modHash()),
       clvm.atom(hexToBytes(args.ownerMemberHash)),
       clvm.atom(hexToBytes(args.govMemberHash)),
@@ -199,7 +233,6 @@ export class MintProposalV2Service {
       clvm.int(BigInt(args.proposalState)),
       clvm.int(BigInt(args.stateVersion)),
     ]);
-    return curried.treeHash();
   }
 
   // \u2500\u2500 Internals \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -243,4 +276,5 @@ interface ClvmShape {
 interface ClvmProgramShape {
   treeHash(): Uint8Array;
   curry(args: ReadonlyArray<ClvmProgramShape>): ClvmProgramShape;
+  serialize(): Uint8Array;
 }

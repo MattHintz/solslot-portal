@@ -97,6 +97,14 @@ lookup.
   through temporary bootstrap access, it finalizes the public bootstrap
   artifacts through `POST /admin/bootstrap/finalize` using cookie
   credentials only, with no bearer token or browser storage persistence.
+- **A.5 add-admin roster update, preview/review only** —
+  `/admin/authority-v2/add-admin-slot` captures a candidate admin wallet,
+  computes the append-only roster update locally, exports
+  `admin_authority_v2_roster_update_unsigned_package.json`, and locally
+  preflights the unsigned package.
+  `/admin/authority-v2/roster-spend-package-review` imports pasted package
+  JSON, runs the same local preflight, and renders the signer-facing
+  summary. Both screens are no-signing and no-broadcast boundaries.
 - **Bootstrap recovery** — `/admin/recovery` scans chain-visible
   `POPULIS_BOOTSTRAP_V1` marker memos, shows verified recovery anchors and
   rejected candidate reasons, locally checks pasted public artifacts against
@@ -135,6 +143,37 @@ installation is recoverable without trusting the original portal host:
 
 The recovery page must not persist pasted artifacts, anchors, verifier
 responses, bootstrap cookies, or handoff bundles in browser storage.
+
+## A.5 roster-update authorization model
+
+A.5 roster updates are `admin_authority_v2` singleton spends with
+`SPEND_ADMIN_ROSTER_UPDATE = 0x07` and spend name `ADMIN_ROSTER_UPDATE`.
+The only protocol authorizer for this add-admin path is the **current
+`admin_authority_v2` MIPS quorum** committed in `current.mips_root_hash`.
+
+This means:
+
+- The candidate admin wallet does not authorize its own addition.
+- The Populis API backend is optional cross-check infrastructure only and
+  is not an authority source for roster changes.
+- PGT committee approval is not part of this A.5 add-admin path unless a
+  future governance design explicitly adds a separate spend path.
+- The bootstrap operator token cannot authorize post-genesis roster
+  updates.
+
+Each A.5 roster update must append exactly one admin slot, preserve
+existing admin records as a prefix, preserve `pending_ops_hash`, and
+increment `authority_version` by one. The post-update MIPS root is
+recomputed from the updated roster using the admin supermajority threshold.
+For example, the initial second-admin update is authorized by the current
+`1-of-1` first-admin MIPS root and moves the authority to a `2-of-2` root;
+later additions are authorized by whatever current supermajority root is
+live before the spend.
+
+The unsigned package and review screen remain no-signing and no-broadcast
+boundaries until the local signer receives the current MIPS puzzle reveal,
+current MIPS quorum solution, live singleton coin, and wallet signature over
+the final Chia spend bundle.
 
 ## Key services
 
@@ -175,6 +214,8 @@ responses, bootstrap cookies, or handoff bundles in browser storage.
 | `/admin/launch-authority-v2` | Genesis-only first-admin authority step: build, wallet-sign, push the v2 authority launch bundle, and finalize public bootstrap artifacts in temporary bootstrap mode. |
 | `/admin/recovery` | Public Path A bootstrap recovery: discover marker anchors, review rejected candidates, hash-check pasted artifacts, and call the recovery verifier before permanent admin login. |
 | `/admin/trust-roots` | Read configured trust-root singleton state from coinset.org. |
+| `/admin/authority-v2/add-admin-slot` | Build and locally preflight an unsigned A.5 add-admin roster-update package; no signing or broadcast. |
+| `/admin/authority-v2/roster-spend-package-review` | Import pasted unsigned A.5 roster package JSON, rerun local preflight, and review signer-facing inputs; no signing or broadcast. |
 | `/admin/mint/new` | Create a local DRAFT mint proposal. |
 | `/admin/mint/:id` | Inspect or cancel a local DRAFT; publish/execute are disabled. |
 | `/committee` | Public committee page shell; chain-backed PGT-VOTE submission is not wired yet. |
@@ -201,6 +242,12 @@ bash scripts/dump_mint_proposal_v2_puzzle_hex.sh
 
 The Karma specs re-check the fixtures so drift surfaces as a test
 failure.
+
+`src/app/docs/a5-roster-update-authorization.contract.ts` pins the A.5
+authorization model in testable form. Its Karma spec asserts that the
+current `admin_authority_v2` MIPS quorum is the sole authorizer for this
+add-admin path, that candidate wallets/API/committee/bootstrap tokens are
+not authorizers, and that the updated roster uses supermajority semantics.
 
 ## Tests
 

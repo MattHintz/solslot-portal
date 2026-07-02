@@ -201,9 +201,9 @@ export class GovernanceTrackerReaderService {
    * Decode a bill operation tuple.  Tagged tuples follow
    * ``governance_singleton_inner.clsp``'s ``dispatch_bill``:
    *
-   *   * ``(M deed_full_puzhash)``
+   *   * ``(M deed_full_puzhash property_id_canon property_registry_puzzle_hash)``
    *   * ``(F new_pool_status)``
-   *   * ``(S splitxch_root total_amount num_deeds)``
+   *   * ``(S splitxch_root total_amount num_deeds deed_releases_hash)``
    *   * ``(V new_vault_inner_mod_hash new_canonical_params_hash new_vault_version)``
    */
   decodeBill(billOp: ClvmNode): DecodedBill {
@@ -215,6 +215,10 @@ export class GovernanceTrackerReaderService {
         return {
           kind: 'MINT',
           deedFullPuzzleHash: bytesToHex(rest.first().toAtom() ?? new Uint8Array()),
+          propertyIdCanon: bytesToHex(rest.rest().first().toAtom() ?? new Uint8Array()),
+          propertyRegistryPuzzleHash: bytesToHex(
+            rest.rest().rest().first().toAtom() ?? new Uint8Array(),
+          ),
         };
       case GovernanceTrackerReaderService.BILL_FREEZE:
         return {
@@ -227,6 +231,9 @@ export class GovernanceTrackerReaderService {
           splitxchRoot: bytesToHex(rest.first().toAtom() ?? new Uint8Array()),
           totalAmount: rest.rest().first().toInt(),
           numDeeds: rest.rest().rest().first().toInt(),
+          deedReleasesHash: bytesToHex(
+            rest.rest().rest().rest().first().toAtom() ?? new Uint8Array(),
+          ),
         };
       case GovernanceTrackerReaderService.BILL_VAULT_VERSION:
         return {
@@ -333,10 +340,53 @@ export class GovernanceTrackerReaderService {
     if (snapshot.kind !== 'OPEN') {
       return null;
     }
+    const inputs = await this.reconstructActiveTrackerInputs(
+      snapshot,
+      'getOpenStateVoteInputs',
+      'VOTE',
+    );
+    return {
+      trackerCoin: inputs.trackerCoin,
+      trackerInnerPuzzleHex: inputs.trackerInnerPuzzleHex,
+      lineageProof: inputs.lineageProof,
+      proposalHash: snapshot.proposalHash,
+      deadlineSeconds: snapshot.votingDeadlineSeconds,
+    };
+  }
+
+  /**
+   * Return the inputs the tracker EXECUTE spend builder needs when the
+   * tracker is executable.  Returns ``null`` for every non-executable state.
+   */
+  async getAwaitingExecuteInputs(
+    nowSeconds: number = Math.floor(Date.now() / 1000),
+  ): Promise<AwaitingExecuteInputs | null> {
+    const snapshot = await this.readCurrentState(nowSeconds);
+    if (snapshot.kind !== 'AWAITING_EXECUTE') {
+      return null;
+    }
+    const inputs = await this.reconstructActiveTrackerInputs(
+      snapshot,
+      'getAwaitingExecuteInputs',
+      'EXECUTE',
+    );
+    return {
+      ...inputs,
+      proposalHash: snapshot.proposalHash,
+      bill: snapshot.bill,
+      deadlineSeconds: snapshot.votingDeadlineSeconds,
+    };
+  }
+
+  private async reconstructActiveTrackerInputs(
+    snapshot: ActiveTrackerSnapshot,
+    label: string,
+    action: string,
+  ): Promise<ReconstructedActiveTrackerInputs> {
     const launcherId = environment.populisProtocol.governanceLauncherId;
     const lineage = await this.reader.walkLineage(launcherId);
     if (!lineage) {
-      throw new Error('getOpenStateVoteInputs: launcher not on chain');
+      throw new Error(`${label}: launcher not on chain`);
     }
     const nonLauncher = lineage.nodes.filter((n) => !n.isLauncher);
     const lastSpent = [...nonLauncher]
@@ -345,8 +395,8 @@ export class GovernanceTrackerReaderService {
     const current = nonLauncher.find((n) => n.spentBlockIndex === null);
     if (!lastSpent || !current) {
       throw new Error(
-        'getOpenStateVoteInputs: lineage walk did not yield a spent parent ' +
-          'plus current unspent coin (required for VOTE).',
+        `${label}: lineage walk did not yield a spent parent ` +
+          `plus current unspent coin (required for ${action}).`,
       );
     }
     const ps = await this.coinset.getPuzzleAndSolution(
@@ -355,7 +405,7 @@ export class GovernanceTrackerReaderService {
     );
     if (!ps) {
       throw new Error(
-        `getOpenStateVoteInputs: missing puzzle/solution for last spent coin ${lastSpent.coinId}`,
+        `${label}: missing puzzle/solution for last spent coin ${lastSpent.coinId}`,
       );
     }
 
@@ -364,7 +414,7 @@ export class GovernanceTrackerReaderService {
     const fullUncurried = lastFullPuzzle.uncurry();
     if (!fullUncurried || fullUncurried.args.length !== 2) {
       throw new Error(
-        'getOpenStateVoteInputs: last spend puzzle reveal is not a curried singleton',
+        `${label}: last spend puzzle reveal is not a curried singleton`,
       );
     }
     const singletonStruct = fullUncurried.args[0];
@@ -372,7 +422,7 @@ export class GovernanceTrackerReaderService {
     const innerUncurried = oldInner.uncurry();
     if (!innerUncurried || innerUncurried.args.length !== 16) {
       throw new Error(
-        `getOpenStateVoteInputs: tracker inner expects 16 curried args, ` +
+        `${label}: tracker inner expects 16 curried args, ` +
           `got ${innerUncurried?.args.length ?? 0}`,
       );
     }
@@ -398,7 +448,7 @@ export class GovernanceTrackerReaderService {
     // coin entirely (and the wallet would reject signing).
     if (bytesToHex(newFullPuzzleHash) !== current.puzzleHash) {
       throw new Error(
-        'getOpenStateVoteInputs: reconstructed tracker full puzzle hash ' +
+        `${label}: reconstructed tracker full puzzle hash ` +
           `${bytesToHex(newFullPuzzleHash)} does not match unspent coin ` +
           `${current.puzzleHash}. State decode or curry order has drifted.`,
       );
@@ -410,14 +460,151 @@ export class GovernanceTrackerReaderService {
         puzzleHash: current.puzzleHash,
         amount: current.amount,
       },
+      trackerLauncherId: launcherId,
       trackerInnerPuzzleHex: bytesToHex(newInner.serialize()),
       lineageProof: {
         parentName: lastSpent.parentCoinId,
         innerPuzzleHash: bytesToHex(oldInner.treeHash()),
         amount: lastSpent.amount,
       },
-      proposalHash: snapshot.proposalHash,
-      deadlineSeconds: snapshot.votingDeadlineSeconds,
+    };
+  }
+
+  /**
+   * Return the inputs the {@link MintPublishSpendBuilderService.buildTrackerProposeCoinSpend}
+   * builder needs when the tracker is in **IDLE** state.  Returns
+   * ``null`` if the tracker isn't currently accepting a new proposal
+   * (any non-IDLE state).
+   *
+   * **How the current inner puzzle is reconstructed.**  When the
+   * tracker is IDLE, the four state args of its curried inner puzzle
+   * are all zero atoms (``proposal_hash=0``, ``bill_operation=0``,
+   * ``vote_tally=0``, ``voting_deadline=0``) per
+   * ``populis_puzzles.pgt_driver.proposal_tracker_inner_puzzle``.  We
+   * recover the 12 immutable args by uncurrying the LAST SPEND's
+   * reveal — which must be the post-execute / post-expire spend that
+   * transitioned the tracker back into IDLE — and substitute the last
+   * 4 args with zero atoms.
+   *
+   * **Fresh-launch caveat.**  If the current unspent coin IS the eve
+   * coin (i.e. the singleton was just launched and has never had a
+   * proposal opened), there is no prior non-launcher spend to uncurry,
+   * so the reader throws.  Supporting the fresh-launch case requires a
+   * separate ``buildIdleInnerFromEnvironment()`` helper that materialises
+   * all 12 immutable args from ``environment.populisProtocol``
+   * constants; tracked as a follow-up.  Production tracker singletons
+   * are launched well before the first MINT publish, so this branch is
+   * rare in practice.
+   *
+   * Cross-checks the reconstructed full puzzle hash against the
+   * current unspent coin's claimed puzzle hash.  Mismatch throws — the
+   * same defensive cross-check pattern as
+   * {@link getOpenStateVoteInputs}.
+   *
+   * @returns ``null`` for non-IDLE snapshots; otherwise the spend inputs.
+   */
+  async getIdleStateProposeInputs(
+    nowSeconds: number = Math.floor(Date.now() / 1000),
+  ): Promise<IdleStateProposeInputs | null> {
+    const snapshot = await this.readCurrentState(nowSeconds);
+    if (snapshot.kind !== 'IDLE') {
+      return null;
+    }
+    const launcherId = environment.populisProtocol.governanceLauncherId;
+    const lineage = await this.reader.walkLineage(launcherId);
+    if (!lineage) {
+      throw new Error('getIdleStateProposeInputs: launcher not on chain');
+    }
+    const nonLauncher = lineage.nodes.filter((n) => !n.isLauncher);
+    const lastSpent = [...nonLauncher]
+      .reverse()
+      .find((n) => n.spentBlockIndex !== null);
+    const current = nonLauncher.find((n) => n.spentBlockIndex === null);
+    if (!current) {
+      throw new Error(
+        'getIdleStateProposeInputs: lineage walk did not yield a ' +
+          'current unspent coin (tracker not in IDLE on chain).',
+      );
+    }
+    if (!lastSpent) {
+      // Fresh-launch case: the eve coin is in IDLE but has never been
+      // spent, so we have no prior non-launcher reveal to uncurry.
+      // See class-level caveat above; tracked as a follow-up.
+      throw new Error(
+        'getIdleStateProposeInputs: tracker is in fresh-launch IDLE ' +
+          '(eve never spent).  Reconstructing the IDLE inner from ' +
+          'environment constants is not yet implemented; this branch is ' +
+          'expected to be rare in practice because production trackers ' +
+          'are launched well before the first MINT publish.',
+      );
+    }
+    const ps = await this.coinset.getPuzzleAndSolution(
+      lastSpent.coinId,
+      lastSpent.spentBlockIndex!,
+    );
+    if (!ps) {
+      throw new Error(
+        `getIdleStateProposeInputs: missing puzzle/solution for last ` +
+          `spent coin ${lastSpent.coinId}`,
+      );
+    }
+
+    const clvm = this.clvm();
+    const lastFullPuzzle = clvm.deserialize(hexToBytes(ps.puzzleReveal));
+    const fullUncurried = lastFullPuzzle.uncurry();
+    if (!fullUncurried || fullUncurried.args.length !== 2) {
+      throw new Error(
+        'getIdleStateProposeInputs: last spend puzzle reveal is not a ' +
+          'curried singleton',
+      );
+    }
+    const singletonStruct = fullUncurried.args[0];
+    const oldInner = fullUncurried.args[1];
+    const innerUncurried = oldInner.uncurry();
+    if (!innerUncurried || innerUncurried.args.length !== 16) {
+      throw new Error(
+        `getIdleStateProposeInputs: tracker inner expects 16 curried ` +
+          `args, got ${innerUncurried?.args.length ?? 0}`,
+      );
+    }
+    // Replace the last 4 state args with IDLE-state zero atoms.  In
+    // CLVM the zero integer and the nil (empty) atom share the same
+    // canonical serialisation; we use clvm.nil() for byte-exact match
+    // with how `Program.to(0)` is encoded by chia_rs.
+    const immutableArgs = innerUncurried.args.slice(0, 12);
+    const idleStateArgs = [clvm.nil(), clvm.nil(), clvm.nil(), clvm.nil()];
+    const newInner = innerUncurried.program.curry([
+      ...immutableArgs,
+      ...idleStateArgs,
+    ]);
+    const newFullPuzzle = fullUncurried.program.curry([
+      singletonStruct,
+      newInner,
+    ]);
+    const newFullPuzzleHash = newFullPuzzle.treeHash();
+
+    if (bytesToHex(newFullPuzzleHash) !== current.puzzleHash) {
+      throw new Error(
+        'getIdleStateProposeInputs: reconstructed tracker full puzzle ' +
+          `hash ${bytesToHex(newFullPuzzleHash)} does not match unspent ` +
+          `coin ${current.puzzleHash}.  IDLE-state reconstruction or ` +
+          'curry order has drifted.',
+      );
+    }
+
+    return {
+      trackerCoin: {
+        parentCoinInfo: current.parentCoinId,
+        puzzleHash: current.puzzleHash,
+        amount: current.amount,
+      },
+      trackerInnerPuzzleHex: bytesToHex(newInner.serialize()),
+      trackerLauncherId: launcherId,
+      lineageProof: {
+        parentName: lastSpent.parentCoinId,
+        innerPuzzleHash: bytesToHex(oldInner.treeHash()),
+        amount: lastSpent.amount,
+      },
     };
   }
 
@@ -437,6 +624,13 @@ export class GovernanceTrackerReaderService {
         return clvm.list([
           clvm.atom(new Uint8Array([GovernanceTrackerReaderService.BILL_MINT])),
           clvm.atom(hexToBytes(bill.deedFullPuzzleHash)),
+          ...(is32ByteHex(bill.propertyIdCanon) &&
+          is32ByteHex(bill.propertyRegistryPuzzleHash)
+            ? [
+                clvm.atom(hexToBytes(bill.propertyIdCanon)),
+                clvm.atom(hexToBytes(bill.propertyRegistryPuzzleHash)),
+              ]
+            : []),
         ]);
       case 'FREEZE':
         return clvm.list([
@@ -449,6 +643,7 @@ export class GovernanceTrackerReaderService {
           clvm.atom(hexToBytes(bill.splitxchRoot)),
           clvm.int(bill.totalAmount),
           clvm.int(bill.numDeeds),
+          clvm.atom(hexToBytes(bill.deedReleasesHash)),
         ]);
       case 'VAULT_VERSION':
         return clvm.list([
@@ -505,13 +700,19 @@ export type TrackerStateSnapshot =
     };
 
 export type DecodedBill =
-  | { kind: 'MINT'; deedFullPuzzleHash: string }
+  | {
+      kind: 'MINT';
+      deedFullPuzzleHash: string;
+      propertyIdCanon: string;
+      propertyRegistryPuzzleHash: string;
+    }
   | { kind: 'FREEZE'; newPoolStatus: number }
   | {
       kind: 'SETTLE';
       splitxchRoot: string;
       totalAmount: bigint;
       numDeeds: bigint;
+      deedReleasesHash: string;
     }
   | {
       kind: 'VAULT_VERSION';
@@ -555,6 +756,67 @@ export interface OpenStateVoteInputs {
   deadlineSeconds: bigint;
 }
 
+/**
+ * Inputs the tracker EXECUTE spend builder needs.  Produced only when the
+ * tracker has crossed its deadline and met quorum.
+ */
+export interface AwaitingExecuteInputs {
+  /** The current unspent tracker singleton coin. */
+  trackerCoin: { parentCoinInfo: string; puzzleHash: string; amount: number };
+  /** Reconstructed executable tracker inner puzzle reveal (0x-hex). */
+  trackerInnerPuzzleHex: string;
+  /** Tracker singleton launcher id. */
+  trackerLauncherId: string;
+  /** Lineage proof for the tracker spend. */
+  lineageProof: {
+    parentName: string;
+    innerPuzzleHash: string;
+    amount: number;
+  };
+  /** Current proposal hash (mirrors ``snapshot.proposalHash``). */
+  proposalHash: string;
+  /** Full bill payload curried into tracker state. */
+  bill: DecodedBill;
+  /** Voting deadline in absolute seconds (uint64). */
+  deadlineSeconds: bigint;
+}
+
+/**
+ * Inputs the tracker-PROPOSE spend builder
+ * ({@link MintPublishSpendBuilderService.buildTrackerProposeCoinSpend})
+ * needs.  Produced by
+ * {@link GovernanceTrackerReaderService.getIdleStateProposeInputs} only
+ * when the tracker is in IDLE state.
+ *
+ * Note: this shape intentionally OMITS ``proposalHash`` and
+ * ``deadlineSeconds`` (unlike {@link OpenStateVoteInputs}) because
+ * those values are CREATED by the publish flow, not READ from chain —
+ * the runner picks ``deadlineSeconds`` from a user-controlled voting
+ * window and computes ``proposalHash`` from the bill operation.
+ */
+export interface IdleStateProposeInputs {
+  /** The current unspent tracker singleton coin (in IDLE state). */
+  trackerCoin: { parentCoinInfo: string; puzzleHash: string; amount: number };
+  /**
+   * Reconstructed IDLE-state tracker inner puzzle reveal (0x-hex).
+   * Tree hash, when wrapped in the singleton top layer with the same
+   * struct, equals ``trackerCoin.puzzleHash``.
+   */
+  trackerInnerPuzzleHex: string;
+  /** Tracker singleton launcher id (= ``environment.populisProtocol.governanceLauncherId``). */
+  trackerLauncherId: string;
+  /**
+   * Lineage proof for the tracker spend — derived from the last spent
+   * coin (the parent of ``trackerCoin``), which transitioned the
+   * singleton back into IDLE via TRK_EXECUTE or TRK_EXPIRE.
+   */
+  lineageProof: {
+    parentName: string;
+    innerPuzzleHash: string;
+    amount: number;
+  };
+}
+
 // ─── Internal types ──────────────────────────────────────────────────────
 
 type InternalState =
@@ -566,6 +828,22 @@ type InternalState =
       voteTally: bigint;
       votingDeadlineSeconds: bigint;
     };
+
+type ActiveTrackerSnapshot = Extract<
+  TrackerStateSnapshot,
+  { kind: 'OPEN' | 'AWAITING_EXECUTE' | 'AWAITING_EXPIRE' }
+>;
+
+interface ReconstructedActiveTrackerInputs {
+  trackerCoin: { parentCoinInfo: string; puzzleHash: string; amount: number };
+  trackerInnerPuzzleHex: string;
+  trackerLauncherId: string;
+  lineageProof: {
+    parentName: string;
+    innerPuzzleHash: string;
+    amount: number;
+  };
+}
 
 /**
  * Narrowed view of the chia-wallet-sdk-wasm Program shape we use.
@@ -591,4 +869,8 @@ interface ClvmShape {
   list(value: ClvmNode[]): ClvmNode;
   pair(first: ClvmNode, rest: ClvmNode): ClvmNode;
   nil(): ClvmNode;
+}
+
+function is32ByteHex(v: string | null | undefined): v is string {
+  return typeof v === 'string' && /^0x[0-9a-fA-F]{64}$/.test(v);
 }

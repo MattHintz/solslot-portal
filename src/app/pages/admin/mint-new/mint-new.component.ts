@@ -5,7 +5,10 @@ import { Router, RouterLink } from '@angular/router';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
 import { ProposeMintRequest } from '../../../services/admin-api.service';
-import { canonicalizeMintPropertyId } from '../../../utils/mint-property-id';
+import {
+  canonicalizeMintCollectionId,
+  canonicalizeMintPropertyId,
+} from '../../../utils/mint-property-id';
 import { formatError } from '../../../utils/format-error';
 
 /**
@@ -88,6 +91,21 @@ import { formatError } from '../../../utils/format-error';
               <p class="form-hint">ISO-style jurisdiction code.</p>
             </div>
           </div>
+
+          <div>
+            <label class="form-label">Collection ID</label>
+            <input
+              [(ngModel)]="collectionId"
+              name="collection_id"
+              required
+              minlength="1"
+              maxlength="128"
+              placeholder="US-TX-Travis-SFR-2026"
+            />
+            <p class="form-hint">
+              Canonical collection for governed NAV pricing.
+            </p>
+          </div>
         </fieldset>
 
         <fieldset class="card grid gap-5">
@@ -107,6 +125,24 @@ import { formatError } from '../../../utils/format-error';
             <p class="form-hint">
               1 mojo = 1¢.  Current par:
               <span class="mono text-text">{{ parValueDisplay() }}</span>.
+            </p>
+          </div>
+
+          <div>
+            <label class="form-label">Share (ppm)</label>
+            <input
+              [(ngModel)]="sharePpmRaw"
+              name="share_ppm"
+              required
+              type="number"
+              min="1"
+              max="1000000"
+              step="1"
+              placeholder="1000000"
+            />
+            <p class="form-hint">
+              1000000 = 100% of the collection NAV. Current:
+              <span class="mono text-text">{{ sharePpmDisplay() }}</span>.
             </p>
           </div>
 
@@ -251,6 +287,8 @@ export class MintNewComponent {
   // as signals because they're not bound through ngModel.
   propertyId = '';
   assetClass = '';
+  collectionId = '';
+  sharePpmRaw = '';
   jurisdiction = '';
   parValueRaw = '';
   royaltyPuzhash = '';
@@ -272,6 +310,14 @@ export class MintNewComponent {
     const n = Number(this.royaltyBpsRaw);
     if (!Number.isFinite(n) || n < 0 || n > 10_000) return '—';
     return `${n / 100}%`;
+  }
+
+  sharePpmDisplay(): string {
+    const n = Number(this.sharePpmRaw);
+    if (!Number.isFinite(n) || n < 1 || n > 1_000_000) return '—';
+    return `${(n / 10_000).toLocaleString('en-US', {
+      maximumFractionDigits: 4,
+    })}%`;
   }
 
   async submit(): Promise<void> {
@@ -308,6 +354,10 @@ export class MintNewComponent {
    */
   private buildRequest(): ProposeMintRequest {
     const parValue = this.parseInteger(this.parValueRaw, 'par_value', { min: 1 });
+    const sharePpm = this.parseInteger(this.sharePpmRaw, 'share_ppm', {
+      min: 1,
+      max: 1_000_000,
+    });
     const royaltyBps = this.parseInteger(this.royaltyBpsRaw, 'royalty_bps', {
       min: 0,
       max: 10_000,
@@ -323,6 +373,8 @@ export class MintNewComponent {
       par_value: parValue,
       asset_class: this.assetClass.trim(),
       property_id: canonicalizeMintPropertyId(this.propertyId),
+      collection_id: canonicalizeMintCollectionId(this.collectionId),
+      share_ppm: sharePpm,
       jurisdiction: this.jurisdiction.trim(),
       royalty_puzhash: royaltyPuzhash,
       royalty_bps: royaltyBps,

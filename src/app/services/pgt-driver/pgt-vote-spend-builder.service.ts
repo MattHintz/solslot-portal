@@ -11,6 +11,7 @@ import { PgtDriverService } from './pgt-driver.service';
  *
  *   * {@link buildPgtLockCoinSpend}     ↔ ``build_pgt_lock_coin_spend``
  *   * {@link buildTrackerVoteCoinSpend} ↔ ``build_tracker_vote_coin_spend``
+ *   * {@link buildTrackerExecuteCoinSpend} ↔ ``build_tracker_execute_coin_spend``
  *
  * **Phase 3b of the committee/mint governance UI brick.**  The portal's
  * committee VOTE flow assembles these two CoinSpends, the wallet signs
@@ -38,9 +39,10 @@ export class PgtVoteSpendBuilderService {
   private readonly wasm = inject(ChiaWasmService);
   private readonly pgt = inject(PgtDriverService);
 
-  // ── Spend-case constants (mirrors pgt_driver.py PGT_LOCK / TRK_VOTE) ──
+  // ── Spend-case constants (mirrors pgt_driver.py PGT_LOCK / TRK_*) ──
   static readonly PGT_LOCK = 2;
   static readonly TRK_VOTE = 2;
+  static readonly TRK_EXECUTE = 3;
 
   // ────────────────────────────────────────────────────────────────────
   //  PGT lock CoinSpend (CAT2-wrapped pgt_free_inner LOCK)
@@ -301,6 +303,80 @@ export class PgtVoteSpendBuilderService {
   }
 
   // ────────────────────────────────────────────────────────────────────
+  //  Tracker EXECUTE CoinSpend (singleton-wrapped TRK_EXECUTE)
+  // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * Build the unsigned singleton-wrapped ``TRK_EXECUTE`` CoinSpend.
+   *
+   * Mirrors ``populis_puzzles.pgt_driver.build_tracker_execute_coin_spend``.
+   * The supplied ``trackerInnerPuzzleHex`` must be the current executable
+   * tracker inner puzzle (deadline passed and quorum met); the on-chain puzzle
+   * enforces those timing/quorum rules when the bundle lands.
+   */
+  buildTrackerExecuteCoinSpend(args: BuildTrackerExecuteArgs): UnsignedCoinSpendHex {
+    const sdk = this.sdk();
+    const clvm = this.clvm();
+    const Coin = sdk.Coin;
+
+    const trackerInner = clvm.deserialize(
+      hexToBytes(this.normalizeHex(args.trackerInnerPuzzleHex)),
+    );
+    const trackerInnerHash = trackerInner.treeHash();
+    const trackerStruct = this.buildTrackerStruct(
+      clvm,
+      hexToBytes(this.normalizeHex(args.trackerLauncherId)),
+    );
+    const trackerFullPuzzle = this.singletonFullPuzzle(
+      clvm,
+      trackerStruct,
+      trackerInner,
+    );
+    const expectedFullPh = trackerFullPuzzle.treeHash();
+    const claimedPh = hexToBytes(this.normalizeHex(args.trackerCoin.puzzleHash));
+    if (!this.bytesEqual(expectedFullPh, claimedPh)) {
+      throw new Error(
+        `pgt-vote-spend: built tracker EXECUTE full puzzle hash ${bytesToHex(expectedFullPh)} ` +
+          `does not match coin's claimed puzzle hash ${bytesToHex(claimedPh)}.`,
+      );
+    }
+
+    const trackerCoin = new Coin(
+      hexToBytes(this.normalizeHex(args.trackerCoin.parentCoinInfo)),
+      claimedPh,
+      BigInt(args.trackerCoin.amount),
+    );
+    const myId = trackerCoin.coinId();
+    const innerSolution = clvm.list([
+      clvm.atom(myId),
+      clvm.atom(trackerInnerHash),
+      clvm.int(BigInt(args.trackerCoin.amount)),
+      clvm.int(BigInt(PgtVoteSpendBuilderService.TRK_EXECUTE)),
+      clvm.nil(),
+    ]);
+
+    const lineageProofProgram = this.encodeLineageProof(
+      clvm,
+      args.lineageProof,
+    );
+    const outerSolution = clvm.list([
+      lineageProofProgram,
+      clvm.int(BigInt(args.trackerCoin.amount)),
+      innerSolution,
+    ]);
+
+    return {
+      coin: {
+        parentCoinInfo: bytesToHex(trackerCoin.parentCoinInfo),
+        puzzleHash: bytesToHex(claimedPh),
+        amount: args.trackerCoin.amount,
+      },
+      puzzleReveal: bytesToHex(trackerFullPuzzle.serialize()),
+      solution: bytesToHex(outerSolution.serialize()),
+    };
+  }
+
+  // ────────────────────────────────────────────────────────────────────
   //  Internals
   // ────────────────────────────────────────────────────────────────────
 
@@ -474,6 +550,13 @@ export interface BuildTrackerVoteArgs {
   lineageProof: LineageProofShape;
   voterInnerPuzzleHash: string;
   additionalVoteAmount: number | bigint;
+}
+
+export interface BuildTrackerExecuteArgs {
+  trackerCoin: CoinHexShape;
+  trackerInnerPuzzleHex: string;
+  trackerLauncherId: string;
+  lineageProof: LineageProofShape;
 }
 
 // ── WASM SDK typing ──────────────────────────────────────────────────

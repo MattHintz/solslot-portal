@@ -153,6 +153,8 @@ const POST_EXECUTE = '0x' + 'ee'.repeat(32);
 const PROPOSAL_HASH = '0x' + '01'.repeat(32);
 const DEED_PH = '0x' + '02'.repeat(32);
 const VOTER_PH = '0x' + '03'.repeat(32);
+const PROPERTY_ID_CANON = '0x' + '04'.repeat(32);
+const PROPERTY_REGISTRY_PH = '0x' + '05'.repeat(32);
 
 const VOTING_DEADLINE_SECONDS = 1_000_000n;
 const FIRST_VOTE_AMOUNT = 100_000n;
@@ -331,6 +333,8 @@ describe('GovernanceTrackerReaderService', () => {
         list([
           atom(Uint8Array.from([GovernanceTrackerReaderService.BILL_MINT])),
           atom(bytes(DEED_PH)),
+          atom(bytes(PROPERTY_ID_CANON)),
+          atom(bytes(PROPERTY_REGISTRY_PH)),
         ]),
         atom(bytes(VOTER_PH)),
         int(FIRST_VOTE_AMOUNT),
@@ -350,7 +354,12 @@ describe('GovernanceTrackerReaderService', () => {
     expectOpen(snap, {
       kind: 'OPEN',
       voteTally: FIRST_VOTE_AMOUNT,
-      bill: { kind: 'MINT', deedFullPuzzleHash: DEED_PH },
+      bill: {
+        kind: 'MINT',
+        deedFullPuzzleHash: DEED_PH,
+        propertyIdCanon: PROPERTY_ID_CANON,
+        propertyRegistryPuzzleHash: PROPERTY_REGISTRY_PH,
+      },
     });
   });
 
@@ -435,6 +444,8 @@ describe('GovernanceTrackerReaderService', () => {
         list([
           atom(Uint8Array.from([GovernanceTrackerReaderService.BILL_MINT])),
           atom(bytes(DEED_PH)),
+          atom(bytes(PROPERTY_ID_CANON)),
+          atom(bytes(PROPERTY_REGISTRY_PH)),
         ]),
         atom(bytes(VOTER_PH)),
         int(FIRST_VOTE_AMOUNT),
@@ -467,6 +478,7 @@ describe('GovernanceTrackerReaderService', () => {
       atom(bytes('0x' + '0a'.repeat(32))),
       int(1_234_567n),
       int(42n),
+      atom(bytes('0x' + '0d'.repeat(32))),
     ]);
     const bill = service.decodeBill(symToNode(billOp));
     expect(bill.kind).toBe('SETTLE');
@@ -474,6 +486,7 @@ describe('GovernanceTrackerReaderService', () => {
       expect(bill.splitxchRoot).toBe('0x' + '0a'.repeat(32));
       expect(bill.totalAmount).toBe(1_234_567n);
       expect(bill.numDeeds).toBe(42n);
+      expect(bill.deedReleasesHash).toBe('0x' + '0d'.repeat(32));
     }
   });
 
@@ -533,6 +546,10 @@ describe('GovernanceTrackerReaderService', () => {
     expect(snap.bill.kind).toBe(expected.bill.kind);
     if (expected.bill.kind === 'MINT' && snap.bill.kind === 'MINT') {
       expect(snap.bill.deedFullPuzzleHash).toBe(expected.bill.deedFullPuzzleHash);
+      expect(snap.bill.propertyIdCanon).toBe(expected.bill.propertyIdCanon);
+      expect(snap.bill.propertyRegistryPuzzleHash).toBe(
+        expected.bill.propertyRegistryPuzzleHash,
+      );
     }
     if (expected.bill.kind === 'FREEZE' && snap.bill.kind === 'FREEZE') {
       expect(snap.bill.newPoolStatus).toBe(expected.bill.newPoolStatus);

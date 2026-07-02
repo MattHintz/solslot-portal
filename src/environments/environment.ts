@@ -237,6 +237,16 @@ export const environment = {
     protocolConfigLauncherId: '',
     /** A.4 property-registry singleton.  Empty = not deployed. */
     propertyRegistryLauncherId: '',
+    /**
+     * BLS G1 public key curried into ``property_registry_inner.clsp`` as
+     * GOV_PUBKEY.  Required only when the registry is still at its eve coin
+     * and the portal must materialise the version-0 inner puzzle locally.
+     * After the first registry spend, the portal reconstructs current state
+     * from chain history.
+     */
+    propertyRegistryGovPubkey: '',
+    /** Pool Economic V2 collection-NAV registry singleton. Empty = not deployed. */
+    collectionNavRegistryLauncherId: '',
     /** Pool singleton launcher id (deeded-XCH pool).  Empty = not deployed. */
     poolLauncherId: '0xc756590abdd408ceeed708005d79d36b4a7279c22af22ce613849e36163339c3',
     /**
@@ -302,5 +312,55 @@ export const environment = {
     /** Tree hash of vault_version_registry_inner.clsp — pinned to verify on-chain state. */
     vaultVersionRegistryModHash:
       '0x5cf39809296ad31bf906f7610912ac56fb8c339e0e98444f821f9e363df60d29',
+
+    // ── Mint-publish protocol context (Phase 4f) ───────────────────────
+    // Curry inputs the mint-PROPOSE publish flow threads into
+    // ``MintPublishService.buildMintPublishArtifacts`` (and that the
+    // populis_api re-derivation guard re-computes server-side, Brick
+    // 4e.2c).  These are operator-controlled protocol coordinates that
+    // have no display-only mirror elsewhere in this object, so the 4f
+    // publish-args assembler reads them straight from here.
+    //
+    // Each value MUST stay in lockstep with the API's matching
+    // ``POPULIS_*`` env var (``populis_api/populis_api/config.py``); a
+    // mismatch makes the server-side comparator reject every publish
+    // bundle with a drift error.  Empty = "not configured" — the
+    // assembler refuses to build args (the publish button stays
+    // disabled) rather than emit a bundle the API will reject.
+    //
+    /**
+     * 0x-hex serialization of the protocol DID singleton struct Program
+     * ``(SINGLETON_MOD_HASH (DID_LAUNCHER_ID . SINGLETON_LAUNCHER_HASH))``.
+     * Curried into the DID-gated deed launcher puzzle.  Mirror of the
+     * API's ``POPULIS_PROTOCOL_DID_SINGLETON_STRUCT_HEX``.
+     */
+    protocolDidSingletonStructHex: '',
+    /**
+     * 0x-hex of the 32-byte protocol-DID puzzle hash.  Curried into
+     * ``smart_deed_inner`` + the mint-offer eve inner.  Mirror of the
+     * API's ``POPULIS_PROTOCOL_DID_PUZHASH``.
+     */
+    protocolDidPuzhash: '',
+    /**
+     * 0x-hex of the 32-byte ``p2_pool`` mod hash (pool-destination
+     * compute inside ``smart_deed_inner``).  Mirror of the API's
+     * ``POPULIS_P2_POOL_MOD_HASH``.
+     */
+    p2PoolModHash: '',
+    /**
+     * 0x-hex of the 32-byte ``p2_vault`` mod hash (vault-destination
+     * compute inside ``smart_deed_inner``).  Mirror of the API's
+     * ``POPULIS_P2_VAULT_MOD_HASH``.  Distinct from
+     * ``vaultInnerModHash`` above (the registry-published vault inner
+     * code), which serves the vault-version trust-roots flow.
+     */
+    p2VaultModHash: '',
+    /**
+     * Optional fallback 0x-hex of the current property-registry singleton full
+     * puzzle hash.  The mint detail page prefers a live lineage walk from
+     * ``propertyRegistryLauncherId`` because this value changes on every
+     * registration spend; keep this empty unless running without chain access.
+     */
+    propertyRegistryCurrentPuzzleHash: '',
   },
 };

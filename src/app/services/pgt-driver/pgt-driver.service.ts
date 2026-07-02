@@ -56,7 +56,7 @@ export class PgtDriverService {
   static readonly PGT_LOCKED_INNER_MOD_HASH =
     '0x961017e40fd469933e8afb64c5ea38ac252f0749afa2c8ef8c0b3278f6c525c0';
   static readonly GOVERNANCE_TRACKER_INNER_MOD_HASH =
-    '0xe630c3b3aaf7e7a8f58d3812f72db840b014068229c38526ecab81d5d598dbc8';
+    '0x52ab762f043036c3c35cb3f3ee952a44292c06d8e903aa6f0b20b125521fe810';
 
   /** Standard CAT v2 outer puzzle mod hash (chia_puzzles_py CAT_PUZZLE_HASH). */
   static readonly CAT_MOD_HASH =
@@ -306,15 +306,26 @@ export class PgtDriverService {
   // ── Bill builders + proposal hash ────────────────────────────────────
 
   /**
-   * MINT bill: governance approves spawning a deed at the given
-   * full puzzle hash.  Tree-hash is the proposal hash committed on
-   * chain.
+   * MINT bill: governance approves spawning a deed and binds the property
+   * registry context.  Tree-hash is the proposal hash committed on chain.
    */
-  billMint(deedFullPuzzleHash: string): Uint8Array {
-    return this.billTreeHash([
+  billMint(
+    deedFullPuzzleHash: string,
+    propertyIdCanon?: string,
+    propertyRegistryPuzzleHash?: string,
+  ): Uint8Array {
+    const elements = [
       this.treeHashAtom(new Uint8Array([PgtDriverService.BILL_MINT])),
       this.treeHashAtom(hexToBytes(deedFullPuzzleHash)),
-    ]);
+    ];
+    if (propertyIdCanon !== undefined || propertyRegistryPuzzleHash !== undefined) {
+      if (propertyIdCanon === undefined || propertyRegistryPuzzleHash === undefined) {
+        throw new Error('propertyIdCanon and propertyRegistryPuzzleHash must be passed together');
+      }
+      elements.push(this.treeHashAtom(hexToBytes(propertyIdCanon)));
+      elements.push(this.treeHashAtom(hexToBytes(propertyRegistryPuzzleHash)));
+    }
+    return this.billTreeHash(elements);
   }
 
   /** FREEZE bill: flip pool status (0 = FROZEN, 1 = ACTIVE). */
@@ -330,12 +341,14 @@ export class PgtDriverService {
     splitxchRoot: string;
     totalAmountMojos: bigint | number;
     numDeeds: bigint | number;
+    deedReleasesHash: string;
   }): Uint8Array {
     return this.billTreeHash([
       this.treeHashAtom(new Uint8Array([PgtDriverService.BILL_SETTLE])),
       this.treeHashAtom(hexToBytes(args.splitxchRoot)),
       this.treeHashAtom(canonicalIntBytes(BigInt(args.totalAmountMojos))),
       this.treeHashAtom(canonicalIntBytes(BigInt(args.numDeeds))),
+      this.treeHashAtom(hexToBytes(args.deedReleasesHash)),
     ]);
   }
 

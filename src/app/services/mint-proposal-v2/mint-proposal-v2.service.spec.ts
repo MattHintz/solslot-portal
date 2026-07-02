@@ -37,6 +37,8 @@ interface FixtureCase<TInput> {
 
 interface ProposalDataInput {
   property_id_canon: string;
+  collection_id_canon: string;
+  share_ppm: number;
   par_value_mojos: number;
   royalty_bps: number;
   quorum_threshold: number;
@@ -158,6 +160,8 @@ describe('MintProposalV2Service', () => {
       it(`case ${i}: par=${c.input.par_value_mojos}, royalty=${c.input.royalty_bps}`, () => {
         const got = service.computeProposalDataHash({
           propertyIdCanon: c.input.property_id_canon,
+          collectionIdCanon: c.input.collection_id_canon,
+          sharePpm: c.input.share_ppm,
           parValueMojos: c.input.par_value_mojos,
           royaltyBps: c.input.royalty_bps,
           quorumThreshold: c.input.quorum_threshold,

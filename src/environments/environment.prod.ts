@@ -33,6 +33,8 @@ export const environment = {
     adminAuthorityV2AdminAddresses: [] as string[],
     protocolConfigLauncherId: '',
     propertyRegistryLauncherId: '',
+    propertyRegistryGovPubkey: '',
+    collectionNavRegistryLauncherId: '',
     poolLauncherId: '',
     governanceLauncherId: '',
     governanceQuorumBps: 5000,
@@ -49,5 +51,16 @@ export const environment = {
     /** Tree hash of vault_version_registry_inner.clsp. */
     vaultVersionRegistryModHash:
       '0x5cf39809296ad31bf906f7610912ac56fb8c339e0e98444f821f9e363df60d29',
+
+    // ── Mint-publish protocol context (Phase 4f) ───────────────────────
+    // See environment.ts for full documentation.  Mirror the API's
+    // POPULIS_PROTOCOL_DID_SINGLETON_STRUCT_HEX / POPULIS_PROTOCOL_DID_PUZHASH
+    // / POPULIS_P2_POOL_MOD_HASH / POPULIS_P2_VAULT_MOD_HASH before
+    // enabling the mint-publish flow on mainnet.
+    protocolDidSingletonStructHex: '',
+    protocolDidPuzhash: '',
+    p2PoolModHash: '',
+    p2VaultModHash: '',
+    propertyRegistryCurrentPuzzleHash: '',
   },
 };

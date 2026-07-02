@@ -170,8 +170,9 @@ export interface ProtocolInfo {
   /**
    * Launcher coin id of the on-chain property-registry singleton.
    * Off-chain consumers walk this singleton's lineage on coinset.org
-   * to discover registered property ids — each registration spend
-   * emits a CREATE_PUZZLE_ANNOUNCEMENT carrying the canonical id.
+   * to discover registered property ids.  Each registration spend proves
+   * non-membership against the current REGISTERED_IDS_ROOT, recreates the
+   * root, and emits a CREATE_PUZZLE_ANNOUNCEMENT carrying the canonical id.
    * ``null`` until the operator opts in.  See SECURITY.md §A.4.
    */
   property_registry_launcher_id?: string | null;

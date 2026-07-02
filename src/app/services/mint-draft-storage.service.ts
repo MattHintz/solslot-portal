@@ -4,7 +4,11 @@ import {
   MintProposalState,
   ProposeMintRequest,
 } from './admin-api.service';
-import { canonicalizeMintPropertyId } from '../utils/mint-property-id';
+import { mergeMintPublishLocalContext } from './mint-proposal-v2/mint-proposal-local-context';
+import {
+  canonicalizeMintCollectionId,
+  canonicalizeMintPropertyId,
+} from '../utils/mint-property-id';
 
 const STORAGE_KEY = 'populis_mint_drafts_v1';
 
@@ -62,6 +66,7 @@ export class MintDraftStorageService {
     const id = newId();
     const now = nowSeconds();
     const propertyId = canonicalizeMintPropertyId(req.property_id);
+    const collectionId = canonicalizeMintCollectionId(req.collection_id);
     const proposal: MintProposalResponse = {
       id,
       owner_pubkey: ownerPubkey,
@@ -69,6 +74,8 @@ export class MintDraftStorageService {
       par_value: req.par_value,
       asset_class: req.asset_class,
       property_id: propertyId,
+      collection_id: collectionId,
+      share_ppm: req.share_ppm,
       jurisdiction: req.jurisdiction,
       royalty_puzhash: req.royalty_puzhash,
       royalty_bps: req.royalty_bps,
@@ -165,6 +172,93 @@ export class MintDraftStorageService {
   }
 
   /**
+   * Persist the local audit mirror after a publish bundle is accepted by
+   * the transaction relay.  The on-chain bundle remains authoritative;
+   * this only lets the admin desk keep showing the deterministic ids and
+   * hashes that were submitted from this browser.
+   */
+  markPublished(
+    id: string,
+    update: MintDraftPublishedUpdate,
+  ): MintProposalResponse | null {
+    const all = this.loadAll();
+    const existing = all[id];
+    if (!existing) return null;
+    if (existing.state !== 'DRAFT') {
+      throw new Error(
+        `Proposal ${id} is in state ${existing.state}; only DRAFT proposals ` +
+          'can be marked published from the local storage path.',
+      );
+    }
+    const publishedAt = update.publishedAt ?? nowSeconds();
+    const updated: MintProposalResponse = {
+      ...existing,
+      state: 'PROPOSED',
+      computed: {
+        smart_deed_inner_puzhash: update.smartDeedInnerPuzhash,
+        eve_inner_puzhash: update.eveInnerPuzhash,
+        deed_full_puzhash: update.deedFullPuzhash,
+        proposal_hash: update.proposalHash,
+      },
+      on_chain: {
+        ...existing.on_chain,
+        proposal_tracker_coin_id: update.proposalTrackerCoinId,
+        pgt_lock_coin_id: update.pgtLockCoinId,
+        deed_launcher_id: update.deedLauncherId,
+        published_bundle_id: update.publishedBundleId,
+      },
+      deadline: update.deadline,
+      timestamps: {
+        ...existing.timestamps,
+        published_at: publishedAt,
+      },
+      off_chain_metadata: mergeMintPublishLocalContext(existing.off_chain_metadata, {
+        propertyRegistryPuzzleHash: update.propertyRegistryPuzzleHash,
+      }),
+    };
+    all[id] = updated;
+    this.persist(all);
+    return updated;
+  }
+
+  /**
+   * Persist the local audit mirror after a tracker EXECUTE bundle is accepted
+   * by the transaction relay.  The chain remains authoritative; this only
+   * marks the admin's local record so the desk stops presenting execute as a
+   * pending action while chain evidence catches up.
+   */
+  markExecuted(
+    id: string,
+    update: MintDraftExecutedUpdate,
+  ): MintProposalResponse | null {
+    const all = this.loadAll();
+    const existing = all[id];
+    if (!existing) return null;
+    if (!['PROPOSED', 'VOTING', 'PASSED'].includes(existing.state)) {
+      throw new Error(
+        `Proposal ${id} is in state ${existing.state}; only active published ` +
+          'proposals can be marked executed from the local storage path.',
+      );
+    }
+    const executedAt = update.executedAt ?? nowSeconds();
+    const updated: MintProposalResponse = {
+      ...existing,
+      state: 'EXECUTED',
+      on_chain: {
+        ...existing.on_chain,
+        executed_bundle_id: update.executedBundleId,
+      },
+      timestamps: {
+        ...existing.timestamps,
+        executed_at: executedAt,
+      },
+    };
+    all[id] = updated;
+    this.persist(all);
+    return updated;
+  }
+
+  /**
    * Permanently delete a draft.  Distinct from cancel — used to
    * remove abandoned drafts that the admin doesn't want to keep
    * for audit.  Returns true if a record was removed.
@@ -194,7 +288,13 @@ export class MintDraftStorageService {
     if (!raw) return {};
     try {
       const parsed = JSON.parse(raw) as Record<string, MintProposalResponse>;
-      return parsed && typeof parsed === 'object' ? parsed : {};
+      if (!parsed || typeof parsed !== 'object') return {};
+      return Object.fromEntries(
+        Object.entries(parsed).map(([id, draft]) => [
+          id,
+          normalizeStoredDraft(draft),
+        ]),
+      );
     } catch {
       // Corrupt storage — surface as empty so callers don't crash.
       // The next persist() rewrites it to a valid JSON object.
@@ -225,4 +325,31 @@ function newId(): string {
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
+}
+
+function normalizeStoredDraft(draft: MintProposalResponse): MintProposalResponse {
+  return {
+    ...draft,
+    collection_id: draft.collection_id ?? 'LEGACY',
+    share_ppm: draft.share_ppm ?? 1_000_000,
+  };
+}
+
+export interface MintDraftPublishedUpdate {
+  smartDeedInnerPuzhash: string;
+  eveInnerPuzhash: string;
+  deedFullPuzhash: string;
+  proposalHash: string;
+  proposalTrackerCoinId: string;
+  pgtLockCoinId: string | null;
+  deedLauncherId: string;
+  publishedBundleId: string;
+  propertyRegistryPuzzleHash: string;
+  deadline: number;
+  publishedAt?: number;
+}
+
+export interface MintDraftExecutedUpdate {
+  executedBundleId: string;
+  executedAt?: number;
 }

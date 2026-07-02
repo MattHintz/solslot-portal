@@ -20,6 +20,8 @@ describe('CommitteeComponent', () => {
   let walletConnected = false;
   let runnerCastVote: jasmine.Spy;
 
+  const b32 = (byte: string) => '0x' + byte.repeat(32);
+
   function setUp(
     snapshot: TrackerStateSnapshot | Error,
     opts: {
@@ -114,7 +116,9 @@ describe('CommitteeComponent', () => {
   it('renders OPEN state with bill summary and a Vote YES button', async () => {
     const mintBill: DecodedBill = {
       kind: 'MINT',
-      deedFullPuzzleHash: '0x' + '02'.repeat(32),
+      deedFullPuzzleHash: b32('02'),
+      propertyIdCanon: b32('03'),
+      propertyRegistryPuzzleHash: b32('04'),
     };
     setUp({
       kind: 'OPEN',
@@ -170,7 +174,12 @@ describe('CommitteeComponent', () => {
     });
     fixture.detectChanges();
     expect(
-      component.billHeadline({ kind: 'MINT', deedFullPuzzleHash: '0x00' }),
+      component.billHeadline({
+        kind: 'MINT',
+        deedFullPuzzleHash: '0x00',
+        propertyIdCanon: '0x00',
+        propertyRegistryPuzzleHash: '0x00',
+      }),
     ).toContain('MINT');
     expect(
       component.billHeadline({ kind: 'FREEZE', newPoolStatus: 0 }),
@@ -184,6 +193,7 @@ describe('CommitteeComponent', () => {
         splitxchRoot: '0x00',
         totalAmount: 1n,
         numDeeds: 1n,
+        deedReleasesHash: '0x' + '00'.repeat(32),
       }),
     ).toContain('SETTLE');
     expect(
@@ -214,9 +224,11 @@ describe('CommitteeComponent', () => {
       splitxchRoot: '0x0a',
       totalAmount: 123n,
       numDeeds: 4n,
+      deedReleasesHash: '0x' + '0d'.repeat(32),
     });
     expect(json).toContain('"totalAmount": "123"');
     expect(json).toContain('"numDeeds": "4"');
+    expect(json).toContain('"deedReleasesHash"');
   });
 
   // ── Helpers ─────────────────────────────────────────────────────────
