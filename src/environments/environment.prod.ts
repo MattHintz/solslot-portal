@@ -1,6 +1,7 @@
 export const environment = {
   production: true,
   faucetApi: 'https://portal.populis.xyz/api',
+  legacyRecallApi: 'https://solslot.com/telonium',
   coinsetRpc: 'https://testnet11.api.coinset.org',
   chiaNetwork: 'testnet11' as 'testnet11' | 'mainnet',
   walletConnectProjectId: '',

@@ -82,6 +82,9 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
           <a routerLink="/admin/authority-v2/roster-spend-package-review" class="btn btn--ghost">
             Review roster package
           </a>
+          <a routerLink="/admin/legacy-recall" class="btn btn--ghost">
+            Legacy recall
+          </a>
           <a routerLink="/admin/mint/new" class="btn btn--primary">
             + New mint proposal
           </a>
