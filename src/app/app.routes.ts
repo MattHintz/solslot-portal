@@ -77,6 +77,15 @@ export const routes: Routes = [
     title: 'New Mint Proposal · Populis',
   },
   {
+    path: 'admin/legacy-recall',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/legacy-recall/legacy-recall.component').then(
+        (m) => m.LegacyRecallComponent,
+      ),
+    title: 'Legacy Recall · Populis',
+  },
+  {
     // Trust Roots admin page (Phase 3): surfaces /protocol +
     // /admin/auth/authority and verifies them against on-chain
     // state via ChiaSingletonReaderService.

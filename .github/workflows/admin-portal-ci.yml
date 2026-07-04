@@ -1,0 +1,35 @@
+name: Admin Portal CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - codex/solslot-admin-legacy-recall
+
+jobs:
+  build-and-secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Development build
+        run: npm run build -- --configuration development
+
+      - name: Admin portal secret scan
+        shell: bash
+        run: |
+          pattern='sk_(live|test)_[A-Za-z0-9]+|rk_live_[A-Za-z0-9]+|whsec_[A-Za-z0-9]+|MANDRILL_API_KEY=|STRIPE_SECRET_KEY=|BEGIN (RSA|EC|OPENSSH|PRIVATE)'
+          if grep -R -n -E "$pattern" src; then
+            echo "Secret-like value found in admin portal source."
+            exit 1
+          fi

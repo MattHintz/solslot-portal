@@ -33,6 +33,12 @@ export const environment = {
   faucetApi: 'http://127.0.0.1:8787',
 
   /**
+   * Closed Sols Lot backend endpoint for deprecated Pro Account / Pro Vault
+   * recall. Read-only; new purchases use Populis vaults instead.
+   */
+  legacyRecallApi: 'http://127.0.0.1:5000',
+
+  /**
    * Chia full-node RPC.  Defaults to coinset.org's public testnet11
    * endpoint.  Used for both reads (``get_coin_record_by_name``,
    * ``get_coin_records_by_parent_ids``, ``get_puzzle_and_solution``,
