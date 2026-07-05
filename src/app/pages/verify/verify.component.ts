@@ -55,7 +55,7 @@ const EMITTER_ABI = [
     <div class="verify-page">
       <div class="verify-card">
         <div class="verify-logo">
-          <span class="verify-brand">Populis</span>
+          <span class="verify-brand">Solslot</span>
           <span class="verify-powered">Verified by zkPassport</span>
         </div>
 
@@ -254,8 +254,8 @@ export class VerifyComponent implements OnInit, OnDestroy {
         customData?.toLowerCase().startsWith('vault:0x') ? customData.toLowerCase() : undefined;
 
       const queryBuilder = await zkp.request({
-        name: 'Populis',
-        purpose: 'Age verification',
+        name: 'Solslot',
+        purpose: 'SmartDeeds Testnet Alpha identity verification',
         devMode: environment.zkPassport.devMode ?? false,
         scope: vaultSubscope ?? 'populis-verify',
         mode: 'compressed-evm',

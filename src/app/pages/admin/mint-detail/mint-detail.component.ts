@@ -19,6 +19,10 @@ import {
   MintProposalChainStateService,
 } from '../../../services/mint-proposal-v2/mint-proposal-chain-state.service';
 import {
+  MintProposalLifecycleView,
+  mintProposalLifecycleView,
+} from '../../../services/mint-lifecycle-view';
+import {
   AssemblePublishArgsResult,
   PublishMintArgsAssemblerService,
 } from '../../../services/mint-proposal-v2/publish-mint-args-assembler.service';
@@ -83,6 +87,47 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
         </div>
       } @else if (proposal(); as p) {
         <div class="mt-8 grid gap-6">
+          @if (lifecycle(); as l) {
+            <section class="card grid gap-4">
+              <header class="flex flex-wrap items-center justify-between gap-3">
+                <h2 class="font-display text-2xl">Lifecycle</h2>
+                <span class="notation-pill">{{ l.notation }}</span>
+              </header>
+              <div class="grid gap-3 md:grid-cols-2">
+                <div>
+                  <div class="form-label">Required action</div>
+                  <div class="text-sm">{{ l.requiredAction }}</div>
+                </div>
+                <div>
+                  <div class="form-label">Mint-to-offer path</div>
+                  <div class="text-sm text-text-muted">{{ l.outcome }}</div>
+                </div>
+              </div>
+              <dl class="grid gap-2 text-xs mono sm:grid-cols-2">
+                <div>
+                  <dt class="text-text-muted">proposal_hash</dt>
+                  <dd class="break-all">{{ l.diagnostics.proposalHash ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-text-muted">deed_full_puzhash</dt>
+                  <dd class="break-all">{{ l.diagnostics.deedFullPuzhash ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-text-muted">deed_launcher_id</dt>
+                  <dd class="break-all">{{ l.diagnostics.deedLauncherId ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-text-muted">offer_artifact_id</dt>
+                  <dd class="break-all">{{ l.diagnostics.offerArtifactId ?? '—' }}</dd>
+                </div>
+                <div class="sm:col-span-2">
+                  <dt class="text-text-muted">offer_artifact_hash</dt>
+                  <dd class="break-all">{{ l.diagnostics.offerArtifactHash ?? '—' }}</dd>
+                </div>
+              </dl>
+            </section>
+          }
+
           <section class="card grid gap-4">
             <h2 class="font-display text-2xl">Operator metadata</h2>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -544,6 +589,16 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
         background: rgba(255, 120, 120, 0.1);
       }
 
+      .notation-pill {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.18em;
+        padding: 0.24rem 0.6rem;
+        border-radius: 999px;
+        color: #04110d;
+        background: rgba(124, 255, 178, 0.85);
+      }
+
       .chain-pill {
         font-family: var(--font-mono);
         font-size: 0.66rem;
@@ -592,6 +647,11 @@ export class MintDetailComponent {
   readonly loadError = signal<string | null>(null);
   readonly actionError = signal<string | null>(null);
   readonly chainEvidence = signal<ChainEvidenceView | null>(null);
+
+  readonly lifecycle = computed<MintProposalLifecycleView | null>(() => {
+    const p = this.proposal();
+    return p ? mintProposalLifecycleView(p) : null;
+  });
 
   readonly isOwner = computed(() => {
     const p = this.proposal();

@@ -9,25 +9,33 @@ export const routes: Routes = [
       import('./pages/admin/genesis/genesis.component').then(
         (m) => m.GenesisComponent,
       ),
-    title: 'Genesis Launch · Populis',
+    title: 'Protocol Status · Solslot',
   },
   {
     path: 'connect',
     loadComponent: () =>
       import('./pages/connect/connect.component').then((m) => m.ConnectComponent),
-    title: 'Connect Wallet · Populis Portal',
+    title: 'Vault Connect · Solslot',
   },
   {
     path: 'create-vault',
     loadComponent: () =>
       import('./pages/create-vault/create-vault.component').then((m) => m.CreateVaultComponent),
-    title: 'Create Vault · Populis Portal',
+    title: 'Create Vault · Solslot',
   },
   {
     path: 'vault',
     loadComponent: () =>
       import('./pages/vault/vault.component').then((m) => m.VaultComponent),
-    title: 'My Vault · Populis Portal',
+    title: 'My Vault · Solslot',
+  },
+  {
+    path: 'offers/:id',
+    loadComponent: () =>
+      import('./pages/offers/offer-detail.component').then(
+        (m) => m.OfferDetailComponent,
+      ),
+    title: 'SmartDeed Offer · Solslot',
   },
 
   // ── Admin desk (wallet-signed JWT auth) ───────────────────────────────────
@@ -37,7 +45,7 @@ export const routes: Routes = [
       import('./pages/admin/login/admin-login.component').then(
         (m) => m.AdminLoginComponent,
       ),
-    title: 'Admin Sign-in · Populis',
+    title: 'Admin Sign-in · Solslot',
   },
   {
     path: 'admin/genesis',
@@ -45,7 +53,7 @@ export const routes: Routes = [
       import('./pages/admin/genesis/genesis.component').then(
         (m) => m.GenesisComponent,
       ),
-    title: 'Genesis Launch · Populis',
+    title: 'Genesis Launch · Solslot',
   },
   {
     path: 'admin/recovery',
@@ -53,7 +61,7 @@ export const routes: Routes = [
       import('./pages/admin/recovery/recovery.component').then(
         (m) => m.RecoveryComponent,
       ),
-    title: 'Bootstrap Recovery · Populis',
+    title: 'Bootstrap Recovery · Solslot',
   },
   {
     path: 'admin',
@@ -65,7 +73,7 @@ export const routes: Routes = [
       import('./pages/admin/dashboard/admin-dashboard.component').then(
         (m) => m.AdminDashboardComponent,
       ),
-    title: 'Admin Desk · Populis',
+    title: 'Admin Desk · Solslot',
   },
   {
     path: 'admin/mint/new',
@@ -74,7 +82,7 @@ export const routes: Routes = [
       import('./pages/admin/mint-new/mint-new.component').then(
         (m) => m.MintNewComponent,
       ),
-    title: 'New Mint Proposal · Populis',
+    title: 'New Mint Proposal · Solslot',
   },
   {
     path: 'admin/pool-economics-v2',
@@ -83,7 +91,16 @@ export const routes: Routes = [
       import('./pages/admin/pool-economics-v2/pool-economics-v2.component').then(
         (m) => m.PoolEconomicsV2Component,
       ),
-    title: 'Pool Economic V2 · Populis',
+    title: 'Pool Economic V2 · Solslot',
+  },
+  {
+    path: 'admin/legacy-recall',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/legacy-recall/legacy-recall.component').then(
+        (m) => m.LegacyRecallComponent,
+      ),
+    title: 'Legacy Recall · Solslot',
   },
   {
     // Trust Roots admin page (Phase 3): surfaces /protocol +
@@ -95,7 +112,7 @@ export const routes: Routes = [
       import('./pages/admin/trust-roots/trust-roots.component').then(
         (m) => m.TrustRootsComponent,
       ),
-    title: 'Trust Roots · Populis',
+    title: 'Trust Roots · Solslot',
   },
   {
     path: 'admin/launch-protocol-config',
@@ -104,7 +121,7 @@ export const routes: Routes = [
       import(
         './pages/admin/launch-protocol-config/launch-protocol-config.component'
       ).then((m) => m.LaunchProtocolConfigComponent),
-    title: 'Launch Protocol Config · Populis',
+    title: 'Launch Protocol Config · Solslot',
   },
   {
     path: 'admin/authority-v2/add-admin-slot',
@@ -113,7 +130,7 @@ export const routes: Routes = [
       import('./pages/admin/add-admin-slot/add-admin-slot.component').then(
         (m) => m.AddAdminSlotComponent,
       ),
-    title: 'Add Admin Slot · Populis',
+    title: 'Add Admin Slot · Solslot',
   },
   {
     path: 'admin/authority-v2/roster-spend-package-review',
@@ -122,7 +139,7 @@ export const routes: Routes = [
       import(
         './pages/admin/roster-spend-package-review/roster-spend-package-review.component'
       ).then((m) => m.RosterSpendPackageReviewComponent),
-    title: 'Review Roster Spend Package · Populis',
+    title: 'Review Roster Spend Package · Solslot',
   },
   {
     // Phase 9-Hermes-D D-2.4: launch-v2 wizard.
@@ -136,7 +153,7 @@ export const routes: Routes = [
       import(
         './pages/admin/launch-authority-v2/launch-authority-v2.component'
       ).then((m) => m.LaunchAuthorityV2Component),
-    title: 'Launch Authority v2 · Populis',
+    title: 'Launch Authority v2 · Solslot',
   },
   {
     path: 'admin/mint/:id',
@@ -145,7 +162,7 @@ export const routes: Routes = [
       import('./pages/admin/mint-detail/mint-detail.component').then(
         (m) => m.MintDetailComponent,
       ),
-    title: 'Mint Proposal · Populis',
+    title: 'Mint Proposal · Solslot',
   },
   {
     // Public: no guard.  Per POP-CANON-013 the committee endpoints are
@@ -155,14 +172,14 @@ export const routes: Routes = [
       import('./pages/admin/committee/committee.component').then(
         (m) => m.CommitteeComponent,
       ),
-    title: 'Committee · Populis',
+    title: 'Committee · Solslot',
   },
 
   {
     path: 'verify',
     loadComponent: () =>
       import('./pages/verify/verify.component').then((m) => m.VerifyComponent),
-    title: 'Verify Identity · Populis',
+    title: 'Verify Identity · Solslot',
   },
 
   {

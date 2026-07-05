@@ -35,7 +35,7 @@ import { formatError } from '../../../utils/format-error';
   template: `
     <section class="container-p pt-16 pb-24 max-w-2xl">
       <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-4">
-        Populis · Admin Desk
+        Solslot · Admin Desk
       </div>
       <h1 class="font-display text-4xl md:text-5xl">Sign in.</h1>
       <p class="mt-4 text-text-muted max-w-xl">

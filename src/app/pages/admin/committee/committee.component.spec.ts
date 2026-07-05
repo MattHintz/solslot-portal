@@ -21,6 +21,12 @@ describe('CommitteeComponent', () => {
   let runnerCastVote: jasmine.Spy;
 
   const b32 = (byte: string) => '0x' + byte.repeat(32);
+  const mintBill = (): DecodedBill => ({
+    kind: 'MINT',
+    deedFullPuzzleHash: b32('02'),
+    propertyIdCanon: b32('03'),
+    propertyRegistryPuzzleHash: b32('04'),
+  });
 
   function setUp(
     snapshot: TrackerStateSnapshot | Error,
@@ -107,23 +113,17 @@ describe('CommitteeComponent', () => {
     await flushReload();
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('No open proposal');
-    expect(text).toContain('500,000 PGT');
+    expect(text).toContain('500,000 SGT');
     expect(text).toContain('Voting window: 300s');
   });
 
   // ── OPEN state rendering ────────────────────────────────────────────
 
   it('renders OPEN state with bill summary and a Vote YES button', async () => {
-    const mintBill: DecodedBill = {
-      kind: 'MINT',
-      deedFullPuzzleHash: b32('02'),
-      propertyIdCanon: b32('03'),
-      propertyRegistryPuzzleHash: b32('04'),
-    };
     setUp({
       kind: 'OPEN',
       proposalHash: '0x' + '01'.repeat(32),
-      bill: mintBill,
+      bill: mintBill(),
       voteTally: 250_000n,
       votingDeadlineSeconds: BigInt(Math.floor(Date.now() / 1000) + 600),
       quorumRequired: 500_000n,
@@ -135,13 +135,53 @@ describe('CommitteeComponent', () => {
     const text = host.textContent ?? '';
     expect(text).toContain('MINT — spawn deed coin');
     expect(text).toContain('proposal_hash 0x' + '01'.repeat(32));
-    expect(text).toContain('250,000 / 500,000 PGT (50%)');
+    expect(text).toContain('250,000 / 500,000 SGT (50%)');
+    expect(text).toContain('GC:VOTING');
+    expect(text).toContain('Committee can vote on this MINT proposal.');
     const voteBtn = Array.from(host.querySelectorAll('button')).find((b) =>
       (b.textContent ?? '').includes('Vote YES'),
     );
     expect(voteBtn).withContext('Vote YES button rendered').toBeTruthy();
     // Disabled by default — no wallet, no amount input.
     expect(voteBtn?.hasAttribute('disabled')).toBeTrue();
+  });
+
+  it('renders AWAITING_EXECUTE MINT proposals as GC:PASSED with execute action', async () => {
+    setUp({
+      kind: 'AWAITING_EXECUTE',
+      proposalHash: '0x' + '01'.repeat(32),
+      bill: mintBill(),
+      voteTally: 800_000n,
+      votingDeadlineSeconds: BigInt(Math.floor(Date.now() / 1000) - 60),
+      quorumRequired: 500_000n,
+      spendCount: 2,
+      lastSpendBlockIndex: 9,
+    });
+    await flushReload();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('GC:PASSED');
+    expect(text).toContain('Execute the passed MINT proposal.');
+    expect(text).toContain('offer artifacts wait for MINTED evidence');
+  });
+
+  it('renders AWAITING_EXPIRE MINT proposals as GC:FAILED without offer-ready language', async () => {
+    setUp({
+      kind: 'AWAITING_EXPIRE',
+      proposalHash: '0x' + '01'.repeat(32),
+      bill: mintBill(),
+      voteTally: 100_000n,
+      votingDeadlineSeconds: BigInt(Math.floor(Date.now() / 1000) - 60),
+      quorumRequired: 500_000n,
+      spendCount: 2,
+      lastSpendBlockIndex: 9,
+    });
+    await flushReload();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('GC:FAILED');
+    expect(text).toContain('Expire the failed MINT proposal.');
+    expect(text).toContain('No deed or member purchase artifact will be produced.');
+    expect(text).not.toContain('OP:OFFER_READY');
+    expect(text).not.toContain('offer-ready');
   });
 
   it('shows AWAITING_EXECUTE pill once the deadline has passed and quorum is met', async () => {

@@ -35,6 +35,10 @@ export interface OfferArtifact {
   deedLauncherId: string;
   artifactHash: string | null;
   rawOffer: string | null;
+  poolLauncherId?: string | null;
+  poolInnerPuzzleHash?: string | null;
+  bridgePolicyHash?: string | null;
+  membersMerkleRoot?: string | null;
 }
 
 export interface OfferGatingPolicy {

@@ -151,6 +151,14 @@ describe('MintDetailComponent publish flow', () => {
     Object.assign(environment.populisProtocol, originalProtocol);
   });
 
+  async function renderProposal(proposal: MintProposalResponse): Promise<string> {
+    drafts.get.and.returnValue(proposal);
+    await component.reload();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return (fixture.nativeElement as HTMLElement).textContent ?? '';
+  }
+
   it('assembles registry-backed publish args, calls the runner, and persists submitted metadata', async () => {
     await component.publish();
 
@@ -214,6 +222,97 @@ describe('MintDetailComponent publish flow', () => {
     );
   });
 
+  it('renders distinct lifecycle next steps for PASSED, EXECUTED, and MINTED proposals', async () => {
+    const cases: Array<{
+      proposal: MintProposalResponse;
+      notation: string;
+      nextStep: string;
+    }> = [
+      {
+        proposal: proposalWithState('PASSED'),
+        notation: 'GC:PASSED',
+        nextStep: 'Execute the passed mint proposal.',
+      },
+      {
+        proposal: proposalWithState('EXECUTED', {
+          on_chain: {
+            ...publishedDraft().on_chain,
+            executed_bundle_id: b32('66'),
+          },
+          timestamps: {
+            ...publishedDraft().timestamps,
+            executed_at: 1_700_000_200,
+          },
+        }),
+        notation: 'OP:EXECUTED',
+        nextStep: 'Wait for chain confirmation of the minted deed launcher.',
+      },
+      {
+        proposal: proposalWithState('MINTED', {
+          on_chain: {
+            ...publishedDraft().on_chain,
+            deed_launcher_id: b32('55'),
+            executed_bundle_id: b32('66'),
+          },
+          timestamps: {
+            ...publishedDraft().timestamps,
+            executed_at: 1_700_000_200,
+            minted_at: 1_700_000_300,
+          },
+        }),
+        notation: 'OP:MINTED',
+        nextStep: 'Create or verify the protocol offer artifact through the admin/API purchase intent path.',
+      },
+    ];
+
+    for (const c of cases) {
+      const text = await renderProposal(c.proposal);
+      expect(text).toContain(c.notation);
+      expect(text).toContain(c.nextStep);
+    }
+  });
+
+  it('shows minted offer-artifact readiness diagnostics when deed launcher evidence exists', async () => {
+    const artifactHash = 'sha256:' + 'ab'.repeat(32);
+    const text = await renderProposal(
+      proposalWithState('MINTED', {
+        on_chain: {
+          ...publishedDraft().on_chain,
+          deed_launcher_id: b32('55'),
+          executed_bundle_id: b32('66'),
+        },
+        timestamps: {
+          ...publishedDraft().timestamps,
+          executed_at: 1_700_000_200,
+          minted_at: 1_700_000_300,
+        },
+        off_chain_metadata: {
+          protocolOffer: {
+            artifactId: 'protocol-offer:pi_123',
+            artifactHash,
+          },
+        },
+      }),
+    );
+
+    expect(text).toContain('OP:MINTED');
+    expect(text).toContain('Minted deed plus offer-artifact readiness is available for member purchase flow.');
+    expect(text).toContain('admin/API purchase intent');
+    expect(text).toContain('protocol-offer:pi_123');
+    expect(text).toContain(artifactHash);
+    expect(text).toContain(b32('55'));
+  });
+
+  it('does not show offer-ready or acceptance language for FAILED proposals', async () => {
+    const text = await renderProposal(proposalWithState('FAILED'));
+
+    expect(text).toContain('GC:FAILED');
+    expect(text).toContain('No deed or member purchase artifact will be produced.');
+    expect(text).not.toContain('OP:OFFER_READY');
+    expect(text).not.toContain('offer-ready');
+    expect(text).not.toContain('admin/API purchase intent');
+  });
+
   function draft(): MintProposalResponse {
     return {
       id: proposalId,
@@ -250,6 +349,30 @@ describe('MintDetailComponent publish flow', () => {
         minted_at: null,
       },
       off_chain_metadata: { fixture: true },
+    };
+  }
+
+  function proposalWithState(
+    state: MintProposalResponse['state'],
+    overrides: Partial<MintProposalResponse> = {},
+  ): MintProposalResponse {
+    const base = publishedDraft();
+    return {
+      ...base,
+      ...overrides,
+      state,
+      computed: {
+        ...base.computed,
+        ...(overrides.computed ?? {}),
+      },
+      on_chain: {
+        ...base.on_chain,
+        ...(overrides.on_chain ?? {}),
+      },
+      timestamps: {
+        ...base.timestamps,
+        ...(overrides.timestamps ?? {}),
+      },
     };
   }
 

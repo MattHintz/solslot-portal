@@ -10,7 +10,7 @@ import { SessionService } from '../../services/session.service';
   standalone: true,
   imports: [CommonModule, RouterLink, RouterLinkActive],
   template: `
-    <header class="sticky top-0 z-30 backdrop-blur bg-[rgba(2,11,11,0.7)] border-b border-[var(--border)]">
+    <header class="sticky top-0 z-30 backdrop-blur bg-[rgba(2,11,11,0.82)] border-b border-[var(--border)]">
       <div class="container-p flex items-center justify-between py-4">
         <a routerLink="/" class="flex items-center gap-3 group">
           <span
@@ -18,15 +18,17 @@ import { SessionService } from '../../services/session.service';
                    shadow-[0_0_40px_rgba(124,255,178,0.4)] group-hover:scale-105 transition-transform"
             aria-hidden="true"
           ></span>
-          <span class="font-display text-xl tracking-tight">Populis</span>
+          <span class="font-display text-xl tracking-tight">Solslot</span>
           <span class="mono text-[0.65rem] uppercase tracking-[0.2em] text-text-muted rounded border border-[var(--border)] px-2 py-0.5">
-            Genesis · Testnet
+            Vault Console · Testnet Alpha
           </span>
         </a>
-        <nav class="hidden md:flex items-center gap-6 text-sm text-text-muted">
-          <a routerLink="/" routerLinkActive="text-text" [routerLinkActiveOptions]="{ exact: true }" class="hover:text-text transition">Genesis</a>
+        <nav class="hidden lg:flex items-center gap-5 text-sm text-text-muted">
+          <a routerLink="/" routerLinkActive="text-text" [routerLinkActiveOptions]="{ exact: true }" class="hover:text-text transition">Status</a>
+          <a routerLink="/committee" routerLinkActive="text-text" class="hover:text-text transition">Committee</a>
           <a routerLink="/vault" routerLinkActive="text-text" class="hover:text-text transition" *ngIf="session.session()">My Vault</a>
-          <a href="https://populis.xyz" target="_blank" rel="noopener" class="hover:text-text transition">Learn</a>
+          <a href="/" class="hover:text-text transition">Market</a>
+          <a href="/dashboard/asset-overview" class="hover:text-text transition">Legacy Vault Login</a>
         </nav>
         <div class="flex items-center gap-3">
           <ng-container *ngIf="session.session() as s; else connectBtn">
@@ -34,7 +36,7 @@ import { SessionService } from '../../services/session.service';
             <button class="btn btn--ghost" (click)="disconnect()" type="button">Disconnect</button>
           </ng-container>
           <ng-template #connectBtn>
-            <a routerLink="/connect" class="btn btn--primary">Connect Wallet</a>
+            <a routerLink="/connect" class="btn btn--primary">Vault Connect</a>
           </ng-template>
         </div>
       </div>

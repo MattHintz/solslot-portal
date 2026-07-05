@@ -29,8 +29,8 @@ type Phase =
       <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-4">Step 2 of 2</div>
       <h1 class="font-display text-4xl md:text-5xl">Create your vault.</h1>
       <p class="mt-4 text-text-muted max-w-xl">
-        You'll sign a single EIP-712 (or BLS) message. Populis recovers your
-        public key from the signature, curries it into a vault singleton
+        You'll sign a single EIP-712 (or BLS) message. Solslot recovers your
+        public key from the signature, curries it into a Vault singleton
         puzzle, and launches the coin on {{ networkLabel }} &mdash; funded by
         the testnet faucet.
       </p>
@@ -45,7 +45,7 @@ type Phase =
           <span class="mono text-sm">{{ signerAddress() ?? '—' }}</span>
         </div>
         <div class="flex items-baseline justify-between" *ngIf="pubkey()">
-          <span class="uppercase text-xs tracking-[0.2em] text-text-muted">Your Populis pubkey</span>
+          <span class="uppercase text-xs tracking-[0.2em] text-text-muted">Your Solslot pubkey</span>
           <span class="mono text-xs text-brand break-all">{{ pubkey() }}</span>
         </div>
 
@@ -106,6 +106,9 @@ export class CreateVaultComponent {
   readonly error = signal<string | null>(null);
   readonly launcherId = signal<string | null>(null);
   readonly pubkey = signal<string | null>(null);
+  readonly returnTo = signal<string | null>(
+    safeReturnTo(this.route.snapshot.queryParamMap.get('returnTo')),
+  );
 
   readonly networkLabel = 'testnet11';
 
@@ -142,7 +145,9 @@ export class CreateVaultComponent {
   private async launchEvm(): Promise<void> {
     const address = this.evm.address();
     if (!address) {
-      await this.router.navigate(['/connect']);
+      await this.router.navigate(['/connect'], {
+        queryParams: this.returnQueryParams(),
+      });
       return;
     }
 
@@ -175,7 +180,7 @@ export class CreateVaultComponent {
       this.session.setEvmSession(address, existing.vaultLauncherId, compressedPubkey);
       await this.session.refreshVault();
       // Skip the "Vault created" UI; route straight to the vault dashboard.
-      await this.router.navigate(['/vault']);
+      await this.navigateAfterVaultLoaded();
       return;
     }
 
@@ -199,7 +204,9 @@ export class CreateVaultComponent {
   private async launchChia(): Promise<void> {
     const pk = this.chia.pubkey();
     if (!pk) {
-      await this.router.navigate(['/connect']);
+      await this.router.navigate(['/connect'], {
+        queryParams: this.returnQueryParams(),
+      });
       return;
     }
 
@@ -213,7 +220,7 @@ export class CreateVaultComponent {
       this.launcherId.set(existing.vaultLauncherId);
       this.session.setChiaSession(pk, existing.vaultLauncherId);
       await this.session.refreshVault();
-      await this.router.navigate(['/vault']);
+      await this.navigateAfterVaultLoaded();
       return;
     }
 
@@ -240,10 +247,39 @@ export class CreateVaultComponent {
   }
 
   openVault(): void {
+    const target = this.returnTo();
+    if (target) {
+      void this.router.navigateByUrl(target);
+      return;
+    }
     void this.router.navigate(['/vault']);
   }
 
   cancel(): void {
+    const target = this.returnTo();
+    if (target) {
+      void this.router.navigateByUrl(target);
+      return;
+    }
     void this.router.navigate(['/connect']);
   }
+
+  private async navigateAfterVaultLoaded(): Promise<void> {
+    const target = this.returnTo();
+    if (target) {
+      await this.router.navigateByUrl(target);
+      return;
+    }
+    await this.router.navigate(['/vault']);
+  }
+
+  private returnQueryParams(): Record<string, string> {
+    const target = this.returnTo();
+    return target ? { returnTo: target } : {};
+  }
+}
+
+function safeReturnTo(value: string | null): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  return value;
 }

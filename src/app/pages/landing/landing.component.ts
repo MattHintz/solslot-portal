@@ -11,7 +11,7 @@ import { ChiaWasmService } from '../../services/chia-wasm.service';
     <section class="container-p pt-24 pb-16">
       <div class="max-w-3xl">
         <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-4 flex items-center gap-3">
-          <span>Populis Protocol · Testnet 11</span>
+          <span>Solslot Protocol · Testnet Alpha</span>
           <span
             class="inline-flex items-center gap-1.5 normal-case tracking-normal text-[0.65rem]"
             [class.text-brand]="wasmStatus().ok"
@@ -27,47 +27,47 @@ import { ChiaWasmService } from '../../services/chia-wasm.service';
           </span>
         </div>
         <h1 class="text-5xl md:text-7xl leading-[1.02] tracking-tight">
-          The members-only on-chain
+          The Solslot operating layer for
           <span class="bg-gradient-to-r from-brand via-brand-2 to-brand-3 bg-clip-text text-transparent">
-            vault for real assets.
+            SmartDeeds.
           </span>
         </h1>
         <p class="mt-8 text-lg md:text-xl text-text-muted leading-relaxed max-w-2xl">
-          Connect an EVM wallet or a Chia wallet. We'll spin up your private
-          vault singleton on Chia testnet, key-bound to your signature. No
-          custodians. No off-chain servers. Deeds, tokens, and offers live
-          inside the puzzle itself.
+          One command surface for Vault custody, Committee Coin voting,
+          identity readiness, Moon alpha simulation, and operator checks. The
+          market stays on Solslot; this console carries the protocol work
+          underneath it.
         </p>
         <div class="mt-12 flex flex-wrap gap-4">
-          <a routerLink="/connect" class="btn btn--primary">Connect & Create Vault</a>
-          <a href="https://populis.xyz" target="_blank" rel="noopener" class="btn btn--ghost">Read the white-paper</a>
+          <a routerLink="/connect" class="btn btn--primary">Vault Connect</a>
+          <a href="/" class="btn btn--ghost">Solslot Market</a>
+          <a href="/dashboard/asset-overview" class="btn btn--ghost">Legacy Vault Login</a>
         </div>
       </div>
 
       <div class="mt-24 grid gap-6 md:grid-cols-3">
         <div class="card">
-          <div class="font-display text-2xl mb-2">EVM-native sign-in</div>
+          <div class="font-display text-2xl mb-2">Vault Connect</div>
           <p class="text-sm text-text-muted leading-relaxed">
-            MetaMask, Coinbase Wallet, Rabby, WalletConnect. We derive your
-            Populis public key from a single EIP-712 signature &mdash; your
-            vault inherits the same security you already trust on Ethereum.
+            EVM and Chia wallet paths derive a Vault key from a signature, then
+            route the user into custody setup without seed phrases or private
+            key entry.
           </p>
         </div>
         <div class="card">
-          <div class="font-display text-2xl mb-2">Chia wallets too</div>
+          <div class="font-display text-2xl mb-2">Operator clarity</div>
           <p class="text-sm text-text-muted leading-relaxed">
-            Sage or Goby already holding XCH? Connect directly and get a
-            BLS-keyed vault &mdash; no extra seed phrase to juggle. Both auth
-            paths mint puzzle-compatible singletons the protocol treats
-            identically.
+            Chain status, mint lifecycle, committee state, and execution
+            diagnostics stay in one place so the webmaster can work without
+            hunting across hidden tabs.
           </p>
         </div>
         <div class="card">
-          <div class="font-display text-2xl mb-2">Gated smart deeds</div>
+          <div class="font-display text-2xl mb-2">SmartDeeds rails</div>
           <p class="text-sm text-text-muted leading-relaxed">
-            Every deed lives inside a vault or a pool &mdash; never floating
-            on the open market. Secondary sales happen through on-chain offers
-            that only other member vaults can take.
+            Testnet actions can exercise SmartDeeds, Vaults, Committee Coin,
+            Chia testnet, and Base test rails. Sols remain a secondary-market
+            swap readiness signal until liquidity is sufficient.
           </p>
         </div>
       </div>

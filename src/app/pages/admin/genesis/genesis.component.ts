@@ -29,7 +29,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
         <div class="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] items-start">
           <div>
             <div class="mono text-[0.7rem] uppercase tracking-[0.28em] text-brand mb-3">
-              Populis · Story mode · Act I
+              Solslot · Protocol ceremony · Act I
             </div>
             <h1 class="font-display text-5xl md:text-7xl leading-none">
               @if (bootstrapLocked()) {
@@ -45,7 +45,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
               } @else {
                 This software is in ceremony mode. Complete the base protocol launch,
                 bind the first admin wallet, and seal the bootstrap record before the
-                rest of Populis opens.
+                rest of Solslot Protocol opens.
               }
             </p>
             <div class="mt-6 flex flex-wrap gap-3">
@@ -239,7 +239,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
                 <input type="number" class="input mt-1 w-full mono text-xs" min="1" [(ngModel)]="votingWindowSecondsInput" />
               </label>
               <label class="block">
-                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">PGT total supply</div>
+                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">SGT total supply</div>
                 <input type="number" class="input mt-1 w-full mono text-xs" min="1" [(ngModel)]="pgtTotalSupplyInput" />
               </label>
               <label class="block">
@@ -271,7 +271,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
             </p>
             <div class="grid gap-4 md:grid-cols-2 mt-4">
               <label class="block">
-                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">PGT coin id</div>
+                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">SGT coin id</div>
                 <input type="text" class="input mt-1 w-full mono text-xs" [(ngModel)]="pgtCoinIdInput" placeholder="0x…" />
               </label>
               <label class="block">

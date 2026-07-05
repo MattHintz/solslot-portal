@@ -52,7 +52,7 @@ export class ZkPassportVaultEnrollmentSpendService {
   buildResolved(args: ResolvedEnrollmentSpendArgs): ZkPassportVaultEnrollmentSpendPackage {
     const sdk = this.sdk();
     const clvm = this.clvm();
-    const validatorPubkeys = (args.validatorPubkeys ?? environment.zkPassport.validatorPubkeys).map((pk) =>
+    const validatorPubkeys = (args.validatorPubkeys ?? environment.zkPassport.validatorPubkeys).map((pk: string) =>
       bytes32Or48(pk, 'validatorPubkey', 48),
     );
     const threshold = assertPositiveInteger(
@@ -108,7 +108,7 @@ export class ZkPassportVaultEnrollmentSpendService {
     }
 
     const bridgePuzzle = clvm.deserialize(hexToBytes(ZKPASSPORT_BRIDGE_MESSAGE_PUZZLE_HEX)).curry([
-      clvm.list(validatorPubkeys.map((pk) => clvm.atom(pk))),
+      clvm.list(validatorPubkeys.map((pk: Uint8Array) => clvm.atom(pk))),
       clvm.int(BigInt(threshold)),
     ]);
     const derivedBridgePolicyHash = bridgePuzzle.treeHash();

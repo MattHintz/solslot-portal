@@ -85,6 +85,9 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
           <a routerLink="/admin/pool-economics-v2" class="btn btn--ghost">
             Pool economics v2
           </a>
+          <a routerLink="/admin/legacy-recall" class="btn btn--ghost">
+            Legacy recall
+          </a>
           <a routerLink="/admin/mint/new" class="btn btn--primary">
             + New mint proposal
           </a>

@@ -1,6 +1,6 @@
 import { Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { sha256 } from 'ethers';
 import { SessionService } from '../../services/session.service';
 import { VaultVersionStatusService, type VaultVersionStatus } from '../../services/vault-version-status.service';
@@ -84,6 +84,13 @@ interface ZkPassportEnrollmentPreview {
       <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-4">Your Vault</div>
       <h1 class="font-display text-4xl md:text-5xl">Vault dashboard</h1>
 
+      @if (returnTo(); as target) {
+        <div class="card mt-6 text-sm text-text-muted">
+          Complete vault setup here; after zkPassport enrollment confirms,
+          you will return to <span class="mono text-brand">{{ target }}</span>.
+        </div>
+      }
+
       @if (checkingVersion()) {
         <div class="card mt-6 text-sm text-text-muted inline-flex items-center gap-3">
           <span class="pp-spinner" aria-hidden="true"></span>
@@ -159,7 +166,13 @@ interface ZkPassportEnrollmentPreview {
       @if (!session.session()) {
         <div class="card mt-10">
           <p class="text-text-muted">No active session. Connect a wallet to open or create your vault.</p>
-          <a routerLink="/connect" class="btn btn--primary mt-4 inline-block">Connect Wallet</a>
+          <a
+            [routerLink]="['/connect']"
+            [queryParams]="returnQueryParams()"
+            class="btn btn--primary mt-4 inline-block"
+          >
+            Connect Wallet
+          </a>
         </div>
       } @else {
         <div class="grid gap-4 md:grid-cols-2 mt-10">
@@ -432,6 +445,8 @@ interface ZkPassportEnrollmentPreview {
 })
 export class VaultComponent implements OnDestroy {
   readonly session = inject(SessionService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly zkPassport = inject(ZkPassportAttestationService);
   private readonly evmPoller = inject(ZkPassportEvmAttestationPollerService);
   private readonly proofStore = inject(ZkPassportProofStoreService);
@@ -454,6 +469,9 @@ export class VaultComponent implements OnDestroy {
   readonly enrollmentAuthorizationResult = signal<ZkPassportVaultEnrollmentAuthorizationResult | null>(null);
   readonly enrollmentCommitResult = signal<ZkPassportVaultEnrollmentCommitResult | null>(null);
   readonly zkPassportProofUrl = signal<string | null>(null);
+  readonly returnTo = signal<string | null>(
+    safeReturnTo(this.route.snapshot.queryParamMap.get('returnTo')),
+  );
 
   /** True while the current vault is still waiting for confirmation. */
   readonly pending = computed(() => {
@@ -695,6 +713,10 @@ export class VaultComponent implements OnDestroy {
       this.persistEnrollmentProof(preview);
       this.enrollmentCommitResult.set(result);
       this.enrollmentStatus.set('confirmed');
+      const target = this.returnTo();
+      if (target) {
+        await this.router.navigateByUrl(target);
+      }
     } catch (err) {
       this.enrollmentStatus.set(authorization ? 'authorized' : 'preview_ready');
       this.enrollmentError.set(err instanceof Error ? err.message : String(err));
@@ -712,6 +734,11 @@ export class VaultComponent implements OnDestroy {
       bridgeMessage: preview.bridgeMessage,
       enrolledAt: Math.floor(Date.now() / 1000),
     });
+  }
+
+  returnQueryParams(): Record<string, string> {
+    const target = this.returnTo();
+    return target ? { returnTo: target } : {};
   }
 
   private async applyAttestationPollResult(
@@ -874,4 +901,9 @@ export class VaultComponent implements OnDestroy {
       })();
     }
   }
+}
+
+function safeReturnTo(value: string | null): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  return value;
 }

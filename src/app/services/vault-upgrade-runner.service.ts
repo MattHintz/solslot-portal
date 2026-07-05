@@ -306,7 +306,7 @@ export class VaultUpgradeRunnerService {
     const bridgePuzzle = c
       .deserialize(hexToBytes(ZKPASSPORT_BRIDGE_MESSAGE_PUZZLE_HEX))
       .curry([
-        c.list(validatorPubkeys.map((pk) => c.atom(hexToBytes(pk)))),
+        c.list(validatorPubkeys.map((pk: string) => c.atom(hexToBytes(pk)))),
         c.int(BigInt(threshold)),
       ]);
     return {

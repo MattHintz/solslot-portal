@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 
 import { VaultState } from '../../services/populis-api.service';
 import { SessionService } from '../../services/session.service';
@@ -146,6 +146,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
   let enrollmentAuthorizeMock: jasmine.SpyObj<ZkPassportVaultEnrollmentAuthorizeService>;
   let enrollmentCommitMock: jasmine.SpyObj<ZkPassportVaultEnrollmentCommitService>;
   let vaultVersionStatusMock: jasmine.SpyObj<VaultVersionStatusService>;
+  let router: Router;
 
   beforeEach(async () => {
     localStorage.clear();
@@ -222,6 +223,7 @@ describe('VaultComponent zkPassport enrollment preview', () => {
       ],
     }).compileComponents();
 
+    router = TestBed.inject(Router);
     fixture = TestBed.createComponent(VaultComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
@@ -330,6 +332,19 @@ describe('VaultComponent zkPassport enrollment preview', () => {
       localStorage.getItem('populis_zkpassport_proofs_v1') ?? '{}',
     ) as Record<string, unknown>;
     expect(stored[VAULT_LAUNCHER_ID]).toBeTruthy();
+  });
+
+  it('returns to the intended offer after confirmed enrollment', async () => {
+    const navigateByUrl = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+    component.returnTo.set('/offers/testnet-deed-001');
+    evmPollerMock.pollOnce.and.resolveTo(foundResult());
+
+    await component.checkZkPassportAttestation();
+    await component.authorizeZkPassportEnrollment();
+    await component.commitZkPassportEnrollment();
+
+    expect(component.enrollmentStatus()).toBe('confirmed');
+    expect(navigateByUrl).toHaveBeenCalledOnceWith('/offers/testnet-deed-001');
   });
 
   it('rejects checking before the current vault coin is known', async () => {

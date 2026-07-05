@@ -12,6 +12,10 @@ import {
   CommitteeVoteRunnerService,
   VoteRunResult,
 } from '../../../services/pgt-driver/committee-vote-runner.service';
+import {
+  CommitteeMintLifecycleView,
+  committeeMintLifecycleView,
+} from '../../../services/mint-lifecycle-view';
 import { formatError } from '../../../utils/format-error';
 
 /**
@@ -50,17 +54,17 @@ import { formatError } from '../../../utils/format-error';
     <section class="container-p pt-12 pb-24 max-w-5xl">
       <header>
         <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-2">
-          Populis · Committee
+          Solslot · Committee
         </div>
         <h1 class="font-display text-4xl md:text-5xl">Governance proposal feed.</h1>
         <p class="mt-4 text-text-muted text-sm max-w-2xl">
-          The PGT-backed governance tracker holds at most one open
+          The SGT-backed governance tracker holds at most one open
           proposal at a time.  This page reads the tracker singleton
           directly from chain (coinset.org) — there is no API in the
-          read path.  Anyone holding PGT can vote.
+          read path.  Anyone holding SGT / Committee Coin can vote.
         </p>
         <p class="mt-3 text-text-muted text-xs max-w-2xl">
-          Your wallet builds and signs a PGT-VOTE spend bundle locally;
+          Your wallet builds and signs an SGT-VOTE spend bundle locally;
           the committee endpoint is a public, publish-only forwarder.
         </p>
       </header>
@@ -115,9 +119,9 @@ import { formatError } from '../../../utils/format-error';
                   chain it will appear here automatically.
                 </p>
                 <p class="mt-3 mono text-[0.7rem]">
-                  Quorum required: {{ formatPgt(snap.quorumRequired) }} PGT ·
+                  Quorum required: {{ formatPgt(snap.quorumRequired) }} SGT ·
                   Voting window: {{ Number(snap.votingWindowSeconds) }}s ·
-                  Min stake: {{ formatPgt(snap.minProposalStake) }} PGT
+                  Min stake: {{ formatPgt(snap.minProposalStake) }} SGT
                 </p>
               </div>
             }
@@ -127,6 +131,9 @@ import { formatError } from '../../../utils/format-error';
                   <div class="min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="state-pill" [attr.data-state]="snap.kind">{{ snap.kind }}</span>
+                      @if (committeeLifecycle(snap); as lifecycle) {
+                        <span class="notation-pill">{{ lifecycle.notation }}</span>
+                      }
                       <span class="mono text-xs text-text-muted truncate">
                         proposal_hash {{ snap.proposalHash }}
                       </span>
@@ -140,7 +147,7 @@ import { formatError } from '../../../utils/format-error';
                   </div>
                   <div class="flex items-end gap-2 shrink-0">
                     <label class="flex flex-col gap-1 text-xs mono text-text-muted">
-                      Vote amount (PGT mojos)
+                      Vote amount (SGT mojos)
                       <input
                         type="number"
                         class="input mono text-sm w-40"
@@ -161,6 +168,21 @@ import { formatError } from '../../../utils/format-error';
                     </button>
                   </div>
                 </div>
+
+                @if (snap.bill.kind === 'MINT') {
+                  @if (committeeLifecycle(snap); as lifecycle) {
+                    <div class="lifecycle-note">
+                      <div>
+                        <div class="form-label">Required action</div>
+                        <div class="text-sm">{{ lifecycle.requiredAction }}</div>
+                      </div>
+                      <div>
+                        <div class="form-label">Mint-to-offer path</div>
+                        <div class="text-sm text-text-muted">{{ lifecycle.outcome }}</div>
+                      </div>
+                    </div>
+                  }
+                }
 
                 @if (lastVoteResult(); as result) {
                   <div
@@ -185,7 +207,7 @@ import { formatError } from '../../../utils/format-error';
                   <div class="flex items-center justify-between text-xs mono mb-1">
                     <span class="text-text-muted">Quorum progress</span>
                     <span>
-                      {{ formatPgt(snap.voteTally) }} / {{ formatPgt(snap.quorumRequired) }} PGT
+                      {{ formatPgt(snap.voteTally) }} / {{ formatPgt(snap.quorumRequired) }} SGT
                       ({{ progressPct(snap) }}%)
                     </span>
                   </div>
@@ -248,6 +270,34 @@ import { formatError } from '../../../utils/format-error';
       .state-pill[data-state='AWAITING_EXPIRE'] {
         color: #ffb27c;
         background: rgba(255, 178, 124, 0.12);
+      }
+
+      .notation-pill {
+        font-family: var(--font-mono);
+        font-size: 0.65rem;
+        letter-spacing: 0.18em;
+        padding: 0.18rem 0.5rem;
+        border-radius: 999px;
+        color: #04110d;
+        background: rgba(124, 255, 178, 0.85);
+      }
+
+      .lifecycle-note {
+        display: grid;
+        gap: 0.75rem;
+        border: 1px solid rgba(124, 255, 178, 0.22);
+        border-radius: 8px;
+        background: rgba(124, 255, 178, 0.06);
+        padding: 0.9rem;
+      }
+
+      .form-label {
+        font-family: var(--font-mono);
+        font-size: 0.66rem;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--muted);
+        margin-bottom: 0.25rem;
       }
 
       .quorum-bar {
@@ -327,6 +377,10 @@ export class CommitteeComponent {
 
   // ── Vote-button gating ──────────────────────────────────────────────
 
+  committeeLifecycle(snap: TrackerStateSnapshot): CommitteeMintLifecycleView | null {
+    return committeeMintLifecycleView(snap);
+  }
+
   canVote(snap: TrackerStateSnapshot): boolean {
     if (snap.kind !== 'OPEN') return false;
     return this.wallet.isConnected();
@@ -342,7 +396,7 @@ export class CommitteeComponent {
     if (!this.wallet.isConnected()) {
       return 'Connect a Chia wallet to vote';
     }
-    return 'Cast a PGT-weighted vote on this proposal';
+    return 'Cast an SGT-weighted vote on this proposal';
   }
 
   hasValidAmount(): boolean {
@@ -408,11 +462,11 @@ export class CommitteeComponent {
       case 'tracker-not-open':
         return 'Tracker is no longer in OPEN state.';
       case 'pgt-not-deployed':
-        return 'PGT has not been issued on this network yet.';
+        return 'SGT has not been issued on this network yet.';
       case 'no-pgt-coins':
-        return "You don't appear to hold any free PGT.";
+        return "You don't appear to hold any free SGT / Committee Coin.";
       case 'no-coin-matches-vote-amount':
-        return 'No free PGT coin matches the requested vote amount.';
+        return 'No free SGT coin matches the requested vote amount.';
       case 'spend-builder-failed':
         return 'Could not build the vote spend.';
     }
@@ -429,7 +483,7 @@ export class CommitteeComponent {
       case 'tracker-not-open':
         return 'Refresh the page; the proposal may have moved to AWAITING_EXECUTE / EXPIRE.';
       case 'pgt-not-deployed':
-        return 'Wait until PGT issuance lands, then refresh.';
+        return 'Wait until SGT issuance lands, then refresh.';
       case 'no-pgt-coins':
         return `Discovery: ${result.discovery.kind}`;
       case 'no-coin-matches-vote-amount':

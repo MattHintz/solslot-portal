@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 
 import { ChiaWalletService } from '../../services/chia-wallet.service';
 import { EvmWalletService } from '../../services/evm-wallet.service';
@@ -60,6 +60,12 @@ describe('ConnectComponent', () => {
         { provide: EvmWalletService, useClass: MockEvmWalletService },
         { provide: WalletUxStateService, useValue: walletUx },
         { provide: Router, useValue: router },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: { queryParamMap: convertToParamMap({}) },
+          },
+        },
       ],
     }).compileComponents();
 
@@ -77,6 +83,20 @@ describe('ConnectComponent', () => {
     expect(walletUx.setLastWalletKind).toHaveBeenCalledOnceWith('chia');
     expect(router.navigate).toHaveBeenCalledOnceWith(['/create-vault'], {
       queryParams: { via: 'chia' },
+    });
+  });
+
+  it('preserves an offer return target while routing into vault creation', async () => {
+    component.returnTo.set('/offers/testnet-deed-001');
+
+    await component.connectEvm();
+
+    expect(walletUx.setLastWalletKind).toHaveBeenCalledOnceWith('evm');
+    expect(router.navigate).toHaveBeenCalledOnceWith(['/create-vault'], {
+      queryParams: {
+        via: 'evm',
+        returnTo: '/offers/testnet-deed-001',
+      },
     });
   });
 
