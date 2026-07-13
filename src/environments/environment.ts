@@ -86,16 +86,16 @@ export const environment = {
      * Leave empty until deployed; the portal shows a clear "not configured"
      * message when this is empty.
      */
-    attestationEmitterAddress: '0x77bD869AB5e363eb5Fe533B2852D1693C8448EdF',
+    attestationEmitterAddress: '',
 
     /** Block number of the emitter's deployment transaction (gas optimisation).
      *  Set to the block returned by deploy-emitter.js after deploy. */
-    attestationEmitterFromBlock: 11069833,
+    attestationEmitterFromBlock: 0,
 
     /** ERC-2771 trusted forwarder for gasless meta-tx submission. Users sign an
      *  EIP-712 ForwardRequest (no gas); the operator relayer (POST
      *  {faucetApi}/zkpassport/relay) submits forwarder.execute() and pays gas. */
-    trustedForwarderAddress: '0x84DBC9bcEDfD9920da91eDcfBeb0eebd44104aB3',
+    trustedForwarderAddress: '',
 
     evmPollTimeoutMs: 120_000,
 
@@ -108,7 +108,7 @@ export const environment = {
      * Defaults to zero (not configured) — update after the bridge coin is
      * created on testnet11.
      */
-    bridgeParentId: '0xc17c5ec22db8c526a99ef77d899d0134d06cef4992f4b3d67fa2caf25aa52ee2',
+    bridgeParentId: '',
 
     /** Amount in mojos for the bridge coin (1 mojo = standard minimum). */
     bridgeAmount: 1,
@@ -121,9 +121,7 @@ export const environment = {
      * Testnet11 validator (1-of-1, pinned from populis_protocol):
      *   seed stored as POPULIS_ZKPASSPORT_VALIDATOR_SEED_HEX in populis_api/.env
      */
-    validatorPubkeys: [
-      '0xa8f9b0c1f992c49210fc726fc610885b966f84747126753659c6c3f8ae5bf3baf5b6e1a399fc8a749daf45dd74efac4c',
-    ] as string[],
+    validatorPubkeys: [] as string[],
 
     /** Minimum number of validator signatures required (1-of-1 for testnet11). */
     validatorThreshold: 1,
@@ -164,8 +162,7 @@ export const environment = {
      * v2 admin authority singleton (CHIP-0037 MIPS quorum, EIP-712-capable).
      * Live on testnet11 — see Phase 9-Hermes-D session summary.
      */
-    adminAuthorityV2LauncherId:
-      '0xf3fd2dedfc77a5b8f65acdfaff04d3786844a8c4d0529d3dbc4d37dc4012bb84',
+    adminAuthorityV2LauncherId: '',
     /**
      * MIPS root hash of the v2 admin authority's CHIP-0043 quorum, in
      * 0x-prefixed lowercase hex.  Pinned at frontend deploy time so
@@ -188,8 +185,7 @@ export const environment = {
      * (matches the legacy ``POPULIS_ADMIN_PUBKEY_ALLOWLIST``
      * semantics).
      */
-    adminAuthorityV2MipsRootHash:
-      '0x95cbfe1c977e0c82ccbc539fa25c295eff23af25900d4e8d9e9ff2eed35a15fe',
+    adminAuthorityV2MipsRootHash: '',
     /**
      * Quorum-tree mode used when the v2 launcher was created.
      *
@@ -230,17 +226,15 @@ export const environment = {
      * to keep frontend and API auth in lockstep until the
      * MIPS-root path lands (Phase C2).
      */
-    adminAuthorityV2AdminAddresses: [
-      '0x0e61d3bb1148bdd802f747caea112333d156626a',
-    ] as string[],
+    adminAuthorityV2AdminAddresses: [] as string[],
     /** A.3 protocol-config singleton.  Empty = not deployed. */
     protocolConfigLauncherId: '',
     /** A.4 property-registry singleton.  Empty = not deployed. */
     propertyRegistryLauncherId: '',
     /** Pool singleton launcher id (deeded-XCH pool).  Empty = not deployed. */
-    poolLauncherId: '0xc756590abdd408ceeed708005d79d36b4a7279c22af22ce613849e36163339c3',
+    poolLauncherId: '',
     /** Governance DID singleton launcher id.  Empty = not deployed. */
-    governanceLauncherId: '0xc23df863a5e3bc5dd7620a88cedfd93691a971251319c74397e271d2b7e0a881',
+    governanceLauncherId: '',
     /**
      * Tree hash of ``protocol_config_inner.clsp`` — pinned so the
      * trust-roots page can verify it found the canonical puzzle.
@@ -257,8 +251,7 @@ export const environment = {
     vaultInnerModHash:
       '0x4176b7fa966f4c4a0fe2609d69e0411046228b3fac7335e6695402bbf926fd4c',
     /** Vault-version registry singleton. Empty = not deployed yet. */
-    vaultVersionRegistryLauncherId:
-      '0x213592d7689076e712880ea5d11bda634350e8992577104d9165e4b7c3d5228e',
+    vaultVersionRegistryLauncherId: '',
     /** Tree hash of vault_version_registry_inner.clsp — pinned to verify on-chain state. */
     vaultVersionRegistryModHash:
       '0x5cf39809296ad31bf906f7610912ac56fb8c339e0e98444f821f9e363df60d29',
