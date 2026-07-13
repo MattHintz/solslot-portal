@@ -11,7 +11,7 @@ export const environment = {
     attestationEmitterAddress: '',
     attestationEmitterFromBlock: 0,
     evmPollTimeoutMs: 120_000,
-    bridgeParentId: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    bridgeParentId: '',
     bridgeAmount: 1,
     validatorPubkeys: [] as string[],
     validatorThreshold: 0,
@@ -25,10 +25,8 @@ export const environment = {
    */
   populisProtocol: {
     adminAuthorityLauncherId: '',
-    adminAuthorityV2LauncherId:
-      '0xf3fd2dedfc77a5b8f65acdfaff04d3786844a8c4d0529d3dbc4d37dc4012bb84',
-    adminAuthorityV2MipsRootHash:
-      '0x95cbfe1c977e0c82ccbc539fa25c295eff23af25900d4e8d9e9ff2eed35a15fe',
+    adminAuthorityV2LauncherId: '',
+    adminAuthorityV2MipsRootHash: '',
     adminAuthorityV2QuorumMode: 'mofn1of1' as 'bare' | 'mofn1of1',
     adminAuthorityV2AdminAddresses: [] as string[],
     protocolConfigLauncherId: '',
