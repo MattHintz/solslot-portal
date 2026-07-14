@@ -2,7 +2,7 @@
  * Client-side NEW-vault launch spend builder (vault upgrade Brick 6a).
  *
  * The on-chain half of a vault version upgrade
- * (``research/POPULIS_VAULT_UPGRADE_DESIGN.md``) is:
+ * (``research/SOLSLOT_VAULT_UPGRADE_DESIGN.md``) is:
  *   1. launch a NEW vault singleton at the registry's canonical descriptor
  *      (current code + canonical params), reusing the user's identity;
  *   2. migrate each deed from the old vault to the new one (Brick 6b);
@@ -21,7 +21,7 @@
  * ``buildLauncherCoinSpend``) and the vault currying in
  * ``zkpassport-vault-enrollment-spend.service.ts``.  The curried-arg order
  * and the full-puzzle wrapper are the cross-repo contract with
- * ``populis_puzzles/vault_driver.py::puzzle_for_vault_full``; the
+ * ``solslot_puzzles/vault_driver.py::puzzle_for_vault_full``; the
  * ``vault-launch-spend.service.spec.ts`` fixture pins it against Python.
  */
 import { Injectable, inject } from '@angular/core';

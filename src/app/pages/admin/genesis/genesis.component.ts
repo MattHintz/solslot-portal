@@ -14,6 +14,7 @@ import {
   BootstrapStatusResponse,
 } from '../../../services/admin-bootstrap.service';
 import { formatError } from '../../../utils/format-error';
+import { environment } from '../../../../environments/environment';
 
 type GenesisAction = 'status' | 'dry-run' | 'deploy' | 'bootstrap-status' | 'bootstrap-session' | null;
 type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
@@ -24,59 +25,63 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
   imports: [CommonModule, FormsModule, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="container-p pt-10 pb-24 max-w-6xl">
-      <div class="rounded-[2rem] border border-brand/20 bg-gradient-to-br from-brand/15 via-white/[0.03] to-black/40 p-6 md:p-10 shadow-[0_0_80px_rgba(0,211,167,0.08)]">
-        <div class="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] items-start">
+    <section class="container-p pt-8 pb-20 max-w-7xl">
+      <header class="border-b border-white/10 pb-5">
+        <div class="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div class="mono text-[0.7rem] uppercase tracking-[0.28em] text-brand mb-3">
-              Solslot · Protocol ceremony · Act I
+            <div class="mono text-[0.68rem] uppercase tracking-[0.22em] text-brand mb-2">
+              Solslot admin · {{ networkModeLabel() }}
             </div>
-            <h1 class="font-display text-5xl md:text-7xl leading-none">
+            <h1 class="font-display text-3xl md:text-4xl leading-tight">
               @if (bootstrapLocked()) {
-                Genesis is sealed.
+                Protocol bootstrap finalized
               } @else {
-                Let there be genesis.
+                Protocol bootstrap control
               }
             </h1>
-            <p class="mt-5 text-text-muted max-w-2xl text-base md:text-lg">
+            <p class="mt-2 text-sm text-text-muted max-w-3xl">
               @if (bootstrapLocked()) {
-                The bootstrap ceremony is already finalized. Continue through
-                permanent admin login, the admin desk, or recovery artifact review.
+                Bootstrap artifacts are locked. Use permanent admin login for
+                operational work or review the recovery bundle.
               } @else {
-                This software is in ceremony mode. Complete the base protocol launch,
-                bind the first admin wallet, and seal the bootstrap record before the
-                rest of Solslot Protocol opens.
+                Run the server-side protocol deployment, bind admin slot 0,
+                and seal the public artifact bundle before enabling new vault
+                and listing flows.
               }
             </p>
-            <div class="mt-6 flex flex-wrap gap-3">
-              <span class="rounded-full border border-white/10 bg-black/20 px-3 py-1 mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Current stage: {{ activeStageLabel() }}
-              </span>
-              <span class="rounded-full border border-white/10 bg-black/20 px-3 py-1 mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Token is memory-only
-              </span>
-            </div>
           </div>
+          <div class="flex flex-wrap gap-2">
+            <a routerLink="/admin/login" class="btn btn--ghost">Permanent admin login</a>
+            <a routerLink="/admin" class="btn btn--ghost">Admin desk</a>
+            <a routerLink="/admin/recovery" class="btn btn--ghost">Recovery</a>
+          </div>
+        </div>
+      </header>
 
-          <div class="card border border-white/10 bg-black/20">
-            <h2 class="font-display text-2xl">Ceremony boundary</h2>
-            <p class="text-sm text-text-muted mt-2">
-              The one-shot token only unlocks Genesis. It does not become protocol
-              admin authority.
-            </p>
-            <p class="text-sm text-text-muted mt-2">
-              Genesis is complete only after <code>admin_authority_v2</code> binds
-              admin slot 0 and the bootstrap manifest locks the ceremony.
-            </p>
-            <div class="mt-5 grid gap-2 text-sm">
-              <a routerLink="/admin/login" class="btn btn--ghost justify-center">Permanent admin login</a>
-              <a routerLink="/admin" class="btn btn--ghost justify-center">Admin desk after Genesis</a>
-            </div>
-          </div>
+      <div class="grid gap-3 md:grid-cols-5 mt-5">
+        <div class="status-tile">
+          <div class="status-label">Network mode</div>
+          <div class="status-value">{{ networkModeLabel() }}</div>
+        </div>
+        <div class="status-tile">
+          <div class="status-label">Deployment manifest</div>
+          <div class="status-value">{{ baseManifestLabel() }}</div>
+        </div>
+        <div class="status-tile">
+          <div class="status-label">Bootstrap session</div>
+          <div class="status-value">{{ bootstrapSessionLabel() }}</div>
+        </div>
+        <div class="status-tile">
+          <div class="status-label">Dry-run</div>
+          <div class="status-value">{{ dryRunLabel() }}</div>
+        </div>
+        <div class="status-tile">
+          <div class="status-label">Bootstrap lock</div>
+          <div class="status-value">{{ bootstrapLocked() ? 'locked' : 'open' }}</div>
         </div>
       </div>
 
-      <div class="grid gap-4 md:grid-cols-4 mt-6">
+      <div class="grid gap-3 md:grid-cols-4 mt-3">
         @for (stage of stages; track stage.id) {
           <div
             class="rounded-card border p-4 bg-white/[0.03]"
@@ -85,7 +90,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
             <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
               {{ stage.kicker }}
             </div>
-            <div class="font-display text-xl mt-1">{{ stage.title }}</div>
+            <div class="font-display text-lg mt-1">{{ stage.title }}</div>
             <p class="text-xs text-text-muted mt-2">{{ stage.body }}</p>
           </div>
         }
@@ -93,7 +98,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
 
       @if (error(); as e) {
         <div class="card mt-6 border border-red-500/40 bg-red-500/10">
-          <h3 class="font-display text-xl">Genesis action failed</h3>
+          <h3 class="font-display text-xl">Admin action failed</h3>
           <p class="text-sm break-words mt-1">{{ e }}</p>
         </div>
       }
@@ -101,20 +106,20 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
       <div class="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] mt-6">
         <aside class="space-y-6">
           <div class="card border border-white/10">
-            <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-brand">Operator key</div>
-            <h2 class="font-display text-3xl mt-1">
+            <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-brand">Access control</div>
+            <h2 class="font-display text-2xl mt-1">
               @if (bootstrapLocked()) {
-                Genesis is already complete.
+                Bootstrap is finalized
               } @else {
-                Unlock the ceremony.
+                Start an operator session
               }
             </h2>
             <p class="text-sm text-text-muted mt-2">
               @if (bootstrapLocked()) {
                 The bootstrapper is locked. New bootstrap sessions are disabled,
-                and the one-shot token is no longer accepted for ceremony steps.
+                and the one-shot token is no longer accepted for bootstrap steps.
               } @else {
-                Paste the one-shot Genesis token. The page keeps it in memory and
+                Paste the one-shot admin token. The page keeps it in memory and
                 sends it only as <code>Authorization: Bearer …</code>.
               }
             </p>
@@ -127,14 +132,14 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
             } @else {
               <label class="block mt-5">
                 <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                  POPULIS_ADMIN_TOKEN
+                  SOLSLOT_ADMIN_TOKEN
                 </div>
                 <input
                   type="password"
                   class="input mt-1 w-full mono text-xs"
                   autocomplete="off"
                   [(ngModel)]="tokenInput"
-                  placeholder="Paste token to begin"
+                  placeholder="Paste one-shot token"
                 />
               </label>
               <div class="mt-4 grid gap-2">
@@ -147,7 +152,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
                   @if (pendingAction() === 'status') {
                     Checking base manifest…
                   } @else {
-                    1 · Check base manifest
+                    Check deployment manifest
                   }
                 </button>
                 <button
@@ -157,9 +162,9 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
                   (click)="checkBootstrapStatus()"
                 >
                   @if (pendingAction() === 'bootstrap-status') {
-                    Checking bootstrap seal…
+                    Checking bootstrap status…
                   } @else {
-                    2 · Check bootstrap seal
+                    Check bootstrap status
                   }
                 </button>
                 <button
@@ -171,7 +176,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
                   @if (pendingAction() === 'bootstrap-session') {
                     Starting session…
                   } @else {
-                    3 · Start Genesis session
+                    Start bootstrap session
                   }
                 </button>
               </div>
@@ -189,8 +194,22 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
           </div>
 
           <div class="card border border-white/10">
-            <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Live state</div>
+            <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Boundary rules</div>
+            <ul class="mt-4 grid gap-3 text-sm text-text-muted">
+              <li>Dry-run does not broadcast and does not write artifacts.</li>
+              <li>Deploy broadcasts a {{ networkModeLabel() }} spend bundle and persists <code>deployment_manifest.json</code>.</li>
+              <li>The one-shot token is temporary; permanent authority starts at admin slot 0.</li>
+              <li>Solslot staging unlocks only from the final public artifact bundle.</li>
+            </ul>
+          </div>
+
+          <div class="card border border-white/10">
+            <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Runtime state</div>
             <dl class="mt-4 grid gap-3 text-sm">
+              <div class="flex items-center justify-between gap-3">
+                <dt class="text-text-muted">Network mode</dt>
+                <dd class="mono">{{ networkModeLabel() }}</dd>
+              </div>
               <div class="flex items-center justify-between gap-3">
                 <dt class="text-text-muted">Base manifest</dt>
                 <dd class="mono">{{ baseManifestLabel() }}</dd>
@@ -204,7 +223,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
                 <dd class="mono">{{ dryRunLabel() }}</dd>
               </div>
               <div class="flex items-center justify-between gap-3">
-                <dt class="text-text-muted">Ceremony seal</dt>
+                <dt class="text-text-muted">Bootstrap lock</dt>
                 <dd class="mono">{{ bootstrapLocked() ? 'locked' : 'open' }}</dd>
               </div>
             </dl>
@@ -216,15 +235,16 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
             <div class="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-brand">Base protocol</div>
-                <h2 class="font-display text-3xl mt-1">Forge the base world.</h2>
+                <h2 class="font-display text-2xl mt-1">Deployment parameters</h2>
                 <p class="text-sm text-text-muted mt-2 max-w-2xl">
-                  Keep defaults for a first testnet ceremony. Dry-run computes the
-                  manifest; deploy pushes the Genesis bundle and persists it.
+                  Keep defaults for the first {{ networkModeLabel() }} run unless an auditor or
+                  operator has approved a specific override. Dry-run computes the
+                  manifest; deploy pushes the spend bundle and persists it.
                 </p>
               </div>
               @if (status()?.deployed || deployResult()?.pushed) {
                 <span class="rounded-full border border-green-500/40 bg-green-500/10 px-3 py-1 mono text-[0.65rem] uppercase tracking-[0.18em] text-green-200">
-                  Base ready
+                  Deployment ready
                 </span>
               }
             </div>
@@ -240,7 +260,7 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
               </label>
               <label class="block">
                 <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">SGT total supply</div>
-                <input type="number" class="input mt-1 w-full mono text-xs" min="1" [(ngModel)]="pgtTotalSupplyInput" />
+                <input type="number" class="input mt-1 w-full mono text-xs" min="1" [(ngModel)]="sgtTotalSupplyInput" />
               </label>
               <label class="block">
                 <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Min proposal stake</div>
@@ -249,6 +269,10 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
               <label class="block">
                 <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">FP scale</div>
                 <input type="number" class="input mt-1 w-full mono text-xs" min="1" [(ngModel)]="fpScaleInput" />
+              </label>
+              <label class="block">
+                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Min NAV registry version</div>
+                <input type="number" class="input mt-1 w-full mono text-xs" min="1" [(ngModel)]="minNavRegistryVersionInput" />
               </label>
               <label class="block">
                 <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Fee per spend</div>
@@ -265,14 +289,16 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
           </div>
 
           <details class="card border border-white/10">
-            <summary class="cursor-pointer font-display text-2xl">Advanced coin selection</summary>
+            <summary class="cursor-pointer font-display text-xl">Manual faucet coin IDs</summary>
             <p class="text-xs text-text-muted mt-3">
-              Leave these blank unless you intentionally want to force exact faucet coins.
+              Leave these blank for normal operation. The server bootstrapper
+              automatically handles the funded-faucet fan-out when the faucet
+              has enough balance but too few distinct UTXOs.
             </p>
             <div class="grid gap-4 md:grid-cols-2 mt-4">
               <label class="block">
                 <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">SGT coin id</div>
-                <input type="text" class="input mt-1 w-full mono text-xs" [(ngModel)]="pgtCoinIdInput" placeholder="0x…" />
+                <input type="text" class="input mt-1 w-full mono text-xs" [(ngModel)]="sgtCoinIdInput" placeholder="0x…" />
               </label>
               <label class="block">
                 <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Pool coin id</div>
@@ -286,6 +312,14 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
                 <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Governance coin id</div>
                 <input type="text" class="input mt-1 w-full mono text-xs" [(ngModel)]="govCoinIdInput" placeholder="0x…" />
               </label>
+              <label class="block">
+                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">NAV registry coin id</div>
+                <input type="text" class="input mt-1 w-full mono text-xs" [(ngModel)]="navRegistryCoinIdInput" placeholder="0x…" />
+              </label>
+              <label class="block">
+                <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">Protocol config coin id</div>
+                <input type="text" class="input mt-1 w-full mono text-xs" [(ngModel)]="protocolConfigCoinIdInput" placeholder="0x…" />
+              </label>
             </div>
           </details>
 
@@ -295,30 +329,31 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
                 @if (pendingAction() === 'dry-run') {
                   Computing dry run…
                 } @else {
-                  Dry-run Genesis
+                  Dry-run deployment
                 }
               </button>
               <button type="button" class="btn btn--primary" [disabled]="busy() || !canDeployBase()" (click)="deploy()">
                 @if (pendingAction() === 'deploy') {
                   Deploying…
                 } @else {
-                  Deploy base protocol
+                  Deploy protocol bundle
                 }
               </button>
               <span class="text-xs text-text-muted">
-                Deploy unlocks the first-admin authority chapter.
+                Deploy is the first broadcast transaction in this flow.
               </span>
             </div>
             @if (!canDeployBase()) {
               <p class="text-xs text-text-muted mt-3">
-                Dry-run successfully before deploying, unless an existing manifest is already loaded.
+                A successful dry-run is required before deploy unless an existing
+                deployment manifest is already loaded.
               </p>
             }
           </div>
 
           @if (bootstrapLocked()) {
             <div class="card border border-green-500/40 bg-green-500/10">
-              <h3 class="font-display text-2xl">Genesis sealed.</h3>
+              <h3 class="font-display text-2xl">Bootstrap finalized</h3>
               <p class="text-sm text-text-muted mt-2">
                 Bootstrapper locked after successful recordation. The public
                 <code>admin_records.json</code>,
@@ -359,6 +394,27 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
             </div>
           }
 
+          @if (serverGeneratedPins().length) {
+            <div class="card border border-brand/20 bg-brand/5">
+              <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-brand">
+                Server-generated public anchors
+              </div>
+              <h3 class="font-display text-2xl mt-1">Public runtime pins</h3>
+              <p class="text-sm text-text-muted mt-2">
+                These values are generated by the server bootstrap. They are public
+                coordinates for staging unlocks, not secrets and not wallet authority.
+              </p>
+              <dl class="mt-4 grid gap-3 text-xs">
+                @for (pin of serverGeneratedPins(); track pin.label) {
+                  <div class="rounded-card border border-white/10 bg-black/20 p-3">
+                    <dt class="mono uppercase tracking-[0.16em] text-text-muted">{{ pin.label }}</dt>
+                    <dd class="mono break-all mt-1">{{ pin.value }}</dd>
+                  </div>
+                }
+              </dl>
+            </div>
+          }
+
           @if (manifestJson()) {
             <div class="card border border-white/10">
               <div class="flex flex-wrap items-start justify-between gap-4">
@@ -373,12 +429,12 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
               <pre class="mt-4 mono text-[0.65rem] bg-black/30 p-3 rounded overflow-x-auto max-h-96">{{ manifestJson() }}</pre>
               <div class="mt-4 flex flex-wrap gap-3">
                 @if (bootstrapStatus()?.locked === true) {
-                  <span class="btn btn--primary opacity-50 cursor-not-allowed">First-admin ceremony finalized</span>
+                  <span class="btn btn--primary opacity-50 cursor-not-allowed">Admin authority finalized</span>
                   <a routerLink="/admin/login" class="btn btn--ghost">Continue with permanent admin login</a>
                 } @else if (canContinueToAuthority()) {
-                  <a routerLink="/admin/launch-authority-v2" class="btn btn--primary">Continue Act II: bind admin slot 0</a>
+                  <a routerLink="/admin/launch-authority-v2" class="btn btn--primary">Continue: bind admin slot 0</a>
                 } @else {
-                  <span class="btn btn--primary opacity-50 cursor-not-allowed">Start Genesis session to continue</span>
+                  <span class="btn btn--primary opacity-50 cursor-not-allowed">Start bootstrap session to continue</span>
                 }
               </div>
               @if (copyMessage(); as msg) {
@@ -407,6 +463,26 @@ type GenesisStageId = 'unlock' | 'base' | 'authority' | 'sealed';
         border-color: rgba(0, 200, 120, 0.6);
         background: rgba(255, 255, 255, 0.06);
       }
+      .status-tile {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 0.85rem 1rem;
+        min-height: 76px;
+      }
+      .status-label {
+        font-family: var(--font-mono, monospace);
+        font-size: 0.64rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.55);
+      }
+      .status-value {
+        margin-top: 0.35rem;
+        font-family: var(--font-mono, monospace);
+        font-size: 0.86rem;
+        color: rgba(255, 255, 255, 0.9);
+      }
       code {
         background: rgba(255, 255, 255, 0.06);
         padding: 0 0.25rem;
@@ -422,26 +498,26 @@ export class GenesisComponent {
   readonly stages: readonly GenesisStage[] = [
     {
       id: 'unlock',
-      kicker: 'Chapter 1',
-      title: 'Unlock',
-      body: 'Token accepted, bootstrap status known, session active.',
+      kicker: 'Step 1',
+      title: 'Operator session',
+      body: 'Token checked, bootstrap status known, session cookie active.',
     },
     {
       id: 'base',
-      kicker: 'Chapter 2',
-      title: 'Base world',
-      body: 'Dry-run and deploy the base protocol manifest.',
+      kicker: 'Step 2',
+      title: 'Protocol deploy',
+      body: 'Dry-run, review, and deploy the base protocol manifest.',
     },
     {
       id: 'authority',
-      kicker: 'Chapter 3',
-      title: 'First admin',
+      kicker: 'Step 3',
+      title: 'Admin authority',
       body: 'Bind wallet authority as permanent admin slot 0.',
     },
     {
       id: 'sealed',
-      kicker: 'Chapter 4',
-      title: 'Seal',
+      kicker: 'Step 4',
+      title: 'Artifact lock',
       body: 'Finalize public artifacts and lock the bootstrapper.',
     },
   ];
@@ -449,15 +525,18 @@ export class GenesisComponent {
   readonly tokenInput = signal('');
   readonly quorumBpsInput = signal(5000);
   readonly votingWindowSecondsInput = signal(300);
-  readonly pgtTotalSupplyInput = signal(1_000_000);
+  readonly sgtTotalSupplyInput = signal(1_000_000);
   readonly minProposalStakeInput = signal(10_000);
   readonly fpScaleInput = signal(1000);
+  readonly minNavRegistryVersionInput = signal(1);
   readonly initialPoolStatusInput = signal(1);
   readonly feePerSpendInput = signal(0);
-  readonly pgtCoinIdInput = signal('');
+  readonly sgtCoinIdInput = signal('');
   readonly poolCoinIdInput = signal('');
   readonly didCoinIdInput = signal('');
   readonly govCoinIdInput = signal('');
+  readonly navRegistryCoinIdInput = signal('');
+  readonly protocolConfigCoinIdInput = signal('');
 
   readonly pendingAction = signal<GenesisAction>(null);
   readonly status = signal<GenesisDeploymentStatus | null>(null);
@@ -474,6 +553,14 @@ export class GenesisComponent {
   readonly dryRunReady = computed(() => this.deployResult()?.pushed === false && !!this.deployResult()?.manifest);
   readonly canDeployBase = computed(() => this.dryRunReady() && this.status()?.deployed !== true);
   readonly canContinueToAuthority = computed(() => this.baseManifestReady() && this.bootstrapStatus()?.authenticated === true);
+  readonly networkModeLabel = computed(() => {
+    const network =
+      this.deployResult()?.network ??
+      this.status()?.network ??
+      this.currentManifest()?.['network'] ??
+      environment.chiaNetwork;
+    return typeof network === 'string' && network.length ? network : 'unknown';
+  });
   readonly activeStage = computed<GenesisStageId>(() => {
     if (this.bootstrapLocked()) return 'sealed';
     if (this.baseManifestReady()) return 'authority';
@@ -482,10 +569,10 @@ export class GenesisComponent {
   });
   readonly activeStageLabel = computed(() => {
     const stage = this.stages.find((s) => s.id === this.activeStage());
-    return stage ? stage.title : 'Genesis';
+    return stage ? stage.title : 'Bootstrap';
   });
   readonly manifestJson = computed(() => {
-    const manifest = this.deployResult()?.manifest ?? this.status()?.manifest ?? null;
+    const manifest = this.currentManifest();
     return manifest ? JSON.stringify(manifest, null, 2) : '';
   });
   readonly baseManifestLabel = computed(() => {
@@ -501,6 +588,20 @@ export class GenesisComponent {
     return status.authenticated ? 'active' : 'not active';
   });
   readonly dryRunLabel = computed(() => this.dryRunReady() ? 'complete' : 'needed');
+  readonly serverGeneratedPins = computed(() => {
+    const manifest = this.currentManifest();
+    if (!manifest) return [];
+    return [
+      ['poolLauncherId', manifest['pool_launcher_id']],
+      ['poolInnerPuzzleHash', manifest['pool_inner_puzhash']],
+      ['bridgePolicyHash', manifest['bridge_policy_hash']],
+      ['membersMerkleRoot', manifest['members_merkle_root']],
+      ['protocolConfigLauncherId', manifest['protocol_config_launcher_id']],
+      ['vaultVersionRegistryLauncherId', manifest['vault_version_registry_launcher_id'] ?? 'pending first-admin finalize'],
+    ]
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0)
+      .map(([label, value]) => ({ label, value }));
+  });
 
   async ngOnInit(): Promise<void> {
     await this.loadBootstrapStatus();
@@ -530,7 +631,7 @@ export class GenesisComponent {
       this.deployResult.set(null);
       const status = await this.genesis.getDeployment(this.tokenInput());
       this.status.set(status);
-      this.actionMessage.set(status.deployed ? 'Base manifest found. Continue to first-admin authority when the Genesis session is active.' : 'No base manifest exists yet. Dry-run Genesis next.');
+      this.actionMessage.set(status.deployed ? 'Deployment manifest found. Continue to admin slot 0 after the bootstrap session is active.' : 'No deployment manifest exists yet. Run a deployment dry-run next.');
     });
   }
 
@@ -555,7 +656,7 @@ export class GenesisComponent {
       this.bootstrapStatus.set(verified);
       if (!verified.authenticated) {
         this.bootstrapCookieWarning.set(
-          'The token was accepted, but the browser did not keep the bootstrap cookie. Open http://127.0.0.1:4200 directly instead of the IDE preview, then start the Genesis session again.',
+          'The token was accepted, but the browser did not keep the bootstrap cookie. Open the hosted admin URL directly instead of an IDE preview, then start the bootstrap session again.',
         );
       } else {
         this.bootstrapCookieWarning.set(null);
@@ -571,13 +672,13 @@ export class GenesisComponent {
       this.status.set(null);
       const result = await this.genesis.dryRunProtocolDeploy(this.tokenInput(), this.request());
       this.deployResult.set(result);
-      this.actionMessage.set('Dry-run complete. Review the manifest, then deploy the base protocol when it looks right.');
+      this.actionMessage.set('Dry-run complete. Review the manifest and public pins before deploying.');
     });
   }
 
   async deploy(): Promise<void> {
     const ok = window.confirm(
-      'This will push the protocol genesis spend bundle and persist the deployment manifest. Dry-run first and continue only if the manifest is correct.',
+      `This will broadcast the protocol deployment bundle on ${this.networkModeLabel()} and persist deployment_manifest.json. Continue only after reviewing the dry-run manifest.`,
     );
     if (!ok) return;
     await this.run('deploy', async () => {
@@ -585,12 +686,12 @@ export class GenesisComponent {
       this.status.set(current);
       if (current.deployed) {
         this.deployResult.set(null);
-        this.actionMessage.set('Base manifest already exists. Continue Act II and bind the first admin wallet.');
+        this.actionMessage.set('Deployment manifest already exists. Continue to admin slot 0 binding.');
         return;
       }
       const result = await this.genesis.deployProtocol(this.tokenInput(), this.request());
       this.deployResult.set(result);
-      this.actionMessage.set('Base protocol deployed. Continue Act II and bind the first admin wallet.');
+      this.actionMessage.set('Protocol deployment pushed. Continue to admin slot 0 binding.');
     });
   }
 
@@ -625,16 +726,23 @@ export class GenesisComponent {
     return {
       quorum_bps: this.quorumBpsInput(),
       voting_window_seconds: this.votingWindowSecondsInput(),
-      pgt_total_supply: this.pgtTotalSupplyInput(),
+      sgt_total_supply: this.sgtTotalSupplyInput(),
       min_proposal_stake: this.minProposalStakeInput(),
       fp_scale: this.fpScaleInput(),
+      min_nav_registry_version: this.minNavRegistryVersionInput(),
       initial_pool_status: this.initialPoolStatusInput(),
       fee_per_spend: this.feePerSpendInput(),
-      ...optionalCoin('pgt_coin_id', this.pgtCoinIdInput()),
+      ...optionalCoin('sgt_coin_id', this.sgtCoinIdInput()),
       ...optionalCoin('pool_coin_id', this.poolCoinIdInput()),
       ...optionalCoin('did_coin_id', this.didCoinIdInput()),
       ...optionalCoin('gov_coin_id', this.govCoinIdInput()),
+      ...optionalCoin('nav_registry_coin_id', this.navRegistryCoinIdInput()),
+      ...optionalCoin('protocol_config_coin_id', this.protocolConfigCoinIdInput()),
     };
+  }
+
+  private currentManifest(): GenesisDeploymentStatus['manifest'] {
+    return this.deployResult()?.manifest ?? this.status()?.manifest ?? null;
   }
 
   private async loadBootstrapStatus(): Promise<void> {
@@ -649,9 +757,9 @@ export class GenesisComponent {
   }
 
   private describeBootstrapStatus(status: BootstrapStatusResponse): string {
-    if (status.locked) return 'Genesis is sealed. Bootstrap is finalized and the permanent admin path is active.';
-    if (status.authenticated) return 'Genesis session active. You can deploy base protocol and continue to first-admin authority.';
-    return 'No active Genesis session cookie. Start the Genesis session before continuing to first-admin authority.';
+    if (status.locked) return 'Bootstrap finalized. Permanent admin login is active.';
+    if (status.authenticated) return 'Bootstrap session active. You can deploy the base protocol and continue to admin slot 0.';
+    return 'No active bootstrap session cookie. Start the bootstrap session before continuing.';
   }
 }
 
@@ -662,7 +770,16 @@ interface GenesisStage {
   body: string;
 }
 
-function optionalCoin(key: 'pgt_coin_id' | 'pool_coin_id' | 'did_coin_id' | 'gov_coin_id', value: string): Partial<GenesisDeployRequest> {
+function optionalCoin(
+  key:
+    | 'sgt_coin_id'
+    | 'pool_coin_id'
+    | 'did_coin_id'
+    | 'gov_coin_id'
+    | 'nav_registry_coin_id'
+    | 'protocol_config_coin_id',
+  value: string,
+): Partial<GenesisDeployRequest> {
   const trimmed = value.trim();
   return trimmed ? { [key]: trimmed } : {};
 }

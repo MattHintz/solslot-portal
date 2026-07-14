@@ -12,7 +12,7 @@ import { AdminSessionService } from '../../../services/admin-session.service';
 import { ChiaSingletonReaderService } from '../../../services/chia-singleton-reader.service';
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
 import { OnChainStateService } from '../../../services/on-chain-state.service';
-import { ProtocolInfo } from '../../../services/populis-api.service';
+import { ProtocolInfo } from '../../../services/solslot-api.service';
 import { TrustRootsComponent } from './trust-roots.component';
 
 describe('TrustRootsComponent', () => {
@@ -67,13 +67,13 @@ describe('TrustRootsComponent', () => {
     expect(text).toContain('Governance public key and a funded Chia wallet coin for the singleton launch.');
     expect(text).toContain('After launch');
     expect(text).toContain('Capture the A.3 launcher id.');
-    expect(text).toContain('Set POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID in the API environment.');
+    expect(text).toContain('Set SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID in the API environment.');
     expect(text).toContain('Restart the API, then verify /protocol and this Trust Roots card.');
     expect(text).toContain(
       'Keep the approval record, launcher id, environment change, and verification result for audit review.',
     );
-    expect(text).toContain('Technical support procedure: populis_api/GENESIS_README.md §A.3');
-    expect(text).toContain('populis_api/SECURITY.md §A.3');
+    expect(text).toContain('Technical support procedure: solslot_api/GENESIS_README.md §A.3');
+    expect(text).toContain('solslot_api/SECURITY.md §A.3');
     expect(text).toContain('Launch A.3 in portal');
     expect(component().protocolConfigStatus()).toEqual({ kind: 'not-configured' });
   });
@@ -96,7 +96,7 @@ function adminAuthority(): AdminAuthorityResponse {
     authority_version: null,
     state_hash: null,
     phase: '2-informational-only',
-    gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST',
+    gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
     informational_only: true,
   };
 }
@@ -111,7 +111,7 @@ function adminAuthorityV2(): AdminAuthorityV2Response {
     authority_version: null,
     state_hash: null,
     phase: '1-not-deployed',
-    gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST',
+    gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
     informational_only: true,
   };
 }
@@ -123,7 +123,7 @@ function protocolWithoutA3(): ProtocolInfo {
     governance_launcher_id: null,
     vault_inner_mod_hash: '',
     eip712_domain: {
-      name: 'Populis',
+      name: 'Solslot',
       version: '1',
       chainId: 11,
     },

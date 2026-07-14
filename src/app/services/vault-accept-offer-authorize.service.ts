@@ -20,12 +20,17 @@ export class VaultAcceptOfferAuthorizeService {
       throw new Error('vault accept-offer authorize: accept-offer authorization is currently BLS-only');
     }
     const currentTimestamp = args.currentTimestamp ?? Math.floor(Date.now() / 1000);
+    const proof = await this.proofService.refreshAndRequireProofParams(
+      args.vaultLauncherId,
+      args.vaultCoinId,
+    );
     const packageState = await this.spendBuilder.buildFromChain(
-      this.proofService.withProofParams(args.vaultLauncherId, {
+      {
         ...args,
+        ...proof,
         currentTimestamp,
         signatureData: null,
-      }),
+      },
     );
     return this.authorizePackage(packageState);
   }

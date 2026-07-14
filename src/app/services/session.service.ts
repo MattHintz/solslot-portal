@@ -1,26 +1,27 @@
 import { Injectable, inject, signal, effect } from '@angular/core';
-import { VaultState } from './populis-api.service';
+import { VaultState } from './solslot-api.service';
 import { VaultDiscoveryService } from './vault-discovery.service';
 import { ChiaWasmService } from './chia-wasm.service';
 import { hexToBytes, bytesToHex } from '../utils/chia-hash';
 import { P2_VAULT_PUZZLE_HEX } from './p2-vault.puzzle-hex';
+import { environment } from '../../environments/environment';
 
 const SINGLETON_MOD_HASH = '7faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9f';
 const SINGLETON_LAUNCHER_HASH = 'eff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9';
 
-const STORAGE_KEY = 'populis_session_v1';
+const STORAGE_KEY = 'solslot_session_v2';
 
 /**
  * Persists the user's last-known vault binding across page reloads.
  *
  * We store only public data (launcher id + address) — signatures are never
  * retained.  On refresh, we walk chain via {@link VaultDiscoveryService}
- * to recover the live state coin; the Populis API is no longer consulted
+ * to recover the live state coin; the Solslot API is no longer consulted
  * (Phase 9-Hermes-D follow-up: only coinset + the faucet remain as
  * backend dependencies, and the faucet is funding-only).
  *
  * **Migration note.** Prior to the Hermes-D API-removal pass, this
- * service consulted ``PopulisApiService.getVaultState`` to enrich the
+ * service consulted ``SolslotApiService.getVaultState`` to enrich the
  * synthesized state with XCH balance + deed-list aggregation.  Today
  * those fields are returned as zeros / empty arrays; chain-aware
  * enrichment (querying coinset.org for unspent coins under
@@ -54,7 +55,21 @@ export class SessionService {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     try {
-      return JSON.parse(raw) as PersistedSession;
+      const parsed = JSON.parse(raw) as Partial<PersistedSession>;
+      if (
+        parsed.schemaVersion !== 2 ||
+        parsed.protocolVersion !== environment.protocolVersion ||
+        parsed.experienceMode !== 'testnet-alpha' ||
+        parsed.network !== 'testnet11' ||
+        !parsed.authType ||
+        !parsed.address ||
+        !parsed.vaultLauncherId ||
+        typeof parsed.createdAt !== 'number'
+      ) {
+        localStorage.removeItem(STORAGE_KEY);
+        return null;
+      }
+      return parsed as PersistedSession;
     } catch {
       localStorage.removeItem(STORAGE_KEY);
       return null;
@@ -63,6 +78,10 @@ export class SessionService {
 
   setEvmSession(address: string, vaultLauncherId: string, compressedPubkey?: string): void {
     this.session.set({
+      schemaVersion: 2,
+      protocolVersion: environment.protocolVersion,
+      experienceMode: 'testnet-alpha',
+      network: 'testnet11',
       authType: 'evm',
       address,
       vaultLauncherId,
@@ -73,6 +92,10 @@ export class SessionService {
 
   setChiaSession(pubkey: string, vaultLauncherId: string): void {
     this.session.set({
+      schemaVersion: 2,
+      protocolVersion: environment.protocolVersion,
+      experienceMode: 'testnet-alpha',
+      network: 'testnet11',
       authType: 'chia_bls',
       address: pubkey,
       vaultLauncherId,
@@ -111,7 +134,7 @@ export class SessionService {
    * in mempool or the launcher id is wrong).
    *
    * **Migration note (Phase 9-Hermes-D follow-up).**  The previous
-   * implementation also called ``PopulisApiService.getVaultState`` to
+   * implementation also called ``SolslotApiService.getVaultState`` to
    * enrich the chain-only state with XCH balance + deed list.  That
    * dependency has been removed; the synthesized state now ships with
    * zeroed ``balance.xch_mojos`` and empty ``balance.deeds`` until the
@@ -124,7 +147,7 @@ export class SessionService {
    *     to enumerate deed launchers, filter to those whose current
    *     state coin's puzzle hash equals ``p2VaultPuzhash``.
    *   * **p2_vault_puzhash** — derive client-side via a TS port of
-   *     ``populis_protocol.populis_puzzles.vault_driver.puzzle_for_p2_vault``
+   *     ``solslot_protocol.solslot_puzzles.vault_driver.puzzle_for_p2_vault``
    *     (same currying pattern AdminAuthorityV2Service uses).
    */
   private deriveP2VaultPuzhash(vaultLauncherId: string): string {
@@ -176,6 +199,10 @@ export class SessionService {
 }
 
 export interface PersistedSession {
+  schemaVersion: 2;
+  protocolVersion: 'solslot-v2';
+  experienceMode: 'testnet-alpha';
+  network: 'testnet11';
   authType: 'evm' | 'chia_bls' | 'passkey';
   /** For EVM: checksummed 0x-prefixed address.  For Chia: hex pubkey. */
   address: string;
@@ -186,8 +213,7 @@ export interface PersistedSession {
    * vault discovery via `vaultDiscoveryHint(authType, pubkey)` without
    * touching the backend.
    *
-   * Optional for backwards compat with sessions written before chain
-   * discovery shipped.
+   * Optional because not every supported wallet exposes a compressed key.
    */
   compressedPubkey?: string;
   createdAt: number;

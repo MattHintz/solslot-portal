@@ -292,9 +292,9 @@ export class VaultUpgradeRunnerService {
    * publishes the hash, so the portal supplies the preimage).
    */
   deriveCanonicalParams(): CanonicalVaultParams {
-    const poolLauncherId = environment.populisProtocol?.poolLauncherId;
+    const poolLauncherId = environment.solslotProtocol?.poolLauncherId;
     if (!poolLauncherId) {
-      throw new Error('Vault upgrade: environment.populisProtocol.poolLauncherId is not configured.');
+      throw new Error('Vault upgrade: environment.solslotProtocol.poolLauncherId is not configured.');
     }
     const validatorPubkeys = environment.zkPassport.validatorPubkeys;
     const threshold = environment.zkPassport.validatorThreshold;

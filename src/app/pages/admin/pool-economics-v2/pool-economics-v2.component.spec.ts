@@ -611,8 +611,12 @@ function confirmedDeedWitness(): PoolV2DeedWitnessEvidence {
     p2VaultPuzzleHash: b32('98'),
     vaultLauncherId: b32('91'),
     launcherPuzzleHash: b32('93'),
+    propertyIdCanon: b32('a1'),
+    parValueMojos: 1000000000n,
+    assetClass: 1n,
     collectionIdCanon: b32('31'),
     sharePpm: 250000n,
+    deedCommitment: b32('9b'),
     deedMessage: b32('99'),
     deedSpend: {
       coin: {
@@ -644,6 +648,7 @@ function confirmedDepositDeedWitness(): PoolV2DeedWitnessEvidence {
     assetClass: 1n,
     collectionIdCanon: b32('31'),
     sharePpm: 250000n,
+    deedCommitment: b32('ab'),
     deedMessage: b32('a9'),
     deedSpend: {
       coin: {
@@ -809,6 +814,10 @@ function executionPackageJson(): string {
       },
     },
     deedId: b32('30'),
+    deedLauncherId: b32('2f'),
+    propertyIdCanon: b32('2e'),
+    parValueMojos: '123000',
+    assetClass: '1',
     collectionIdCanon: b32('31'),
     sharePpm: '250000',
     navEvidence: {
@@ -852,6 +861,10 @@ function trueRedemptionExecutionPackageJson(): string {
       },
     },
     deedId: b32('30'),
+    deedLauncherId: b32('2f'),
+    propertyIdCanon: b32('2e'),
+    parValueMojos: '123000',
+    assetClass: '1',
     collectionIdCanon: b32('31'),
     sharePpm: '250000',
     navEvidence: {

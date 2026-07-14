@@ -28,7 +28,7 @@ export type ProtocolPurchaseIntentState =
   | 'refund_pending'
   | 'manual_review';
 
-export const MINTED_OFFER_ARTIFACT_SCHEMA_VERSION = 'populis-minted-offer-artifact-v1';
+export const MINTED_OFFER_ARTIFACT_SCHEMA_VERSION = 'solslot-minted-offer-artifact-v2';
 export const MINTED_OFFER_GENERATION_AUTHORITY: MintedOfferGenerationAuthority = 'admin-api';
 
 @Injectable({ providedIn: 'root' })
@@ -96,7 +96,7 @@ export interface SolslotPropertyReference {
 }
 
 export interface ProtocolOfferArtifact {
-  version: 1;
+  version: 2;
   kind: 'solslot_protocol_offer';
   network: string;
   protocol: {
@@ -261,7 +261,7 @@ function buildProtocolOfferArtifact(
   },
 ): ProtocolOfferArtifact {
   const metadata: Record<string, unknown> = {
-    source: 'populis-portal',
+    source: 'solslot-portal',
     offerGenerationAuthority: MINTED_OFFER_GENERATION_AUTHORITY,
     schemaVersion: MINTED_OFFER_ARTIFACT_SCHEMA_VERSION,
     proposalId: input.proposalId,
@@ -272,7 +272,7 @@ function buildProtocolOfferArtifact(
   }
 
   const artifact: ProtocolOfferArtifact = {
-    version: 1,
+    version: 2,
     kind: 'solslot_protocol_offer',
     network: nonEmpty(input.network ?? 'portal-local', 'network'),
     protocol: {

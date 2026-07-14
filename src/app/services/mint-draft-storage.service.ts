@@ -10,13 +10,13 @@ import {
   canonicalizeMintPropertyId,
 } from '../utils/mint-property-id';
 
-const STORAGE_KEY = 'populis_mint_drafts_v1';
+const STORAGE_KEY = 'SOLSLOT_MINT_DRAFTS_V2';
 
 /**
  * Browser-local storage for ``DRAFT``-state mint proposals.
  *
  * **Why this exists.** Phase 9-Hermes-D's API-removal pass moved the
- * portal off every Populis-API read.  Mint-proposal drafts used to
+ * portal off every Solslot-API read.  Mint-proposal drafts used to
  * live in the API's database (``POST /admin/mint/propose`` →
  * ``GET /admin/mint/{id}`` round-trip); this service replaces that
  * with browser ``localStorage`` so admins can iterate on drafts
@@ -93,7 +93,7 @@ export class MintDraftStorageService {
       },
       on_chain: {
         proposal_tracker_coin_id: null,
-        pgt_lock_coin_id: null,
+        sgt_lock_coin_id: null,
         deed_launcher_id: null,
         published_bundle_id: null,
         executed_bundle_id: null,
@@ -203,7 +203,7 @@ export class MintDraftStorageService {
       on_chain: {
         ...existing.on_chain,
         proposal_tracker_coin_id: update.proposalTrackerCoinId,
-        pgt_lock_coin_id: update.pgtLockCoinId,
+        sgt_lock_coin_id: update.sgtLockCoinId,
         deed_launcher_id: update.deedLauncherId,
         published_bundle_id: update.publishedBundleId,
       },
@@ -341,7 +341,7 @@ export interface MintDraftPublishedUpdate {
   deedFullPuzhash: string;
   proposalHash: string;
   proposalTrackerCoinId: string;
-  pgtLockCoinId: string | null;
+  sgtLockCoinId: string | null;
   deedLauncherId: string;
   publishedBundleId: string;
   propertyRegistryPuzzleHash: string;

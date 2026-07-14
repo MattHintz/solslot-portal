@@ -30,6 +30,10 @@ interface PoolV2ExecutionBaseArgs {
   pool: PoolSingletonSpendContext;
   state: PoolEconomicStateInput;
   deedId: string;
+  deedLauncherId: string;
+  propertyIdCanon: string;
+  parValueMojos: BigintLike;
+  assetClass: BigintLike;
   collectionIdCanon: string;
   sharePpm: BigintLike;
   navEvidence: CollectionNavEvidenceInput;
@@ -52,9 +56,6 @@ export interface TrueRedemptionExecutionArgs extends PoolV2ExecutionBaseArgs {
 }
 
 export interface ReserveAcquisitionExecutionArgs extends PoolV2ExecutionBaseArgs {
-  propertyIdCanon: string;
-  parValueMojos: BigintLike;
-  assetClass: BigintLike;
   sellerPuzhash: string;
   sellerTokenPrice: BigintLike;
   mintTokenCoinId?: string | null;
@@ -96,6 +97,10 @@ export class PoolEconomicsV2ExecutionRunnerService {
       ...args.pool,
       state: args.state,
       deedId: args.deedId,
+      deedLauncherId: args.deedLauncherId,
+      propertyIdCanon: args.propertyIdCanon,
+      parValueMojos: args.parValueMojos,
+      assetClass: args.assetClass,
       buyerVaultLauncherId: args.buyerVaultLauncherId,
       launcherPuzzleHash: args.launcherPuzzleHash,
       collectionIdCanon: args.collectionIdCanon,
@@ -124,6 +129,10 @@ export class PoolEconomicsV2ExecutionRunnerService {
       ...args.pool,
       state: args.state,
       deedId: args.deedId,
+      deedLauncherId: args.deedLauncherId,
+      propertyIdCanon: args.propertyIdCanon,
+      parValueMojos: args.parValueMojos,
+      assetClass: args.assetClass,
       vaultLauncherId: args.vaultLauncherId,
       launcherPuzzleHash: args.launcherPuzzleHash,
       collectionIdCanon: args.collectionIdCanon,
@@ -149,6 +158,7 @@ export class PoolEconomicsV2ExecutionRunnerService {
       ...args.pool,
       state: args.state,
       deedId: args.deedId,
+      deedLauncherId: args.deedLauncherId,
       propertyIdCanon: args.propertyIdCanon,
       parValueMojos: args.parValueMojos,
       assetClass: args.assetClass,

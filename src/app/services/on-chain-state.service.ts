@@ -5,17 +5,17 @@ import {
   AdminAuthorityResponse,
   AdminAuthorityV2Response,
 } from './admin-api.service';
-import { ProtocolInfo } from './populis-api.service';
+import { ProtocolInfo } from './solslot-api.service';
 import { environment } from '../../environments/environment';
 
 /**
- * Pure on-chain replacement for the Populis API's transparency
+ * Pure on-chain replacement for the Solslot API's transparency
  * endpoints (``/protocol``, ``/admin/auth/authority``,
  * ``/admin/auth/authority_v2``).
  *
  * **Why this exists.** Phase 9-Hermes-D's API-removal pass mandated
  * that the only backend dependencies the portal carries are
- * coinset.org (Chia full-node RPC) and the Populis faucet (vault
+ * coinset.org (Chia full-node RPC) and the Solslot faucet (vault
  * funding only).  The Trust Roots admin page (and any future
  * transparency surface) needs the same operator-config data the API
  * used to publish, but without ever consulting the API.
@@ -27,7 +27,7 @@ import { environment } from '../../environments/environment';
  *
  *   1. **Operator-config constants** (launcher_ids, mod_hashes,
  *      EIP-712 domain) — embedded at build time via
- *      ``environment.populisProtocol``.
+ *      ``environment.solslotProtocol``.
  *   2. **On-chain state** (state_hash, lineage depth, latest
  *      block) — derived by walking the singleton lineage on
  *      coinset.org and replaying the latest spend in WASM via
@@ -62,7 +62,7 @@ export class OnChainStateService {
    * everything else is operator-config.
    */
   async getProtocolInfo(): Promise<ProtocolInfo> {
-    const proto = environment.populisProtocol;
+    const proto = environment.solslotProtocol;
 
     // Walk the protocol-config singleton lineage when one's deployed
     // and pull its emitted state hash from the latest spend's
@@ -94,8 +94,8 @@ export class OnChainStateService {
       governance_launcher_id: proto.governanceLauncherId || null,
       vault_inner_mod_hash: proto.vaultInnerModHash || '',
       eip712_domain: {
-        name: 'Populis',
-        version: '1',
+        name: environment.eip712Name,
+        version: environment.eip712Version,
         chainId: environment.eip712ChainId,
       },
       // The exact CHIP-0037 type-hash string is published as a
@@ -130,9 +130,8 @@ export class OnChainStateService {
    * ``state_hash`` is correctly derived from chain.
    */
   async getAuthority(): Promise<AdminAuthorityResponse> {
-    const launcherId =
-      environment.populisProtocol.adminAuthorityLauncherId || null;
-    const stateHash = await this.readStateHashOrNull(launcherId);
+    const launcherId = null;
+    const stateHash = null;
     return {
       enabled: !!launcherId,
       launcher_id: launcherId,
@@ -141,7 +140,7 @@ export class OnChainStateService {
       authority_version: null,
       state_hash: stateHash,
       phase: '2-informational-only',
-      gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST',
+      gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
       informational_only: true,
     };
   }
@@ -160,7 +159,7 @@ export class OnChainStateService {
    */
   async getAuthorityV2(): Promise<AdminAuthorityV2Response> {
     const launcherId =
-      environment.populisProtocol.adminAuthorityV2LauncherId || null;
+      environment.solslotProtocol.adminAuthorityV2LauncherId || null;
     const stateHash = await this.readStateHashOrNull(launcherId);
     return {
       enabled: !!launcherId,
@@ -171,7 +170,7 @@ export class OnChainStateService {
       authority_version: null,
       state_hash: stateHash,
       phase: '2-informational-only',
-      gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST',
+      gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
       informational_only: true,
     };
   }

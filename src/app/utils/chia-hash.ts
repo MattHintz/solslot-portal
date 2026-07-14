@@ -2,21 +2,21 @@
  * Chia primitives reimplemented in TypeScript so the portal can derive
  * vault-discovery hints and coin ids without any backend round-trip.
  *
- * Mirrors ``populis_puzzles/vault_driver.py``:
+ * Mirrors ``solslot_puzzles/vault_driver.py``:
  *   - ``vault_discovery_hint`` (sha256 of the namespaced pubkey)
  *   - ``coin_id`` (sha256 of parent_coin_info || puzzle_hash || amount_bytes)
  *
  * Reference test vectors live in
- * ``populis_protocol/tests/test_vault_discovery_hint.py::TestKnownAnswers``
+ * ``solslot_protocol/tests/test_vault_discovery_hint.py::TestKnownAnswers``
  * — the assertions there must produce identical hex output to the
  * functions below.
  */
 
 import { sha256 } from 'ethers';
 
-// Byte-for-byte mirror of populis_puzzles/vault_driver.py:VAULT_HINT_DOMAIN.
+// Byte-for-byte mirror of solslot_puzzles/vault_driver.py:VAULT_HINT_DOMAIN.
 // DO NOT edit one without editing the other (locked by Python tests).
-const VAULT_HINT_DOMAIN = new TextEncoder().encode('populis-vault-discovery-v1');
+const VAULT_HINT_DOMAIN = new TextEncoder().encode('solslot-vault-discovery-v2');
 
 export const AUTH_TYPE_BLS = 1;
 export const AUTH_TYPE_SECP256R1 = 2;
@@ -30,7 +30,7 @@ export const AUTH_TYPE_SECP256K1 = 3;
  * launcher via `coinset.getCoinRecordsByHint(hint)`.
  *
  * Format (locked by Python tests, must match byte-for-byte):
- *     sha256(b"populis-vault-discovery-v1" || auth_type_byte || owner_pubkey)
+ *     sha256(b"solslot-vault-discovery-v2" || auth_type_byte || owner_pubkey)
  */
 export function vaultDiscoveryHint(authType: number, ownerPubkey: Uint8Array): string {
   if (authType !== AUTH_TYPE_BLS && authType !== AUTH_TYPE_SECP256R1 && authType !== AUTH_TYPE_SECP256K1) {

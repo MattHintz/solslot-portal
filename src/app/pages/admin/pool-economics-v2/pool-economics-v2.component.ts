@@ -112,6 +112,7 @@ interface ParsedExecutionPackage {
   pool: PoolSingletonSpendContext;
   state: PoolEconomicStateInput;
   deedId: string;
+  deedLauncherId?: string;
   collectionIdCanon: string;
   sharePpm: bigint;
   navEvidence: CollectionNavEvidenceInput;
@@ -364,7 +365,7 @@ interface ParsedExecutionPackage {
                       <dd>{{ formatTokens(preview.quote.fee.protocolTreasuryTokens) }}</dd>
                     </div>
                     <div>
-                      <dt>PGT rewards fee</dt>
+                      <dt>SGT rewards fee</dt>
                       <dd>{{ formatTokens(preview.quote.fee.governanceRewardsTokens) }}</dd>
                     </div>
                     <div>
@@ -1747,6 +1748,10 @@ export class PoolEconomicsV2Component implements OnInit {
               pool: pkg.pool,
               state: pkg.state,
               deedId: pkg.deedId,
+              deedLauncherId: requiredParsedString(pkg.deedLauncherId, 'deedLauncherId'),
+              propertyIdCanon: requiredParsedString(pkg.propertyIdCanon, 'propertyIdCanon'),
+              parValueMojos: requiredParsedBigint(pkg.parValueMojos, 'parValueMojos'),
+              assetClass: requiredParsedBigint(pkg.assetClass, 'assetClass'),
               buyerVaultLauncherId: requiredParsedString(pkg.buyerVaultLauncherId, 'buyerVaultLauncherId'),
               launcherPuzzleHash: pkg.launcherPuzzleHash,
               collectionIdCanon: pkg.collectionIdCanon,
@@ -1767,6 +1772,10 @@ export class PoolEconomicsV2Component implements OnInit {
               pool: pkg.pool,
               state: pkg.state,
               deedId: pkg.deedId,
+              deedLauncherId: requiredParsedString(pkg.deedLauncherId, 'deedLauncherId'),
+              propertyIdCanon: requiredParsedString(pkg.propertyIdCanon, 'propertyIdCanon'),
+              parValueMojos: requiredParsedBigint(pkg.parValueMojos, 'parValueMojos'),
+              assetClass: requiredParsedBigint(pkg.assetClass, 'assetClass'),
               vaultLauncherId: requiredParsedString(pkg.vaultLauncherId, 'vaultLauncherId'),
               launcherPuzzleHash: pkg.launcherPuzzleHash,
               collectionIdCanon: pkg.collectionIdCanon,
@@ -1784,6 +1793,7 @@ export class PoolEconomicsV2Component implements OnInit {
               pool: pkg.pool,
               state: pkg.state,
               deedId: pkg.deedId,
+              deedLauncherId: requiredParsedString(pkg.deedLauncherId, 'deedLauncherId'),
               propertyIdCanon: requiredParsedString(pkg.propertyIdCanon, 'propertyIdCanon'),
               parValueMojos: requiredParsedBigint(pkg.parValueMojos, 'parValueMojos'),
               assetClass: requiredParsedBigint(pkg.assetClass, 'assetClass'),
@@ -2134,6 +2144,7 @@ export class PoolEconomicsV2Component implements OnInit {
       pool: readPoolContext(readRecordFrom(records, ['pool'], 'pool')),
       state: root['state'] ? readState(asRecord(root['state'], 'state')) : inputs.state,
       deedId: readStringFrom(records, ['deedId', 'deed_id'], 'deedId'),
+      deedLauncherId: readOptionalStringFrom(records, ['deedLauncherId', 'deed_launcher_id']),
       collectionIdCanon: readStringFrom(
         records,
         ['collectionIdCanon', 'collection_id_canon'],
@@ -2193,6 +2204,10 @@ export class PoolEconomicsV2Component implements OnInit {
           ...pkg.pool,
           state: pkg.state,
           deedId: pkg.deedId,
+          deedLauncherId: requiredParsedString(pkg.deedLauncherId, 'deedLauncherId'),
+          propertyIdCanon: requiredParsedString(pkg.propertyIdCanon, 'propertyIdCanon'),
+          parValueMojos: requiredParsedBigint(pkg.parValueMojos, 'parValueMojos'),
+          assetClass: requiredParsedBigint(pkg.assetClass, 'assetClass'),
           buyerVaultLauncherId: requiredParsedString(pkg.buyerVaultLauncherId, 'buyerVaultLauncherId'),
           launcherPuzzleHash: pkg.launcherPuzzleHash,
           collectionIdCanon: pkg.collectionIdCanon,
@@ -2208,6 +2223,10 @@ export class PoolEconomicsV2Component implements OnInit {
           ...pkg.pool,
           state: pkg.state,
           deedId: pkg.deedId,
+          deedLauncherId: requiredParsedString(pkg.deedLauncherId, 'deedLauncherId'),
+          propertyIdCanon: requiredParsedString(pkg.propertyIdCanon, 'propertyIdCanon'),
+          parValueMojos: requiredParsedBigint(pkg.parValueMojos, 'parValueMojos'),
+          assetClass: requiredParsedBigint(pkg.assetClass, 'assetClass'),
           vaultLauncherId: requiredParsedString(pkg.vaultLauncherId, 'vaultLauncherId'),
           launcherPuzzleHash: pkg.launcherPuzzleHash,
           collectionIdCanon: pkg.collectionIdCanon,
@@ -2220,6 +2239,7 @@ export class PoolEconomicsV2Component implements OnInit {
           ...pkg.pool,
           state: pkg.state,
           deedId: pkg.deedId,
+          deedLauncherId: requiredParsedString(pkg.deedLauncherId, 'deedLauncherId'),
           propertyIdCanon: requiredParsedString(pkg.propertyIdCanon, 'propertyIdCanon'),
           parValueMojos: requiredParsedBigint(pkg.parValueMojos, 'parValueMojos'),
           assetClass: requiredParsedBigint(pkg.assetClass, 'assetClass'),

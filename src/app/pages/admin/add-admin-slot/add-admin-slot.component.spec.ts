@@ -13,6 +13,12 @@ import { AdminSessionService } from '../../../services/admin-session.service';
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
 import { Eip712LeafHashService } from '../../../services/eip712-leaf-hash.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
+import { environment } from '../../../../environments/environment';
+
+const TEST_AUTHORITY_LAUNCHER_ID = '0x' + 'a0'.repeat(32);
+const TEST_AUTHORITY_MIPS_ROOT =
+  '0x756618112cd2128e79e710ca5f0cfc99ec9120ad9e6f71a6cd56964ebd1aea71';
+const originalProtocol = { ...environment.solslotProtocol } as Record<string, unknown>;
 
 describe('AddAdminSlotComponent', () => {
   let fixture: ComponentFixture<AddAdminSlotComponent>;
@@ -31,7 +37,7 @@ describe('AddAdminSlotComponent', () => {
 
   const currentPubkey = '0x02' + '11'.repeat(32);
   const newPubkey = '0x03' + '22'.repeat(32);
-  const currentAddress = '0x0e61d3bb1148bdd802f747caea112333d156626a';
+  const currentAddress = '0x1111111111111111111111111111111111111111';
   const newAddress = '0x1234567890abcdef1234567890abcdef12345678';
   const currentLeaf = {
     leaf_hash: '0x' + 'aa'.repeat(32),
@@ -49,6 +55,10 @@ describe('AddAdminSlotComponent', () => {
   };
 
   beforeEach(async () => {
+    Object.assign(environment.solslotProtocol as Record<string, unknown>, {
+      adminAuthorityV2LauncherId: TEST_AUTHORITY_LAUNCHER_ID,
+      adminAuthorityV2MipsRootHash: TEST_AUTHORITY_MIPS_ROOT,
+    });
     session = jasmine.createSpyObj('AdminSessionService', ['subject', 'pubkey']);
     session.subject.and.returnValue(currentAddress);
     session.pubkey.and.returnValue(currentPubkey);
@@ -131,6 +141,10 @@ describe('AddAdminSlotComponent', () => {
     }).compileComponents();
   });
 
+  afterEach(() => {
+    restoreProtocolEnvironment();
+  });
+
   function create(): AddAdminSlotComponent {
     fixture = TestBed.createComponent(AddAdminSlotComponent);
     fixture.detectChanges();
@@ -169,9 +183,7 @@ describe('AddAdminSlotComponent', () => {
       admin_records: Array<{ admin_idx: number; m_within: number; leaves: Array<Record<string, string>> }>;
     };
 
-    expect(artifact.launcher_id).toBe(
-      '0xf3fd2dedfc77a5b8f65acdfaff04d3786844a8c4d0529d3dbc4d37dc4012bb84',
-    );
+    expect(artifact.launcher_id).toBe(TEST_AUTHORITY_LAUNCHER_ID);
     expect(artifact.admin_records.length).toBe(2);
     expect(artifact.admin_records[0].admin_idx).toBe(0);
     expect(artifact.admin_records[1].admin_idx).toBe(1);
@@ -292,7 +304,7 @@ describe('AddAdminSlotComponent', () => {
     expect(pkg.spend_intent.validation_scope).toBe('local_unsigned_package_no_broadcast');
     expect(pkg.current.authority_version).toBe(1);
     expect(pkg.current.mips_root_hash).toBe(
-      '0x95cbfe1c977e0c82ccbc539fa25c295eff23af25900d4e8d9e9ff2eed35a15fe',
+      '0x756618112cd2128e79e710ca5f0cfc99ec9120ad9e6f71a6cd56964ebd1aea71',
     );
     expect(pkg.current.admins_hash).toBe('0x' + '33'.repeat(32));
     expect(pkg.current.state_hash).toBe('0x' + '00'.repeat(32));
@@ -359,7 +371,7 @@ describe('AddAdminSlotComponent', () => {
       jasmine.objectContaining({
         current_authority_version: 1,
         current_mips_root_hash:
-          '0x95cbfe1c977e0c82ccbc539fa25c295eff23af25900d4e8d9e9ff2eed35a15fe',
+          '0x756618112cd2128e79e710ca5f0cfc99ec9120ad9e6f71a6cd56964ebd1aea71',
         current_admins_hash: '0x' + '33'.repeat(32),
         current_pending_ops_hash: '0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a',
         new_authority_version: 2,
@@ -455,14 +467,14 @@ function adminChallengeResponse(): AdminChallengeResponse {
     nonce: '0x' + '98'.repeat(32),
     expires_at: 1_700_000_000,
     typed_data: {
-      domain: { name: 'Populis Protocol', version: '1', chainId: 1 },
+      domain: { name: 'Solslot Protocol', version: '1', chainId: 1 },
       types: {
         EIP712Domain: [
           { name: 'name', type: 'string' },
           { name: 'version', type: 'string' },
           { name: 'chainId', type: 'uint256' },
         ],
-        PopulisAdminLogin: [
+        SolslotAdminLogin: [
           { name: 'owner', type: 'address' },
           { name: 'nonce', type: 'bytes32' },
           { name: 'issuedAt', type: 'uint256' },
@@ -470,9 +482,9 @@ function adminChallengeResponse(): AdminChallengeResponse {
           { name: 'scope', type: 'string' },
         ],
       },
-      primaryType: 'PopulisAdminLogin',
+      primaryType: 'SolslotAdminLogin',
       message: {
-        owner: '0x0e61d3bb1148bdd802f747caea112333d156626a',
+        owner: '0x1111111111111111111111111111111111111111',
         nonce: '0x' + '98'.repeat(32),
         issuedAt: 1_700_000_000,
         authType: 'evm',
@@ -485,7 +497,7 @@ function adminChallengeResponse(): AdminChallengeResponse {
 function liveSingletonLookup(): AdminAuthorityV2LiveSingletonLookup {
   return {
     lookup_status: 'found_unique_unspent_candidate',
-    launcher_id: '0xf3fd2dedfc77a5b8f65acdfaff04d3786844a8c4d0529d3dbc4d37dc4012bb84',
+    launcher_id: TEST_AUTHORITY_LAUNCHER_ID,
     expected_inner_puzzle_hash: '0x' + '10'.repeat(32),
     expected_full_puzzle_hash: '0x' + '11'.repeat(32),
     expected_amount: 1,
@@ -506,7 +518,7 @@ function preparedResponse(): AdminRosterUpdatePrepareResponse {
   return {
     submission_status: 'validated_preview_only_roster_spend_not_submitted',
     activation_status: 'candidate_not_active_until_admin_roster_update_confirms',
-    launcher_id: '0xf3fd2dedfc77a5b8f65acdfaff04d3786844a8c4d0529d3dbc4d37dc4012bb84',
+    launcher_id: TEST_AUTHORITY_LAUNCHER_ID,
     current_authority_version: 1,
     new_authority_version: 2,
     current_admin_count: 1,
@@ -514,7 +526,7 @@ function preparedResponse(): AdminRosterUpdatePrepareResponse {
     new_admin_slot_index: 1,
     new_threshold: 2,
     current_mips_root_hash:
-      '0x95cbfe1c977e0c82ccbc539fa25c295eff23af25900d4e8d9e9ff2eed35a15fe',
+      '0x756618112cd2128e79e710ca5f0cfc99ec9120ad9e6f71a6cd56964ebd1aea71',
     current_admins_hash: '0x' + '33'.repeat(32),
     current_pending_ops_hash:
       '0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a',
@@ -528,7 +540,7 @@ function preparedResponse(): AdminRosterUpdatePrepareResponse {
       kind: 'admin_authority_v2_roster_update',
       spend_tag: 7,
       spend_name: 'ADMIN_ROSTER_UPDATE',
-      launcher_id: '0xf3fd2dedfc77a5b8f65acdfaff04d3786844a8c4d0529d3dbc4d37dc4012bb84',
+      launcher_id: TEST_AUTHORITY_LAUNCHER_ID,
       current_state_hash: '0x' + '00'.repeat(32),
       new_state_hash: '0x' + '88'.repeat(32),
       roster_update_binding_hash: '0x' + '99'.repeat(32),
@@ -539,4 +551,12 @@ function preparedResponse(): AdminRosterUpdatePrepareResponse {
       'wallet signature over the final Chia spend bundle',
     ],
   };
+}
+
+function restoreProtocolEnvironment(): void {
+  const protocol = environment.solslotProtocol as Record<string, unknown>;
+  for (const key of Object.keys(protocol)) {
+    if (!(key in originalProtocol)) delete protocol[key];
+  }
+  Object.assign(protocol, originalProtocol);
 }

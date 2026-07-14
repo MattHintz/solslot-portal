@@ -12,8 +12,8 @@ import {
   GovernanceTrackerReaderService,
   IdleStateProposeInputs,
 } from '../governance-tracker-reader.service';
-import { PgtCoin, PgtCoinDiscoveryService } from '../pgt-driver/pgt-coin-discovery.service';
-import { PgtDriverService } from '../pgt-driver/pgt-driver.service';
+import { SgtCoin, SgtCoinDiscoveryService } from '../sgt-driver/sgt-coin-discovery.service';
+import { SgtDriverService } from '../sgt-driver/sgt-driver.service';
 import { WalletCoinPickerService } from '../wallet-coin-picker.service';
 import { bytesToHex, coinId, hexToBytes } from '../../utils/chia-hash';
 import { environment } from '../../../environments/environment';
@@ -56,7 +56,7 @@ import { MintPublishSpendBuilderService } from './mint-publish-spend-builder.ser
  *      (V2 mint-proposal, DRAFT state).
  *   3. **Tracker PROPOSE spend** — the governance tracker singleton
  *      IDLE → OPEN.
- *   4. **PGT first-vote LOCK spend** — the proposer's PGT free coin
+ *   4. **SGT first-vote LOCK spend** — the proposer's SGT free coin
  *      locked as the proposal's first vote / anti-spam stake.
  *   5. **Property-registry registration spend** — the A4 registry
  *      singleton creates the registration announcement for
@@ -72,7 +72,7 @@ import { MintPublishSpendBuilderService } from './mint-publish-spend-builder.ser
  * {@link MintPublishService.buildMintPublishArtifacts}
  * (``protocolDidSingletonStructHex``, ``protocolDidPuzhash``,
  * ``p2PoolModHash``, ``p2VaultModHash``, ``govMemberHash``) are not in
- * ``environment.populisProtocol`` today, so the runner takes them as
+ * ``environment.solslotProtocol`` today, so the runner takes them as
  * explicit ``PublishMintArgs`` fields.  The 4f UI assembles them from
  * the protocol read + the operator's draft.
  *
@@ -86,8 +86,8 @@ export class MintProposalV2PublishRunnerService {
   private readonly wasm = inject(ChiaWasmService);
   private readonly coinset = inject(CoinsetService);
   private readonly tracker = inject(GovernanceTrackerReaderService);
-  private readonly discovery = inject(PgtCoinDiscoveryService);
-  private readonly pgt = inject(PgtDriverService);
+  private readonly discovery = inject(SgtCoinDiscoveryService);
+  private readonly sgt = inject(SgtDriverService);
   private readonly publish = inject(MintPublishService);
   private readonly v2 = inject(MintProposalV2Service);
   private readonly spendBuilder = inject(MintPublishSpendBuilderService);
@@ -143,22 +143,22 @@ export class MintProposalV2PublishRunnerService {
       return { kind: 'tracker-not-idle' };
     }
 
-    // ── 3. PGT coin discovery (proposer's first-vote stake) ──
-    const pgtTailGenesisCoinId =
-      environment.populisProtocol.pgtTailGenesisCoinId;
-    if (!pgtTailGenesisCoinId) {
-      return { kind: 'pgt-not-deployed' };
+    // ── 3. SGT coin discovery (proposer's first-vote stake) ──
+    const sgtGenesisCoinId =
+      environment.solslotProtocol.sgtGenesisCoinId;
+    if (!sgtGenesisCoinId) {
+      return { kind: 'sgt-not-deployed' };
     }
     const discovery = await this.discovery.discover({ voterInnerPuzzleHash });
     if (discovery.kind !== 'found') {
-      return { kind: 'no-pgt-coins', discovery };
+      return { kind: 'no-sgt-coins', discovery };
     }
-    const pgtPick = discovery.coins.find(
+    const sgtPick = discovery.coins.find(
       (c) => BigInt(c.amount) === firstVoteAmount,
     );
-    if (!pgtPick) {
+    if (!sgtPick) {
       return {
-        kind: 'no-pgt-coin-matches-stake',
+        kind: 'no-sgt-coin-matches-stake',
         availableAmounts: discovery.coins.map((c) => c.amount),
         requestedAmount: firstVoteAmount,
       };
@@ -231,16 +231,16 @@ export class MintProposalV2PublishRunnerService {
       stateVersion: 0,
     });
 
-    // ── 7. Compute the proposer's PGT LOCK inner solution ──
+    // ── 7. Compute the proposer's SGT LOCK inner solution ──
     // A standard p2 delegated spend that creates exactly the canonical
-    // pgt_locked_inner output and nothing else; the wallet signs the
+    // sgt_locked_inner output and nothing else; the wallet signs the
     // AGG_SIG_ME this delegated puzzle introduces.
     const votingDeadline = BigInt(args.nowSeconds ?? Math.floor(Date.now() / 1000)) +
       votingWindowSeconds;
-    const trackerStructHash = this.pgt.trackerStructHash({
+    const trackerStructHash = this.sgt.trackerStructHash({
       trackerLauncherId: trackerInputs.trackerLauncherId,
     });
-    const lockedPuzzleHash = this.pgt.pgtLockedInnerHash({
+    const lockedPuzzleHash = this.sgt.sgtLockedInnerHash({
       trackerStructHash,
       voterInnerPuzzleHash,
       lockProposalHash: artifacts.proposalHash,
@@ -257,22 +257,22 @@ export class MintProposalV2PublishRunnerService {
     const voterInnerPuzzleHex = bytesToHex(lockInnerSpend.puzzle.serialize());
     const voterInnerSolutionHex = bytesToHex(lockInnerSpend.solution.serialize());
 
-    const pgtTailHash = bytesToHex(this.pgt.pgtTailHash(pgtTailGenesisCoinId));
+    const sgtTailHash = bytesToHex(this.sgt.sgtTailHash(sgtGenesisCoinId));
     // The delegated inner spend creates the locked inner puzzle hash; the
-    // actual child coin is CAT-wrapped with the PGT TAIL as its asset id.
+    // actual child coin is CAT-wrapped with the SGT TAIL as its asset id.
     const lockedCatPuzzleHash = bytesToHex(
-      this.pgt.catPgtFreePuzzleHash({
-        pgtFreeInnerHash: lockedPuzzleHash,
-        pgtTailHash,
+      this.sgt.catSgtFreePuzzleHash({
+        sgtFreeInnerHash: lockedPuzzleHash,
+        sgtTailHash,
       }),
     );
-    const pgtPickCoinId = coinId(
-      pgtPick.parentCoinInfo,
-      pgtPick.puzzleHash,
-      pgtPick.amount,
+    const sgtPickCoinId = coinId(
+      sgtPick.parentCoinInfo,
+      sgtPick.puzzleHash,
+      sgtPick.amount,
     );
-    const pgtLockCoinId = coinId(
-      pgtPickCoinId,
+    const sgtLockCoinId = coinId(
+      sgtPickCoinId,
       lockedCatPuzzleHash,
       firstVoteAmount,
     );
@@ -280,7 +280,7 @@ export class MintProposalV2PublishRunnerService {
     // ── 8. Build the three publish spends ──
     let eveLaunch: ReturnType<MintPublishSpendBuilderService['buildProposalEveLaunchSpend']>;
     let trackerProposeSpend: UnsignedCoinSpend;
-    let pgtLockSpend: UnsignedCoinSpend;
+    let sgtLockSpend: UnsignedCoinSpend;
     let propertyRegistryAssertConditionHex: string;
     try {
       eveLaunch = this.spendBuilder.buildProposalEveLaunchSpend({
@@ -303,17 +303,17 @@ export class MintProposalV2PublishRunnerService {
         firstVoteAmount,
         votingDeadline,
       });
-      pgtLockSpend = this.spendBuilder.buildPgtFirstVoteCoinSpend({
-        pgtCoin: {
-          parentCoinInfo: pgtPick.parentCoinInfo,
-          puzzleHash: pgtPick.puzzleHash,
-          amount: pgtPick.amount,
+      sgtLockSpend = this.spendBuilder.buildSgtFirstVoteCoinSpend({
+        sgtCoin: {
+          parentCoinInfo: sgtPick.parentCoinInfo,
+          puzzleHash: sgtPick.puzzleHash,
+          amount: sgtPick.amount,
         },
         voterInnerPuzzleHex,
         voterInnerSolutionHex,
         trackerLauncherId: trackerInputs.trackerLauncherId,
-        pgtTailHash,
-        // Eve case (empty lineage proof) — sufficient for PGT coins that
+        sgtTailHash,
+        // Eve case (empty lineage proof) — sufficient for SGT coins that
         // are direct children of the TAIL issuance.  Transferred coins
         // need a real proof; same alpha caveat as the Phase 3 vote runner.
         lineageProof: {},
@@ -350,12 +350,12 @@ export class MintProposalV2PublishRunnerService {
       };
     }
 
-    // ── 10. Sign the bundle (wallet covers XCH parent + PGT lock + registry when keyed) ──
+    // ── 10. Sign the bundle (wallet covers XCH parent + SGT lock + registry when keyed) ──
     const unsigned: UnsignedCoinSpend[] = [
       xchParentSpend,
       eveLaunch.launcherCoinSpend,
       trackerProposeSpend,
-      pgtLockSpend,
+      sgtLockSpend,
       args.propertyRegistryCoinSpend,
     ];
     let signedBundle: SignedSpendBundle;
@@ -368,7 +368,7 @@ export class MintProposalV2PublishRunnerService {
       };
     }
 
-    // ── 11. Publish via populis_api → coinset.org ──
+    // ── 11. Publish via solslot_api → coinset.org ──
     // Attach the re-derivation guard metadata (Brick 4e.2d) so the API
     // re-runs build_mint_publish_artifacts server-side and rejects the
     // bundle if its on-chain commitments drift from the canonical
@@ -421,8 +421,8 @@ export class MintProposalV2PublishRunnerService {
       signedBundle,
       artifacts,
       xchCoinId,
-      pickedPgtCoin: pgtPick,
-      pgtLockCoinId,
+      pickedSgtCoin: sgtPick,
+      sgtLockCoinId,
       votingDeadline,
       voterInnerPuzzleHash,
     };
@@ -546,12 +546,12 @@ export interface PublishMintArgs {
   propertyRegistryPuzzleHash: string;
   /**
    * Full singleton CoinSpend for the current property-registry registration.
-   * It must CREATE_PUZZLE_ANNOUNCEMENT(0x50 || propertyIdCanon) from the
+   * It must CREATE_PUZZLE_ANNOUNCEMENT(0x53 || propertyIdCanon) from the
    * registry singleton whose full puzzle hash is propertyRegistryPuzzleHash.
    */
   propertyRegistryCoinSpend?: UnsignedCoinSpend;
   // ── Publish-flow inputs ──
-  /** PGT mojos locked as the first vote / anti-spam stake (> 0). */
+  /** SGT mojos locked as the first vote / anti-spam stake (> 0). */
   firstVoteAmount: number | bigint;
   /** Voting window length in seconds (> 0).  deadline = now + window. */
   votingWindowSeconds: number | bigint;
@@ -573,17 +573,17 @@ export type PublishRunResult =
   | { kind: 'wallet-not-connected' }
   | { kind: 'tracker-read-failed'; error: string }
   | { kind: 'tracker-not-idle' }
-  | { kind: 'pgt-not-deployed' }
+  | { kind: 'sgt-not-deployed' }
   | { kind: 'property-registry-spend-required' }
   | {
-      kind: 'no-pgt-coins';
+      kind: 'no-sgt-coins';
       discovery:
-        | { kind: 'pgt-not-deployed' }
+        | { kind: 'sgt-not-deployed' }
         | { kind: 'governance-not-deployed' }
-        | { kind: 'no-coins'; catPgtFreePuzzleHash: string };
+        | { kind: 'no-coins'; catSgtFreePuzzleHash: string };
     }
   | {
-      kind: 'no-pgt-coin-matches-stake';
+      kind: 'no-sgt-coin-matches-stake';
       availableAmounts: number[];
       requestedAmount: bigint;
     }
@@ -600,8 +600,8 @@ export type PublishRunResult =
       signedBundle: SignedSpendBundle;
       artifacts: MintPublishArtifacts;
       xchCoinId: string;
-      pickedPgtCoin: PgtCoin;
-      pgtLockCoinId: string;
+      pickedSgtCoin: SgtCoin;
+      sgtLockCoinId: string;
       votingDeadline: bigint;
       voterInnerPuzzleHash: string;
     };

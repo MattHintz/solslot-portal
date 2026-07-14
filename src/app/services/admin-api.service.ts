@@ -1,5 +1,5 @@
 /**
- * **Types-only module** for legacy Populis admin desk wire shapes.
+ * **Types-only module** for legacy Solslot admin desk wire shapes.
  *
  * **Migration history.**  Pre-Hermes-D this file exposed an
  * ``AdminApiService`` class that handled the JWT-based admin login
@@ -23,9 +23,9 @@
  * {@link MintProposalResponse}-shaped records).  Treating them as
  * types-only avoids breaking every consumer's import.
  */
-import { Eip712TypedData } from './populis-api.service';
+import { Eip712TypedData } from './solslot-api.service';
 
-/** Eight-state lifecycle \u2014 see populis_api/mint_proposals.py:ALL_STATES. */
+/** Eight-state lifecycle \u2014 see solslot_api/mint_proposals.py:ALL_STATES. */
 export type MintProposalState =
   | 'DRAFT'
   | 'PROPOSED'
@@ -52,7 +52,7 @@ export interface AdminAuthorityResponse {
   authority_version: number | null;
   state_hash: string | null;
   phase: '2-informational-only' | string;
-  gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST' | string;
+  gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST' | string;
   informational_only: boolean;
 }
 
@@ -80,8 +80,50 @@ export interface AdminAuthorityV2Response {
     | '3-migration-in-progress'
     | '4-gating-source'
     | string;
-  gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST' | string;
+  gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST' | string;
   informational_only: boolean;
+}
+
+export type SmartDeedSecurityStructure =
+  | 'entity_ucc'
+  | 'real_property_lien'
+  | 'deed_of_trust'
+  | 'mortgage'
+  | 'hybrid'
+  | 'contract_only'
+  | 'unsecured'
+  | 'other';
+
+export type SmartDeedFilingStatus =
+  | 'recorded'
+  | 'pending'
+  | 'intended'
+  | 'not_applicable'
+  | 'none';
+
+export type SmartDeedSettlementBasis =
+  | 'property_sale'
+  | 'appraisal_buyout'
+  | 'fixed_maturity'
+  | 'governance_settlement'
+  | 'nav_redemption'
+  | 'hybrid'
+  | 'other';
+
+export interface SmartDeedTermsMetadata {
+  schemaVersion: 'solslot.smartdeed.submission.v2';
+  securityStructure: SmartDeedSecurityStructure;
+  securityDescription: string;
+  obligor: string;
+  collateralDescription: string;
+  filingStatus: SmartDeedFilingStatus;
+  filingReference?: string;
+  priorityDescription: string;
+  settlementBasis: SmartDeedSettlementBasis;
+  settlementDescription: string;
+  transferPolicy: string;
+  definitiveDocumentsUrl: string;
+  documentPackageHash: string;
 }
 
 /** Request body for legacy ``POST /admin/mint/propose`` (now: localStorage create). */
@@ -96,7 +138,7 @@ export interface ProposeMintRequest {
   royalty_puzhash: string;
   /** 0\u201310000 basis points. */
   royalty_bps: number;
-  /** Minimum PGT-mojos of YES votes for the proposal to pass. */
+  /** Minimum SGT-mojos of YES votes for the proposal to pass. */
   quorum_required: number;
   off_chain_metadata?: Record<string, unknown>;
 }
@@ -131,7 +173,7 @@ export interface MintProposalResponse {
   };
   on_chain: {
     proposal_tracker_coin_id: string | null;
-    pgt_lock_coin_id: string | null;
+    sgt_lock_coin_id: string | null;
     deed_launcher_id: string | null;
     published_bundle_id: string | null;
     executed_bundle_id: string | null;

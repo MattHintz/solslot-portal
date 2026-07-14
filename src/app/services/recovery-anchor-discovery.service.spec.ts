@@ -21,7 +21,7 @@ const PAYLOAD_MEMO_UTF8 =
   '22'.repeat(32) +
   '","network":"testnet11","portal_runtime_config_hash":"sha256:' +
   '33'.repeat(32) +
-  '","tag":"POPULIS_BOOTSTRAP_V1","version":1}';
+  '","tag":"SOLSLOT_BOOTSTRAP_V2","version":2}';
 const PAYLOAD_MEMO_HEX = bytesToHex(new TextEncoder().encode(PAYLOAD_MEMO_UTF8));
 const PAYLOAD_HASH = `sha256:${sha256(new TextEncoder().encode(PAYLOAD_MEMO_UTF8)).slice(2)}`;
 
@@ -170,7 +170,7 @@ describe('RecoveryAnchorDiscoveryService', () => {
 
     expect(report.anchors).toEqual([]);
     expect(report.rejectedCandidates.length).toBe(1);
-    expect(report.rejectedCandidates[0].reason).toContain('version must be 1');
+    expect(report.rejectedCandidates[0].reason).toContain('version must be 2');
   });
 
   it('filters discovered anchors by network and admin authority launcher id', async () => {

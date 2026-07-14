@@ -268,11 +268,17 @@ export class PoolEconomicsV2DeedWitnessService {
       args.vaultLauncherId,
       args.launcherPuzzleHash,
     );
+    const deedCommitment = this.economics.deedMetadataCommitment({
+      deedLauncherId: args.deedLauncherId,
+      parValueMojos: decoded.parValueMojos,
+      assetClass: decoded.assetClass,
+      propertyIdCanon: decoded.propertyIdCanon,
+      collectionIdCanon: decoded.collectionIdCanon,
+      sharePpm: decoded.sharePpm,
+    });
     const deedMessage = this.economics.deedPoolRedeemMessage({
-      deedId: args.live.coinId,
+      deedCommitment,
       p2VaultPuzzleHash,
-      collectionIdCanon: args.collectionIdCanon,
-      sharePpm: args.sharePpm,
     });
     const innerSolution = clvm.list([
       clvm.atom(hexToBytes(args.live.coinId)),
@@ -314,8 +320,12 @@ export class PoolEconomicsV2DeedWitnessService {
       p2VaultPuzzleHash,
       vaultLauncherId: args.vaultLauncherId,
       launcherPuzzleHash: args.launcherPuzzleHash,
+      propertyIdCanon: decoded.propertyIdCanon,
+      parValueMojos: decoded.parValueMojos,
+      assetClass: decoded.assetClass,
       collectionIdCanon: args.collectionIdCanon,
       sharePpm: requestedSharePpm,
+      deedCommitment,
       deedMessage,
       deedSpend,
       confirmedBlockIndex: args.live.confirmedBlockIndex,
@@ -438,6 +448,15 @@ export class PoolEconomicsV2DeedWitnessService {
     const deedInnerPuzzleHash = bytesToHex(deedInner.treeHash());
     const deedMessage = this.economics.deedPoolDepositMessage({
       deedId: args.live.coinId,
+      deedLauncherId: args.deedLauncherId,
+      parValueMojos: requestedParValueMojos,
+      assetClass: requestedAssetClass,
+      propertyIdCanon: args.propertyIdCanon,
+      collectionIdCanon: args.collectionIdCanon,
+      sharePpm: requestedSharePpm,
+    });
+    const deedCommitment = this.economics.deedMetadataCommitment({
+      deedLauncherId: args.deedLauncherId,
       parValueMojos: requestedParValueMojos,
       assetClass: requestedAssetClass,
       propertyIdCanon: args.propertyIdCanon,
@@ -486,6 +505,7 @@ export class PoolEconomicsV2DeedWitnessService {
       assetClass: requestedAssetClass,
       collectionIdCanon: args.collectionIdCanon,
       sharePpm: requestedSharePpm,
+      deedCommitment,
       deedMessage,
       deedSpend,
       confirmedBlockIndex: args.live.confirmedBlockIndex,
@@ -542,8 +562,12 @@ export type PoolV2DeedWitnessEvidence =
       p2VaultPuzzleHash: string;
       vaultLauncherId: string;
       launcherPuzzleHash: string;
+      propertyIdCanon: string;
+      parValueMojos: bigint;
+      assetClass: bigint;
       collectionIdCanon: string;
       sharePpm: bigint;
+      deedCommitment: string;
       deedMessage: string;
       deedSpend: UnsignedCoinSpend;
       confirmedBlockIndex: number;
@@ -564,6 +588,7 @@ export type PoolV2DeedWitnessEvidence =
       assetClass: bigint;
       collectionIdCanon: string;
       sharePpm: bigint;
+      deedCommitment: string;
       deedMessage: string;
       deedSpend: UnsignedCoinSpend;
       confirmedBlockIndex: number;

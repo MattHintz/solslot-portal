@@ -46,7 +46,7 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
       <header class="flex flex-wrap items-end justify-between gap-6">
         <div>
           <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-2">
-            Populis · Admin Desk
+            Solslot · Admin Desk
           </div>
           <h1 class="font-display text-4xl md:text-5xl">Mint proposals.</h1>
           <p class="mt-2 text-text-muted text-sm">
@@ -324,7 +324,7 @@ export class AdminDashboardComponent {
 
   /**
    * Render a par_value (mojos) as USD-style cents.  1 mojo = 1¢ in the
-   * Populis convention; 1_000_000_000 mojos = $10,000,000.00.
+   * Solslot convention; 1_000_000_000 mojos = $10,000,000.00.
    */
   formatPar(parMojos: number): string {
     const dollars = parMojos / 100;

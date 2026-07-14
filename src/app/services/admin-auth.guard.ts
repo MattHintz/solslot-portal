@@ -18,7 +18,7 @@ import { AdminSessionService } from './admin-session.service';
  * reach a guarded page even if the user reloads with a cached token.
  *
  * Note that this is a UX safety net only — the real authority check lives
- * in `populis_api/admin_auth.py:require_admin_jwt`, which re-validates
+ * in `solslot_api/admin_auth.py:require_admin_jwt`, which re-validates
  * live allowlist membership on every request (POP-CANON-012).
  */
 export const adminAuthGuard: CanActivateFn = (route, state): boolean | UrlTree => {

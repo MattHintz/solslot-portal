@@ -7,7 +7,7 @@ import {
   AdminAuthorityResponse,
   AdminAuthorityV2Response,
 } from '../../../services/admin-api.service';
-import { ProtocolInfo } from '../../../services/populis-api.service';
+import { ProtocolInfo } from '../../../services/solslot-api.service';
 import { OnChainStateService } from '../../../services/on-chain-state.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import {
@@ -61,7 +61,7 @@ type VerifyStatus =
  *   2. Walk the singleton lineage on coinset.org (no API involvement).
  *   3. Replay the most recent spend in chia-wallet-sdk-wasm.
  *   4. Pull the CREATE_PUZZLE_ANNOUNCEMENT body whose first byte is
- *      PROTOCOL_PREFIX (0x50).  For every A.x puzzle that body is
+ *      PROTOCOL_PREFIX (0x53).  For every A.x puzzle that body is
  *      `PROTOCOL_PREFIX || state_hash` by construction.
  *   5. Compare the on-chain state_hash with the API-published value.
  *      Match  -> green badge "verified".
@@ -90,7 +90,7 @@ type VerifyStatus =
       <header class="flex flex-wrap items-end justify-between gap-6">
         <div>
           <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-2">
-            Populis · Admin Desk
+            Solslot · Admin Desk
           </div>
           <h1 class="font-display text-4xl md:text-5xl">Trust roots.</h1>
           <p class="mt-2 max-w-2xl text-text-muted text-sm">
@@ -115,7 +115,7 @@ type VerifyStatus =
               The on-chain admin-authority state below is published as a
               transparency surface.  Today the actual gating source for
               <span class="mono text-text">/admin/*</span> is
-              <span class="mono text-text">{{ a.gating_source || 'POPULIS_ADMIN_PUBKEY_ALLOWLIST' }}</span>.
+              <span class="mono text-text">{{ a.gating_source || 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST' }}</span>.
               Phase 2.5 will swap the gating source to the on-chain
               singleton; until then operators must keep the EVM ↔ BLS
               allowlist mapping consistent off-chain (the API's startup
@@ -166,7 +166,7 @@ type VerifyStatus =
           @if (!authority()?.launcher_id) {
             <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
               Legacy v1 is not configured.  Populate
-              <span class="mono">POPULIS_ADMIN_AUTHORITY_*</span>
+              <span class="mono">SOLSLOT_ADMIN_AUTHORITY_*</span>
               on the API to enable on-chain verification here.
             </p>
           } @else {
@@ -370,7 +370,7 @@ type VerifyStatus =
             <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
               Network: <span class="mono">{{ protocol()?.network || '—' }}</span>.
               Launch the protocol-config singleton, then set
-              <span class="mono">POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID</span>.
+              <span class="mono">SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID</span>.
             </p>
             <div class="mt-4 rounded-card border border-yellow-500/30 bg-yellow-500/5 p-3 text-xs text-text-muted">
               <div class="font-display text-sm text-yellow-100">Vault registration is locked</div>
@@ -401,15 +401,15 @@ type VerifyStatus =
                   <div class="font-display text-sm text-text">After launch</div>
                   <ul class="mt-1 list-disc space-y-1 pl-5">
                     <li>Capture the A.3 launcher id.</li>
-                    <li>Set <span class="mono">POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID</span> in the API environment.</li>
+                    <li>Set <span class="mono">SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID</span> in the API environment.</li>
                     <li>Restart the API, then verify <span class="mono">/protocol</span> and this Trust Roots card.</li>
                     <li>Keep the approval record, launcher id, environment change, and verification result for audit review.</li>
                   </ul>
                 </div>
               </div>
               <p class="mt-3 leading-relaxed">
-                Technical support procedure: <span class="mono">populis_api/GENESIS_README.md §A.3</span>
-                and <span class="mono">populis_api/SECURITY.md §A.3</span>.
+                Technical support procedure: <span class="mono">solslot_api/GENESIS_README.md §A.3</span>
+                and <span class="mono">solslot_api/SECURITY.md §A.3</span>.
               </p>
               <a routerLink="/admin/launch-protocol-config" class="btn btn--primary text-xs mt-4">
                 Launch A.3 in portal
@@ -487,7 +487,7 @@ type VerifyStatus =
           @if (!protocol()?.property_registry_launcher_id) {
             <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
               Launch the property-registry singleton, then set
-              <span class="mono">POPULIS_PROTOCOL_PROPERTY_REGISTRY_LAUNCHER_ID</span>.
+              <span class="mono">SOLSLOT_PROTOCOL_PROPERTY_REGISTRY_LAUNCHER_ID</span>.
             </p>
           } @else {
           <dl class="mt-5 space-y-3 text-sm flex-1">
@@ -639,11 +639,9 @@ export class TrustRootsComponent {
 
   readonly chiaWasmReady = computed(() => this.wasm.ready());
   readonly primaryAuthority = computed(() =>
-    this.authorityV2()?.launcher_id ? this.authorityV2() : this.authority(),
+    this.authorityV2(),
   );
-  readonly showLegacyAuthority = computed(
-    () => this.authorityV2() !== null && !this.authorityV2()?.launcher_id,
-  );
+  readonly showLegacyAuthority = computed(() => false);
 
   constructor() {
     void this.loadInitial();

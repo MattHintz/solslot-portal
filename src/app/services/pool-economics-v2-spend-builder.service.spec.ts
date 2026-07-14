@@ -63,6 +63,7 @@ interface FixtureFile {
     pool_full_puzzle_hash: string;
     pool_amount: number;
     deed_id: string;
+    deed_launcher_id: string;
     p2_vault_puzzle_hash: string;
     buyer_vault_launcher_id: string;
     launcher_puzzle_hash: string;
@@ -70,7 +71,9 @@ interface FixtureFile {
     collection_id_canon: string;
     token_coin_id: string;
     nav_evidence: FixtureEvidence;
+    nav_evidence_coin_spend: FixtureCoinSpend;
     acquisition_nav_evidence: FixtureEvidence;
+    acquisition_nav_evidence_coin_spend: FixtureCoinSpend;
   };
   specific_deed_swap: FixtureSection;
   true_redemption: FixtureSection;
@@ -97,6 +100,12 @@ interface FixtureCoinSpend {
 }
 
 const fixture = fixturesJson as FixtureFile;
+const DEED_METADATA = {
+  deedLauncherId: fixture.common.deed_launcher_id,
+  parValueMojos: fixture.reserve_acquisition.inputs['par_value_mojos'],
+  assetClass: fixture.reserve_acquisition.inputs['asset_class'],
+  propertyIdCanon: fixture.common.property_id_canon,
+};
 
 describe('PoolEconomicsV2SpendBuilderService', () => {
   let service: PoolEconomicsV2SpendBuilderService;
@@ -159,6 +168,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       ...contextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -183,6 +193,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -209,6 +220,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       ...contextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -230,6 +242,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -249,6 +262,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       ...contextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       propertyIdCanon: fixture.common.property_id_canon,
       parValueMojos: inputNumber(fixture.reserve_acquisition, 'par_value_mojos'),
       assetClass: inputNumber(fixture.reserve_acquisition, 'asset_class'),
@@ -272,6 +286,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       propertyIdCanon: fixture.common.property_id_canon,
       parValueMojos: inputNumber(fixture.reserve_acquisition, 'par_value_mojos'),
       assetClass: inputNumber(fixture.reserve_acquisition, 'asset_class'),
@@ -306,11 +321,11 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
   it('composes a specific deed swap unsigned bundle with NAV, deed, and CAT settlement witnesses', () => {
     const seeds = witnessSeeds(wasm);
     const navEvidence = navEvidenceFromFixture(fixture.common.nav_evidence);
-    navEvidence.registryPuzzleHash = seeds.nav.puzzleHash;
     const poolBuild = service.buildSpecificDeedSwapCoinSpend({
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -329,11 +344,10 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
     const result = service.composePoolV2UnsignedBundle({
       poolSpend: poolBuild,
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       navEvidence,
       witnesses: {
-        navEvidenceSpend: witnessSpend(wasm, seeds.nav, [
-          createPuzzleAnnouncement(wasm, poolBuild.spec.requiredNavEvidenceMessage),
-        ]),
+        navEvidenceSpend: coinSpendFromFixture(fixture.common.nav_evidence_coin_spend),
         deedSpend: witnessSpend(wasm, seeds.deed, [
           createCoinAnnouncement(wasm, poolBuild.spec.deedMessage),
         ]),
@@ -362,11 +376,11 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
   it('describes Pool V2 token witness requirements without supplied witness spends', () => {
     const seeds = witnessSeeds(wasm);
     const navEvidence = navEvidenceFromFixture(fixture.common.nav_evidence);
-    navEvidence.registryPuzzleHash = seeds.nav.puzzleHash;
     const poolBuild = service.buildSpecificDeedSwapCoinSpend({
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -381,6 +395,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
     const requirements = service.describePoolV2RequiredAnnouncements({
       poolSpend: poolBuild,
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       navEvidence,
       tokenSettlementPuzzleHash: seeds.tokenSettlement.puzzleHash,
     });
@@ -405,11 +420,11 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
   it('rejects specific deed swaps that omit the bounded CAT settlement witness', () => {
     const seeds = witnessSeeds(wasm);
     const navEvidence = navEvidenceFromFixture(fixture.common.nav_evidence);
-    navEvidence.registryPuzzleHash = seeds.nav.puzzleHash;
     const poolBuild = service.buildSpecificDeedSwapCoinSpend({
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -425,11 +440,10 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       service.composePoolV2UnsignedBundle({
         poolSpend: poolBuild,
         deedId: seeds.deed.coinId,
+        ...DEED_METADATA,
         navEvidence,
         witnesses: {
-          navEvidenceSpend: witnessSpend(wasm, seeds.nav, [
-            createPuzzleAnnouncement(wasm, poolBuild.spec.requiredNavEvidenceMessage),
-          ]),
+          navEvidenceSpend: coinSpendFromFixture(fixture.common.nav_evidence_coin_spend),
           deedSpend: witnessSpend(wasm, seeds.deed, [
             createCoinAnnouncement(wasm, poolBuild.spec.deedMessage),
           ]),
@@ -442,11 +456,11 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
   it('composes a true redemption unsigned bundle with a pool-token melt witness', () => {
     const seeds = witnessSeeds(wasm);
     const navEvidence = navEvidenceFromFixture(fixture.common.nav_evidence);
-    navEvidence.registryPuzzleHash = seeds.nav.puzzleHash;
     const poolBuild = service.buildTrueRedemptionCoinSpend({
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -459,11 +473,10 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
     const result = service.composePoolV2UnsignedBundle({
       poolSpend: poolBuild,
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       navEvidence,
       witnesses: {
-        navEvidenceSpend: witnessSpend(wasm, seeds.nav, [
-          createPuzzleAnnouncement(wasm, poolBuild.spec.requiredNavEvidenceMessage),
-        ]),
+        navEvidenceSpend: coinSpendFromFixture(fixture.common.nav_evidence_coin_spend),
         deedSpend: witnessSpend(wasm, seeds.deed, [
           createCoinAnnouncement(wasm, poolBuild.spec.deedMessage),
         ]),
@@ -489,11 +502,11 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
   it('composes a reserve acquisition bundle with reserve payment and fresh-mint witnesses', () => {
     const seeds = witnessSeeds(wasm);
     const navEvidence = navEvidenceFromFixture(fixture.common.acquisition_nav_evidence);
-    navEvidence.registryPuzzleHash = seeds.nav.puzzleHash;
     const poolBuild = service.buildReserveAcquisitionCoinSpend({
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       propertyIdCanon: fixture.common.property_id_canon,
       parValueMojos: inputNumber(fixture.reserve_acquisition, 'par_value_mojos'),
       assetClass: inputNumber(fixture.reserve_acquisition, 'asset_class'),
@@ -513,11 +526,12 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
     const result = service.composePoolV2UnsignedBundle({
       poolSpend: poolBuild,
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       navEvidence,
       witnesses: {
-        navEvidenceSpend: witnessSpend(wasm, seeds.nav, [
-          createPuzzleAnnouncement(wasm, poolBuild.spec.requiredNavEvidenceMessage),
-        ]),
+        navEvidenceSpend: coinSpendFromFixture(
+          fixture.common.acquisition_nav_evidence_coin_spend,
+        ),
         deedSpend: witnessSpend(wasm, seeds.deed, [
           createCoinAnnouncement(wasm, poolBuild.spec.deedMessage),
         ]),
@@ -545,11 +559,11 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
   it('rejects witnesses that replay but emit the wrong announcement', () => {
     const seeds = witnessSeeds(wasm);
     const navEvidence = navEvidenceFromFixture(fixture.common.nav_evidence);
-    navEvidence.registryPuzzleHash = seeds.nav.puzzleHash;
     const poolBuild = service.buildTrueRedemptionCoinSpend({
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -563,6 +577,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       service.composePoolV2UnsignedBundle({
         poolSpend: poolBuild,
         deedId: seeds.deed.coinId,
+        ...DEED_METADATA,
         navEvidence,
         witnesses: {
           navEvidenceSpend: witnessSpend(wasm, seeds.nav, [
@@ -587,6 +602,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
         ...contextFromFixture(),
         state: stateFromFixture(),
         deedId: fixture.common.deed_id,
+        ...DEED_METADATA,
         propertyIdCanon: fixture.common.property_id_canon,
         parValueMojos: inputNumber(fixture.reserve_acquisition, 'par_value_mojos'),
         assetClass: inputNumber(fixture.reserve_acquisition, 'asset_class'),
@@ -684,6 +700,18 @@ function expectCoinSpend(
   expect(actual.coin.amount).toBe(BigInt(expected.coin.amount));
   expect(actual.puzzleReveal).toBe(expected.puzzle_reveal);
   expect(actual.solution).toBe(expected.solution);
+}
+
+function coinSpendFromFixture(spend: FixtureCoinSpend): UnsignedCoinSpend {
+  return {
+    coin: {
+      parentCoinInfo: spend.coin.parent_coin_info,
+      puzzleHash: spend.coin.puzzle_hash,
+      amount: BigInt(spend.coin.amount),
+    },
+    puzzleReveal: spend.puzzle_reveal,
+    solution: spend.solution,
+  };
 }
 
 interface WitnessSeed {

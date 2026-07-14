@@ -3,12 +3,12 @@ import { Injectable, signal } from '@angular/core';
 export type LastWalletKind = 'evm' | 'chia';
 
 interface StoredWalletUxState {
-  version: 1;
+  version: 2;
   lastWalletKind: LastWalletKind;
   updatedAt: number;
 }
 
-const STORAGE_KEY = 'populis_wallet_ux_v1';
+const STORAGE_KEY = 'SOLSLOT_WALLET_UX_V2';
 
 @Injectable({ providedIn: 'root' })
 export class WalletUxStateService {
@@ -19,7 +19,7 @@ export class WalletUxStateService {
     this._lastWalletKind.set(kind);
     if (typeof window === 'undefined') return;
     const state: StoredWalletUxState = {
-      version: 1,
+      version: 2,
       lastWalletKind: kind,
       updatedAt: Date.now(),
     };
@@ -39,7 +39,7 @@ export class WalletUxStateService {
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as Partial<StoredWalletUxState>;
-      if (parsed.version === 1 && isLastWalletKind(parsed.lastWalletKind)) {
+      if (parsed.version === 2 && isLastWalletKind(parsed.lastWalletKind)) {
         return parsed.lastWalletKind;
       }
     } catch {}

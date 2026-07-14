@@ -24,7 +24,7 @@ export function canonicalCollectionIdHash(raw: string): string {
  * Canonical on-chain property id:
  *   strip -> upper -> UTF-8 -> sha256 -> bytes32.
  *
- * Mirrors ``populis_puzzles/property_registry_driver.py``'
+ * Mirrors ``solslot_puzzles/property_registry_driver.py``'
  * ``canonicalise_property_id`` exactly.
  */
 export function canonicalPropertyIdHash(raw: string): string {

@@ -41,8 +41,8 @@ describe('MintDetailComponent publish flow', () => {
   >;
   let chainState: jasmine.SpyObj<Pick<MintProposalChainStateService, 'check'>>;
 
-  const originalProtocol = { ...environment.populisProtocol };
-  const ownerAddress = '0x0e61d3bb1148bdd802f747caea112333d156626a';
+  const originalProtocol = { ...environment.solslotProtocol };
+  const ownerAddress = '0x1111111111111111111111111111111111111111';
   const proposalId = 'mint-draft-1';
   const registryLauncherId = b32('a4');
   const registryPuzzleHash = b32('19');
@@ -62,7 +62,7 @@ describe('MintDetailComponent publish flow', () => {
   };
 
   beforeEach(async () => {
-    Object.assign(environment.populisProtocol, {
+    Object.assign(environment.solslotProtocol, {
       ...originalProtocol,
       propertyRegistryLauncherId: registryLauncherId,
       propertyRegistryCurrentPuzzleHash: '',
@@ -148,7 +148,7 @@ describe('MintDetailComponent publish flow', () => {
   });
 
   afterEach(() => {
-    Object.assign(environment.populisProtocol, originalProtocol);
+    Object.assign(environment.solslotProtocol, originalProtocol);
   });
 
   async function renderProposal(proposal: MintProposalResponse): Promise<string> {
@@ -196,7 +196,7 @@ describe('MintDetailComponent publish flow', () => {
       deedFullPuzhash: b32('52'),
       proposalHash: b32('53'),
       proposalTrackerCoinId: b32('54'),
-      pgtLockCoinId: b32('65'),
+      sgtLockCoinId: b32('65'),
       deedLauncherId: b32('55'),
       publishedBundleId: b32('60'),
       propertyRegistryPuzzleHash: registryPuzzleHash,
@@ -334,7 +334,7 @@ describe('MintDetailComponent publish flow', () => {
       },
       on_chain: {
         proposal_tracker_coin_id: null,
-        pgt_lock_coin_id: null,
+        sgt_lock_coin_id: null,
         deed_launcher_id: null,
         published_bundle_id: null,
         executed_bundle_id: null,
@@ -388,7 +388,7 @@ describe('MintDetailComponent publish flow', () => {
       },
       on_chain: {
         proposal_tracker_coin_id: b32('54'),
-        pgt_lock_coin_id: b32('65'),
+        sgt_lock_coin_id: b32('65'),
         deed_launcher_id: b32('55'),
         published_bundle_id: b32('60'),
         executed_bundle_id: null,
@@ -430,13 +430,13 @@ describe('MintDetailComponent publish flow', () => {
         proposalSingletonStructProgramHash: b32('59'),
       },
       xchCoinId: b32('61'),
-      pickedPgtCoin: {
+      pickedSgtCoin: {
         parentCoinInfo: b32('62'),
         puzzleHash: b32('63'),
         amount: 12345,
         confirmedBlockIndex: 100,
       },
-      pgtLockCoinId: b32('65'),
+      sgtLockCoinId: b32('65'),
       votingDeadline: 1_700_000_678n,
       voterInnerPuzzleHash: b32('64'),
     };

@@ -40,13 +40,13 @@ import type { PublishMintArgs } from './mint-proposal-v2-publish-runner.service'
  *   * ``royaltyPuzhash`` / ``royaltyBps`` — straight off the draft.
  *   * ``quorumThreshold`` — ``draft.quorum_required``.
  *   * the four ``protocol*`` / ``p2*`` context fields — from
- *     ``environment.populisProtocol`` (added in 4f.1a, mirroring the
- *     API's ``POPULIS_*`` env vars).
+ *     ``environment.solslotProtocol`` (added in 4f.1a, mirroring the
+ *     API's ``SOLSLOT_*`` env vars).
  *   * ``propertyRegistryPuzzleHash`` — current A4 property-registry singleton
  *     full puzzle hash; the mint bill commits to this alongside
  *     ``propertyIdCanon``.
  *   * ``firstVoteAmount`` / ``votingWindowSeconds`` — default to
- *     ``environment.populisProtocol.governanceMinProposalStake`` /
+ *     ``environment.solslotProtocol.governanceMinProposalStake`` /
  *     ``governanceVotingWindowSeconds`` when the caller omits them.
  *   * ``proposalId`` — ``draft.id`` (audit correlation only).
  *
@@ -162,10 +162,10 @@ export class PublishMintArgsAssemblerService {
     // ── Publish-flow inputs (default to env governance mirrors) ──
     const firstVoteAmount =
       input.firstVoteAmount ??
-      environment.populisProtocol.governanceMinProposalStake;
+      environment.solslotProtocol.governanceMinProposalStake;
     const votingWindowSeconds =
       input.votingWindowSeconds ??
-      environment.populisProtocol.governanceVotingWindowSeconds;
+      environment.solslotProtocol.governanceVotingWindowSeconds;
     if (BigInt(firstVoteAmount) <= 0n) {
       return { kind: 'invalid-input', reason: 'first-vote-amount-must-be-positive' };
     }
@@ -203,7 +203,7 @@ export class PublishMintArgsAssemblerService {
 
 /**
  * Protocol deployment coordinates the publish flow curries in.  Mirror
- * of the four ``environment.populisProtocol`` fields added in 4f.1a;
+ * of the four ``environment.solslotProtocol`` fields added in 4f.1a;
  * accepted as an explicit override so unit tests don't have to patch the
  * environment module.
  */
@@ -222,9 +222,9 @@ export interface AssemblePublishArgsInput {
   ownerMemberHash: string;
   /** Defaults to 32 zero bytes (Phase-4 alpha placeholder). */
   govMemberHash?: string;
-  /** Defaults to ``environment.populisProtocol.governanceMinProposalStake``. */
+  /** Defaults to ``environment.solslotProtocol.governanceMinProposalStake``. */
   firstVoteAmount?: number | bigint;
-  /** Defaults to ``environment.populisProtocol.governanceVotingWindowSeconds``. */
+  /** Defaults to ``environment.solslotProtocol.governanceVotingWindowSeconds``. */
   votingWindowSeconds?: number | bigint;
   /** Override "now" for deterministic tests; forwarded to the runner. */
   nowSeconds?: number;
@@ -243,7 +243,7 @@ export type AssemblePublishArgsResult =
 // ─── Internals ──────────────────────────────────────────────────────────────
 
 function defaultProtocolContext(): MintPublishProtocolContext {
-  const p = environment.populisProtocol;
+  const p = environment.solslotProtocol;
   return {
     protocolDidSingletonStructHex: p.protocolDidSingletonStructHex,
     protocolDidPuzhash: p.protocolDidPuzhash,

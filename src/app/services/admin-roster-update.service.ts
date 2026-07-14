@@ -3,7 +3,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
-import { Eip712TypedData } from './populis-api.service';
+import { Eip712TypedData } from './solslot-api.service';
 
 @Injectable({ providedIn: 'root' })
 export class AdminRosterUpdateService {

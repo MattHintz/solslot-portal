@@ -237,8 +237,10 @@ describe('GovernanceTrackerReaderService', () => {
    *  trees they want the service to "deserialize" so we don't need to
    *  produce real CLVM bytes. */
   let solutionTrees: Map<string, Sym>;
+  const originalGovernanceLauncherId = environment.solslotProtocol.governanceLauncherId;
 
   beforeEach(() => {
+    environment.solslotProtocol.governanceLauncherId = LAUNCHER;
     reader = jasmine.createSpyObj('ChiaSingletonReaderService', ['walkLineage']);
     coinset = jasmine.createSpyObj('CoinsetService', ['getPuzzleAndSolution']);
     wasm = jasmine.createSpyObj('ChiaWasmService', ['ready', 'sdk']);
@@ -270,6 +272,10 @@ describe('GovernanceTrackerReaderService', () => {
       ],
     });
     service = TestBed.inject(GovernanceTrackerReaderService);
+  });
+
+  afterEach(() => {
+    environment.solslotProtocol.governanceLauncherId = originalGovernanceLauncherId;
   });
 
   function registerSolution(coinId: string, blockIndex: number, hex: string, tree: Sym): void {
@@ -557,8 +563,8 @@ describe('GovernanceTrackerReaderService', () => {
     expect(snap.proposalHash).toBe(PROPOSAL_HASH);
     expect(snap.votingDeadlineSeconds).toBe(VOTING_DEADLINE_SECONDS);
     expect(snap.quorumRequired).toBe(
-      (BigInt(environment.populisProtocol.governanceQuorumBps) *
-        BigInt(environment.populisProtocol.governancePgtTotalSupply)) /
+      (BigInt(environment.solslotProtocol.governanceQuorumBps) *
+        BigInt(environment.solslotProtocol.governanceSgtTotalSupply)) /
         10000n,
     );
   }

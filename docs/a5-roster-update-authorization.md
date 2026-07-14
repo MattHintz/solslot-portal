@@ -9,8 +9,8 @@ The only protocol authorizer for this add-admin path is the current `admin_autho
 The following are not authorizers for this A.5 add-admin path:
 
 - The candidate admin wallet does not authorize its own addition.
-- The Populis API backend is optional cross-check infrastructure only and is not an authority source for roster changes.
-- PGT committee approval is not part of this A.5 add-admin path unless a future governance design explicitly adds a separate spend path.
+- The Solslot API backend is optional cross-check infrastructure only and is not an authority source for roster changes.
+- SGT committee approval is not part of this A.5 add-admin path unless a future governance design explicitly adds a separate spend path.
 - The bootstrap operator token cannot authorize post-genesis roster updates.
 
 ## Roster mutation rule

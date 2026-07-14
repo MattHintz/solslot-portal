@@ -128,7 +128,7 @@ class FakeClvm {
   }
 
   conditionsProgram(): FakeProgram {
-    const announcement = new Uint8Array([0x50, 0x07, ...hexToBytes(NEW_STATE_HASH)]);
+    const announcement = new Uint8Array([0x53, 0x07, ...hexToBytes(NEW_STATE_HASH)]);
     const aggMessage = this.includeBadAggSigMessage ? h('ba') : ROSTER_UPDATE_BINDING_HASH;
     return new FakeProgram('conditions', {
       listItems: [
@@ -191,7 +191,7 @@ describe('AdminRosterMipsExecutionCoinSpendService', () => {
     });
     expect(result.candidate?.bounded_mips_execution_report.cost).toBe('123');
     expect(result.candidate?.bounded_mips_execution_report.create_puzzle_announcements).toEqual([
-      '0x5007' + NEW_STATE_HASH.slice(2),
+      '0x5307' + NEW_STATE_HASH.slice(2),
     ]);
     expect(result.candidate?.bounded_mips_execution_report.agg_sig_me_conditions[0].message).toBe(ROSTER_UPDATE_BINDING_HASH);
     expect(result.candidate?.unsigned_spend_bundle_candidate.coin_spends.length).toBe(1);

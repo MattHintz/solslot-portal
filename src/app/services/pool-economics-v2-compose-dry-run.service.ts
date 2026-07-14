@@ -49,6 +49,7 @@ export interface PoolV2ComposeDryRunResult {
 }
 
 const DRY_RUN_IDS = {
+  deedLauncherId: b32('1f'),
   p2VaultPuzzleHash: b32('12'),
   collectionIdCanon: b32('13'),
   collectionNavRoot: b32('16'),
@@ -75,6 +76,10 @@ export class PoolEconomicsV2ComposeDryRunService {
       ...this.innerContext(seeds.pool),
       state: args.state,
       deedId: seeds.deed.coinId,
+      deedLauncherId: DRY_RUN_IDS.deedLauncherId,
+      parValueMojos: args.collectionNavMojos,
+      assetClass: 1n,
+      propertyIdCanon: DRY_RUN_IDS.propertyIdCanon,
       buyerVaultLauncherId: DRY_RUN_IDS.vaultLauncherId,
       launcherPuzzleHash: DRY_RUN_IDS.launcherPuzzleHash,
       collectionIdCanon: DRY_RUN_IDS.collectionIdCanon,
@@ -120,6 +125,10 @@ export class PoolEconomicsV2ComposeDryRunService {
       ...this.innerContext(seeds.pool),
       state: args.state,
       deedId: seeds.deed.coinId,
+      deedLauncherId: DRY_RUN_IDS.deedLauncherId,
+      parValueMojos: args.collectionNavMojos,
+      assetClass: 1n,
+      propertyIdCanon: DRY_RUN_IDS.propertyIdCanon,
       vaultLauncherId: DRY_RUN_IDS.vaultLauncherId,
       launcherPuzzleHash: DRY_RUN_IDS.launcherPuzzleHash,
       collectionIdCanon: DRY_RUN_IDS.collectionIdCanon,
@@ -165,6 +174,7 @@ export class PoolEconomicsV2ComposeDryRunService {
       ...this.innerContext(seeds.pool),
       state: args.state,
       deedId: seeds.deed.coinId,
+      deedLauncherId: DRY_RUN_IDS.deedLauncherId,
       propertyIdCanon: DRY_RUN_IDS.propertyIdCanon,
       parValueMojos: args.collectionNavMojos,
       assetClass: 1n,

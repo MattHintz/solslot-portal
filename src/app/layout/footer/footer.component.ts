@@ -50,7 +50,7 @@ import { environment } from '../../../environments/environment';
               </a>
             </li>
             <li>
-              <a href="https://github.com/MattHintz/populis-protocol" target="_blank" rel="noopener" class="hover:text-brand transition">
+              <a href="https://github.com/MattHintz/solslot-protocol" target="_blank" rel="noopener" class="hover:text-brand transition">
                 Protocol source
               </a>
             </li>
@@ -73,7 +73,7 @@ export class FooterComponent {
    * Footer chain-state pill.  Hits coinset.org's
    * ``get_blockchain_state`` (the same RPC the portal uses for every
    * other on-chain read) and surfaces the current peak height as a
-   * liveness signal.  Replaces the previous Populis-API ``/health``
+   * liveness signal.  Replaces the previous Solslot API ``/health``
    * probe (Phase 9-Hermes-D follow-up: only coinset + the faucet
    * remain as backend dependencies).
    */

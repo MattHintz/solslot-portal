@@ -12,7 +12,7 @@ import {
 } from '../../../services/admin-protocol-config.service';
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import { ChiaWasmService } from '../../../services/chia-wasm.service';
-import { ProtocolInfo } from '../../../services/populis-api.service';
+import { ProtocolInfo } from '../../../services/solslot-api.service';
 import {
   ProtocolConfigLaunchInputs,
   ProtocolConfigLaunchPreview,
@@ -156,7 +156,9 @@ import { formatError } from '../../../utils/format-error';
                   </button>
                 </div>
               }
-              @if (connectingChia()) {
+              @if (restoringSageWalletConnect()) {
+                <p class="text-xs text-text-muted mt-3">Checking existing Sage session...</p>
+              } @else if (connectingChia()) {
                 <p class="text-xs text-text-muted mt-3">Connecting {{ connectingChia() }}…</p>
               }
               @if (sageWalletConnectUri(); as uri) {
@@ -229,7 +231,7 @@ import { formatError } from '../../../utils/format-error';
             <span>
               I confirm these A.3 inputs match the approved protocol deployment record, and I
               understand that after broadcast I must set
-              <span class="mono">POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID</span> and restart the API
+              <span class="mono">SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID</span> and restart the API
               before vault creation is enabled.
             </span>
           </label>
@@ -284,7 +286,7 @@ import { formatError } from '../../../utils/format-error';
               <h3 class="font-display text-xl text-brand">Finalize API configuration</h3>
               <p class="text-sm text-text-muted mt-2 leading-relaxed">
                 Paste the one-shot API admin token to set
-                <span class="mono">POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID</span> in the API
+                <span class="mono">SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID</span> in the API
                 environment and verify the live <span class="mono">/protocol</span> response.
               </p>
               <label class="block mt-4">
@@ -295,7 +297,7 @@ import { formatError } from '../../../utils/format-error';
                   autocomplete="off"
                   [ngModel]="finalizeAdminTokenInput()"
                   (ngModelChange)="finalizeAdminTokenInput.set($event)"
-                  placeholder="POPULIS_ADMIN_TOKEN"
+                  placeholder="SOLSLOT_ADMIN_TOKEN"
                 />
               </label>
               <div class="mt-4 flex flex-wrap gap-3">
@@ -362,6 +364,7 @@ export class LaunchProtocolConfigComponent {
   readonly walletPubkey = computed(() => this.wallet.pubkey());
   readonly walletConnectionKind = computed(() => this.wallet.connectionKind());
   readonly sageWalletConnectUri = this.wallet.sageWalletConnectUri;
+  readonly restoringSageWalletConnect = this.wallet.restoringSageWalletConnect;
   readonly chiaWasmReady = computed(() => this.wasm.ready());
 
   readonly previewResult = computed<
@@ -409,7 +412,7 @@ export class LaunchProtocolConfigComponent {
   );
   readonly envLine = computed(() => {
     const result = this.submittedResult();
-    return result ? `POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID=${result.launcherId}` : '';
+    return result ? `SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID=${result.launcherId}` : '';
   });
   readonly submitButtonLabel = computed(() => {
     const s = this.submitState();

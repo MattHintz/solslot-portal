@@ -6,7 +6,7 @@ import { ChiaWasmService } from './chia-wasm.service';
 import { CoinRecord, CoinsetService } from './coinset.service';
 import { bytesToHex, coinId, hexToBytes } from '../utils/chia-hash';
 
-export const RECOVERY_ANCHOR_TAG = 'POPULIS_BOOTSTRAP_V1';
+export const RECOVERY_ANCHOR_TAG = 'SOLSLOT_BOOTSTRAP_V2';
 export const RECOVERY_ANCHOR_MARKER_AMOUNT_MOJOS = 1;
 
 @Injectable({ providedIn: 'root' })
@@ -227,8 +227,8 @@ interface ProgramShape {
 
 function validateRecoveryAnchorPayload(value: Record<string, unknown>): BootstrapRecoveryAnchorArtifact {
   const payload = { ...value };
-  if (payload['version'] !== 1) {
-    throw new Error('recovery anchor version must be 1');
+  if (payload['version'] !== 2) {
+    throw new Error('recovery anchor version must be 2');
   }
   if (payload['tag'] !== RECOVERY_ANCHOR_TAG) {
     throw new Error('recovery anchor tag mismatch');
@@ -240,7 +240,7 @@ function validateRecoveryAnchorPayload(value: Record<string, unknown>): Bootstra
     throw new Error('authority_version must be a positive integer');
   }
   return {
-    version: 1,
+    version: 2,
     tag: RECOVERY_ANCHOR_TAG,
     network,
     admin_authority_v2_launcher_id: adminLauncher,

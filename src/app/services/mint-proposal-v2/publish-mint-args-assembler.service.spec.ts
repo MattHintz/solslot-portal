@@ -54,7 +54,7 @@ function makeDraft(overrides: Partial<MintProposalResponse> = {}): MintProposalR
     },
     on_chain: {
       proposal_tracker_coin_id: null,
-      pgt_lock_coin_id: null,
+      sgt_lock_coin_id: null,
       deed_launcher_id: null,
       published_bundle_id: null,
       executed_bundle_id: null,
@@ -146,10 +146,10 @@ describe('PublishMintArgsAssemblerService', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.args.firstVoteAmount).toBe(
-      environment.populisProtocol.governanceMinProposalStake,
+      environment.solslotProtocol.governanceMinProposalStake,
     );
     expect(result.args.votingWindowSeconds).toBe(
-      environment.populisProtocol.governanceVotingWindowSeconds,
+      environment.solslotProtocol.governanceVotingWindowSeconds,
     );
   });
 

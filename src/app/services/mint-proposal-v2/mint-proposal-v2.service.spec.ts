@@ -2,7 +2,7 @@
  * Cross-repo binding test for the TS port of mint_proposal_v2_driver.
  *
  * The fixture file (``mint-proposal-v2.fixtures.json``) is generated
- * by ``populis_protocol/scripts/dump_mint_proposal_v2_fixtures.py``.
+ * by ``solslot_protocol/scripts/dump_mint_proposal_v2_fixtures.py``.
  * Each section of the fixture corresponds to a TS helper and asserts
  * hex-byte equivalence with the production Python implementation.
  *
@@ -11,7 +11,7 @@
  *      from the Python source of truth.  Diff the offending case's
  *      input + output and find the divergence.
  *   2. OR the Python source changed and the fixture wasn't regenerated.
- *      Re-run ``python populis_protocol/scripts/dump_mint_proposal_v2_fixtures.py``
+ *      Re-run ``python solslot_protocol/scripts/dump_mint_proposal_v2_fixtures.py``
  *      and re-test.
  *
  * Test patterns mirror ``admin-authority-v2.service.spec.ts`` so the

@@ -49,7 +49,7 @@ import { environment } from '../../../../environments/environment';
  * Operator-facing wizard for computing every deterministic output of
  * a v2 admin-authority genesis launch.  All computation happens
  * client-side via the WASM-first ``AdminAuthorityV2Service`` — no
- * Populis API call is needed.
+ * Solslot API call is needed.
  *
  * **Why a "preview-only" wizard for now?**
  * Actually submitting the launch bundle on chain requires constructing
@@ -171,6 +171,12 @@ type RecoveryBroadcastState =
   | { kind: 'broadcast'; result: BroadcastRecoveryAnchorResult }
   | { kind: 'error'; message: string };
 
+type RecoveryHandoffResumeState =
+  | { kind: 'idle' }
+  | { kind: 'pending' }
+  | { kind: 'loaded' }
+  | { kind: 'error'; message: string };
+
 interface RecoveryHandoffBundle {
   version: 1;
   artifacts: {
@@ -269,6 +275,295 @@ interface RecoveryHandoffBundle {
               <a routerLink="/admin" class="btn btn--ghost">Open Admin desk</a>
             </div>
           </div>
+          @if (resumedAdminRecords() || !finalizedView()) {
+            <div class="card mb-6 border border-brand/30 bg-brand/5">
+              <h2 class="font-display text-2xl">Publish recovery marker</h2>
+              <p class="text-sm text-text-muted mt-2">
+                Load the downloaded <code>recovery_handoff_bundle.json</code>
+                to resume the optional marker coin broadcast after bootstrap
+                finalization.
+              </p>
+              <div class="mt-4 grid gap-3">
+                <label for="recovery-handoff-bundle-input" class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted cursor-pointer">
+                  recovery_handoff_bundle.json
+                </label>
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  class="input text-xs"
+                  (change)="importRecoveryHandoffBundleFile($event)"
+                />
+                <textarea
+                  id="recovery-handoff-bundle-input"
+                  class="input w-full mono text-xs"
+                  rows="8"
+                  placeholder="{ &quot;version&quot;: 1, &quot;artifacts&quot;: ... }"
+                  [ngModel]="recoveryHandoffBundleInput()"
+                  (ngModelChange)="recoveryHandoffBundleInput.set($event)"
+                ></textarea>
+                <button
+                  type="button"
+                  class="btn btn--primary w-fit"
+                  [disabled]="recoveryHandoffResumeState().kind === 'pending' || !recoveryHandoffBundleInput().trim()"
+                  (click)="loadRecoveryHandoffBundle()"
+                >
+                  @if (recoveryHandoffResumeState().kind === 'pending') {
+                    Verifying…
+                  } @else {
+                    Load handoff bundle
+                  }
+                </button>
+                @if (recoveryHandoffResumeState().kind === 'loaded') {
+                  <p class="text-xs text-emerald-300">
+                    Loaded recovery handoff bundle.
+                  </p>
+                }
+                @if (recoveryHandoffResumeError(); as err) {
+                  <p class="mono text-[0.65rem] text-red-300">
+                    <strong>Handoff load failed.</strong> {{ err }}
+                  </p>
+                }
+              </div>
+
+              @if (finalizedView()) {
+                <div class="mt-5 grid gap-3">
+                  <div class="rounded border border-white/10 bg-white/[0.03] p-3">
+                    <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                      Recovery verifier
+                    </div>
+                    @switch (recoveryVerifyState().kind) {
+                      @case ('pending') {
+                        <p class="text-xs text-text-muted mt-1">
+                          Verifying recovered public artifacts against the
+                          recovery anchor hash chain…
+                        </p>
+                      }
+                      @case ('verified') {
+                        @if (recoveryVerifySuccess(); as v) {
+                          <p class="text-xs text-emerald-300 mt-1">
+                            Verified. The recovery anchor, manifest, runtime
+                            config, admin records, and authority coordinates
+                            agree.
+                          </p>
+                          <p class="mono text-[0.6rem] text-text-muted mt-2 break-all">
+                            launcher_id={{ v.admin_authority_v2_launcher_id }}
+                            · admin_records_hash={{ v.admin_records_hash }}
+                          </p>
+                        }
+                      }
+                      @case ('rejected') {
+                        @if (recoveryVerifyFailure(); as err) {
+                          <p class="text-xs text-red-300 mt-1">
+                            Verification rejected these public artifacts:
+                            {{ err }}
+                          </p>
+                        }
+                      }
+                      @case ('error') {
+                        @if (recoveryVerifyFailure(); as err) {
+                          <p class="text-xs text-yellow-300 mt-1">
+                            Verification request failed: {{ err }}
+                          </p>
+                        }
+                      }
+                    }
+                  </div>
+
+                  <div class="rounded border border-white/10 bg-white/[0.03] p-3">
+                    <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                      Chia funding wallet
+                    </div>
+                    @if (!walletConnected()) {
+                      <div class="mt-2 flex flex-wrap gap-2">
+                        @if (chiaWallet.hasGoby()) {
+                          <button
+                            type="button"
+                            class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                            [disabled]="connectingChia()"
+                            (click)="connectChia('goby')"
+                          >
+                            @if (connectingChia() === 'goby') {
+                              Connecting…
+                            } @else {
+                              Connect Goby
+                            }
+                          </button>
+                        }
+                        @if (chiaWallet.hasSage()) {
+                          <button
+                            type="button"
+                            class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                            [disabled]="connectingChia()"
+                            (click)="connectChia('sage')"
+                          >
+                            @if (connectingChia() === 'sage') {
+                              Connecting…
+                            } @else {
+                              Connect Sage
+                            }
+                          </button>
+                        }
+                        @if (chiaWallet.hasSageWalletConnect()) {
+                          <button
+                            type="button"
+                            class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                            [disabled]="connectingChia()"
+                            (click)="connectChia('sage-walletconnect')"
+                          >
+                            @if (connectingChia() === 'sage-walletconnect') {
+                              Connecting…
+                            } @else {
+                              Sage WalletConnect
+                            }
+                          </button>
+                        }
+                        @if (connectingChia() && (connectingChia() !== 'sage-walletconnect' || chiaWallet.sageWalletConnectUri())) {
+                          <button
+                            type="button"
+                            class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                            (click)="cancelChiaConnect()"
+                          >
+                            Cancel
+                          </button>
+                        }
+                      </div>
+                      @if (chiaWallet.restoringSageWalletConnect()) {
+                        <p class="mono text-[0.6rem] text-text-muted mt-2">
+                          Checking existing Sage session...
+                        </p>
+                      }
+                      @if (connectingChia() === 'sage-walletconnect' && chiaWallet.sageWalletConnectUri(); as uri) {
+                        <div class="mt-3 rounded-card border border-brand/30 bg-brand/10 p-2">
+                          <p class="text-[0.7rem] text-text-muted">
+                            Open Sage WalletConnect and paste this pairing URI
+                            if the wallet does not open automatically:
+                          </p>
+                          <code class="mt-1 block break-all text-[0.6rem]">{{ uri }}</code>
+                        </div>
+                      }
+                      @if (chiaConnectError(); as err) {
+                        <p class="mono text-[0.6rem] text-red-300 mt-2">
+                          <strong>Connect failed.</strong> {{ err }}
+                        </p>
+                      }
+                    } @else {
+                      <p class="text-xs text-emerald-300 mt-1">
+                        ✓ Connected ({{ chiaWallet.connectionKind() }}).
+                        <code class="break-all">{{ chiaWallet.pubkey() }}</code>
+                      </p>
+                    }
+                  </div>
+
+                  <div class="rounded border border-white/10 bg-white/[0.03] p-3">
+                    <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
+                      Recovery anchor handoff
+                    </div>
+                    @switch (recoveryPublishIntentState().kind) {
+                      @case ('pending') {
+                        <p class="text-xs text-text-muted mt-1">
+                          Fetching marker-coin memo payload…
+                        </p>
+                      }
+                      @case ('ready') {
+                        @if (recoveryPublishIntent(); as intent) {
+                          <p class="text-xs text-emerald-300 mt-1">
+                            Publish intent ready.
+                          </p>
+                          <p class="mono text-[0.6rem] text-text-muted mt-2 break-all">
+                            amount={{ intent.marker_coin_amount_mojos }} mojo
+                            · payload_hash={{ intent.payload_hash }}
+                          </p>
+                          <label for="locked-recovery-marker-puzzle-hash-input" class="mt-3 block mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted cursor-pointer">
+                            Marker puzzle hash
+                          </label>
+                          <input
+                            id="locked-recovery-marker-puzzle-hash-input"
+                            type="text"
+                            class="input mt-1 w-full mono text-xs"
+                            placeholder="0x… (32 bytes)"
+                            [(ngModel)]="recoveryMarkerPuzzleHashInput"
+                          />
+                          <button
+                            type="button"
+                            class="btn btn--ghost mt-2 text-[0.65rem] py-1 px-3"
+                            [disabled]="!canPreviewRecoveryMarkerCoin()"
+                            (click)="previewRecoveryAnchorMarkerCoin()"
+                          >
+                            @if (recoveryCreateCoinPreviewState().kind === 'pending') {
+                              Previewing…
+                            } @else {
+                              Preview CREATE_COIN
+                            }
+                          </button>
+                        }
+                      }
+                      @case ('error') {
+                        @if (recoveryPublishIntentError(); as err) {
+                          <p class="text-xs text-yellow-300 mt-1">
+                            Publish intent unavailable: {{ err }}
+                          </p>
+                        }
+                      }
+                    }
+                    @switch (recoveryCreateCoinPreviewState().kind) {
+                      @case ('ready') {
+                        @if (recoveryCreateCoinPreview(); as p) {
+                          <div class="mt-3 rounded border border-emerald-500/20 bg-emerald-500/5 p-2">
+                            <p class="text-xs text-emerald-300">
+                              CREATE_COIN preview ready.
+                            </p>
+                            <p class="mono text-[0.6rem] text-text-muted mt-2 break-all">
+                              opcode={{ p.condition_opcode }}
+                              · amount={{ p.marker_coin_amount_mojos }} mojo
+                              · payload_hash={{ p.payload_hash }}
+                            </p>
+                            <p class="mono text-[0.6rem] text-text-muted mt-2 break-all">
+                              marker_puzzle_hash={{ p.marker_puzzle_hash }}
+                            </p>
+                          </div>
+                        }
+                      }
+                      @case ('error') {
+                        @if (recoveryCreateCoinPreviewError(); as err) {
+                          <p class="text-xs text-yellow-300 mt-2">
+                            CREATE_COIN preview unavailable: {{ err }}
+                          </p>
+                        }
+                      }
+                    }
+                    @if (recoveryCreateCoinPreviewState().kind === 'ready') {
+                      <button
+                        type="button"
+                        class="btn btn--primary mt-3 text-[0.65rem] py-1 px-3"
+                        [disabled]="!canBroadcastRecoveryMarkerCoin()"
+                        (click)="broadcastRecoveryAnchorMarkerCoin()"
+                      >
+                        @switch (recoveryBroadcastState().kind) {
+                          @case ('signing') { Signing… }
+                          @case ('pushing') { Pushing… }
+                          @default { Broadcast on chain }
+                        }
+                      </button>
+                    }
+                    @if (recoveryBroadcastResult(); as r) {
+                      <p class="text-xs text-emerald-300 mt-2">
+                        Broadcast accepted by coinset.org
+                        (status: {{ r.pushStatus ?? 'pending' }}).
+                      </p>
+                      <p class="mono text-[0.6rem] text-text-muted mt-1 break-all">
+                        marker_coin_id={{ r.markerCoinId }}
+                      </p>
+                    }
+                    @if (recoveryBroadcastError(); as err) {
+                      <p class="text-xs text-yellow-300 mt-2">
+                        Broadcast failed: {{ err }}
+                      </p>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
         }
         @case ('missing') {
           <div class="card mb-6 border border-yellow-500/30 bg-yellow-500/10">
@@ -281,7 +576,7 @@ interface RecoveryHandoffBundle {
         }
       }
 
-      @if (launchAccessMode() !== 'locked' || finalizedView()) {
+      @if (launchAccessMode() !== 'locked' || (finalizedView() && !resumedAdminRecords())) {
       @if (!chiaWasmReady()) {
         <div class="card border border-yellow-500/40 bg-yellow-500/10">
           <p class="text-sm">
@@ -351,9 +646,23 @@ interface RecoveryHandoffBundle {
                       }
                     </button>
                   }
+                  @if (connectingChia() && (connectingChia() !== 'sage-walletconnect' || chiaWallet.sageWalletConnectUri())) {
+                    <button
+                      type="button"
+                      class="btn btn--ghost text-[0.65rem] py-1 px-3"
+                      (click)="cancelChiaConnect()"
+                    >
+                      Cancel
+                    </button>
+                  }
                 </div>
               </div>
-              @if (chiaWallet.sageWalletConnectUri(); as uri) {
+              @if (chiaWallet.restoringSageWalletConnect()) {
+                <p class="mono text-[0.6rem] text-text-muted mt-2">
+                  Checking existing Sage session...
+                </p>
+              }
+              @if (connectingChia() === 'sage-walletconnect' && chiaWallet.sageWalletConnectUri(); as uri) {
                 <div class="mt-3 rounded-card border border-brand/30 bg-brand/10 p-2">
                   <p class="text-[0.7rem] text-text-muted">
                     Open Sage WalletConnect and paste this pairing URI if the
@@ -426,7 +735,7 @@ interface RecoveryHandoffBundle {
                 <button
                   type="button"
                   class="btn btn--ghost text-[0.6rem] py-1 px-2 relative z-10"
-                  [disabled]="!firstAdminLeaf() || !chiaWasmReady()"
+                  [disabled]="!chiaWasmReady()"
                   (click)="useFirstAdminAsController()"
                   title="Compute MIPS root for a real CHIP-0043 1-of-1 quorum where the recovered first admin is the sole controller. Uses mOfNHash(config, 1, [eip712MemberHash(...)]) entirely in-browser via WASM — no API call."
                 >
@@ -450,6 +759,13 @@ interface RecoveryHandoffBundle {
                 restrictions), compose the tree off-chain with the
                 <code>chia-wallet-sdk</code> CLI / npm SDK.
               </p>
+              @if (evmAdminConnected() && !firstAdminLeaf()) {
+                <p class="mono text-[0.6rem] text-yellow-300 mt-1">
+                  Recover the first-admin leaf before computing the 1-of-1
+                  MIPS root. EVM connection alone only proves the wallet
+                  address is paired.
+                </p>
+              }
               @if (mipsRootShape(); as shape) {
                 <p class="mono text-[0.6rem] text-emerald-400 mt-1">
                   ✓ Computed via WASM (shape:
@@ -481,6 +797,15 @@ interface RecoveryHandoffBundle {
                     Use connected EVM wallet as first admin
                   }
                 </button>
+                @if (recoveringFirstAdmin()) {
+                  <button
+                    type="button"
+                    class="btn btn--ghost text-[0.6rem] py-1 px-2 relative z-10"
+                    (click)="cancelFirstAdminRecovery()"
+                  >
+                    Cancel
+                  </button>
+                }
               </div>
               <textarea
                 id="admin-records-textarea"
@@ -546,6 +871,13 @@ interface RecoveryHandoffBundle {
                   Address:
                   <code class="break-all">{{ evmAdminAddress() }}</code>
                 </div>
+              }
+              @if (recoveringFirstAdmin()) {
+                <p class="mono text-[0.6rem] text-yellow-300 mt-2">
+                  Waiting for wallet signature. Tangem recovery tries
+                  <code>eth_sign</code> first and falls back if no response is
+                  returned.
+                </p>
               }
               @if (firstAdminLeaf(); as leaf) {
                 <div class="mt-2 rounded-card border border-green-500/30 bg-green-500/5 p-2">
@@ -721,9 +1053,9 @@ interface RecoveryHandoffBundle {
                     </dl>
                     <p class="mt-3 text-xs text-text-muted">
                       Configure
-                      <code>POPULIS_PROTOCOL_ADMIN_AUTHORITY_V2_LAUNCHER_ID</code>
+                      <code>SOLSLOT_PROTOCOL_ADMIN_AUTHORITY_V2_LAUNCHER_ID</code>
                       = <span class="mono">{{ s.launcherId }}</span> in your
-                      Populis API env to surface this singleton on
+                      Solslot API env to surface this singleton on
                       <code>/admin/auth/authority_v2</code>.
                     </p>
 
@@ -737,9 +1069,9 @@ interface RecoveryHandoffBundle {
                           records (with EVM addresses + curry args, not
                           just leaf hashes) to gate the admin desk via
                           the on-chain singleton instead of
-                          <code>POPULIS_ADMIN_PUBKEY_ALLOWLIST</code>.
+                          <code>SOLSLOT_ADMIN_PUBKEY_ALLOWLIST</code>.
                           Download the file below and set
-                          <code>POPULIS_ADMIN_RECORDS_PATH</code> in your
+                          <code>SOLSLOT_ADMIN_RECORDS_PATH</code> in your
                           API env.
                         </p>
                         <button
@@ -1150,6 +1482,8 @@ export class LaunchAuthorityV2Component {
   private readonly coinPicker = inject(WalletCoinPickerService);
   private readonly onChain = inject(OnChainStateService);
   private readonly recoveryBroadcast = inject(RecoveryAnchorBroadcastService);
+  private chiaConnectAttempt = 0;
+  private firstAdminRecoverAttempt = 0;
 
   // ─── Form state ────────────────────────────────────────────────────
   readonly parentCoinIdInput = signal('');
@@ -1220,12 +1554,13 @@ export class LaunchAuthorityV2Component {
   readonly bootstrapStatus = signal<BootstrapStatusResponse | null>(null);
   readonly bootstrapStatusError = signal<string | null>(null);
   readonly checkingBootstrapStatus = signal(false);
+  private bootstrapStatusRequestInFlight = false;
   readonly launchAccessMode = computed<LaunchAccessMode>(() => {
-    if (this.adminSession.isAuthenticated()) return 'permanent-admin';
-    if (this.checkingBootstrapStatus()) return 'checking';
     const status = this.bootstrapStatus();
     if (status?.locked) return 'locked';
+    if (this.checkingBootstrapStatus()) return 'checking';
     if (status?.authenticated) return 'bootstrap';
+    if (this.adminSession.isAuthenticated()) return 'permanent-admin';
     return 'missing';
   });
 
@@ -1295,6 +1630,16 @@ export class LaunchAuthorityV2Component {
   readonly recoveryPublishIntentState = signal<RecoveryPublishIntentState>({ kind: 'idle' });
   readonly recoveryCreateCoinPreviewState = signal<RecoveryCreateCoinPreviewState>({ kind: 'idle' });
   readonly recoveryBroadcastState = signal<RecoveryBroadcastState>({ kind: 'idle' });
+  readonly recoveryHandoffBundleInput = signal('');
+  readonly recoveryHandoffResumeState = signal<RecoveryHandoffResumeState>({
+    kind: 'idle',
+  });
+  readonly resumedAdminRecords = signal<Record<string, unknown> | null>(null);
+
+  readonly recoveryHandoffResumeError = computed(() => {
+    const s = this.recoveryHandoffResumeState();
+    return s.kind === 'error' ? s.message : null;
+  });
 
   readonly recoveryVerifySuccess = computed(() => {
     const s = this.recoveryVerifyState();
@@ -1345,7 +1690,7 @@ export class LaunchAuthorityV2Component {
 
   readonly recoveryHandoffBundle = computed<RecoveryHandoffBundle | null>(() => {
     const finalized = this.finalizedView();
-    const adminRecords = this.buildAdminRecordsConfig();
+    const adminRecords = this.buildAdminRecordsConfig() ?? this.resumedAdminRecords();
     if (!finalized || !adminRecords) return null;
     const broadcast = this.recoveryBroadcastResult();
     return {
@@ -1588,7 +1933,7 @@ export class LaunchAuthorityV2Component {
         // launcher_id / state_hash mismatch — the safest possible
         // failure mode.
         cross_check_note:
-          'Re-run populis_protocol/scripts/dump_v2_fixtures.py against ' +
+          'Re-run solslot_protocol/scripts/dump_v2_fixtures.py against ' +
           'the inputs section to verify hashes match.  Any drift = abort.',
       },
       null,
@@ -1597,6 +1942,7 @@ export class LaunchAuthorityV2Component {
   });
 
   constructor() {
+    void this.chiaWallet.restoreSageWalletConnectSession();
     // Auto-clear the copy confirmation banner after a few seconds so
     // the UI doesn't stay in "copied!" state forever.
     effect((onCleanup) => {
@@ -1605,13 +1951,12 @@ export class LaunchAuthorityV2Component {
       const t = setTimeout(() => this.copyConfirmation.set(null), 3000);
       onCleanup(() => clearTimeout(t));
     });
-    if (!this.adminSession.isAuthenticated()) {
-      void this.refreshBootstrapStatus();
-    }
+    void this.refreshBootstrapStatus();
   }
 
   async refreshBootstrapStatus(): Promise<void> {
-    if (this.adminSession.isAuthenticated() || this.checkingBootstrapStatus()) return;
+    if (this.bootstrapStatusRequestInFlight) return;
+    this.bootstrapStatusRequestInFlight = true;
     this.bootstrapStatusError.set(null);
     this.checkingBootstrapStatus.set(true);
     try {
@@ -1621,6 +1966,7 @@ export class LaunchAuthorityV2Component {
       this.bootstrapStatusError.set(formatError(e));
     } finally {
       this.checkingBootstrapStatus.set(false);
+      this.bootstrapStatusRequestInFlight = false;
     }
   }
 
@@ -1637,6 +1983,7 @@ export class LaunchAuthorityV2Component {
    */
   async recoverFirstAdminFromWallet(): Promise<void> {
     if (this.recoveringFirstAdmin()) return;
+    const attempt = ++this.firstAdminRecoverAttempt;
     this.firstAdminError.set(null);
     if (!this.evmAdminConnected()) {
       this.firstAdminError.set(
@@ -1647,10 +1994,11 @@ export class LaunchAuthorityV2Component {
     this.recoveringFirstAdmin.set(true);
     try {
       const { pubkey, address } = await this.evmWallet.recoverFirstAdminPubkey();
+      if (this.firstAdminRecoverAttempt !== attempt) return;
       const network = environment.chiaNetwork;
       // Compute the leaf hash entirely in-browser via the
       // chia-wallet-sdk WASM (Eip712LeafHashService) — no API
-      // round-trip.  Cross-verified against populis_protocol's
+      // round-trip.  Cross-verified against solslot_protocol's
       // ``compute_eip712_member_leaf_hash`` Python helper, which uses
       // ``chia.wallet.util.curry_and_treehash`` semantics.
       const resp = this.eip712Leaf.compute(pubkey, network);
@@ -1662,10 +2010,23 @@ export class LaunchAuthorityV2Component {
       // with one leaf and m_within=1 we get just one line.
       this.adminRecordsInput.set(`0 ${resp.leaf_hash} 1`);
     } catch (e) {
-      this.firstAdminError.set(formatError(e));
+      if (this.firstAdminRecoverAttempt === attempt) {
+        this.firstAdminError.set(formatError(e));
+      }
     } finally {
-      this.recoveringFirstAdmin.set(false);
+      if (this.firstAdminRecoverAttempt === attempt) {
+        this.recoveringFirstAdmin.set(false);
+      }
     }
+  }
+
+  cancelFirstAdminRecovery(): void {
+    if (!this.recoveringFirstAdmin()) return;
+    this.firstAdminRecoverAttempt += 1;
+    this.recoveringFirstAdmin.set(false);
+    this.firstAdminError.set(
+      'Recovery request canceled. Close any stale wallet prompt, then retry with a fresh WalletConnect session.',
+    );
   }
 
   /**
@@ -1688,6 +2049,7 @@ export class LaunchAuthorityV2Component {
    */
   async connectChia(kind: 'goby' | 'sage' | 'sage-walletconnect'): Promise<void> {
     if (this.connectingChia()) return;
+    const attempt = ++this.chiaConnectAttempt;
     this.chiaConnectError.set(null);
     this.connectingChia.set(kind);
     try {
@@ -1699,10 +2061,22 @@ export class LaunchAuthorityV2Component {
         await this.chiaWallet.connectSageWalletConnect();
       }
     } catch (e) {
-      this.chiaConnectError.set(formatError(e));
+      if (this.chiaConnectAttempt === attempt) {
+        this.chiaConnectError.set(formatError(e));
+      }
     } finally {
-      this.connectingChia.set(null);
+      if (this.chiaConnectAttempt === attempt) {
+        this.connectingChia.set(null);
+      }
     }
+  }
+
+  cancelChiaConnect(): void {
+    if (!this.connectingChia()) return;
+    this.chiaConnectAttempt += 1;
+    this.chiaWallet.cancelPendingConnection();
+    this.connectingChia.set(null);
+    this.chiaConnectError.set('Connection request canceled. Close the wallet prompt, then try again.');
   }
 
   hasInjectedEvmWallet(): boolean {
@@ -1718,7 +2092,10 @@ export class LaunchAuthorityV2Component {
       if (kind === 'injected') {
         await this.evmWallet.connectInjected();
       } else {
-        await this.evmWallet.connectWalletConnect();
+        await this.evmWallet.connectWalletConnect({
+          optionalChains: 'none',
+          resetSession: true,
+        });
       }
     } catch (e) {
       this.evmConnectError.set(formatError(e));
@@ -1791,9 +2168,8 @@ export class LaunchAuthorityV2Component {
    *
    * Pre-condition: {@link firstAdminLeaf} must already be set (i.e.,
    * the operator clicked "Use my connected wallet as first admin"
-   * first).  The button is gated on ``firstAdminLeaf() !== null``,
-   * but we re-check defensively in case the signal cleared between
-   * the click and the await.
+   * first). The button stays clickable once WASM is ready so the UI
+   * can explain that missing recovery step instead of failing silently.
    *
    * Uses the production-shaped ``mofn1of1`` mode by default — a real
    * ``mOfNHash(MemberConfig{topLevel: true}, 1,
@@ -1812,7 +2188,7 @@ export class LaunchAuthorityV2Component {
    * "MIPS root = bare member") can skip this button and paste the
    * recovered ``leaf_hash`` directly into the field — that matches
    * the test fixture pattern in
-   * ``populis_protocol/tests/test_admin_authority_v2.py:1530-1542``.
+   * ``solslot_protocol/tests/test_admin_authority_v2.py:1530-1542``.
    */
   useFirstAdminAsController(): void {
     this.mipsRootError.set(null);
@@ -1837,8 +2213,8 @@ export class LaunchAuthorityV2Component {
 
   /**
    * Build the operator-supplied admin records JSON for the API to
-   * load on boot (``POPULIS_ADMIN_RECORDS_PATH``).  Schema matches
-   * ``populis_api/admin_records.py``'s ``AdminRecordsConfig``.
+   * load on boot (``SOLSLOT_ADMIN_RECORDS_PATH``).  Schema matches
+   * ``solslot_api/admin_records.py``'s ``AdminRecordsConfig``.
    *
    * Returns null when the operator hasn't recovered their EVM wallet
    * yet (no ``firstAdminLeaf``) OR the launch hasn't been submitted
@@ -1891,6 +2267,79 @@ export class LaunchAuthorityV2Component {
     const json = this.recoveryHandoffBundleJson();
     if (!json) return;
     this.downloadJson('recovery_handoff_bundle.json', json);
+  }
+
+  async importRecoveryHandoffBundleFile(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      this.recoveryHandoffBundleInput.set(await file.text());
+      this.recoveryHandoffResumeState.set({ kind: 'idle' });
+    } catch (e) {
+      this.recoveryHandoffResumeState.set({
+        kind: 'error',
+        message: formatError(e),
+      });
+    } finally {
+      input.value = '';
+    }
+  }
+
+  async loadRecoveryHandoffBundle(): Promise<void> {
+    if (this.recoveryHandoffResumeState().kind === 'pending') return;
+    this.recoveryHandoffResumeState.set({ kind: 'pending' });
+    this.recoveryVerifyState.set({ kind: 'idle' });
+    this.recoveryChainState.set({ kind: 'idle' });
+    this.recoveryPublishIntentState.set({ kind: 'idle' });
+    this.recoveryCreateCoinPreviewState.set({ kind: 'idle' });
+    this.recoveryBroadcastState.set({ kind: 'idle' });
+    try {
+      const bundle = parseRecoveryHandoffBundle(this.recoveryHandoffBundleInput());
+      const finalized: BootstrapFinalizeResponse = {
+        locked: true,
+        bootstrap_manifest: bundle.artifacts.bootstrap_manifest,
+        portal_runtime_config: bundle.artifacts.portal_runtime_config,
+        bootstrap_recovery_anchor: bundle.artifacts.bootstrap_recovery_anchor,
+      };
+      this.resumedAdminRecords.set(bundle.artifacts.admin_records);
+      this.finalizeState.set({
+        kind: 'finalized',
+        bootstrapManifest: finalized.bootstrap_manifest,
+        portalRuntimeConfig: finalized.portal_runtime_config,
+        bootstrapRecoveryAnchor: finalized.bootstrap_recovery_anchor,
+      });
+
+      if (bundle.recovery_anchor_publish_intent) {
+        this.recoveryPublishIntentState.set({
+          kind: 'ready',
+          response: bundle.recovery_anchor_publish_intent,
+        });
+      }
+      if (bundle.recovery_anchor_create_coin_preview) {
+        this.recoveryCreateCoinPreviewState.set({
+          kind: 'ready',
+          response: bundle.recovery_anchor_create_coin_preview,
+        });
+        this.recoveryMarkerPuzzleHashInput.set(
+          bundle.recovery_anchor_create_coin_preview.marker_puzzle_hash,
+        );
+      }
+
+      await this.verifyFinalizedRecoveryArtifacts(
+        finalized,
+        bundle.artifacts.admin_records,
+      );
+      if (!bundle.recovery_anchor_publish_intent) {
+        await this.fetchRecoveryAnchorPublishIntent();
+      }
+      this.recoveryHandoffResumeState.set({ kind: 'loaded' });
+    } catch (e) {
+      this.recoveryHandoffResumeState.set({
+        kind: 'error',
+        message: formatError(e),
+      });
+    }
   }
 
   private downloadJson(filename: string, json: string): void {
@@ -2015,6 +2464,14 @@ export class LaunchAuthorityV2Component {
       });
       this.recoveryCreateCoinPreviewState.set({ kind: 'ready', response });
     } catch (e) {
+      const intent = this.recoveryPublishIntent();
+      if (intent) {
+        this.recoveryCreateCoinPreviewState.set({
+          kind: 'ready',
+          response: buildLocalRecoveryAnchorCoinPreview(markerPuzzleHash, intent),
+        });
+        return;
+      }
       this.recoveryCreateCoinPreviewState.set({ kind: 'error', message: formatError(e) });
     }
   }
@@ -2158,7 +2615,7 @@ export class LaunchAuthorityV2Component {
    *    a. Asks the connected wallet to fund the launcher coin.
    *    b. Combines wallet's signed funding spend with our launcher
    *       spend into one bundle.
-   *    c. Pushes to coinset.org directly (no Populis API in path).
+   *    c. Pushes to coinset.org directly (no Solslot API in path).
    * 3. Display launcher_id + status.
    *
    * Drives the ``submitState`` signal so the UI can show progress
@@ -2234,6 +2691,108 @@ export class LaunchAuthorityV2Component {
       });
     }
   }
+}
+
+function parseRecoveryHandoffBundle(raw: string): RecoveryHandoffBundle {
+  const parsed = parseJsonObject(raw, 'recovery_handoff_bundle.json');
+  const version = parsed['version'];
+  if (version !== 1) {
+    throw new Error('recovery_handoff_bundle.json must have version=1.');
+  }
+  const artifacts = requireObject(parsed['artifacts'], 'artifacts');
+  const bootstrapManifest = requireObject(
+    artifacts['bootstrap_manifest'],
+    'artifacts.bootstrap_manifest',
+  ) as BootstrapManifestArtifact;
+  const portalRuntimeConfig = requireObject(
+    artifacts['portal_runtime_config'],
+    'artifacts.portal_runtime_config',
+  ) as PortalRuntimeConfigArtifact;
+  const bootstrapRecoveryAnchor = requireObject(
+    artifacts['bootstrap_recovery_anchor'],
+    'artifacts.bootstrap_recovery_anchor',
+  ) as BootstrapRecoveryAnchorArtifact;
+  const adminRecords = requireObject(
+    artifacts['admin_records'],
+    'artifacts.admin_records',
+  );
+  const publishIntent = parsed['recovery_anchor_publish_intent'];
+  const createCoinPreview = parsed['recovery_anchor_create_coin_preview'];
+  return {
+    version: 1,
+    artifacts: {
+      bootstrap_manifest: bootstrapManifest,
+      portal_runtime_config: portalRuntimeConfig,
+      bootstrap_recovery_anchor: bootstrapRecoveryAnchor,
+      admin_records: adminRecords,
+    },
+    verifier: isObject(parsed['verifier'])
+      ? (parsed['verifier'] as RecoveryVerifyState)
+      : { kind: 'idle' },
+    chain_state: isObject(parsed['chain_state'])
+      ? (parsed['chain_state'] as RecoveryChainState)
+      : { kind: 'idle' },
+    recovery_anchor_publish_intent: publishIntent == null
+      ? null
+      : (requireObject(
+          publishIntent,
+          'recovery_anchor_publish_intent',
+        ) as unknown as BootstrapRecoveryAnchorPublishIntentResponse),
+    recovery_anchor_create_coin_preview: createCoinPreview == null
+      ? null
+      : (requireObject(
+          createCoinPreview,
+          'recovery_anchor_create_coin_preview',
+        ) as unknown as BootstrapRecoveryAnchorCreateCoinPreviewResponse),
+    recovery_anchor_broadcast: null,
+  };
+}
+
+function buildLocalRecoveryAnchorCoinPreview(
+  markerPuzzleHash: string,
+  intent: BootstrapRecoveryAnchorPublishIntentResponse,
+): BootstrapRecoveryAnchorCreateCoinPreviewResponse {
+  const memos = [intent.tag_memo_hex, intent.payload_memo_hex] as [
+    string,
+    string,
+  ];
+  return {
+    condition_opcode: RecoveryAnchorBroadcastService.CREATE_COIN_OPCODE,
+    marker_puzzle_hash: markerPuzzleHash,
+    marker_coin_amount_mojos: intent.marker_coin_amount_mojos,
+    tag_memo_hex: intent.tag_memo_hex,
+    payload_memo_hex: intent.payload_memo_hex,
+    memos_hex: memos,
+    condition_hex: [
+      RecoveryAnchorBroadcastService.CREATE_COIN_OPCODE,
+      markerPuzzleHash,
+      intent.marker_coin_amount_mojos,
+      memos,
+    ],
+    payload_hash: intent.payload_hash,
+  };
+}
+
+function parseJsonObject(raw: string, label: string): Record<string, unknown> {
+  try {
+    return requireObject(JSON.parse(raw), label);
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      throw new Error(`${label} is not valid JSON.`);
+    }
+    throw e;
+  }
+}
+
+function requireObject(value: unknown, label: string): Record<string, unknown> {
+  if (!isObject(value)) {
+    throw new Error(`${label} must be a JSON object.`);
+  }
+  return value;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function formatError(e: unknown): string {

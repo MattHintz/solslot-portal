@@ -21,7 +21,7 @@ export class PoolEconomicsV2NavRegistryChainStateService {
     args: ReadCollectionNavRegistryArgs,
   ): Promise<CollectionNavRegistryEvidence> {
     const registryLauncherId = normalize32(
-      args.registryLauncherId ?? environment.populisProtocol.collectionNavRegistryLauncherId,
+      args.registryLauncherId ?? environment.solslotProtocol.collectionNavRegistryLauncherId,
     );
     const collectionIdCanon = normalize32(args.collectionIdCanon);
     if (!registryLauncherId) {

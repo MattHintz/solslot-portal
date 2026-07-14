@@ -5,6 +5,7 @@ import {
   Eip1193Provider,
   SigningKey,
   TypedDataEncoder,
+  computeAddress,
   getAddress,
   getBytes,
   hashMessage,
@@ -13,14 +14,47 @@ import {
   toUtf8Bytes,
 } from 'ethers';
 import { environment } from '../../environments/environment';
-import { Eip712TypedData } from './populis-api.service';
+import { Eip712TypedData } from './solslot-api.service';
+
+const WALLET_CONNECT_PROMPT_TIMEOUT_MS = 45_000;
+const WALLET_CONNECT_METHOD_TIMEOUT_MS = 75_000;
+// WalletConnect v2 validates request expiry as 300..604800 seconds.
+// Keep the local UX timeout shorter, but publish requests with the protocol minimum.
+const WALLET_CONNECT_REQUEST_EXPIRY_SECONDS = 300;
+const EVM_SIGNATURE_PROMPT_TIMEOUT_MS = 180_000;
+const EVM_WALLETCONNECT_STORAGE_PREFIX = 'solslot-admin-launch-authority-v2';
+const LEGACY_EVM_WALLETCONNECT_STORAGE_PREFIX = 'solslot-admin-launch-authority-v2';
+const EVM_WALLETCONNECT_SIGNING_METHODS = [
+  'personal_sign',
+  'eth_sign',
+  'eth_signTypedData',
+  'eth_signTypedData_v4',
+];
+const EVM_WALLETCONNECT_REQUIRED_CHAIN_ID = 1;
+const EVM_WALLETCONNECT_KNOWN_RPC_MAP: Record<number, string> = {
+  1: 'https://cloudflare-eth.com',
+  11155111: 'https://ethereum-sepolia-rpc.publicnode.com',
+  84532: 'https://sepolia.base.org',
+};
+type PersonalSignMessageFormat = 'hex' | 'utf8';
+type EvmWalletConnectOptionalChainsMode = 'solslot' | 'none';
+export interface EvmWalletConnectOptions {
+  optionalChains?: EvmWalletConnectOptionalChainsMode;
+  resetSession?: boolean;
+}
+
+export interface RecoveredEvmMessageSignature {
+  signature: string;
+  pubkey: string;
+  method: 'eth_sign' | 'personal_sign';
+}
 
 /**
  * EVM wallet service.
  *
  * Connects to either an injected provider (MetaMask, Coinbase Wallet, Rabby) or
  * to a remote wallet via WalletConnect v2.  Exposes a reactive state signal +
- * helpers for signing the Populis registration EIP-712 message and recovering
+ * helpers for signing the Solslot registration EIP-712 message and recovering
  * the signer's 33-byte compressed secp256k1 public key.
  *
  * The recovered pubkey is what we curry into the vault singleton as OWNER_PUBKEY
@@ -46,6 +80,8 @@ export class EvmWalletService {
   private eip1193: Eip1193Provider | null = null;
   private wcProvider: EthereumProvider | null = null;
   private wcInitPromise: Promise<EthereumProvider> | null = null;
+  private wcOptionalChainsMode: EvmWalletConnectOptionalChainsMode | null = null;
+  private wcDebugUnsubscribers: Array<() => void> = [];
 
   /** True when an injected EVM provider is available (MetaMask, etc.). */
   hasInjectedProvider(): boolean {
@@ -60,9 +96,13 @@ export class EvmWalletService {
     const eth = (window as WindowWithEth).ethereum;
     if (!eth) throw new Error('No injected EVM wallet detected (MetaMask, Coinbase, etc.)');
 
-    const accounts = (await eth.request({
-      method: 'eth_requestAccounts',
-    })) as string[];
+    const accounts = (await withWalletPromptTimeout(
+      eth.request({
+        method: 'eth_requestAccounts',
+      }) as Promise<unknown>,
+      WALLET_CONNECT_PROMPT_TIMEOUT_MS,
+      'Browser EVM wallet did not respond. Close any stale wallet popup, then retry or use WalletConnect.',
+    )) as string[];
     if (!accounts || accounts.length === 0) {
       throw new Error('Wallet returned no accounts');
     }
@@ -77,7 +117,7 @@ export class EvmWalletService {
    * Connect via WalletConnect v2.  Opens the WC QR modal in desktop browsers.
    * Requires `environment.walletConnectProjectId` to be set.
    */
-  async connectWalletConnect(): Promise<string> {
+  async connectWalletConnect(options: EvmWalletConnectOptions = {}): Promise<string> {
     const projectId = environment.walletConnectProjectId;
     if (!projectId) {
       throw new Error(
@@ -85,18 +125,30 @@ export class EvmWalletService {
           'to a value from https://cloud.walletconnect.com'
       );
     }
+    const optionalChainsMode = normalizeOptionalChainsMode(options.optionalChains);
+    if (options.resetSession || this.wcOptionalChainsMode !== optionalChainsMode) {
+      await this.resetWalletConnectProvider();
+      this.clearWalletConnectStorage();
+    }
 
+    this.debugWalletConnect('connect:start', {
+      optionalChainsMode,
+      resetSession: !!options.resetSession,
+    });
     try {
-      return await this.connectWalletConnectOnce();
+      return await this.connectWalletConnectOnce(optionalChainsMode);
     } catch (e) {
+      this.debugWalletConnect('connect:error', debugErrorInfo(e));
       if (!isWalletConnectRecoverableError(e)) {
         throw e;
       }
       await this.resetWalletConnectProvider();
       this.clearWalletConnectStorage();
+      this.debugWalletConnect('connect:retry-after-clear', { optionalChainsMode });
       try {
-        return await this.connectWalletConnectOnce();
+        return await this.connectWalletConnectOnce(optionalChainsMode);
       } catch (retryError) {
+        this.debugWalletConnect('connect:retry-error', debugErrorInfo(retryError));
         await this.resetWalletConnectProvider();
         this.clearWalletConnectStorage();
         throw new Error(walletConnectRelayErrorMessage(retryError));
@@ -104,9 +156,17 @@ export class EvmWalletService {
     }
   }
 
-  private async connectWalletConnectOnce(): Promise<string> {
-    const provider = await this.getOrInitWcProvider();
-    await provider.connect({ chains: [environment.eip712ChainId] });
+  private async connectWalletConnectOnce(
+    optionalChainsMode: EvmWalletConnectOptionalChainsMode,
+  ): Promise<string> {
+    const provider = await this.getOrInitWcProvider(optionalChainsMode);
+    this.debugWalletConnect('connect:provider-ready', this.walletConnectSessionDebugInfo());
+    await withWalletPromptTimeout(
+      provider.connect({ chains: [evmWalletConnectRequiredChainId()] }),
+      WALLET_CONNECT_PROMPT_TIMEOUT_MS,
+      'WalletConnect did not respond. Close the modal, then retry with a fresh QR code.',
+    );
+    this.debugWalletConnect('connect:provider-connect-resolved', this.walletConnectSessionDebugInfo());
     const accounts = provider.accounts || [];
     if (accounts.length === 0) {
       throw new Error('WalletConnect returned no accounts');
@@ -117,28 +177,30 @@ export class EvmWalletService {
     return address;
   }
 
-  private async getOrInitWcProvider(): Promise<EthereumProvider> {
+  private async getOrInitWcProvider(
+    optionalChainsMode: EvmWalletConnectOptionalChainsMode,
+  ): Promise<EthereumProvider> {
     if (this.wcProvider) return this.wcProvider;
     if (this.wcInitPromise) return this.wcInitPromise;
+    this.wcOptionalChainsMode = optionalChainsMode;
 
     this.wcInitPromise = EthereumProvider.init({
       projectId: environment.walletConnectProjectId,
-      // chainId=1 matches the Populis EIP-712 domain chainId.  This is a typed-data
-      // attestation only; it is never submitted as an Ethereum transaction.
-      chains: [environment.eip712ChainId],
-      optionalChains: [],
-      rpcMap: { 1: 'https://cloudflare-eth.com' },
+      customStoragePrefix: EVM_WALLETCONNECT_STORAGE_PREFIX,
+      // WalletConnect treats `chains` as hard requirements. Keep the proposal
+      // on Ethereum mainnet for broad wallet compatibility, and advertise the
+      // Solslot typed-data chain as optional for wallets that support it.
+      chains: [evmWalletConnectRequiredChainId()],
+      methods: EVM_WALLETCONNECT_SIGNING_METHODS,
+      optionalChains: evmWalletConnectOptionalChainIds(optionalChainsMode),
+      rpcMap: evmWalletConnectRpcMap(optionalChainsMode),
       showQrModal: true,
-      optionalMethods: [
-        'personal_sign',
-        'eth_signTypedData',
-        'eth_signTypedData_v4',
-      ],
+      optionalMethods: EVM_WALLETCONNECT_SIGNING_METHODS,
       optionalEvents: ['accountsChanged', 'chainChanged'],
       metadata: {
-        name: 'Populis Portal',
-        description: 'Populis Protocol members portal — testnet',
-        url: typeof window !== 'undefined' ? window.location.origin : 'https://populis.xyz',
+        name: 'Solslot Portal',
+        description: 'Solslot Protocol members portal — testnet',
+        url: typeof window !== 'undefined' ? window.location.origin : 'https://solslot.com',
         icons: [],
       },
     }).then((p) => {
@@ -146,6 +208,9 @@ export class EvmWalletService {
       p.on('disconnect', () => this.handleDisconnect());
       p.on('accountsChanged', (...args: unknown[]) => {
         const accounts = (args[0] as string[]) ?? [];
+        this.debugWalletConnect('event:accountsChanged', {
+          accounts: accounts.map(redactAddress),
+        });
         if (accounts.length === 0) {
           this.handleDisconnect();
         } else {
@@ -156,6 +221,13 @@ export class EvmWalletService {
           });
         }
       });
+      p.on('chainChanged', (...args: unknown[]) => {
+        this.debugWalletConnect('event:chainChanged', { value: args[0] });
+      });
+      p.on('display_uri', () => {
+        this.debugWalletConnect('event:display_uri', { redacted: true });
+      });
+      this.bindWalletConnectDebugEvents(p);
       return p;
     });
     return this.wcInitPromise;
@@ -192,8 +264,15 @@ export class EvmWalletService {
 
   private async resetWalletConnectProvider(): Promise<void> {
     const provider = this.wcProvider;
+    this.wcDebugUnsubscribers.forEach((unsubscribe) => {
+      try {
+        unsubscribe();
+      } catch {}
+    });
+    this.wcDebugUnsubscribers = [];
     this.wcProvider = null;
     this.wcInitPromise = null;
+    this.wcOptionalChainsMode = null;
     if (provider) {
       try {
         await provider.disconnect();
@@ -218,20 +297,17 @@ export class EvmWalletService {
    * as a 0x-prefixed hex string.
    *
    * `typedData` must be a fully-formed EIP-712 structure matching
-   * `POPULIS_VAULT_TYPEHASH_STRING` from populis_puzzles/vault_driver.py:
-   *   PopulisVaultSpend(bytes32 spend_case, bytes32 deed_launcher_id, bytes32 vault_coin_id)
+   * `SOLSLOT_VAULT_TYPEHASH_STRING` from solslot_puzzles/vault_driver.py:
+   *   SolslotVaultSpend(bytes32 spend_case, bytes32 deed_launcher_id, bytes32 vault_coin_id)
    *
    * For vault registration we reuse the same typehash with `spend_case = 0x...REGISTER`
    * and `deed_launcher_id = vault_coin_id = zero_bytes32`.
    *
    * MetaMask enforces that `domain.chainId` equals the wallet's active chain —
    * otherwise it throws "Provided chainId X must match the active chainId Y".
-   * Populis binds its domain to chainId=1 (maximum EVM-wallet compatibility,
-   * and the Chialisp puzzle has its domain separator baked for chainId=1).
-   * We therefore request a network switch to Ethereum mainnet before signing
-   * if the wallet is on a different chain.  This is cheap and reversible —
-   * the signature is never submitted as an Ethereum transaction, so no gas is
-   * spent and no risk on mainnet.
+   * We therefore request a network switch to the typed-data domain chain before
+   * signing. The signature is never submitted as an Ethereum transaction, so no
+   * gas is spent on that EVM chain.
    */
   async signTypedData(typedData: Eip712TypedData): Promise<string> {
     if (!this.eip1193) throw new Error('Not connected');
@@ -241,6 +317,9 @@ export class EvmWalletService {
     const domainChainIdRaw = (typedData.domain as unknown as { chainId?: number | string })
       .chainId;
     const targetChainId = Number(domainChainIdRaw ?? 1);
+    if (this.connectionKind() === 'walletconnect') {
+      return this.signTypedDataViaWalletConnectChain(typedData, address, targetChainId);
+    }
     await this.ensureChainId(targetChainId);
 
     const provider = new BrowserProvider(this.eip1193);
@@ -259,12 +338,84 @@ export class EvmWalletService {
     return signature;
   }
 
+  private async signTypedDataViaWalletConnectChain(
+    typedData: Eip712TypedData,
+    address: string,
+    targetChainId: number,
+  ): Promise<string> {
+    const chain = formatWalletConnectChainId(targetChainId);
+    const provider = this.wcProvider as unknown as WalletConnectDebugProvider | null;
+    if (!provider?.signer?.request) {
+      throw new Error('WalletConnect provider is not ready. Disconnect and reconnect the wallet.');
+    }
+    if (!walletConnectSessionSupportsChain(provider, chain)) {
+      throw new Error(
+        `Tangem/WalletConnect has not approved ${evmChainDisplayName(targetChainId)} (${chain}) ` +
+          `for this Solslot Portal session. In Tangem, add Base Sepolia if it is missing, ` +
+          `delete the stale Solslot Portal WalletConnect session, then reconnect and approve ` +
+          `${chain}. This admin login is still only a local EIP-712 signature; it broadcasts ` +
+          `nothing and costs no gas.`,
+      );
+    }
+
+    const payload = JSON.stringify(typedData);
+    const timeoutMessage =
+      `Tangem/WalletConnect did not return the ${evmChainDisplayName(targetChainId)} ` +
+      `typed-data signature. Open Tangem, approve the Solslot Portal request for ${chain}, ` +
+      `or delete the stale session and reconnect.`;
+    try {
+      this.debugWalletConnect('typed-data:walletconnect-chain-request', {
+        method: 'eth_signTypedData_v4',
+        chain,
+        address: redactAddress(address),
+      });
+      return await withWalletPromptTimeout(
+        this.requestWalletConnectChain(
+          {
+            method: 'eth_signTypedData_v4',
+            params: [address, payload],
+          },
+          chain,
+          WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
+        ),
+        EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
+        timeoutMessage,
+      ) as string;
+    } catch (e) {
+      this.debugWalletConnect('typed-data:walletconnect-chain-error', {
+        method: 'eth_signTypedData_v4',
+        chain,
+        ...debugErrorInfo(e),
+      });
+      if (!isUnsupportedTypedDataError(e)) throw e;
+    }
+
+    this.debugWalletConnect('typed-data:walletconnect-chain-fallback', {
+      from: 'eth_signTypedData_v4',
+      to: 'eth_signTypedData',
+      chain,
+      address: redactAddress(address),
+    });
+    return await withWalletPromptTimeout(
+      this.requestWalletConnectChain(
+        {
+          method: 'eth_signTypedData',
+          params: [address, payload],
+        },
+        chain,
+        WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
+      ),
+      EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
+      timeoutMessage,
+    ) as string;
+  }
+
   /**
    * Ensure the active wallet chain equals `targetChainId`.  If not, request
-   * a switch via EIP-3326 `wallet_switchEthereumChain`.  On error 4902
-   * ("unrecognized chain") we fall back to `wallet_addEthereumChain` for
-   * Ethereum mainnet — the only chain we ever auto-add, since we only
-   * target chainId=1.
+   * a switch via EIP-3326 `wallet_switchEthereumChain`. On error 4902
+   * ("unrecognized chain") we fall back to `wallet_addEthereumChain` only for
+   * Ethereum mainnet, because mobile WalletConnect wallets vary widely in
+   * which testnet add/switch methods they accept.
    */
   private async ensureChainId(targetChainId: number): Promise<void> {
     if (!this.eip1193) throw new Error('Not connected');
@@ -301,9 +452,10 @@ export class EvmWalletService {
         });
         return;
       }
+      const chainLabel = evmChainDisplayName(targetChainId);
       throw new Error(
-        `Please switch your wallet to Ethereum mainnet (chainId 1) — ` +
-          `Populis EIP-712 signatures are bound to that chain id. ` +
+        `Please switch your wallet to ${chainLabel} (chainId ${targetChainId}) — ` +
+          `this Solslot EIP-712 signature is bound to that chain id. ` +
           `This does NOT send any transaction and costs nothing. (${
             (err as Error).message ?? 'switch rejected'
           })`
@@ -314,8 +466,8 @@ export class EvmWalletService {
   /**
    * Recover the 33-byte compressed secp256k1 public key from an EIP-712 signature.
    *
-   * This is the value Populis curries into the vault singleton as OWNER_PUBKEY.
-   * We perform it on the client for UX ("your Populis public key is 0x...") —
+   * This is the value Solslot curries into the vault singleton as OWNER_PUBKEY.
+   * We perform it on the client for UX ("your Solslot public key is 0x...") —
    * the backend re-runs the same recovery to authoritatively bind the address
    * to the pubkey before launching the vault.
    */
@@ -333,6 +485,59 @@ export class EvmWalletService {
     return compressSecp256k1Pubkey(uncompressedHex);
   }
 
+  canUseMessageSignatureFallback(e: unknown): boolean {
+    return isRecoverableAdminRecordsProbeError(e);
+  }
+
+  /**
+   * Sign a local admin-login proof message and recover the connected
+   * wallet's compressed secp256k1 pubkey.  Used only when the wallet
+   * cannot sign the chain-bound EIP-712 envelope, e.g. Tangem lacking
+   * Base Sepolia support over WalletConnect.
+   */
+  async signAdminLoginMessage(message: string): Promise<RecoveredEvmMessageSignature> {
+    const address = this.address();
+    if (!address) {
+      throw new Error('No wallet connected — connect first.');
+    }
+
+    if (this.connectionKind() === 'walletconnect') {
+      return this.signMessageForRecoveryViaWalletConnect(message, address, 'admin-login');
+    }
+
+    const signature = await withWalletPromptTimeout(
+      this.personalSign(message, address),
+      EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
+      'EVM wallet did not respond to the admin-login personal_sign request. Close the wallet prompt, then retry.',
+    );
+    return {
+      signature,
+      method: 'personal_sign',
+      pubkey: recoverCompressedPubkeyFromDigestForAddress(
+        hashMessage(message),
+        signature,
+        address,
+      ),
+    };
+  }
+
+  private recoverCompressedPubkeyForAddress(
+    typedData: Eip712TypedData,
+    signature: string,
+    expectedAddress: string,
+  ): string {
+    const { EIP712Domain: _ignored, ...signingTypes } = typedData.types as Record<
+      string,
+      Array<{ name: string; type: string }>
+    >;
+    const digest = TypedDataEncoder.hash(
+      typedData.domain as unknown as Record<string, unknown>,
+      signingTypes,
+      typedData.message
+    );
+    return recoverCompressedPubkeyFromDigestForAddress(digest, signature, expectedAddress);
+  }
+
   /**
    * Sign a deterministic EIP-712 probe and return the recovered
    * compressed secp256k1 pubkey.  Used by the launch-authority-v2
@@ -341,8 +546,8 @@ export class EvmWalletService {
    *
    * The probe is structurally distinct from the admin sign-in
    * challenge (different ``primaryType``) so a wallet pop-up can't
-   * confuse the two — but uses the same chainId=1 binding so it
-   * works under the existing wallet-side Populis domain trust.
+   * confuse the two — but uses the configured Solslot EIP-712 chain binding
+   * so wallet prompts remain scoped to the same deployment domain.
    *
    * The signature is NEVER submitted on chain or to the API — it's
    * consumed locally for pubkey recovery only.
@@ -361,8 +566,8 @@ export class EvmWalletService {
     // wallet still shows a single-shot signature prompt.
     const probe: Eip712TypedData = {
       domain: {
-        name: 'Populis Admin Records Probe',
-        version: '1',
+        name: environment.eip712Name,
+        version: environment.eip712Version,
         chainId: environment.eip712ChainId,
       },
       types: {
@@ -381,32 +586,404 @@ export class EvmWalletService {
       message: {
         address,
         purpose: 'Recover compressed secp256k1 pubkey for admin records',
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: Date.now(),
       },
     };
 
+    if (this.connectionKind() === 'walletconnect') {
+      return {
+        pubkey: await this.recoverFirstAdminPubkeyViaWalletConnect(probe, address),
+        address,
+      };
+    }
+
     let pubkey: string;
     try {
-      const signature = await this.signTypedData(probe);
+      const signature = await withWalletPromptTimeout(
+        this.signTypedData(probe),
+        EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
+        'EVM wallet did not respond to the typed-data signature request. Close any stale wallet prompt, then retry.',
+      );
       pubkey = this.recoverCompressedPubkey(probe, signature);
     } catch (e) {
-      if (!isUnsupportedTypedDataError(e)) {
+      if (!isRecoverableAdminRecordsProbeError(e)) {
         throw e;
       }
       const message = buildAdminRecordsPersonalSignProbe(address, probe.message['timestamp']);
-      const signature = await this.personalSign(message, address);
-      pubkey = recoverCompressedPubkeyFromDigest(hashMessage(message), signature);
+      const signature = await withWalletPromptTimeout(
+        this.personalSign(message, address),
+        EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
+        'EVM wallet did not respond to the fallback personal_sign request. Close the wallet prompt, then retry with a fresh WalletConnect session.',
+      );
+      pubkey = recoverCompressedPubkeyFromDigestForAddress(
+        hashMessage(message),
+        signature,
+        address,
+      );
     }
     return { pubkey, address };
   }
 
-  private async personalSign(message: string, address: string): Promise<string> {
+  private async recoverFirstAdminPubkeyViaWalletConnect(
+    probe: Eip712TypedData,
+    address: string,
+  ): Promise<string> {
+    const message = buildAdminRecordsPersonalSignProbe(address, probe.message['timestamp']);
+    this.debugWalletConnect('admin-records:recovery:start', {
+      address: redactAddress(address),
+      timestamp: probe.message['timestamp'],
+      preferredMethod: 'eth_sign',
+      ...this.walletConnectSessionDebugInfo(),
+    });
+
+    try {
+      this.debugWalletConnect('admin-records:request:start', {
+        method: 'eth_sign',
+        timeoutMs: WALLET_CONNECT_METHOD_TIMEOUT_MS,
+        walletConnectExpirySeconds: WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
+        messageChars: message.length,
+      });
+      const signature = await withWalletPromptTimeout(
+        this.ethSign(message, address),
+        WALLET_CONNECT_METHOD_TIMEOUT_MS,
+        'EVM WalletConnect did not respond to the eth_sign request. Close the wallet prompt, delete the stale Solslot Portal WalletConnect session in Tangem, then retry with a fresh session.',
+      );
+      this.debugWalletConnect('admin-records:request:resolved', {
+        method: 'eth_sign',
+        ...debugSignatureInfo(signature),
+      });
+      this.debugWalletConnect('admin-records:recovery:method-selected', {
+        method: 'eth_sign',
+      });
+      return recoverCompressedPubkeyFromDigestForAddress(
+        hashMessage(message),
+        signature,
+        address,
+      );
+    } catch (ethSignError) {
+      this.debugWalletConnect('admin-records:request:error', {
+        method: 'eth_sign',
+        ...debugErrorInfo(ethSignError),
+      });
+      if (!isRecoverableAdminRecordsProbeError(ethSignError)) {
+        throw ethSignError;
+      }
+    }
+
+    try {
+      this.debugWalletConnect('admin-records:fallback', {
+        from: 'eth_sign',
+        to: 'personal_sign',
+      });
+      this.debugWalletConnect('admin-records:request:start', {
+        method: 'personal_sign',
+        timeoutMs: WALLET_CONNECT_METHOD_TIMEOUT_MS,
+        walletConnectExpirySeconds: WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
+        messageChars: message.length,
+      });
+      const signature = await withWalletPromptTimeout(
+        this.personalSign(message, address, 'utf8'),
+        WALLET_CONNECT_METHOD_TIMEOUT_MS,
+        'WalletConnect personal_sign admin-record probe did not respond.',
+      );
+      this.debugWalletConnect('admin-records:request:resolved', {
+        method: 'personal_sign',
+        ...debugSignatureInfo(signature),
+      });
+      this.debugWalletConnect('admin-records:recovery:method-selected', {
+        method: 'personal_sign',
+      });
+      return recoverCompressedPubkeyFromDigestForAddress(
+        hashMessage(message),
+        signature,
+        address,
+      );
+    } catch (personalSignError) {
+      this.debugWalletConnect('admin-records:request:error', {
+        method: 'personal_sign',
+        ...debugErrorInfo(personalSignError),
+      });
+      if (!isRecoverableAdminRecordsProbeError(personalSignError)) {
+        throw personalSignError;
+      }
+    }
+
+    this.debugWalletConnect('admin-records:fallback', {
+      from: 'personal_sign',
+      to: 'eth_signTypedData_v4',
+    });
+    this.debugWalletConnect('admin-records:request:start', {
+      method: 'eth_signTypedData_v4',
+      timeoutMs: WALLET_CONNECT_METHOD_TIMEOUT_MS,
+      walletConnectExpirySeconds: WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
+    });
+    const signature = await withWalletPromptTimeout(
+      this.walletConnectSignTypedData(probe, address),
+      WALLET_CONNECT_METHOD_TIMEOUT_MS,
+      'WalletConnect typed-data admin-record probe did not respond.',
+    );
+    this.debugWalletConnect('admin-records:request:resolved', {
+      method: 'eth_signTypedData_v4',
+      ...debugSignatureInfo(signature),
+    });
+    this.debugWalletConnect('admin-records:recovery:method-selected', {
+      method: 'eth_signTypedData_v4',
+    });
+    return this.recoverCompressedPubkeyForAddress(probe, signature, address);
+  }
+
+  private async signMessageForRecoveryViaWalletConnect(
+    message: string,
+    address: string,
+    purpose: 'admin-login',
+  ): Promise<RecoveredEvmMessageSignature> {
+    this.debugWalletConnect(`${purpose}:message-recovery:start`, {
+      address: redactAddress(address),
+      preferredMethod: 'eth_sign',
+      messageChars: message.length,
+      ...this.walletConnectSessionDebugInfo(),
+    });
+
+    try {
+      this.debugWalletConnect(`${purpose}:message-request:start`, {
+        method: 'eth_sign',
+        timeoutMs: WALLET_CONNECT_METHOD_TIMEOUT_MS,
+        walletConnectExpirySeconds: WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
+        messageChars: message.length,
+      });
+      const signature = await withWalletPromptTimeout(
+        this.ethSign(message, address),
+        WALLET_CONNECT_METHOD_TIMEOUT_MS,
+        'EVM WalletConnect did not respond to the admin-login eth_sign request. Close the wallet prompt, delete the stale Solslot Portal WalletConnect session in Tangem, then retry with a fresh session.',
+      );
+      this.debugWalletConnect(`${purpose}:message-request:resolved`, {
+        method: 'eth_sign',
+        ...debugSignatureInfo(signature),
+      });
+      return {
+        signature,
+        method: 'eth_sign',
+        pubkey: recoverCompressedPubkeyFromDigestForAddress(
+          hashMessage(message),
+          signature,
+          address,
+        ),
+      };
+    } catch (ethSignError) {
+      this.debugWalletConnect(`${purpose}:message-request:error`, {
+        method: 'eth_sign',
+        ...debugErrorInfo(ethSignError),
+      });
+      if (!isRecoverableAdminRecordsProbeError(ethSignError)) {
+        throw ethSignError;
+      }
+    }
+
+    this.debugWalletConnect(`${purpose}:message-request:fallback`, {
+      from: 'eth_sign',
+      to: 'personal_sign',
+    });
+    const signature = await withWalletPromptTimeout(
+      this.personalSign(message, address, 'utf8'),
+      WALLET_CONNECT_METHOD_TIMEOUT_MS,
+      'WalletConnect personal_sign admin-login proof did not respond.',
+    );
+    this.debugWalletConnect(`${purpose}:message-request:resolved`, {
+      method: 'personal_sign',
+      ...debugSignatureInfo(signature),
+    });
+    return {
+      signature,
+      method: 'personal_sign',
+      pubkey: recoverCompressedPubkeyFromDigestForAddress(
+        hashMessage(message),
+        signature,
+        address,
+      ),
+    };
+  }
+
+  private async personalSign(
+    message: string,
+    address: string,
+    format: PersonalSignMessageFormat = 'hex',
+  ): Promise<string> {
+    if (!this.eip1193) throw new Error('Not connected');
+    const messageBytes = toUtf8Bytes(message).length;
+    const payload = format === 'hex' ? hexlify(toUtf8Bytes(message)) : message;
+    this.debugWalletConnect('admin-records:provider-request', {
+      method: 'personal_sign',
+      address: redactAddress(address),
+      messageBytes,
+      messageFormat: format,
+      paramsOrder: ['message', 'address'],
+    });
+    return (await this.requestWallet({
+      method: 'personal_sign',
+      params: [payload, address],
+    }, WALLET_CONNECT_REQUEST_EXPIRY_SECONDS)) as string;
+  }
+
+  private async ethSign(message: string, address: string): Promise<string> {
     if (!this.eip1193) throw new Error('Not connected');
     const hexMessage = hexlify(toUtf8Bytes(message));
-    return (await this.eip1193.request({
-      method: 'personal_sign',
-      params: [hexMessage, address],
-    })) as string;
+    this.debugWalletConnect('admin-records:provider-request', {
+      method: 'eth_sign',
+      address: redactAddress(address),
+      messageBytes: Math.trunc((hexMessage.length - 2) / 2),
+      paramsOrder: ['address', 'message'],
+    });
+    return (await this.requestWallet({
+      method: 'eth_sign',
+      params: [address, hexMessage],
+    }, WALLET_CONNECT_REQUEST_EXPIRY_SECONDS)) as string;
+  }
+
+  private async walletConnectSignTypedData(
+    typedData: Eip712TypedData,
+    address: string,
+  ): Promise<string> {
+    if (!this.eip1193) throw new Error('Not connected');
+    try {
+      this.debugWalletConnect('admin-records:provider-request', {
+        method: 'eth_signTypedData_v4',
+        address: redactAddress(address),
+      });
+      return (await this.requestWallet({
+        method: 'eth_signTypedData_v4',
+        params: [address, JSON.stringify(typedData)],
+      }, WALLET_CONNECT_REQUEST_EXPIRY_SECONDS)) as string;
+    } catch (e) {
+      this.debugWalletConnect('admin-records:provider-request-error', {
+        method: 'eth_signTypedData_v4',
+        ...debugErrorInfo(e),
+      });
+      if (!isRecoverableAdminRecordsProbeError(e)) throw e;
+    }
+    this.debugWalletConnect('admin-records:provider-request', {
+      method: 'eth_signTypedData',
+      address: redactAddress(address),
+    });
+    return (await this.requestWallet({
+      method: 'eth_signTypedData',
+      params: [address, JSON.stringify(typedData)],
+    }, WALLET_CONNECT_REQUEST_EXPIRY_SECONDS)) as string;
+  }
+
+  private async requestWallet(
+    args: { method: string; params?: unknown[] },
+    walletConnectExpirySeconds?: number,
+  ): Promise<unknown> {
+    if (this.connectionKind() === 'walletconnect' && this.wcProvider) {
+      this.debugWalletConnect('provider-request:walletconnect-dispatch', {
+        method: args.method,
+        expirySeconds: walletConnectExpirySeconds ?? null,
+        ...this.walletConnectSessionDebugInfo(),
+        ...this.walletConnectPendingDebugInfo(),
+      });
+      try {
+        return await this.wcProvider.request(args, walletConnectExpirySeconds);
+      } catch (e) {
+        this.debugWalletConnect('provider-request:walletconnect-error', {
+          method: args.method,
+          ...debugErrorInfo(e),
+          ...this.walletConnectPendingDebugInfo(),
+        });
+        throw e;
+      }
+    }
+    if (!this.eip1193) throw new Error('Not connected');
+    return this.eip1193.request(args);
+  }
+
+  private async requestWalletConnectChain(
+    args: { method: string; params?: unknown[] },
+    chain: string,
+    walletConnectExpirySeconds?: number,
+  ): Promise<unknown> {
+    const signer = (this.wcProvider as unknown as WalletConnectDebugProvider | null)?.signer;
+    if (!signer?.request) {
+      throw new Error('WalletConnect provider is not ready. Disconnect and reconnect the wallet.');
+    }
+    this.debugWalletConnect('provider-request:walletconnect-chain-dispatch', {
+      method: args.method,
+      chain,
+      expirySeconds: walletConnectExpirySeconds ?? null,
+      ...this.walletConnectSessionDebugInfo(),
+      ...this.walletConnectPendingDebugInfo(),
+    });
+    try {
+      return await signer.request(args, chain, walletConnectExpirySeconds);
+    } catch (e) {
+      this.debugWalletConnect('provider-request:walletconnect-chain-error', {
+        method: args.method,
+        chain,
+        ...debugErrorInfo(e),
+        ...this.walletConnectPendingDebugInfo(),
+      });
+      throw e;
+    }
+  }
+
+  private bindWalletConnectDebugEvents(provider: EthereumProvider): void {
+    const client = (provider as unknown as WalletConnectDebugProvider).signer?.client;
+    if (!client?.on) return;
+    const eventNames = [
+      'session_request_sent',
+      'session_request_expire',
+      'session_request',
+      'session_request_response',
+      'session_update',
+      'session_delete',
+      'session_event',
+    ];
+    for (const eventName of eventNames) {
+      const listener = (...args: unknown[]) => {
+        this.debugWalletConnect(`sign-client:${eventName}`, debugWalletConnectEventArgs(args));
+      };
+      client.on(eventName, listener);
+      this.wcDebugUnsubscribers.push(() => {
+        client.removeListener?.(eventName, listener);
+      });
+    }
+  }
+
+  private walletConnectSessionDebugInfo(): Record<string, unknown> {
+    const provider = this.wcProvider as unknown as WalletConnectDebugProvider | null;
+    const session = provider?.session ?? provider?.signer?.session ?? null;
+    return {
+      providerChainId: provider?.chainId ?? null,
+      providerAccounts: (provider?.accounts ?? []).map(redactAddress),
+      topic: redactWalletConnectTopic(session?.topic),
+      namespaces: debugWalletConnectNamespaces(session?.namespaces),
+    };
+  }
+
+  private walletConnectPendingDebugInfo(): Record<string, unknown> {
+    const provider = this.wcProvider as unknown as WalletConnectDebugProvider | null;
+    const client = provider?.signer?.client ?? null;
+    const history = client?.core?.history ?? null;
+    const historyPending = readDebugArray(history?.pending);
+    const historyValues = readDebugArray(history?.values);
+    const pendingRecords = historyValues.filter((record) => {
+      const asObj = asRecord(record);
+      return asObj && !asObj['response'];
+    });
+    const walletSidePendingRequests = readPendingSessionRequests(client);
+    return {
+      pendingHistoryCount: historyPending.length,
+      pendingHistory: historyPending.slice(-5).map(debugWalletConnectHistoryItem),
+      pendingRecordCount: pendingRecords.length,
+      pendingRecords: pendingRecords.slice(-5).map(debugWalletConnectHistoryItem),
+      walletSidePendingRequestCount: walletSidePendingRequests.length,
+      walletSidePendingRequests: walletSidePendingRequests
+        .slice(-5)
+        .map(debugWalletConnectHistoryItem),
+    };
+  }
+
+  private debugWalletConnect(event: string, details: Record<string, unknown> = {}): void {
+    evmWalletDebug(event, details);
   }
 }
 
@@ -422,6 +999,219 @@ interface InjectedEthereum {
 
 interface WindowWithEth extends Window {
   ethereum?: InjectedEthereum;
+}
+
+interface WalletConnectDebugNamespace {
+  methods?: string[];
+  chains?: string[];
+  accounts?: string[];
+}
+
+interface WalletConnectDebugSession {
+  topic?: string;
+  namespaces?: Record<string, WalletConnectDebugNamespace>;
+}
+
+interface WalletConnectDebugClient {
+  on?: (event: string, listener: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
+  getPendingSessionRequests?: () => unknown[];
+  core?: {
+    history?: {
+      pending?: unknown[];
+      values?: unknown[];
+    } | null;
+  } | null;
+}
+
+interface WalletConnectDebugProvider {
+  chainId?: number | string;
+  accounts?: string[];
+  session?: WalletConnectDebugSession | null;
+  signer?: {
+    session?: WalletConnectDebugSession | null;
+    request?: (
+      args: { method: string; params?: unknown[] },
+      chain?: string,
+      expiry?: number,
+    ) => Promise<unknown>;
+    client?: WalletConnectDebugClient | null;
+  } | null;
+}
+
+function evmWalletDebug(event: string, details: Record<string, unknown> = {}): void {
+  if (typeof console === 'undefined') return;
+  console.info('[evm-wallet]', event, sanitizeDebugValue(details));
+}
+
+function debugErrorInfo(e: unknown): Record<string, unknown> {
+  const record = e && typeof e === 'object' ? e as Record<string, unknown> : {};
+  const nestedError = record['error'] && typeof record['error'] === 'object'
+    ? record['error'] as Record<string, unknown>
+    : null;
+  const payload = record['payload'] && typeof record['payload'] === 'object'
+    ? record['payload'] as Record<string, unknown>
+    : null;
+  return {
+    name: record['name'] ?? null,
+    code: record['code'] ?? null,
+    message: errorMessage(e),
+    innerCode: nestedError?.['code'] ?? null,
+    innerMessage: nestedError?.['message'] ?? null,
+    payloadMethod: payload?.['method'] ?? null,
+  };
+}
+
+function debugSignatureInfo(signature: unknown): Record<string, unknown> {
+  return {
+    signatureType: typeof signature,
+    signatureLength: typeof signature === 'string' ? signature.length : null,
+    signatureHex: typeof signature === 'string' ? signature.startsWith('0x') : null,
+  };
+}
+
+function debugWalletConnectEventArgs(args: unknown[]): Record<string, unknown> {
+  return {
+    argCount: args.length,
+    ...summarizeWalletConnectEvent(args[0]),
+    args: args.map((arg) => sanitizeDebugValue(arg)),
+  };
+}
+
+function debugWalletConnectHistoryItem(value: unknown): Record<string, unknown> {
+  const record = asRecord(value);
+  const request = asRecord(record?.['request']);
+  const params = asRecord(record?.['params']);
+  const response = asRecord(record?.['response']);
+  const error = asRecord(response?.['error']);
+  return {
+    topic: redactWalletConnectTopic(record?.['topic'] ?? params?.['topic']),
+    id: record?.['id'] ?? request?.['id'] ?? null,
+    method: record?.['method'] ?? request?.['method'] ?? null,
+    chainId: record?.['chainId'] ?? params?.['chainId'] ?? null,
+    expiry: record?.['expiry'] ?? null,
+    hasResponse: !!response,
+    responseType: response
+      ? Object.prototype.hasOwnProperty.call(response, 'result')
+        ? 'result'
+        : Object.prototype.hasOwnProperty.call(response, 'error')
+          ? 'error'
+          : 'unknown'
+      : null,
+    responseCode: error?.['code'] ?? null,
+    responseMessage: error?.['message'] ?? null,
+  };
+}
+
+function summarizeWalletConnectEvent(event: unknown): Record<string, unknown> {
+  const record = asRecord(event);
+  const request = asRecord(record?.['request']);
+  const params = asRecord(record?.['params']);
+  const response =
+    asRecord(record?.['response']) ??
+    asRecord(record?.['jsonRpcResponse']) ??
+    asRecord(record?.['result']);
+  const error = asRecord(response?.['error']) ?? asRecord(record?.['error']);
+  return {
+    topic: redactWalletConnectTopic(record?.['topic'] ?? params?.['topic']),
+    id: record?.['id'] ?? request?.['id'] ?? response?.['id'] ?? null,
+    method: record?.['method'] ?? request?.['method'] ?? null,
+    chainId: record?.['chainId'] ?? params?.['chainId'] ?? null,
+    expiry: record?.['expiry'] ?? null,
+    responseType: response
+      ? Object.prototype.hasOwnProperty.call(response, 'result')
+        ? 'result'
+        : Object.prototype.hasOwnProperty.call(response, 'error')
+          ? 'error'
+          : 'unknown'
+      : null,
+    responseCode: error?.['code'] ?? response?.['code'] ?? null,
+    responseMessage: error?.['message'] ?? response?.['message'] ?? null,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function debugWalletConnectNamespaces(
+  namespaces: Record<string, WalletConnectDebugNamespace> | undefined,
+): Record<string, unknown> | null {
+  if (!namespaces) return null;
+  return Object.fromEntries(
+    Object.entries(namespaces).map(([key, value]) => [
+      key,
+      {
+        chains: value.chains ?? [],
+        methods: value.methods ?? [],
+        accountCount: value.accounts?.length ?? 0,
+        accounts: (value.accounts ?? []).map(redactWalletConnectAccount),
+      },
+    ]),
+  );
+}
+
+function readDebugArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function readPendingSessionRequests(client: WalletConnectDebugClient | null): unknown[] {
+  try {
+    return readDebugArray(client?.getPendingSessionRequests?.());
+  } catch {
+    return [];
+  }
+}
+
+function sanitizeDebugValue(value: unknown, depth = 0): unknown {
+  if (value == null) return value;
+  if (typeof value === 'string') return sanitizeDebugString(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'function') return '[function]';
+  if (Array.isArray(value)) {
+    return value.slice(0, 12).map((item) => sanitizeDebugValue(item, depth + 1));
+  }
+  if (typeof value === 'object') {
+    if (depth >= 4) return '[object]';
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 20)) {
+      out[key] = sanitizeDebugValue(item, depth + 1);
+    }
+    return out;
+  }
+  return String(value);
+}
+
+function sanitizeDebugString(value: string): string {
+  if (value.startsWith('wc:') || value.includes('symKey=')) {
+    return '[redacted walletconnect uri]';
+  }
+  if (/^0x[0-9a-f]+$/i.test(value) && value.length > 66) {
+    return `${value.slice(0, 10)}...${value.slice(-8)} (${Math.trunc((value.length - 2) / 2)} bytes)`;
+  }
+  if (value.length > 240) {
+    return `${value.slice(0, 180)}... (${value.length} chars)`;
+  }
+  return value;
+}
+
+function redactAddress(address: unknown): string {
+  if (typeof address !== 'string') return String(address);
+  const normalized = address.trim();
+  if (normalized.length <= 14) return normalized;
+  return `${normalized.slice(0, 8)}...${normalized.slice(-6)}`;
+}
+
+function redactWalletConnectAccount(account: string): string {
+  const parts = account.split(':');
+  if (parts.length < 3) return redactAddress(account);
+  return `${parts[0]}:${parts[1]}:${redactAddress(parts.slice(2).join(':'))}`;
+}
+
+function redactWalletConnectTopic(topic: unknown): string | null {
+  if (typeof topic !== 'string' || !topic) return null;
+  return topic.length <= 16 ? topic : `${topic.slice(0, 8)}...${topic.slice(-8)}`;
 }
 
 /**
@@ -447,6 +1237,35 @@ function recoverCompressedPubkeyFromDigest(digest: string, signature: string): s
   return compressSecp256k1Pubkey(uncompressedHex);
 }
 
+function recoverCompressedPubkeyFromDigestForAddress(
+  digest: string,
+  signature: string,
+  expectedAddress: string,
+): string {
+  const uncompressedHex = SigningKey.recoverPublicKey(getBytes(digest), signature);
+  const recoveredAddress = getAddress(computeAddress(uncompressedHex));
+  if (recoveredAddress !== getAddress(expectedAddress)) {
+    throw new Error('Wallet signature recovered a different EVM address than the connected wallet.');
+  }
+  return compressSecp256k1Pubkey(uncompressedHex);
+}
+
+function formatWalletConnectChainId(chainId: number): string {
+  return `eip155:${Math.trunc(chainId)}`;
+}
+
+function walletConnectSessionSupportsChain(
+  provider: WalletConnectDebugProvider,
+  chain: string,
+): boolean {
+  const namespaces = provider.session?.namespaces ?? provider.signer?.session?.namespaces;
+  if (!namespaces) return false;
+  return Object.values(namespaces).some((namespace) => {
+    if (namespace.chains?.includes(chain)) return true;
+    return (namespace.accounts ?? []).some((account) => account.startsWith(`${chain}:`));
+  });
+}
+
 function isUnsupportedTypedDataError(e: unknown): boolean {
   const message = errorMessage(e).toLowerCase();
   return (
@@ -458,17 +1277,97 @@ function isUnsupportedTypedDataError(e: unknown): boolean {
   );
 }
 
+function isRecoverableAdminRecordsProbeError(e: unknown): boolean {
+  const message = errorMessage(e).toLowerCase();
+  return (
+    isUnsupportedTypedDataError(e) ||
+    message.includes('wallet_switchethereumchain') ||
+    message.includes('switch your wallet') ||
+    message.includes('unsupported chain') ||
+    message.includes('unsupported network') ||
+    message.includes('required network') ||
+    message.includes('unrecognized chain') ||
+    message.includes('chain id') ||
+    (message.includes('walletconnect') && message.includes('did not respond')) ||
+    message.includes('not approved') ||
+    message.includes('unauthorized') ||
+    message.includes('unsupported method')
+  );
+}
+
 function buildAdminRecordsPersonalSignProbe(address: string, timestamp: unknown): string {
   return [
-    'Populis Admin Records Probe',
-    '',
-    'Purpose: Recover compressed secp256k1 pubkey for admin records',
-    `Address: ${address}`,
-    `Chain ID: ${environment.eip712ChainId}`,
-    `Timestamp: ${String(timestamp)}`,
-    '',
-    'This signature is used only locally by the portal and is not stored or submitted on chain.',
-  ].join('\n');
+    'Solslot Admin Records Probe',
+    'purpose=Recover compressed secp256k1 pubkey for admin records',
+    `address=${address}`,
+    `chain_id=${environment.eip712ChainId}`,
+    `timestamp=${String(timestamp)}`,
+    'local_only=true',
+  ].join(' | ');
+}
+
+function evmWalletConnectRequiredChainId(): number {
+  return EVM_WALLETCONNECT_REQUIRED_CHAIN_ID;
+}
+
+function walletConnectMethodTimeoutSeconds(): number {
+  return WALLET_CONNECT_REQUEST_EXPIRY_SECONDS;
+}
+
+function evmWalletConnectStoragePrefix(): string {
+  return EVM_WALLETCONNECT_STORAGE_PREFIX;
+}
+
+function normalizeOptionalChainsMode(
+  mode: EvmWalletConnectOptions['optionalChains'] = 'solslot',
+): EvmWalletConnectOptionalChainsMode {
+  return mode === 'none' ? 'none' : 'solslot';
+}
+
+function evmWalletConnectOptionalChainIds(
+  mode: EvmWalletConnectOptions['optionalChains'] = 'solslot',
+): number[] {
+  const normalizedMode = normalizeOptionalChainsMode(mode);
+  if (normalizedMode === 'none') return [];
+  return uniqueNumbers([
+    environment.eip712ChainId,
+    84532,
+    11155111,
+  ]).filter((chainId) => chainId !== evmWalletConnectRequiredChainId());
+}
+
+function evmWalletConnectRpcMap(
+  mode: EvmWalletConnectOptions['optionalChains'] = 'solslot',
+): Record<number, string> {
+  const rpcMap: Record<number, string> = {};
+  for (const chainId of [evmWalletConnectRequiredChainId(), ...evmWalletConnectOptionalChainIds(mode)]) {
+    const rpcUrl = EVM_WALLETCONNECT_KNOWN_RPC_MAP[chainId];
+    if (rpcUrl) rpcMap[chainId] = rpcUrl;
+  }
+  return rpcMap;
+}
+
+function uniqueNumbers(values: number[]): number[] {
+  const out: number[] = [];
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    const normalized = Math.trunc(value);
+    if (!out.includes(normalized)) out.push(normalized);
+  }
+  return out;
+}
+
+function evmChainDisplayName(chainId: number): string {
+  switch (chainId) {
+    case 1:
+      return 'Ethereum mainnet';
+    case 11155111:
+      return 'Sepolia';
+    case 84532:
+      return 'Base Sepolia';
+    default:
+      return `chain ${chainId}`;
+  }
 }
 
 function isWalletConnectRecoverableError(e: unknown): boolean {
@@ -505,12 +1404,28 @@ function errorMessage(e: unknown): string {
   return String(e);
 }
 
+function withWalletPromptTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+  });
+}
+
 function isWalletConnectStorageKey(key: string): boolean {
   const lower = key.toLowerCase();
   return (
     lower.startsWith('wc@2:') ||
     lower.startsWith('walletconnect') ||
-    lower.includes('@walletconnect')
+    lower.includes('@walletconnect') ||
+    lower.includes(EVM_WALLETCONNECT_STORAGE_PREFIX) ||
+    lower.includes(LEGACY_EVM_WALLETCONNECT_STORAGE_PREFIX)
   );
 }
 
@@ -552,7 +1467,16 @@ function normalizeChainIdHex(value: unknown): string | null {
 export const _internal = {
   buildAdminRecordsPersonalSignProbe,
   compressSecp256k1Pubkey,
+  evmWalletConnectOptionalChainIds,
+  evmWalletConnectRequiredChainId,
+  evmWalletConnectRpcMap,
+  evmWalletConnectStoragePrefix,
+  isRecoverableAdminRecordsProbeError,
   normalizeChainIdHex,
+  normalizeOptionalChainsMode,
+  recoverCompressedPubkeyFromDigestForAddress,
+  walletConnectMethodTimeoutSeconds,
+  withWalletPromptTimeout,
 };
 
 // Prevent dead-code elimination of imports used only for their side effects

@@ -48,6 +48,12 @@ interface FixtureCoin {
   coin_id: string;
 }
 
+interface FixtureCoinSpend {
+  coin: FixtureCoin;
+  puzzle_reveal: string;
+  solution: string;
+}
+
 interface FixtureFile {
   common: {
     state: FixtureState;
@@ -60,13 +66,16 @@ interface FixtureFile {
       amount: number;
     };
     pool_inner_puzzle_hex: string;
+    deed_launcher_id: string;
     buyer_vault_launcher_id: string;
     launcher_puzzle_hash: string;
     p2_vault_puzzle_hash: string;
     property_id_canon: string;
     collection_id_canon: string;
     nav_evidence: FixtureEvidence;
+    nav_evidence_coin_spend: FixtureCoinSpend;
     acquisition_nav_evidence: FixtureEvidence;
+    acquisition_nav_evidence_coin_spend: FixtureCoinSpend;
   };
   specific_deed_swap: FixtureSection;
   true_redemption: FixtureSection;
@@ -74,6 +83,12 @@ interface FixtureFile {
 }
 
 const fixture = fixturesJson as FixtureFile;
+const DEED_METADATA = {
+  deedLauncherId: fixture.common.deed_launcher_id,
+  parValueMojos: fixture.reserve_acquisition.inputs['par_value_mojos'],
+  assetClass: fixture.reserve_acquisition.inputs['asset_class'],
+  propertyIdCanon: fixture.common.property_id_canon,
+};
 
 describe('PoolEconomicsV2ExecutionRunnerService', () => {
   let service: PoolEconomicsV2ExecutionRunnerService;
@@ -103,6 +118,7 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
     const spec = economics.buildSpecificDeedSwapSpec({
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       p2VaultPuzzleHash: fixture.common.p2_vault_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: inputNumber(fixture.specific_deed_swap, 'share_ppm'),
@@ -116,6 +132,7 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
       pool: spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -126,9 +143,7 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
       governanceRewardsPuzhash: inputString(fixture.specific_deed_swap, 'governance_rewards_puzhash'),
       governanceRewardsRoot: inputString(fixture.specific_deed_swap, 'governance_rewards_root'),
       witnesses: {
-        navEvidenceSpend: witnessSpend(wasm, seeds.nav, [
-          condition(62, spec.requiredNavEvidenceMessage),
-        ]),
+        navEvidenceSpend: coinSpendFromFixture(fixture.common.nav_evidence_coin_spend),
         deedSpend: witnessSpend(wasm, seeds.deed, [condition(60, spec.deedMessage)]),
         tokenSettlementPuzzleHash: seeds.tokenSettlement.puzzleHash,
         tokenSettlementSpend: witnessSpend(wasm, seeds.tokenSettlement, [
@@ -199,6 +214,7 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
     const spec = economics.buildTrueRedemptionSpec({
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       p2VaultPuzzleHash: fixture.common.p2_vault_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: inputNumber(fixture.true_redemption, 'share_ppm'),
@@ -210,6 +226,7 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
       pool: spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -217,9 +234,7 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
       navEvidence,
       tokenCoinId: seeds.tokenAuthorization.coinId,
       witnesses: {
-        navEvidenceSpend: witnessSpend(wasm, seeds.nav, [
-          condition(62, spec.requiredNavEvidenceMessage),
-        ]),
+        navEvidenceSpend: coinSpendFromFixture(fixture.common.nav_evidence_coin_spend),
         deedSpend: witnessSpend(wasm, seeds.deed, [condition(60, spec.deedMessage)]),
         tokenAuthorizationSpends: [
           witnessSpend(wasm, seeds.tokenAuthorization, [
@@ -235,6 +250,7 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
     const spec = economics.buildReserveAcquisitionSpec({
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       propertyIdCanon: fixture.common.property_id_canon,
       parValueMojos: inputNumber(fixture.reserve_acquisition, 'par_value_mojos'),
       assetClass: inputNumber(fixture.reserve_acquisition, 'asset_class'),
@@ -250,6 +266,7 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
       pool: spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
       propertyIdCanon: fixture.common.property_id_canon,
       parValueMojos: inputNumber(fixture.reserve_acquisition, 'par_value_mojos'),
       assetClass: inputNumber(fixture.reserve_acquisition, 'asset_class'),
@@ -260,9 +277,9 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
       sellerTokenPrice: inputNumber(fixture.reserve_acquisition, 'seller_token_price'),
       mintTokenCoinId: seeds.tokenAuthorization.coinId,
       witnesses: {
-        navEvidenceSpend: witnessSpend(wasm, seeds.nav, [
-          condition(62, spec.requiredNavEvidenceMessage),
-        ]),
+        navEvidenceSpend: coinSpendFromFixture(
+          fixture.common.acquisition_nav_evidence_coin_spend,
+        ),
         deedSpend: witnessSpend(wasm, seeds.deed, [condition(60, spec.deedMessage)]),
         tokenSettlementPuzzleHash: seeds.tokenSettlement.puzzleHash,
         tokenSettlementSpend: witnessSpend(wasm, seeds.tokenSettlement, [
@@ -311,15 +328,27 @@ function stateFromFixture(): PoolEconomicStateInput {
 
 function navEvidenceFromFixture(
   evidence: FixtureEvidence,
-  navSeed: WitnessSeed,
+  _navSeed: WitnessSeed,
 ): CollectionNavEvidenceInput {
   return {
-    registryCoinId: navSeed.coinId,
-    registryPuzzleHash: navSeed.puzzleHash,
+    registryCoinId: evidence.registry_coin_id,
+    registryPuzzleHash: evidence.registry_puzzle_hash,
     collectionIdCanon: evidence.collection_id_canon,
     navValueMojos: evidence.nav_value_mojos,
     collectionNavRoot: evidence.collection_nav_root,
     registryVersion: evidence.registry_version,
+  };
+}
+
+function coinSpendFromFixture(spend: FixtureCoinSpend): UnsignedCoinSpend {
+  return {
+    coin: {
+      parentCoinInfo: spend.coin.parent_coin_info,
+      puzzleHash: spend.coin.puzzle_hash,
+      amount: BigInt(spend.coin.amount),
+    },
+    puzzleReveal: spend.puzzle_reveal,
+    solution: spend.solution,
   };
 }
 

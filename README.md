@@ -1,6 +1,6 @@
-# Populis Portal
+# Solslot Portal
 
-Angular portal for Populis vault registration and operator tooling on
+Angular portal for Solslot vault registration and operator tooling on
 Chia testnet11. The current architecture is coinset/WASM-first: browser
 code uses `chia-wallet-sdk-wasm`, wallet signatures, and coinset.org RPC
 for chain reads and most transaction construction.
@@ -8,7 +8,8 @@ for chain reads and most transaction construction.
 **Stack**: Angular 20, Tailwind 3, ethers v6, `chia-wallet-sdk-wasm`,
 Goby/Sage wallet APIs, WalletConnect, coinset.org RPC.
 
-**Backend dependency**: [`../populis_api/`](../populis_api/) is used for
+**Backend dependency**: [`../solslot_api/`](../solslot_api/) is the local
+Solslot API checkout used for
 server-funded first-time vault creation (`/auth/challenge`,
 `/vault/register/{evm,chia}`) and for the genesis bootstrap ceremony
 (`/admin/deploy/protocol`, `/admin/bootstrap/challenge`,
@@ -24,10 +25,10 @@ public deployment artifacts through the API.
 # 1. Faucet/API server.
 #    Needed for first-time vault creation and genesis bootstrap endpoints.
 #    Returning users and most admin pages read chain state directly.
-cd ../populis_api && .venv/bin/uvicorn populis_api.app:app --port 8787 &
+cd ../solslot_api && .venv/bin/uvicorn solslot_api.app:app --port 8787 &
 
 # 2. Portal
-cd populis_portal
+cd solslot_portal
 npm install --legacy-peer-deps   # once
 npm start                        # -> http://localhost:4200
 ```
@@ -36,23 +37,23 @@ npm start                        # -> http://localhost:4200
 
 Edit `src/environments/environment.ts`:
 
-- `faucetApi` — URL of the Populis faucet/API backend. Used by the
+- `faucetApi` — URL of the Solslot faucet/API backend. Used by the
   first-time vault creation path and by genesis bootstrap endpoints.
 - `coinsetRpc` — Chia full-node RPC. Defaults to
   `https://testnet11.api.coinset.org` and is used for reads and
   `push_tx`.
 - `walletConnectProjectId` — required for WalletConnect; injected EVM
   wallets work without it.
-- `populisProtocol.*` — build-time singleton coordinates and mod hashes
+- `solslotProtocol.*` — build-time singleton coordinates and mod hashes
   for pool, governance, admin-authority v1/v2, protocol-config,
   property-registry, and mint-proposal puzzle identification.
-- `populisProtocol.adminAuthorityV2MipsRootHash` — current admin-login
+- `solslotProtocol.adminAuthorityV2MipsRootHash` — current admin-login
   pin for the v2 authority path. Today the portal verifies a 1-of-1
   EIP-712 MIPS root or falls back to the configured EVM address
   allowlist. General multi-admin Merkle-path membership verification is
   not decoded client-side yet and fails closed.
 - `eip712ChainId` — must match `EIP712_DOMAIN_CHAIN_ID` in
-  `populis_protocol/populis_puzzles/vault_driver.py`.
+  `solslot_protocol/solslot_puzzles/vault_driver.py`.
 
 ## What is live today
 
@@ -80,7 +81,7 @@ lookup.
   not become admin automatically; the selected wallet is bound as admin
   slot `0`. After finalization, `bootstrap_manifest.json` locks the
   bootstrapper and the page hands off to permanent admin login.
-- **Admin login** — local EIP-712 `PopulisAdminLogin` signature, pubkey
+- **Admin login** — local EIP-712 `SolslotAdminLogin` signature, pubkey
   recovery in the browser, and membership check against the pinned
   1-of-1 v2 MIPS root or fallback EVM address allowlist. No
   `/admin/auth/login` API call.
@@ -106,13 +107,13 @@ lookup.
   JSON, runs the same local preflight, and renders the signer-facing
   summary. Both screens are no-signing and no-broadcast boundaries.
 - **Bootstrap recovery** — `/admin/recovery` scans chain-visible
-  `POPULIS_BOOTSTRAP_V1` marker memos, shows verified recovery anchors and
+  `SOLSLOT_BOOTSTRAP_V2` marker memos, shows verified recovery anchors and
   rejected candidate reasons, locally checks pasted public artifacts against
   the selected anchor's canonical `sha256:` hashes, then calls the public
   verifier endpoint before handing off to permanent admin login.
 - **Mint proposals** — current UI creates and lists browser-local DRAFT
   records in `localStorage`. Computed deed/proposal hashes, on-chain
-  proposal ids, PGT voting, publish, and execute are not wired in this
+  proposal ids, SGT voting, publish, and execute are not wired in this
   portal path yet.
 
 ## Path A recovery drill
@@ -124,7 +125,7 @@ installation is recoverable without trusting the original portal host:
    `/admin/bootstrap/finalize` has returned the public artifacts.
 2. Fetch the recovery publish intent and `CREATE_COIN` preview, connect a
    Chia wallet, and broadcast the one-mojo marker coin carrying the
-   `POPULIS_BOOTSTRAP_V1` tag memo plus the canonical
+   `SOLSLOT_BOOTSTRAP_V2` tag memo plus the canonical
    `bootstrap_recovery_anchor.json` payload memo.
 3. Wait until the marker transaction is visible through coinset.org.
 4. Open `/admin/recovery` from any portal build pointed at the same
@@ -154,9 +155,9 @@ The only protocol authorizer for this add-admin path is the **current
 This means:
 
 - The candidate admin wallet does not authorize its own addition.
-- The Populis API backend is optional cross-check infrastructure only and
+- The Solslot API backend is optional cross-check infrastructure only and
   is not an authority source for roster changes.
-- PGT committee approval is not part of this A.5 add-admin path unless a
+- SGT committee approval is not part of this A.5 add-admin path unless a
   future governance design explicitly adds a separate spend path.
 - The bootstrap operator token cannot authorize post-genesis roster
   updates.
@@ -177,7 +178,7 @@ the final Chia spend bundle.
 
 ## Key services
 
-- `PopulisApiService` — faucet API client for registration challenges
+- `SolslotApiService` — faucet API client for registration challenges
   and first-time vault launch only.
 - `VaultDiscoveryService` — chain-native vault lookup via CHIP-22 hints
   and singleton lineage walking.
@@ -218,22 +219,22 @@ the final Chia spend bundle.
 | `/admin/authority-v2/roster-spend-package-review` | Import pasted unsigned A.5 roster package JSON, rerun local preflight, and review signer-facing inputs; no signing or broadcast. |
 | `/admin/mint/new` | Create a local DRAFT mint proposal. |
 | `/admin/mint/:id` | Inspect or cancel a local DRAFT; publish/execute are disabled. |
-| `/committee` | Public committee page shell; chain-backed PGT-VOTE submission is not wired yet. |
+| `/committee` | Public committee page shell; chain-backed SGT-VOTE submission is not wired yet. |
 
 ## Cross-repo binding
 
 The portal's TypeScript ports are validated against JSON fixtures
-generated from `populis_protocol`:
+generated from the Solslot protocol checkout:
 
 | Service | Python source | Fixture |
 |---------|---------------|---------|
-| `AdminAuthorityV2Service` | `populis_protocol/populis_puzzles/admin_authority_v2_driver.py` | `src/app/services/admin-authority-v2/admin-authority-v2.fixtures.json` |
-| `MintProposalV2Service` | `populis_protocol/populis_puzzles/mint_proposal_v2_driver.py` | `src/app/services/mint-proposal-v2/mint-proposal-v2.fixtures.json` |
+| `AdminAuthorityV2Service` | `solslot_protocol/solslot_puzzles/admin_authority_v2_driver.py` | `src/app/services/admin-authority-v2/admin-authority-v2.fixtures.json` |
+| `MintProposalV2Service` | `solslot_protocol/solslot_puzzles/mint_proposal_v2_driver.py` | `src/app/services/mint-proposal-v2/mint-proposal-v2.fixtures.json` |
 
 If the `.clsp` source changes, regenerate via:
 
 ```bash
-cd ../populis_protocol
+cd ../solslot_protocol
 bash scripts/dump_v2_puzzle_hex.sh
 bash scripts/dump_mint_proposal_v2_puzzle_hex.sh
 .venv/bin/python scripts/dump_v2_fixtures.py
@@ -260,12 +261,12 @@ npm test -- --watch=false --browsers=ChromeHeadless
 
 ```bash
 npm run build
-# artefacts in dist/populis_portal/
+# artefacts in dist/solslot_portal/
 ```
 
 ## Theme
 
-The portal uses the Populis dark premium minimal theme: algae-green
+The portal uses the Solslot dark premium minimal theme: algae-green
 accents, Space Grotesk + Fraunces fonts, and Tailwind utility styling.
 See `src/styles.scss` and `tailwind.config.js`.
 

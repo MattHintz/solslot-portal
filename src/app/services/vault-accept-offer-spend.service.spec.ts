@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
+import { environment } from '../../environments/environment';
 import { ChiaSingletonReaderService, SingletonLineage } from './chia-singleton-reader.service';
 import { ChiaWasmService } from './chia-wasm.service';
 import { CoinsetService } from './coinset.service';
@@ -14,13 +15,15 @@ import {
 
 const vector = ACCEPT_OFFER_PROTOCOL_VECTOR.inputs;
 const expected = ACCEPT_OFFER_PROTOCOL_VECTOR.expected;
-const VAULT_FULL_PUZZLE_HASH = '0x457229731582e1e870f2059ea370a9f8463fc47211b00f06799f082c01eb28e7';
-const PACKAGE_VAULT_COIN_ID = '0x7e193f5ac51a93ef7bb89ef48e01bfed3ea9d11744b042fe7e2aa46555a68ad1';
+const VAULT_FULL_PUZZLE_HASH = '0x6ee104b3af5f13601cdf0381136a18b491d9b3d8202891d8992c59a4a61897e0';
+const PACKAGE_VAULT_COIN_ID = '0x97de168b9ab8c6fa0568af743d6fae4b2f58a508c2ed47af945060e73ed7544c';
 const PACKAGE_INNER_SOLUTION =
-  '0xffa07e193f5ac51a93ef7bb89ef48e01bfed3ea9d11744b042fe7e2aa46555a68ad1ffa08beb045c100661077c239ad965fb72c1228dd212c757419ec0f5dbec103fefe5ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080';
-const PACKAGE_INNER_TREE_HASH = '0xf391816f836381bae713c7b5f65d6efcdd8ac2386a4193a7856430cddcc6d0c1';
+  '0xffa097de168b9ab8c6fa0568af743d6fae4b2f58a508c2ed47af945060e73ed7544cffa017fcdf15e47df2ee1ad4784d145dec2f56038e9ae66b4666c66eaaf21d7a1516ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080';
+const PACKAGE_INNER_TREE_HASH = '0x2af257df5de7fb051954c9406142b4ad787828e1335a722fbab777f09d4a33a2';
 const PACKAGE_FULL_SOLUTION =
-  '0xffffa02222222222222222222222222222222222222222222222222222222222222222ff0180ff01ffffa07e193f5ac51a93ef7bb89ef48e01bfed3ea9d11744b042fe7e2aa46555a68ad1ffa08beb045c100661077c239ad965fb72c1228dd212c757419ec0f5dbec103fefe5ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff80808080';
+  '0xffffa02222222222222222222222222222222222222222222222222222222222222222ff0180ff01ffffa097de168b9ab8c6fa0568af743d6fae4b2f58a508c2ed47af945060e73ed7544cffa017fcdf15e47df2ee1ad4784d145dec2f56038e9ae66b4666c66eaaf21d7a1516ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff80808080';
+
+const originalProtocol = { ...environment.solslotProtocol } as Record<string, unknown>;
 
 const proofParams = {
   identityAttestRoot: vector.identityAttestRoot,
@@ -54,12 +57,21 @@ describe('VaultAcceptOfferSpendService', () => {
   });
 
   beforeEach(() => {
+    Object.assign(environment.solslotProtocol as Record<string, unknown>, {
+      poolLauncherId: vector.poolLauncherId,
+      poolInnerPuzzleHash: vector.poolInnerPuzzleHash,
+      bridgePolicyHash: '0x' + '00'.repeat(32),
+    });
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
     const wasmService = TestBed.inject(ChiaWasmService);
     wasmService.probeReady();
     service = TestBed.inject(VaultAcceptOfferSpendService);
+  });
+
+  afterEach(() => {
+    restoreProtocolEnvironment();
   });
 
   it('matches the protocol accept-offer inner solution vector', () => {
@@ -119,13 +131,43 @@ describe('VaultAcceptOfferSpendService', () => {
       ),
     ).toThrowError(/offer artifact/);
 
+    (environment.solslotProtocol as Record<string, unknown>)['poolInnerPuzzleHash'] =
+      '0x' + '00'.repeat(32);
     expect(() =>
       service.buildResolved(
         resolvedRequest({
           poolInnerPuzzleHash: '0x' + '00'.repeat(32),
         }),
       ),
-    ).toThrowError(/poolInnerPuzzleHash/);
+    ).toThrowError(/poolInnerPuzzleHash must not be zero/);
+  });
+
+  it('rejects request-scoped pool launcher overrides when the protocol pin is configured', () => {
+    expect(() =>
+      service.buildResolved(
+        resolvedRequest({
+          poolLauncherId: '0x' + '12'.repeat(32),
+        }),
+      ),
+    ).toThrowError(/pool launcher id builder input does not match pinned protocol coordinate/);
+  });
+
+  it('rejects request-scoped pool inner puzzle hash overrides when the protocol pin is configured', () => {
+    (environment.solslotProtocol as Record<string, unknown>)['poolInnerPuzzleHash'] =
+      '0x' + '13'.repeat(32);
+
+    expect(() => service.buildResolved(resolvedRequest())).toThrowError(
+      /pool inner puzzle hash builder input does not match pinned protocol coordinate/,
+    );
+  });
+
+  it('rejects request-scoped bridge policy hash overrides when the protocol pin is configured', () => {
+    (environment.solslotProtocol as Record<string, unknown>)['bridgePolicyHash'] =
+      '0x' + '14'.repeat(32);
+
+    expect(() => service.buildResolved(resolvedRequest())).toThrowError(
+      /bridge policy hash builder input does not match pinned protocol coordinate/,
+    );
   });
 
   it('rejects a current vault coin that no longer matches the previewed coin id', async () => {
@@ -256,4 +298,14 @@ function lineage(currentCoinId: string): SingletonLineage {
       },
     ],
   };
+}
+
+function restoreProtocolEnvironment(): void {
+  const protocol = environment.solslotProtocol as Record<string, unknown>;
+  for (const key of Object.keys(protocol)) {
+    if (!(key in originalProtocol)) {
+      delete protocol[key];
+    }
+  }
+  Object.assign(protocol, originalProtocol);
 }

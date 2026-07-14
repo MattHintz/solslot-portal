@@ -204,10 +204,10 @@ describe('VaultVersionStatusService', () => {
   const vaultInnerModHash = b(0xaf);
 
   beforeEach(() => {
-    originalRegistryLauncherId = environment.populisProtocol.vaultVersionRegistryLauncherId;
-    environment.populisProtocol.vaultVersionRegistryLauncherId =
+    originalRegistryLauncherId = environment.solslotProtocol.vaultVersionRegistryLauncherId;
+    environment.solslotProtocol.vaultVersionRegistryLauncherId =
       '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
-    environment.populisProtocol.vaultVersionRegistryModHash = registryModHash;
+    environment.solslotProtocol.vaultVersionRegistryModHash = registryModHash;
 
     registry = jasmine.createSpyObj<VaultVersionRegistryService>('VaultVersionRegistryService', ['getCurrentState']);
     singleton = jasmine.createSpyObj<ChiaSingletonReaderService>('ChiaSingletonReaderService', ['walkLineage']);
@@ -249,7 +249,7 @@ describe('VaultVersionStatusService', () => {
   });
 
   afterEach(() => {
-    environment.populisProtocol.vaultVersionRegistryLauncherId = originalRegistryLauncherId;
+    environment.solslotProtocol.vaultVersionRegistryLauncherId = originalRegistryLauncherId;
   });
 
   it('returns current when vault code and params match the registry', async () => {

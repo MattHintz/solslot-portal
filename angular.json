@@ -6,7 +6,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "populis_portal": {
+    "solslot-portal": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -84,10 +84,10 @@
           },
           "configurations": {
             "production": {
-              "buildTarget": "populis_portal:build:production"
+              "buildTarget": "solslot-portal:build:production"
             },
             "development": {
-              "buildTarget": "populis_portal:build:development"
+              "buildTarget": "solslot-portal:build:development"
             }
           },
           "defaultConfiguration": "development"

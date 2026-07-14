@@ -26,13 +26,13 @@ describe('A.5 roster update authorization contract', () => {
   it('pins candidate, backend, committee, and bootstrap token as non-authorizers', () => {
     expect(A5_ROSTER_UPDATE_AUTHORIZATION_MODEL.forbiddenAuthorizers).toEqual([
       'candidate_admin_wallet',
-      'populis_api_backend',
-      'pgt_committee_vote',
+      'solslot_api_backend',
+      'sgt_committee_vote',
       'bootstrap_operator_token',
     ]);
     expect(text).toContain('candidate admin wallet does not authorize its own addition');
-    expect(text).toContain('Populis API backend is optional cross-check infrastructure only');
-    expect(text).toContain('PGT committee approval is not part of this A.5 add-admin path');
+    expect(text).toContain('Solslot API backend is optional cross-check infrastructure only');
+    expect(text).toContain('SGT committee approval is not part of this A.5 add-admin path');
     expect(text).toContain('bootstrap operator token cannot authorize post-genesis roster updates');
   });
 

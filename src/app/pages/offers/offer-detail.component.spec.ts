@@ -2,11 +2,12 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 
+import { environment } from '../../../environments/environment';
 import { ChiaWalletService } from '../../services/chia-wallet.service';
 import { EvmWalletService } from '../../services/evm-wallet.service';
 import { OfferDetail } from '../../services/offer-domain';
 import { OfferSourceService } from '../../services/offer-source.service';
-import { VaultState } from '../../services/populis-api.service';
+import { VaultState } from '../../services/solslot-api.service';
 import { PersistedSession, SessionService } from '../../services/session.service';
 import { VaultAcceptOfferLifecycleService } from '../../services/vault-accept-offer-lifecycle.service';
 import {
@@ -16,6 +17,10 @@ import {
 import { OfferDetailComponent } from './offer-detail.component';
 
 const VAULT_LAUNCHER_ID = '0x' + '11'.repeat(32);
+const PINNED_POOL_LAUNCHER_ID = '0x' + '55'.repeat(32);
+const PINNED_POOL_INNER_PUZZLE_HASH = '0x' + '66'.repeat(32);
+const PINNED_BRIDGE_POLICY_HASH = '0x' + '77'.repeat(32);
+const originalProtocol = { ...environment.solslotProtocol } as Record<string, unknown>;
 
 class MockSessionService {
   readonly session = signal<PersistedSession | null>(null);
@@ -69,6 +74,11 @@ describe('OfferDetailComponent', () => {
   let lifecycle: MockVaultAcceptOfferLifecycleService;
 
   beforeEach(async () => {
+    Object.assign(environment.solslotProtocol as Record<string, unknown>, {
+      poolLauncherId: PINNED_POOL_LAUNCHER_ID,
+      poolInnerPuzzleHash: PINNED_POOL_INNER_PUZZLE_HASH,
+      bridgePolicyHash: PINNED_BRIDGE_POLICY_HASH,
+    });
     session = new MockSessionService();
     evm = new MockEvmWalletService();
     offerSource = jasmine.createSpyObj<OfferSourceService>('OfferSourceService', ['offerById']);
@@ -98,6 +108,10 @@ describe('OfferDetailComponent', () => {
     fixture.detectChanges();
   });
 
+  afterEach(() => {
+    restoreProtocolEnvironment();
+  });
+
   it('renders an unconnected member state with a wallet connect action', () => {
     const text = fixture.nativeElement.textContent as string;
 
@@ -111,7 +125,7 @@ describe('OfferDetailComponent', () => {
   });
 
   it('routes a connected member without a vault to create-vault with the offer return target', async () => {
-    evm.setAddress('0x0e61d3bb1148bdd802f747caea112333d156626a');
+    evm.setAddress('0x1111111111111111111111111111111111111111');
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
@@ -177,8 +191,8 @@ describe('OfferDetailComponent', () => {
           vaultCoinId: '0x' + '44'.repeat(32),
           ownerPubkey: '0x' + 'aa'.repeat(48),
           authType: 1,
-          poolLauncherId: '0x' + '55'.repeat(32),
-          poolInnerPuzzleHash: '0x' + '66'.repeat(32),
+          poolLauncherId: PINNED_POOL_LAUNCHER_ID,
+          poolInnerPuzzleHash: PINNED_POOL_INNER_PUZZLE_HASH,
         }),
       }),
     );
@@ -215,6 +229,25 @@ describe('OfferDetailComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('current vault coin id');
   });
 
+  it('rejects offer artifact protocol coordinate overrides before calling the lifecycle service', async () => {
+    setConfirmedVault('chia_bls');
+    proofService.requireProofParams.and.returnValue(acceptOfferProof());
+    const currentOffer = component.offer();
+    currentOffer!.artifact = {
+      ...currentOffer!.artifact!,
+      poolLauncherId: '0x' + '77'.repeat(32),
+    };
+    fixture.detectChanges();
+
+    await component.authorizeAcceptOffer();
+    fixture.detectChanges();
+
+    expect(component.acceptStatus()).toBe('error');
+    expect(lifecycle.authorizeEligibleAcceptOffer).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('pool launcher id');
+    expect(fixture.nativeElement.textContent).toContain('pinned protocol coordinate');
+  });
+
   it('reports unsupported EVM vault acceptance before calling the lifecycle service', async () => {
     setConfirmedVault('evm');
     proofService.requireProofParams.and.returnValue(acceptOfferProof());
@@ -240,8 +273,12 @@ describe('OfferDetailComponent', () => {
   ): void {
     const ownerPubkey = authType === 'chia_bls' ? '0x' + 'aa'.repeat(48) : '0x02' + 'aa'.repeat(32);
     session.session.set({
+      schemaVersion: 2,
+      protocolVersion: 'solslot-v2',
+      experienceMode: 'testnet-alpha',
+      network: 'testnet11',
       authType,
-      address: authType === 'chia_bls' ? ownerPubkey : '0x0e61d3bb1148bdd802f747caea112333d156626a',
+      address: authType === 'chia_bls' ? ownerPubkey : '0x1111111111111111111111111111111111111111',
       vaultLauncherId: VAULT_LAUNCHER_ID,
       compressedPubkey: ownerPubkey,
       createdAt: 1,
@@ -251,7 +288,7 @@ describe('OfferDetailComponent', () => {
       vault_full_puzhash: '0x' + '22'.repeat(32),
       p2_vault_puzhash: '0x' + '33'.repeat(32),
       auth_type: authType,
-      owner_address: authType === 'evm' ? '0x0e61d3bb1148bdd802f747caea112333d156626a' : null,
+      owner_address: authType === 'evm' ? '0x1111111111111111111111111111111111111111' : null,
       owner_pubkey: ownerPubkey,
       confirmed: true,
       confirmed_block_index: 10,
@@ -295,8 +332,8 @@ describe('OfferDetailComponent', () => {
         deedLauncherId: '0x' + '33'.repeat(32),
         artifactHash: null,
         rawOffer: null,
-        poolLauncherId: '0x' + '55'.repeat(32),
-        poolInnerPuzzleHash: '0x' + '66'.repeat(32),
+        poolLauncherId: PINNED_POOL_LAUNCHER_ID,
+        poolInnerPuzzleHash: PINNED_POOL_INNER_PUZZLE_HASH,
       },
       gatingPolicy: {
         requiresZkPassport: true,
@@ -322,4 +359,14 @@ function acceptAuthorization(): any {
       aggregatedSignature: '0x' + 'ab'.repeat(96),
     },
   };
+}
+
+function restoreProtocolEnvironment(): void {
+  const protocol = environment.solslotProtocol as Record<string, unknown>;
+  for (const key of Object.keys(protocol)) {
+    if (!(key in originalProtocol)) {
+      delete protocol[key];
+    }
+  }
+  Object.assign(protocol, originalProtocol);
 }

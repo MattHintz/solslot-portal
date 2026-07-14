@@ -17,7 +17,7 @@ import {
 const vector = ACCEPT_OFFER_PROTOCOL_VECTOR.inputs;
 const OWNER_SIG = '0x' + 'cc'.repeat(96);
 const PACKAGE_VAULT_COIN_ID = '0x7e193f5ac51a93ef7bb89ef48e01bfed3ea9d11744b042fe7e2aa46555a68ad1';
-const VAULT_FULL_PUZZLE_HASH = '0x457229731582e1e870f2059ea370a9f8463fc47211b00f06799f082c01eb28e7';
+const VAULT_FULL_PUZZLE_HASH = '0x6ee104b3af5f13601cdf0381136a18b491d9b3d8202891d8992c59a4a61897e0';
 const proofParams = {
   identityAttestRoot: vector.identityAttestRoot,
   attestationLeafHash: vector.attestationLeafHash,
@@ -37,7 +37,7 @@ describe('VaultAcceptOfferAuthorizeService', () => {
     );
     proofService = jasmine.createSpyObj<ZkPassportAcceptOfferProofService>(
       'ZkPassportAcceptOfferProofService',
-      ['withProofParams'],
+      ['refreshAndRequireProofParams'],
     );
     chiaWallet = jasmine.createSpyObj<ChiaWalletService>('ChiaWalletService', ['signSpendBundle']);
     chiaWallet.signSpendBundle.and.resolveTo({
@@ -74,19 +74,14 @@ describe('VaultAcceptOfferAuthorizeService', () => {
       currentTimestamp: vector.currentTimestamp,
       signatureData: null,
     };
-    proofService.withProofParams.and.returnValue(authorizedInput);
+    proofService.refreshAndRequireProofParams.and.resolveTo(proofParams);
     spendBuilder.buildFromChain.and.resolveTo(basePackage());
 
     const result = await service.authorizeFromChain(baseAuthorizationArgs());
 
-    expect(proofService.withProofParams).toHaveBeenCalledOnceWith(
+    expect(proofService.refreshAndRequireProofParams).toHaveBeenCalledOnceWith(
       vector.vaultLauncherId,
-      jasmine.objectContaining({
-        vaultCoinId: PACKAGE_VAULT_COIN_ID,
-        authType: vector.authType,
-        offer: jasmine.objectContaining({ id: 'offer-vector' }),
-        signatureData: null,
-      }),
+      PACKAGE_VAULT_COIN_ID,
     );
     expect(spendBuilder.buildFromChain).toHaveBeenCalledOnceWith(authorizedInput);
     expect(result.signedSpendBundle.aggregatedSignature).toBe(OWNER_SIG);
@@ -98,7 +93,7 @@ describe('VaultAcceptOfferAuthorizeService', () => {
       authType: 2,
     })).toBeRejectedWithError(/BLS-only/);
 
-    expect(proofService.withProofParams).not.toHaveBeenCalled();
+    expect(proofService.refreshAndRequireProofParams).not.toHaveBeenCalled();
     expect(spendBuilder.buildFromChain).not.toHaveBeenCalled();
     expect(chiaWallet.signSpendBundle).not.toHaveBeenCalled();
   });

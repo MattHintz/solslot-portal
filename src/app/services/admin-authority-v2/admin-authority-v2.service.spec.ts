@@ -2,7 +2,7 @@
  * Cross-repo binding test for the TS port of admin_authority_v2_driver.
  *
  * The fixture file (``admin-authority-v2.fixtures.json``) is generated
- * by the Python helpers in ``populis_protocol/scripts/dump_v2_fixtures.py``
+ * by the Python helpers in ``solslot_protocol/scripts/dump_v2_fixtures.py``
  * and pinned by ``tests/test_v2_fixtures.py``.  Each section of the
  * fixture corresponds to a TS helper and asserts hex-byte equivalence.
  *
@@ -11,7 +11,7 @@
  *      from the Python source of truth.  Diff the offending case's
  *      input + output and find the divergence.
  *   2. OR the Python source changed and the fixture wasn't regenerated.
- *      Re-run ``python populis_protocol/scripts/dump_v2_fixtures.py``
+ *      Re-run ``python solslot_protocol/scripts/dump_v2_fixtures.py``
  *      and re-test.
  */
 import { TestBed } from '@angular/core/testing';
@@ -57,7 +57,7 @@ interface InnerPuzzleInputFixture {
   max_keys_per_admin?: number;
   cooldown_blocks?: number;
   recovery_timeout_blocks?: number;
-  pgt_governance_puzzle_hash?: string;
+  sgt_governance_puzzle_hash?: string;
 }
 
 interface RosterUpdateBindingInputFixture {
@@ -96,7 +96,7 @@ interface FixtureFile {
     default_max_keys_per_admin: number;
     default_cooldown_blocks: number;
     default_recovery_timeout_blocks: number;
-    default_pgt_governance_puzzle_hash: string;
+    default_sgt_governance_puzzle_hash: string;
     singleton_mod_hash: string;
     singleton_launcher_hash: string;
   };
@@ -215,8 +215,8 @@ describe('AdminAuthorityV2Service', () => {
       expect(String(D.recoveryTimeoutBlocks)).toBe(
         String(fixtures.constants.default_recovery_timeout_blocks),
       );
-      expect(D.pgtGovernancePuzzleHash).toBe(
-        fixtures.constants.default_pgt_governance_puzzle_hash,
+      expect(D.sgtGovernancePuzzleHash).toBe(
+        fixtures.constants.default_sgt_governance_puzzle_hash,
       );
     });
   });
@@ -291,7 +291,7 @@ describe('AdminAuthorityV2Service', () => {
             maxKeysPerAdmin: c.input.max_keys_per_admin,
             cooldownBlocks: c.input.cooldown_blocks,
             recoveryTimeoutBlocks: c.input.recovery_timeout_blocks,
-            pgtGovernancePuzzleHash: c.input.pgt_governance_puzzle_hash,
+            sgtGovernancePuzzleHash: c.input.sgt_governance_puzzle_hash,
           }),
         );
         expect(got).withContext(`inner_puzzle_hash[${c.label}]`).toBe(c.expected);

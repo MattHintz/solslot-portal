@@ -1,6 +1,6 @@
 {
   "constants": {
-    "mod_hash": "0x1d3838f04de2d8b864c0b96f7f14d7fc8ec6bd39940806e2fa4087b520138517",
+    "mod_hash": "0xa21505befe18b82a51a5644a184aad514b86a1c7e86fce04594e83bf376329d6",
     "state_draft": 1,
     "state_approved": 2,
     "state_cancelled": 3,
@@ -103,7 +103,7 @@
         "proposal_state": 1,
         "state_version": 0
       },
-      "expected": "0xa8f2017417a6816b50fea558adc1addcf1b11eb192acb2e302c484018887cccb"
+      "expected": "0x443aacc97c129e69ba14bc86abbdf87997fbab3259ee93c8a0f5aecc841a6e06"
     },
     {
       "input": {
@@ -113,7 +113,7 @@
         "proposal_state": 2,
         "state_version": 1
       },
-      "expected": "0x179d60ff30396b28cdcf69e35d65b0e1ff1ea36583eef70672624bef125583f0"
+      "expected": "0xd4c3f07091dd5fd0f50c88a539b38cc7c77806cf06f65a91550f7f691932b7cf"
     },
     {
       "input": {
@@ -123,7 +123,7 @@
         "proposal_state": 3,
         "state_version": 1
       },
-      "expected": "0xf947ad83c5bee80904c8a9457c07a5c56f211abc8da394489bb93779cc4d479f"
+      "expected": "0x39e873d773ed1827e0bbda5e592597201d7868f1472af2ff3642f007ace9ea94"
     },
     {
       "input": {
@@ -133,7 +133,7 @@
         "proposal_state": 1,
         "state_version": 0
       },
-      "expected": "0x75f9d3af944661cef86528676e5057522d2d6db2adb47c3023efd9f1929c1da2"
+      "expected": "0xb1b429d579f109abfefc22fdf5948c8c080fc06b33399dfe228b24b8a169cbc1"
     }
   ]
 }

@@ -8,9 +8,9 @@ import {
 } from '../committee-api.service';
 import { GovernanceTrackerReaderService } from '../governance-tracker-reader.service';
 import {
-  PgtVoteSpendBuilderService,
+  SgtVoteSpendBuilderService,
   UnsignedCoinSpendHex,
-} from '../pgt-driver/pgt-vote-spend-builder.service';
+} from '../sgt-driver/sgt-vote-spend-builder.service';
 import { canonicalPropertyIdHash } from '../../utils/mint-property-id';
 
 import { readMintPublishLocalContext } from './mint-proposal-local-context';
@@ -29,7 +29,7 @@ const EMPTY_AGGREGATE_SIGNATURE = '0x' + 'c0' + '00'.repeat(95);
 @Injectable({ providedIn: 'root' })
 export class MintProposalV2ExecuteRunnerService {
   private readonly tracker = inject(GovernanceTrackerReaderService);
-  private readonly builder = inject(PgtVoteSpendBuilderService);
+  private readonly builder = inject(SgtVoteSpendBuilderService);
   private readonly api = inject(CommitteeApiService);
 
   async executeMint(proposal: MintProposalResponse): Promise<ExecuteMintResult> {

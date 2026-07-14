@@ -30,15 +30,19 @@ describe('AdminGenesisService', () => {
     const req = http.expectOne(`${environment.faucetApi}/admin/deployment`);
     expect(req.request.method).toBe('GET');
     expect(req.request.headers.get('Authorization')).toBe('Bearer token-123');
-    req.flush({ deployed: false, manifest: null });
+    req.flush({ deployed: false, network: 'testnet11', manifest: null });
 
-    await expectAsync(promise).toBeResolvedTo({ deployed: false, manifest: null });
+    await expectAsync(promise).toBeResolvedTo({
+      deployed: false,
+      network: 'testnet11',
+      manifest: null,
+    });
   });
 
   it('dry-runs protocol deployment without pushing or persisting', async () => {
     const promise = service.dryRunProtocolDeploy('genesis-token', {
       quorum_bps: 6000,
-      pgt_total_supply: 2_000_000,
+      sgt_total_supply: 2_000_000,
     });
 
     const req = http.expectOne(`${environment.faucetApi}/admin/deploy/protocol`);
@@ -46,17 +50,19 @@ describe('AdminGenesisService', () => {
     expect(req.request.headers.get('Authorization')).toBe('Bearer genesis-token');
     expect(req.request.body).toEqual({
       quorum_bps: 6000,
-      pgt_total_supply: 2_000_000,
+      sgt_total_supply: 2_000_000,
       dry_run: true,
     });
     req.flush({
       spend_bundle_id: null,
       pushed: false,
+      network: 'testnet11',
       manifest: { pool_launcher_id: '0x' + '11'.repeat(32) },
     });
 
     const result = await promise;
     expect(result.pushed).toBeFalse();
+    expect(result.network).toBe('testnet11');
     expect(result.manifest['pool_launcher_id']).toBe('0x' + '11'.repeat(32));
   });
 
@@ -68,11 +74,13 @@ describe('AdminGenesisService', () => {
     req.flush({
       spend_bundle_id: '0x' + 'aa'.repeat(32),
       pushed: true,
+      network: 'testnet11',
       manifest: { tracker_launcher_id: '0x' + '22'.repeat(32) },
     });
 
     const result = await promise;
     expect(result.pushed).toBeTrue();
+    expect(result.network).toBe('testnet11');
     expect(result.spend_bundle_id).toBe('0x' + 'aa'.repeat(32));
   });
 

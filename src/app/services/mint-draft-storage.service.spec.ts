@@ -56,7 +56,7 @@ describe('MintDraftStorageService', () => {
       deedFullPuzhash: '0x' + '03'.repeat(32),
       proposalHash: '0x' + '04'.repeat(32),
       proposalTrackerCoinId: '0x' + '05'.repeat(32),
-      pgtLockCoinId: '0x' + '06'.repeat(32),
+      sgtLockCoinId: '0x' + '06'.repeat(32),
       deedLauncherId: '0x' + '07'.repeat(32),
       publishedBundleId: '0x' + '08'.repeat(32),
       propertyRegistryPuzzleHash: '0x' + '09'.repeat(32),
@@ -69,7 +69,7 @@ describe('MintDraftStorageService', () => {
     expect(updated?.on_chain.proposal_tracker_coin_id).toBe(
       '0x' + '05'.repeat(32),
     );
-    expect(updated?.on_chain.pgt_lock_coin_id).toBe('0x' + '06'.repeat(32));
+    expect(updated?.on_chain.sgt_lock_coin_id).toBe('0x' + '06'.repeat(32));
     expect(updated?.on_chain.deed_launcher_id).toBe('0x' + '07'.repeat(32));
     expect(updated?.on_chain.published_bundle_id).toBe('0x' + '08'.repeat(32));
     expect(updated?.deadline).toBe(1_700_001_000);
@@ -90,7 +90,7 @@ describe('MintDraftStorageService', () => {
       deedFullPuzhash: '0x' + '03'.repeat(32),
       proposalHash: '0x' + '04'.repeat(32),
       proposalTrackerCoinId: '0x' + '05'.repeat(32),
-      pgtLockCoinId: '0x' + '06'.repeat(32),
+      sgtLockCoinId: '0x' + '06'.repeat(32),
       deedLauncherId: '0x' + '07'.repeat(32),
       publishedBundleId: '0x' + '08'.repeat(32),
       propertyRegistryPuzzleHash: '0x' + '09'.repeat(32),
@@ -118,7 +118,7 @@ describe('MintDraftStorageService', () => {
         deedFullPuzhash: '0x' + '03'.repeat(32),
         proposalHash: '0x' + '04'.repeat(32),
         proposalTrackerCoinId: '0x' + '05'.repeat(32),
-        pgtLockCoinId: '0x' + '06'.repeat(32),
+        sgtLockCoinId: '0x' + '06'.repeat(32),
         deedLauncherId: '0x' + '07'.repeat(32),
         publishedBundleId: '0x' + '08'.repeat(32),
         propertyRegistryPuzzleHash: '0x' + '09'.repeat(32),

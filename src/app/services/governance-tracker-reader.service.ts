@@ -7,11 +7,11 @@ import { bytesToHex, hexToBytes } from '../utils/chia-hash';
 import { environment } from '../../environments/environment';
 
 /**
- * Reader for the PGT-backed governance proposal-tracker singleton
+ * Reader for the SGT-backed governance proposal-tracker singleton
  * (``governance_singleton_inner.clsp``).
  *
  * **Why this exists (Brick 3.5c-4 / Phase B2).**  The committee desk
- * needs to surface the live on-chain proposal — if any — so PGT
+ * needs to surface the live on-chain proposal — if any — so SGT
  * holders can decide whether to vote.  Pre-Hermes-D the API tracked
  * "open proposals" in a SQLite table; that table is gone, and the
  * remaining source of truth is the tracker singleton itself.  This
@@ -25,7 +25,7 @@ import { environment } from '../../environments/environment';
  * AWAITING_EXECUTE / AWAITING_EXPIRE → IDLE state machine.
  *
  * **Trust model.**  The tracker launcher id
- * ({@link environment.populisProtocol.governanceLauncherId}) is the
+ * ({@link environment.solslotProtocol.governanceLauncherId}) is the
  * trust root.  Because singletons conserve over their lineage, any
  * coin we reach by walking forward from that launcher is necessarily
  * the canonical tracker — only the original curried code can have
@@ -33,12 +33,12 @@ import { environment } from '../../environments/environment';
  * mod-hash here; the launcher id substitutes for that check.
  *
  * **Quorum semantics.**  The on-chain quorum check is
- * ``VOTE_TALLY * 10000 >= QUORUM_BPS * PGT_TOTAL_SUPPLY``.  For
- * display we mirror ``QUORUM_BPS`` and ``PGT_TOTAL_SUPPLY`` from
- * {@link environment.populisProtocol} (must equal the values the
+ * ``VOTE_TALLY * 10000 >= QUORUM_BPS * SGT_TOTAL_SUPPLY``.  For
+ * display we mirror ``QUORUM_BPS`` and ``SGT_TOTAL_SUPPLY`` from
+ * {@link environment.solslotProtocol} (must equal the values the
  * operator curried at launch).  After the deadline:
  *
- *   * ``vote_tally * 10000 >= quorum_bps * pgt_total_supply`` →
+ *   * ``vote_tally * 10000 >= quorum_bps * sgt_total_supply`` →
  *     ``AWAITING_EXECUTE``: anyone may submit the EXECUTE spend.
  *   * otherwise → ``AWAITING_EXPIRE``: anyone may submit EXPIRE.
  */
@@ -81,7 +81,7 @@ export class GovernanceTrackerReaderService {
   async readCurrentState(
     nowSeconds: number = Math.floor(Date.now() / 1000),
   ): Promise<TrackerStateSnapshot> {
-    const launcherId = environment.populisProtocol.governanceLauncherId;
+    const launcherId = environment.solslotProtocol.governanceLauncherId;
     if (!launcherId) {
       return { kind: 'NOT_DEPLOYED', reason: 'launcher-id-missing' };
     }
@@ -256,7 +256,7 @@ export class GovernanceTrackerReaderService {
   }
 
   /**
-   * Compute the absolute quorum threshold in PGT mojos and bucket the
+   * Compute the absolute quorum threshold in SGT mojos and bucket the
    * final state for the UI.
    */
   private publish(
@@ -265,9 +265,9 @@ export class GovernanceTrackerReaderService {
     lastSpendBlockIndex: number | null,
     nowSeconds: number,
   ): TrackerStateSnapshot {
-    const env = environment.populisProtocol;
+    const env = environment.solslotProtocol;
     const quorumRequired =
-      (BigInt(env.governanceQuorumBps) * BigInt(env.governancePgtTotalSupply)) /
+      (BigInt(env.governanceQuorumBps) * BigInt(env.governanceSgtTotalSupply)) /
       10000n;
     if (state.kind === 'IDLE') {
       return {
@@ -305,7 +305,7 @@ export class GovernanceTrackerReaderService {
   // ── Vote-spend inputs (Phase 3d) ─────────────────────────────────────
 
   /**
-   * Return the inputs the PGT VOTE spend builder needs when the tracker
+   * Return the inputs the SGT VOTE spend builder needs when the tracker
    * is in OPEN state.  Returns ``null`` if the tracker isn't currently
    * accepting votes (any non-OPEN state).
    *
@@ -383,7 +383,7 @@ export class GovernanceTrackerReaderService {
     label: string,
     action: string,
   ): Promise<ReconstructedActiveTrackerInputs> {
-    const launcherId = environment.populisProtocol.governanceLauncherId;
+    const launcherId = environment.solslotProtocol.governanceLauncherId;
     const lineage = await this.reader.walkLineage(launcherId);
     if (!lineage) {
       throw new Error(`${label}: launcher not on chain`);
@@ -480,7 +480,7 @@ export class GovernanceTrackerReaderService {
    * tracker is IDLE, the four state args of its curried inner puzzle
    * are all zero atoms (``proposal_hash=0``, ``bill_operation=0``,
    * ``vote_tally=0``, ``voting_deadline=0``) per
-   * ``populis_puzzles.pgt_driver.proposal_tracker_inner_puzzle``.  We
+   * ``solslot_puzzles.sgt_driver.proposal_tracker_inner_puzzle``.  We
    * recover the 12 immutable args by uncurrying the LAST SPEND's
    * reveal — which must be the post-execute / post-expire spend that
    * transitioned the tracker back into IDLE — and substitute the last
@@ -491,7 +491,7 @@ export class GovernanceTrackerReaderService {
    * proposal opened), there is no prior non-launcher spend to uncurry,
    * so the reader throws.  Supporting the fresh-launch case requires a
    * separate ``buildIdleInnerFromEnvironment()`` helper that materialises
-   * all 12 immutable args from ``environment.populisProtocol``
+   * all 12 immutable args from ``environment.solslotProtocol``
    * constants; tracked as a follow-up.  Production tracker singletons
    * are launched well before the first MINT publish, so this branch is
    * rare in practice.
@@ -510,7 +510,7 @@ export class GovernanceTrackerReaderService {
     if (snapshot.kind !== 'IDLE') {
       return null;
     }
-    const launcherId = environment.populisProtocol.governanceLauncherId;
+    const launcherId = environment.solslotProtocol.governanceLauncherId;
     const lineage = await this.reader.walkLineage(launcherId);
     if (!lineage) {
       throw new Error('getIdleStateProposeInputs: launcher not on chain');
@@ -612,7 +612,7 @@ export class GovernanceTrackerReaderService {
    * Encode a {@link DecodedBill} back into the canonical CLVM bill tuple
    * the governance tracker curries as ``BILL_OPERATION``.
    *
-   * Mirrors ``populis_puzzles.pgt_driver.bill_mint / bill_freeze / bill_settle /
+   * Mirrors ``solslot_puzzles.sgt_driver.bill_mint / bill_freeze / bill_settle /
    * bill_vault_version``.  ``UNKNOWN`` bills throw — re-currying with an
    * unknown bill would produce an inner hash that doesn't match the
    * unspent coin (the cross-check in {@link getOpenStateVoteInputs} would
@@ -728,7 +728,7 @@ export interface DecodedSpend {
 }
 
 /**
- * Inputs the PGT VOTE spend builder needs.  Produced by
+ * Inputs the SGT VOTE spend builder needs.  Produced by
  * {@link GovernanceTrackerReaderService.getOpenStateVoteInputs} only
  * when the tracker is in OPEN state.
  */
@@ -803,7 +803,7 @@ export interface IdleStateProposeInputs {
    * struct, equals ``trackerCoin.puzzleHash``.
    */
   trackerInnerPuzzleHex: string;
-  /** Tracker singleton launcher id (= ``environment.populisProtocol.governanceLauncherId``). */
+  /** Tracker singleton launcher id (= ``environment.solslotProtocol.governanceLauncherId``). */
   trackerLauncherId: string;
   /**
    * Lineage proof for the tracker spend — derived from the last spent

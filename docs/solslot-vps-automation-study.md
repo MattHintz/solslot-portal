@@ -2,7 +2,7 @@
 
 Date: 2026-07-04
 
-This note captures the useful parts of the historical Solslot automation without reintroducing retired Solslot offers as a product path. Old offer rows are forensic evidence only. New properties, deeds, and purchase artifacts should flow through the Populis-Solslot merger path.
+This note captures the useful parts of the historical Solslot automation without reintroducing retired Solslot offers as a product path. Old offer rows are forensic evidence only. New properties, deeds, and purchase artifacts should flow through the Solslot-Solslot merger path.
 
 ## VPS Shape
 
@@ -30,13 +30,13 @@ This note captures the useful parts of the historical Solslot automation without
 - Purchase intents store artifact JSON/hash and state in `protocol_purchase_intent`.
 - Staging Telonium can attach protocol metadata to Stripe checkout/payment links.
 - Stripe webhooks can call Rehoboam back through `/protocol/purchase-intents/stripe-webhook`.
-- Rehoboam calls Populis API endpoints:
+- Rehoboam calls Solslot API endpoints:
   - `/protocol/offer-artifacts`
   - `/protocol/purchase-finalizations/verify`
 
 ## Coordinate Bridge Status
 
-`_protocol_artifact_request` in staging Rehoboam builds the Populis artifact request from Solslot property/share/offer rows and now passes optional Populis acceptance coordinates when the active purchase-intent path supplies them:
+`_protocol_artifact_request` in staging Rehoboam builds the Solslot artifact request from Solslot property/share/offer rows and now passes optional Solslot acceptance coordinates when the active purchase-intent path supplies them:
 
 - `poolLauncherId`
 - `poolInnerPuzzleHash`
@@ -47,13 +47,13 @@ This note captures the useful parts of the historical Solslot automation without
 
 Those fields are represented on the portal-side offer artifact model. The bridge is now present in local code and staging:
 
-- `populis_api` accepts request-scoped coordinates and emits them into the protocol offer artifact.
+- `solslot_api` accepts request-scoped coordinates and emits them into the protocol offer artifact.
 - `research/solslot-backend` forwards camelCase or snake_case coordinate fields from `/protocol/purchase-intents`.
 - `research/solslot-backend` no longer copies retired Solslot `chia_offer_id` rows into `raw_offer`; current raw Chia offer text must come from the active admin/API path.
 - `research/solslot-frontend` can pass configured or local-storage coordinate fields into the purchase-intent request.
-- VPS staging has `populis-api-staging.service` listening internally on `127.0.0.1:8790`.
-- VPS staging Rehoboam has `POPULIS_API_URL=http://127.0.0.1:8790`.
-- Remote smoke testing confirmed Rehoboam forwards coordinates to Populis API and does not reuse retired Solslot offer text as `raw_offer`.
+- VPS staging has `solslot-api-staging.service` listening internally on `127.0.0.1:8790`.
+- VPS staging Rehoboam has `SOLSLOT_API_URL=http://127.0.0.1:8790`.
+- Remote smoke testing confirmed Rehoboam forwards coordinates to Solslot API and does not reuse retired Solslot offer text as `raw_offer`.
 
 ## Moon Alpha Seed
 
@@ -72,7 +72,7 @@ The offer row contains `chia_offer_id=offerMoonAlphaProtocolReadinessOnly` only 
 Remote artifact rehearsal against staging confirmed:
 
 - Rehoboam built the Moon artifact request with `raw_offer = None`.
-- Populis API returned an artifact hash prefix `sha256:e9191a782de`.
+- Solslot API returned an artifact hash prefix `sha256:e9191a782de`.
 - Deployment coordinates appear in the artifact payload fields (`poolLauncherId`, `poolInnerPuzzleHash`, `bridgePolicyHash`, `membersMerkleRoot`, `protocolConfigLauncherId`, `vaultVersionRegistryLauncherId`).
 - Purchase/deed lifecycle fields appear in the protocol payload fields (`collectionId`, `deedLauncherId`, `propertyId`, `purchaseIntentId`, `sharePpm`, `vaultLauncherId`).
 
@@ -81,10 +81,10 @@ Remote artifact rehearsal against staging confirmed:
 1. Keep `admin/legacy-recall` focused on Pro Account and Pro Vault customer recall.
 2. Treat old Solslot offer rows as retired forensic records. Do not map them into active `OP:OFFER_READY` UI.
 3. For new merged properties, use this lifecycle:
-   - Populis governance creates and executes the mint proposal.
+   - Solslot governance creates and executes the mint proposal.
    - The deed is minted and obtains a deed launcher id.
    - The admin/API purchase-intent path creates the offer artifact.
    - Solslot payment rails attach purchase-intent metadata.
    - Payment webhook/evidence calls back into Rehoboam.
-   - Rehoboam asks Populis to verify/finalize.
+   - Rehoboam asks Solslot to verify/finalize.
 4. Next backend brick: replace staging placeholder protocol coordinates with real merger deployment coordinates, then run an end-to-end purchase-intent rehearsal for Chia/Base USDC/Stripe rails.

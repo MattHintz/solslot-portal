@@ -9,7 +9,9 @@ import { ConnectComponent } from './connect.component';
 
 class MockChiaWalletService {
   private readonly _sageWalletConnectUri = signal<string | null>(null);
+  private readonly _restoringSageWalletConnect = signal(false);
   readonly sageWalletConnectUri = this._sageWalletConnectUri.asReadonly();
+  readonly restoringSageWalletConnect = this._restoringSageWalletConnect.asReadonly();
 
   hasGoby = jasmine.createSpy('hasGoby').and.returnValue(false);
   hasSage = jasmine.createSpy('hasSage').and.returnValue(false);
@@ -23,6 +25,10 @@ class MockChiaWalletService {
 
   setSageWalletConnectUri(uri: string | null): void {
     this._sageWalletConnectUri.set(uri);
+  }
+
+  setRestoringSageWalletConnect(restoring: boolean): void {
+    this._restoringSageWalletConnect.set(restoring);
   }
 }
 
@@ -110,13 +116,24 @@ describe('ConnectComponent', () => {
   });
 
   it('renders the Sage WalletConnect pairing link while approval is pending', () => {
-    chia.setSageWalletConnectUri('wc:populis-test-pairing');
+    chia.setSageWalletConnectUri('wc:solslot-test-pairing');
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Sage WalletConnect is waiting.');
     expect(text).toContain('Copy pairing link');
-    expect(text).toContain('wc:populis-test-pairing');
+    expect(text).toContain('wc:solslot-test-pairing');
+  });
+
+  it('shows silent Sage WalletConnect restore progress before pairing', () => {
+    component.busy.set(true);
+    chia.setRestoringSageWalletConnect(true);
+    chia.setSageWalletConnectUri(null);
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Checking existing Sage session...');
+    expect(text).not.toContain('Sage WalletConnect is waiting.');
   });
 
   it('cancels a pending Chia pairing without disconnecting other services', () => {

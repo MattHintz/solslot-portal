@@ -87,6 +87,10 @@ export type PoolV2CoinSpendBuild<
 export interface SpecificDeedSwapInnerSolutionArgs extends PoolInnerSolutionContext {
   state: PoolEconomicStateInput;
   deedId: string;
+  deedLauncherId: string;
+  parValueMojos: BigintLike;
+  assetClass: BigintLike;
+  propertyIdCanon: string;
   buyerVaultLauncherId: string;
   launcherPuzzleHash?: string;
   collectionIdCanon: string;
@@ -101,6 +105,10 @@ export interface SpecificDeedSwapInnerSolutionArgs extends PoolInnerSolutionCont
 export interface TrueRedemptionInnerSolutionArgs extends PoolInnerSolutionContext {
   state: PoolEconomicStateInput;
   deedId: string;
+  deedLauncherId: string;
+  parValueMojos: BigintLike;
+  assetClass: BigintLike;
+  propertyIdCanon: string;
   vaultLauncherId: string;
   launcherPuzzleHash?: string;
   collectionIdCanon: string;
@@ -112,6 +120,7 @@ export interface TrueRedemptionInnerSolutionArgs extends PoolInnerSolutionContex
 export interface ReserveAcquisitionInnerSolutionArgs extends PoolInnerSolutionContext {
   state: PoolEconomicStateInput;
   deedId: string;
+  deedLauncherId: string;
   propertyIdCanon: string;
   parValueMojos: BigintLike;
   assetClass: BigintLike;
@@ -293,6 +302,10 @@ export class PoolEconomicsV2SpendBuilderService {
     const spec = this.economics.buildSpecificDeedSwapSpec({
       state: args.state,
       deedId: args.deedId,
+      deedLauncherId: args.deedLauncherId,
+      parValueMojos: args.parValueMojos,
+      assetClass: args.assetClass,
+      propertyIdCanon: args.propertyIdCanon,
       p2VaultPuzzleHash,
       collectionIdCanon: args.collectionIdCanon,
       sharePpm: args.sharePpm,
@@ -307,6 +320,10 @@ export class PoolEconomicsV2SpendBuilderService {
       actionTag: POOL_V2_SPECIFIC_DEED_SWAP_TAG,
       innerSolutionHex: this.innerSolutionHex(args, POOL_SPEND_V2_SPECIFIC_DEED_SWAP, [
         atom32(args.deedId, 'deedId'),
+        atom32(args.deedLauncherId, 'deedLauncherId'),
+        bigint(args.parValueMojos),
+        bigint(args.assetClass),
+        atom32(args.propertyIdCanon, 'propertyIdCanon'),
         atom32(args.collectionIdCanon, 'collectionIdCanon'),
         bigint(args.sharePpm),
         bigint(args.navEvidence.navValueMojos),
@@ -337,6 +354,10 @@ export class PoolEconomicsV2SpendBuilderService {
     const spec = this.economics.buildTrueRedemptionSpec({
       state: args.state,
       deedId: args.deedId,
+      deedLauncherId: args.deedLauncherId,
+      parValueMojos: args.parValueMojos,
+      assetClass: args.assetClass,
+      propertyIdCanon: args.propertyIdCanon,
       p2VaultPuzzleHash,
       collectionIdCanon: args.collectionIdCanon,
       sharePpm: args.sharePpm,
@@ -348,6 +369,10 @@ export class PoolEconomicsV2SpendBuilderService {
       actionTag: POOL_V2_TRUE_REDEMPTION_TAG,
       innerSolutionHex: this.innerSolutionHex(args, POOL_SPEND_V2_TRUE_REDEMPTION, [
         atom32(args.deedId, 'deedId'),
+        atom32(args.deedLauncherId, 'deedLauncherId'),
+        bigint(args.parValueMojos),
+        bigint(args.assetClass),
+        atom32(args.propertyIdCanon, 'propertyIdCanon'),
         atom32(args.collectionIdCanon, 'collectionIdCanon'),
         bigint(args.sharePpm),
         bigint(args.navEvidence.navValueMojos),
@@ -370,6 +395,7 @@ export class PoolEconomicsV2SpendBuilderService {
     const spec = this.economics.buildReserveAcquisitionSpec({
       state: args.state,
       deedId: args.deedId,
+      deedLauncherId: args.deedLauncherId,
       propertyIdCanon: args.propertyIdCanon,
       parValueMojos: args.parValueMojos,
       assetClass: args.assetClass,
@@ -385,6 +411,7 @@ export class PoolEconomicsV2SpendBuilderService {
       actionTag: POOL_V2_RESERVE_ACQUISITION_TAG,
       innerSolutionHex: this.innerSolutionHex(args, POOL_SPEND_V2_RESERVE_ACQUISITION, [
         atom32(args.deedId, 'deedId'),
+        atom32(args.deedLauncherId, 'deedLauncherId'),
         atom32(args.propertyIdCanon, 'propertyIdCanon'),
         bigint(args.parValueMojos),
         bigint(args.assetClass),
@@ -397,7 +424,9 @@ export class PoolEconomicsV2SpendBuilderService {
         atom32(args.navEvidence.registryPuzzleHash, 'registryPuzzleHash'),
         atom32(args.sellerPuzhash, 'sellerPuzhash'),
         bigint(args.sellerTokenPrice),
-        args.mintTokenCoinId ? atom32(args.mintTokenCoinId, 'mintTokenCoinId') : null,
+        spec.quote.freshMintShortfallTokens > 0n && args.mintTokenCoinId
+          ? atom32(args.mintTokenCoinId, 'mintTokenCoinId')
+          : null,
       ]),
       spec,
     };

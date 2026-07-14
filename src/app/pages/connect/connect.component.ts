@@ -105,7 +105,11 @@ import { formatError } from '../../utils/format-error';
 
       @if (busy()) {
         <div class="mt-6 mono text-sm text-text-muted">
-          {{ status() }}
+          @if (restoringSageWalletConnect()) {
+            Checking existing Sage session...
+          } @else {
+            {{ status() }}
+          }
         </div>
       }
 
@@ -140,6 +144,7 @@ export class ConnectComponent {
   readonly status = signal<string>('');
   readonly error = signal<string | null>(null);
   readonly sageWalletConnectUri = this.chia.sageWalletConnectUri;
+  readonly restoringSageWalletConnect = this.chia.restoringSageWalletConnect;
   readonly returnTo = signal<string | null>(
     safeReturnTo(this.route.snapshot.queryParamMap.get('returnTo')),
   );

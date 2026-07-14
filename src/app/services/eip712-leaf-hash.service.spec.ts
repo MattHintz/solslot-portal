@@ -12,18 +12,18 @@ import {
  * Karma tests for the WASM-backed Eip712Member leaf-hash service.
  *
  * The fixture values pinned here are computed by
- * ``populis_protocol/populis_puzzles/eip712_helpers.py``'s
+ * ``solslot_protocol/solslot_puzzles/eip712_helpers.py``'s
  * ``compute_eip712_member_leaf_hash`` (which uses
  * ``chia.wallet.util.curry_and_treehash`` semantics) and
  * cross-verified against ``Program.curry().get_tree_hash()`` —
  * see ``test_matches_chia_curry_and_treehash`` in
- * ``populis_protocol/tests/test_eip712_helpers.py``.
+ * ``solslot_protocol/tests/test_eip712_helpers.py``.
  *
  * If you bump the chia-wallet-sdk-wasm package and this test fails,
  * regenerate the fixtures by running:
  *
- *     cd populis_protocol && .venv/bin/python -c "
- *     from populis_puzzles.eip712_helpers import (
+ *     cd solslot_protocol && .venv/bin/python -c "
+ *     from solslot_puzzles.eip712_helpers import (
  *         compute_eip712_member_leaf_hash,
  *         eip712_prefix_and_domain_separator,
  *         genesis_challenge_for_network,
@@ -50,7 +50,7 @@ import {
 // ──────────────────────────────────────────────────────────────────────
 
 /** A real compressed secp256k1 pubkey (recovered from a valid EIP-712
- * signature — same one used in the populis_protocol test suite). */
+ * signature — same one used in the solslot_protocol test suite). */
 const FIXTURE_PUBKEY =
   '0x0217bf27e0523f4ab9898dd87344f70b5231266e9e63da9fd401f8b4443e3d3e68';
 
@@ -119,13 +119,13 @@ describe('Eip712LeafHashService', () => {
   });
 
   describe('genesis challenge constants', () => {
-    it('TESTNET11_GENESIS_CHALLENGE_HEX matches populis_protocol pin', () => {
+    it('TESTNET11_GENESIS_CHALLENGE_HEX matches solslot_protocol pin', () => {
       expect(TESTNET11_GENESIS_CHALLENGE_HEX).toBe(
         '37a90eb5185a9c4439a91ddc98bbadce7b4feba060d50116a067de66bf236615',
       );
     });
 
-    it('MAINNET_GENESIS_CHALLENGE_HEX matches populis_protocol pin', () => {
+    it('MAINNET_GENESIS_CHALLENGE_HEX matches solslot_protocol pin', () => {
       expect(MAINNET_GENESIS_CHALLENGE_HEX).toBe(
         'ccd5bb71183532bff220ba46c268991a3ff07eb358e8255a65c30a2dce0e5fbb',
       );

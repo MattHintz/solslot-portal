@@ -15,52 +15,74 @@ import { AdminWalletAuthService } from './admin-wallet-auth.service';
  *     ``address-not-in-allowlist``, and the precedence rule that
  *     the MIPS root check is consulted first when pinned.
  *
- * Each test mutates ``environment.populisProtocol`` directly and
+ * Each test mutates ``environment.solslotProtocol`` directly and
  * resets it on teardown so cases don't leak state across the suite.
  */
 describe('AdminWalletAuthService', () => {
   // Sample identity pair (test fixture only \u2014 no on-chain meaning).
-  const SAMPLE_ADDRESS = '0x0e61d3bb1148bdd802f747caea112333d156626a';
+  const SAMPLE_ADDRESS = '0x1111111111111111111111111111111111111111';
   const SAMPLE_PUBKEY =
     '0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798';
 
   let service: AdminWalletAuthService;
-  let originalConfig: typeof environment.populisProtocol;
+  let originalConfig: typeof environment.solslotProtocol;
 
   beforeEach(() => {
-    originalConfig = { ...environment.populisProtocol };
+    originalConfig = { ...environment.solslotProtocol };
     TestBed.configureTestingModule({});
     service = TestBed.inject(AdminWalletAuthService);
   });
 
   afterEach(() => {
     // Reset env mutations so other specs see the original values.
-    Object.assign(environment.populisProtocol, originalConfig);
+    Object.assign(environment.solslotProtocol, originalConfig);
   });
 
   describe('buildLoginTypedData', () => {
-    it('produces the canonical PopulisAdminLogin envelope', () => {
+    it('produces the canonical SolslotAdminLogin envelope', () => {
       const expiresAt = 1_700_000_000;
       const nonce =
         '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
       const td = service.buildLoginTypedData(expiresAt, nonce);
 
-      expect(td.primaryType).toBe('PopulisAdminLogin');
+      expect(td.primaryType).toBe('SolslotAdminLogin');
       expect(td.domain).toEqual({
-        name: 'Populis Admin Login',
-        version: '1',
+        name: environment.eip712Name,
+        version: environment.eip712Version,
         chainId: environment.eip712ChainId,
       });
-      expect(td.types['PopulisAdminLogin']).toEqual([
+      expect(td.types['SolslotAdminLogin']).toEqual([
         { name: 'app', type: 'string' },
         { name: 'nonce', type: 'bytes32' },
         { name: 'expires_at', type: 'uint256' },
       ]);
       expect(td.message).toEqual({
-        app: 'Populis Admin Login',
+        app: 'Solslot Admin Login',
         nonce,
         expires_at: expiresAt,
       });
+    });
+  });
+
+  describe('buildLoginPersonalSignMessage', () => {
+    it('builds a one-line Tangem-compatible admin proof with replay controls', () => {
+      const expiresAt = 1_700_000_000;
+      const nonce =
+        '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+      const message = service.buildLoginPersonalSignMessage(
+        SAMPLE_ADDRESS.toUpperCase(),
+        expiresAt,
+        nonce,
+      );
+
+      expect(message).not.toContain('\n');
+      expect(message).toContain('Solslot Admin Login');
+      expect(message).toContain(`address=${SAMPLE_ADDRESS}`);
+      expect(message).toContain(`chain_id=${environment.eip712ChainId}`);
+      expect(message).toContain(`nonce=${nonce}`);
+      expect(message).toContain(`expires_at=${expiresAt}`);
+      expect(message).toContain(`domain_version=${environment.eip712Version}`);
+      expect(message).toContain('local_only=true');
     });
   });
 
@@ -97,11 +119,11 @@ describe('AdminWalletAuthService', () => {
   describe('verifyMembership \u2014 env address allowlist path', () => {
     beforeEach(() => {
       // Force the env-allowlist path by clearing any pinned MIPS root.
-      environment.populisProtocol.adminAuthorityV2MipsRootHash = '';
+      environment.solslotProtocol.adminAuthorityV2MipsRootHash = '';
     });
 
     it('returns ok when the address is in the allowlist', () => {
-      environment.populisProtocol.adminAuthorityV2AdminAddresses = [SAMPLE_ADDRESS];
+      environment.solslotProtocol.adminAuthorityV2AdminAddresses = [SAMPLE_ADDRESS];
       const r = service.verifyMembership({
         address: SAMPLE_ADDRESS,
         pubkey: SAMPLE_PUBKEY,
@@ -115,7 +137,7 @@ describe('AdminWalletAuthService', () => {
     });
 
     it('matches case-insensitively + with/without 0x prefix', () => {
-      environment.populisProtocol.adminAuthorityV2AdminAddresses = [
+      environment.solslotProtocol.adminAuthorityV2AdminAddresses = [
         SAMPLE_ADDRESS.toUpperCase().replace('0X', '0x'),
       ];
       // Caller's input is bare hex; verifier should still accept and
@@ -130,7 +152,7 @@ describe('AdminWalletAuthService', () => {
     });
 
     it('returns address-not-in-allowlist when missing', () => {
-      environment.populisProtocol.adminAuthorityV2AdminAddresses = [
+      environment.solslotProtocol.adminAuthorityV2AdminAddresses = [
         '0xdeadbeef'.padEnd(42, '0'),
       ];
       const r = service.verifyMembership({
@@ -145,7 +167,7 @@ describe('AdminWalletAuthService', () => {
     });
 
     it('returns no-admins-configured when both sources are empty', () => {
-      environment.populisProtocol.adminAuthorityV2AdminAddresses = [];
+      environment.solslotProtocol.adminAuthorityV2AdminAddresses = [];
       const r = service.verifyMembership({
         address: SAMPLE_ADDRESS,
         pubkey: SAMPLE_PUBKEY,
@@ -160,8 +182,8 @@ describe('AdminWalletAuthService', () => {
 
   describe('verifyMembership \u2014 MIPS root precedence', () => {
     it('falls through to the allowlist when MIPS root is empty', () => {
-      environment.populisProtocol.adminAuthorityV2MipsRootHash = '';
-      environment.populisProtocol.adminAuthorityV2AdminAddresses = [SAMPLE_ADDRESS];
+      environment.solslotProtocol.adminAuthorityV2MipsRootHash = '';
+      environment.solslotProtocol.adminAuthorityV2AdminAddresses = [SAMPLE_ADDRESS];
       const r = service.verifyMembership({
         address: SAMPLE_ADDRESS,
         pubkey: SAMPLE_PUBKEY,
@@ -176,9 +198,9 @@ describe('AdminWalletAuthService', () => {
       // and a mismatch is fail-closed.  WASM may or may not be
       // ready in the karma harness; either way the result must be
       // not-ok with reason in {mips-root-mismatch, wasm-error}.
-      environment.populisProtocol.adminAuthorityV2MipsRootHash =
+      environment.solslotProtocol.adminAuthorityV2MipsRootHash =
         '0x' + '11'.repeat(32);
-      environment.populisProtocol.adminAuthorityV2AdminAddresses = [SAMPLE_ADDRESS];
+      environment.solslotProtocol.adminAuthorityV2AdminAddresses = [SAMPLE_ADDRESS];
       const r = service.verifyMembership({
         address: SAMPLE_ADDRESS,
         pubkey: SAMPLE_PUBKEY,

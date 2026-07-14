@@ -15,7 +15,7 @@ This scaffold continues from the committed portal checkpoints:
 - The portal builds the Chia vault spend client-side, Samuel-style, with WASM/CLVM helpers.
 - The user explicitly signs/authorizes the vault enrollment spend with the vault auth method they chose: EVM, Chia BLS, or passkey.
 - The portal pushes the signed bundle directly to coinset only after user confirmation.
-- Target architecture is all on-chain + frontend: zkPassport verifier event contract, frontend-relayed Chia validator/member bridge coin, Chia vault singleton spend, and Angular polling/signing. The normal user path should not depend on a Populis backend.
+- Target architecture is all on-chain + frontend: zkPassport verifier event contract, frontend-relayed Chia validator/member bridge coin, Chia vault singleton spend, and Angular polling/signing. The normal user path should not depend on a Solslot backend.
 - Solslot references:
   - `research/solslot-omnichain`: useful Warp/omnichain reference only; not required by the primary frontend-relayed validator bridge.
   - `research/solslot-samuel`: Chia-side drivers load CLVM hex, curry singleton puzzles, build `CoinSpend`s, aggregate signatures, and push bundles.
@@ -35,7 +35,7 @@ Repo: contract workspace to be chosen or created.
 Output:
 
 - Minimal Solidity verifier/adapter contract that accepts zkPassport `compressed-evm` proof output.
-- Bind the proof to the Populis vault using zkPassport `custom_data = vault:<launcher_id>` or equivalent canonical binding.
+- Bind the proof to the Solslot vault using zkPassport `custom_data = vault:<launcher_id>` or equivalent canonical binding.
 - Use the zkPassport Solidity verifier as the only proof-verification dependency; after verification, all downstream state moves by EVM events, frontend polling, Chia validator/member signatures, and Chia spends.
 - Emit a canonical event containing only commitment data needed by the Chia side:
   - vault launcher id
@@ -61,7 +61,7 @@ zkpassport: add EVM attestation contract scaffold
 
 ## Brick 10 — Chia validator/member bridge puzzle
 
-Repo: `populis_protocol`.
+Repo: `solslot_protocol`.
 
 Output:
 
@@ -89,7 +89,7 @@ zkpassport: add validator bridge message puzzle
 
 ## Brick 11 — Portal EVM attestation client and poller
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Output:
 
@@ -113,7 +113,7 @@ zkpassport: poll EVM attestation output
 
 ## Brick 12 — Portal chain-derived vault enrollment spend package
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Output:
 
@@ -134,7 +134,7 @@ vault: build enrollment spend in wasm
 
 ## Brick 13 — Signer adapters for vault auth methods
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Output:
 
@@ -156,7 +156,7 @@ vault: add enrollment signer adapters
 
 ## Brick 14 — Direct commit and confirmation polling
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Output:
 
@@ -177,7 +177,7 @@ vault: commit zkPassport enrollment spend
 
 ## Brick 15 — Accept-offer proof autowiring
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Output:
 
@@ -198,7 +198,7 @@ vault: include confirmed zkPassport proof in offers
 
 ## Brick 16 — Accept-offer builder integration plan
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Output:
 

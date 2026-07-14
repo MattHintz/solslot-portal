@@ -181,8 +181,8 @@ describe('MintProposalChainStateService', () => {
     }
   });
 
-  it('attaches confirmed/unspent PGT lock coin evidence when the stored lock id exists on chain', async () => {
-    const pgtLockCoinId = b32('66');
+  it('attaches confirmed/unspent SGT lock coin evidence when the stored lock id exists on chain', async () => {
+    const sgtLockCoinId = b32('66');
     singleton.walkLineage.and.resolveTo(
       lineage({
         livePuzzleHash: expectedFullPuzzleHash,
@@ -201,14 +201,14 @@ describe('MintProposalChainStateService', () => {
       timestamp: 1_700_000_200,
     });
 
-    const result = await service.check(proposalWithPgtLock(pgtLockCoinId));
+    const result = await service.check(proposalWithSgtLock(sgtLockCoinId));
 
-    expect(coinset.getCoinRecordByName).toHaveBeenCalledOnceWith(pgtLockCoinId);
+    expect(coinset.getCoinRecordByName).toHaveBeenCalledOnceWith(sgtLockCoinId);
     expect(result.kind).toBe('confirmed-draft');
     if (result.kind === 'confirmed-draft') {
-      expect(result.pgtLock).toEqual({
+      expect(result.sgtLock).toEqual({
         kind: 'confirmed-unspent',
-        coinId: pgtLockCoinId,
+        coinId: sgtLockCoinId,
         parentCoinId: b32('70'),
         puzzleHash: b32('71'),
         amount: 10_000,
@@ -217,8 +217,8 @@ describe('MintProposalChainStateService', () => {
     }
   });
 
-  it('attaches pending PGT lock coin evidence when the stored lock id is not on chain yet', async () => {
-    const pgtLockCoinId = b32('67');
+  it('attaches pending SGT lock coin evidence when the stored lock id is not on chain yet', async () => {
+    const sgtLockCoinId = b32('67');
     singleton.walkLineage.and.resolveTo(
       lineage({
         livePuzzleHash: expectedFullPuzzleHash,
@@ -227,13 +227,13 @@ describe('MintProposalChainStateService', () => {
     );
     coinset.getCoinRecordByName.and.resolveTo(null);
 
-    const result = await service.check(proposalWithPgtLock(pgtLockCoinId));
+    const result = await service.check(proposalWithSgtLock(sgtLockCoinId));
 
     expect(result.kind).toBe('confirmed-draft');
     if (result.kind === 'confirmed-draft') {
-      expect(result.pgtLock).toEqual({
+      expect(result.sgtLock).toEqual({
         kind: 'unconfirmed',
-        coinId: pgtLockCoinId,
+        coinId: sgtLockCoinId,
       });
     }
   });
@@ -313,7 +313,7 @@ describe('MintProposalChainStateService', () => {
   function proposal(): MintProposalResponse {
     return {
       id: 'mint-draft-1',
-      owner_pubkey: '0x0e61d3bb1148bdd802f747caea112333d156626a',
+      owner_pubkey: '0x1111111111111111111111111111111111111111',
       state: 'PROPOSED',
       par_value: 125_000,
       asset_class: 'RWA-RE-RES',
@@ -331,7 +331,7 @@ describe('MintProposalChainStateService', () => {
       },
       on_chain: {
         proposal_tracker_coin_id: launcherId,
-        pgt_lock_coin_id: null,
+        sgt_lock_coin_id: null,
         deed_launcher_id: b32('55'),
         published_bundle_id: b32('60'),
         executed_bundle_id: null,
@@ -353,12 +353,12 @@ describe('MintProposalChainStateService', () => {
     };
   }
 
-  function proposalWithPgtLock(pgtLockCoinId: string): MintProposalResponse {
+  function proposalWithSgtLock(sgtLockCoinId: string): MintProposalResponse {
     return {
       ...proposal(),
       on_chain: {
         ...proposal().on_chain,
-        pgt_lock_coin_id: pgtLockCoinId,
+        sgt_lock_coin_id: sgtLockCoinId,
       },
     };
   }

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { sha256 } from 'ethers';
 
 import { ChiaWasmService } from './chia-wasm.service';
+import type { UnsignedCoinSpend } from './chia-wallet.service';
 import fixturesJson from './pool-economics-v2.fixtures.json';
 import {
   type CollectionNavEvidenceInput,
@@ -41,12 +42,14 @@ interface FixtureFile {
     pool_lineage_proof: FixtureLineageProof;
     pool_inner_puzzle_hex: string;
     deed_id: string;
+    deed_launcher_id: string;
     buyer_vault_launcher_id: string;
     launcher_puzzle_hash: string;
     property_id_canon: string;
     collection_id_canon: string;
     token_coin_id: string;
     nav_evidence: FixtureEvidence;
+    nav_evidence_coin_spend: FixtureCoinSpend;
     acquisition_nav_evidence: FixtureEvidence;
   };
   true_redemption: FixtureSection;
@@ -60,6 +63,12 @@ interface FixtureCoin {
   coin_id: string;
 }
 
+interface FixtureCoinSpend {
+  coin: FixtureCoin;
+  puzzle_reveal: string;
+  solution: string;
+}
+
 interface FixtureLineageProof {
   parent_name: string;
   inner_puzzle_hash: string;
@@ -67,6 +76,12 @@ interface FixtureLineageProof {
 }
 
 const fixture = fixturesJson as FixtureFile;
+const DEED_METADATA = {
+  deedLauncherId: fixture.common.deed_launcher_id,
+  parValueMojos: fixture.reserve_acquisition.inputs['par_value_mojos'],
+  assetClass: fixture.reserve_acquisition.inputs['asset_class'],
+  propertyIdCanon: fixture.common.property_id_canon,
+};
 
 describe('PoolEconomicsV2TokenAuthorizationService', () => {
   let service: PoolEconomicsV2TokenAuthorizationService;
@@ -109,6 +124,7 @@ describe('PoolEconomicsV2TokenAuthorizationService', () => {
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -120,6 +136,7 @@ describe('PoolEconomicsV2TokenAuthorizationService', () => {
     const requirement = spendBuilder.describePoolV2RequiredAnnouncements({
       poolSpend,
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       navEvidence,
     }).find((r) => r.role === 'token_authorization');
 
@@ -152,6 +169,7 @@ describe('PoolEconomicsV2TokenAuthorizationService', () => {
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       propertyIdCanon: fixture.common.property_id_canon,
       parValueMojos: inputNumber(fixture.reserve_acquisition, 'par_value_mojos'),
       assetClass: inputNumber(fixture.reserve_acquisition, 'asset_class'),
@@ -166,6 +184,7 @@ describe('PoolEconomicsV2TokenAuthorizationService', () => {
     const requirement = spendBuilder.describePoolV2RequiredAnnouncements({
       poolSpend,
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       navEvidence,
       tokenSettlementPuzzleHash: inputString(fixture.reserve_acquisition, 'seller_puzhash'),
     }).find((r) => r.role === 'token_authorization');
@@ -194,6 +213,7 @@ describe('PoolEconomicsV2TokenAuthorizationService', () => {
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -214,6 +234,7 @@ describe('PoolEconomicsV2TokenAuthorizationService', () => {
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -250,15 +271,12 @@ describe('PoolEconomicsV2TokenAuthorizationService', () => {
   it('composes true redemption with the real CAT2 melt authorization witness', () => {
     const navSeed = witnessSeed(wasm, 0xa1);
     const deedSeed = witnessSeed(wasm, 0xd1);
-    const navEvidence = {
-      ...navEvidenceFromFixture(fixture.common.nav_evidence),
-      registryCoinId: navSeed.coinId,
-      registryPuzzleHash: navSeed.puzzleHash,
-    };
+    const navEvidence = navEvidenceFromFixture(fixture.common.nav_evidence);
     const preliminaryPoolSpend = spendBuilder.buildTrueRedemptionCoinSpend({
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: deedSeed.coinId,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -277,6 +295,7 @@ describe('PoolEconomicsV2TokenAuthorizationService', () => {
       ...spendContextFromFixture(),
       state: stateFromFixture(),
       deedId: deedSeed.coinId,
+      ...DEED_METADATA,
       vaultLauncherId: fixture.common.buyer_vault_launcher_id,
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
@@ -295,11 +314,10 @@ describe('PoolEconomicsV2TokenAuthorizationService', () => {
     const composed = spendBuilder.composePoolV2UnsignedBundle({
       poolSpend,
       deedId: deedSeed.coinId,
+      ...DEED_METADATA,
       navEvidence,
       witnesses: {
-        navEvidenceSpend: witnessSpend(wasm, navSeed, [
-          { opcode: 62, message: poolSpend.spec.requiredNavEvidenceMessage },
-        ]),
+        navEvidenceSpend: coinSpendFromFixture(fixture.common.nav_evidence_coin_spend),
         deedSpend: witnessSpend(wasm, deedSeed, [
           { opcode: 60, message: poolSpend.spec.deedMessage },
         ]),
@@ -376,6 +394,18 @@ function navEvidenceFromFixture(evidence: FixtureEvidence): CollectionNavEvidenc
     navValueMojos: evidence.nav_value_mojos,
     collectionNavRoot: evidence.collection_nav_root,
     registryVersion: evidence.registry_version,
+  };
+}
+
+function coinSpendFromFixture(spend: FixtureCoinSpend): UnsignedCoinSpend {
+  return {
+    coin: {
+      parentCoinInfo: spend.coin.parent_coin_info,
+      puzzleHash: spend.coin.puzzle_hash,
+      amount: BigInt(spend.coin.amount),
+    },
+    puzzleReveal: spend.puzzle_reveal,
+    solution: spend.solution,
   };
 }
 

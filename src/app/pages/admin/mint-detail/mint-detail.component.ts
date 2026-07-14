@@ -218,8 +218,8 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
                 <dd class="break-all">{{ p.on_chain.proposal_tracker_coin_id ?? '—' }}</dd>
               </div>
               <div>
-                <dt class="text-text-muted">pgt_lock_coin_id</dt>
-                <dd class="break-all">{{ p.on_chain.pgt_lock_coin_id ?? '—' }}</dd>
+                <dt class="text-text-muted">sgt_lock_coin_id</dt>
+                <dd class="break-all">{{ p.on_chain.sgt_lock_coin_id ?? '—' }}</dd>
               </div>
               <div>
                 <dt class="text-text-muted">deed_launcher_id</dt>
@@ -453,8 +453,8 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
                         Protocol context not configured.
                       </div>
                       <div>
-                        Mirror these <code class="mono">POPULIS_*</code> API env
-                        vars into <code class="mono">environment.populisProtocol</code>
+                        Mirror these <code class="mono">SOLSLOT_*</code> API env
+                        vars into <code class="mono">environment.solslotProtocol</code>
                         and redeploy:
                       </div>
                       <ul class="mt-1 list-disc list-inside mono">
@@ -717,9 +717,9 @@ export class MintDetailComponent {
   });
 
   readonly defaultFirstVote = () =>
-    environment.populisProtocol.governanceMinProposalStake;
+    environment.solslotProtocol.governanceMinProposalStake;
   readonly defaultVotingWindow = () =>
-    environment.populisProtocol.governanceVotingWindowSeconds;
+    environment.solslotProtocol.governanceVotingWindowSeconds;
 
   constructor() {
     void this.reload();
@@ -851,7 +851,7 @@ export class MintDetailComponent {
           deedFullPuzhash: result.artifacts.deedFullPuzhash,
           proposalHash: result.artifacts.proposalHash,
           proposalTrackerCoinId: result.artifacts.proposalSingletonLauncherId,
-          pgtLockCoinId: result.pgtLockCoinId,
+          sgtLockCoinId: result.sgtLockCoinId,
           deedLauncherId: result.artifacts.deedLauncherId,
           publishedBundleId: result.apiResponse.spendBundleId,
           propertyRegistryPuzzleHash: assembled.args.propertyRegistryPuzzleHash,
@@ -951,7 +951,7 @@ export class MintDetailComponent {
         return (
           this.trackerEvidenceKind(e) ??
           this.propertyRegistryEvidenceKind(e) ??
-          this.pgtLockEvidenceKind(e) ??
+          this.sgtLockEvidenceKind(e) ??
           'confirmed'
         );
       case 'unconfirmed':
@@ -974,14 +974,14 @@ export class MintDetailComponent {
         return (
           this.trackerEvidenceTitle(e) ??
           this.propertyRegistryEvidenceTitle(e) ??
-          this.pgtLockEvidenceTitle(e) ??
+          this.sgtLockEvidenceTitle(e) ??
           'confirmed'
         );
       case 'confirmed-transition':
         return (
           this.trackerEvidenceTitle(e) ??
           this.propertyRegistryEvidenceTitle(e) ??
-          this.pgtLockEvidenceTitle(e) ??
+          this.sgtLockEvidenceTitle(e) ??
           'transitioned'
         );
       case 'unconfirmed':
@@ -1004,14 +1004,14 @@ export class MintDetailComponent {
         if (
           this.trackerEvidenceKind(e) === 'pending' ||
           this.propertyRegistryEvidenceKind(e) === 'pending' ||
-          this.pgtLockEvidenceKind(e) === 'pending'
+          this.sgtLockEvidenceKind(e) === 'pending'
         ) {
           return 'border-amber-500/40 bg-amber-500/10 text-amber-200';
         }
         if (
           this.trackerEvidenceKind(e) === 'drift' ||
           this.propertyRegistryEvidenceKind(e) === 'drift' ||
-          this.pgtLockEvidenceKind(e) === 'drift'
+          this.sgtLockEvidenceKind(e) === 'drift'
         ) {
           return 'border-red-500/40 bg-red-500/10 text-red-300';
         }
@@ -1043,7 +1043,7 @@ export class MintDetailComponent {
           `state at version ${e.stateVersion}.` +
           this.trackerEvidenceDetail(e) +
           this.propertyRegistryEvidenceDetail(e) +
-          this.pgtLockEvidenceDetail(e)
+          this.sgtLockEvidenceDetail(e)
         );
       case 'confirmed-transition':
         return (
@@ -1052,7 +1052,7 @@ export class MintDetailComponent {
           `${e.proposalPuzzleState}-v${e.stateVersion}.` +
           this.trackerEvidenceDetail(e) +
           this.propertyRegistryEvidenceDetail(e) +
-          this.pgtLockEvidenceDetail(e)
+          this.sgtLockEvidenceDetail(e)
         );
       case 'mismatch':
         return (
@@ -1072,9 +1072,9 @@ export class MintDetailComponent {
     return 'livePuzzleHash' in e ? e.livePuzzleHash : null;
   }
 
-  private pgtLockEvidenceKind(e: ChainEvidenceView): 'pending' | 'drift' | null {
-    if (!('pgtLock' in e) || !e.pgtLock) return null;
-    switch (e.pgtLock.kind) {
+  private sgtLockEvidenceKind(e: ChainEvidenceView): 'pending' | 'drift' | null {
+    if (!('sgtLock' in e) || !e.sgtLock) return null;
+    switch (e.sgtLock.kind) {
       case 'unconfirmed':
         return 'pending';
       case 'invalid-stored-id':
@@ -1084,25 +1084,25 @@ export class MintDetailComponent {
     }
   }
 
-  private pgtLockEvidenceTitle(e: ChainEvidenceView): 'pending' | 'drift' | null {
-    const kind = this.pgtLockEvidenceKind(e);
+  private sgtLockEvidenceTitle(e: ChainEvidenceView): 'pending' | 'drift' | null {
+    const kind = this.sgtLockEvidenceKind(e);
     if (kind === 'pending' || kind === 'drift') return kind;
     return null;
   }
 
-  private pgtLockEvidenceDetail(e: ChainEvidenceView): string {
-    if (!('pgtLock' in e) || !e.pgtLock) return '';
-    switch (e.pgtLock.kind) {
+  private sgtLockEvidenceDetail(e: ChainEvidenceView): string {
+    if (!('sgtLock' in e) || !e.sgtLock) return '';
+    switch (e.sgtLock.kind) {
       case 'invalid-stored-id':
-        return ' Stored PGT lock coin id is malformed.';
+        return ' Stored SGT lock coin id is malformed.';
       case 'unconfirmed':
-        return ` PGT lock coin ${e.pgtLock.coinId} is not confirmed yet.`;
+        return ` SGT lock coin ${e.sgtLock.coinId} is not confirmed yet.`;
       case 'confirmed-unspent':
-        return ` PGT lock coin ${e.pgtLock.coinId} is confirmed and unspent.`;
+        return ` SGT lock coin ${e.sgtLock.coinId} is confirmed and unspent.`;
       case 'confirmed-spent':
         return (
-          ` PGT lock coin ${e.pgtLock.coinId} confirmed at height ` +
-          `${e.pgtLock.confirmedBlockIndex} and spent at height ${e.pgtLock.spentBlockIndex}.`
+          ` SGT lock coin ${e.sgtLock.coinId} confirmed at height ` +
+          `${e.sgtLock.confirmedBlockIndex} and spent at height ${e.sgtLock.spentBlockIndex}.`
         );
     }
   }
@@ -1243,10 +1243,10 @@ export class MintDetailComponent {
       ownerMemberHash,
       protocolContext: {
         protocolDidSingletonStructHex:
-          environment.populisProtocol.protocolDidSingletonStructHex,
-        protocolDidPuzhash: environment.populisProtocol.protocolDidPuzhash,
-        p2PoolModHash: environment.populisProtocol.p2PoolModHash,
-        p2VaultModHash: environment.populisProtocol.p2VaultModHash,
+          environment.solslotProtocol.protocolDidSingletonStructHex,
+        protocolDidPuzhash: environment.solslotProtocol.protocolDidPuzhash,
+        p2PoolModHash: environment.solslotProtocol.p2PoolModHash,
+        p2VaultModHash: environment.solslotProtocol.p2VaultModHash,
         propertyRegistryPuzzleHash: this.preflightPropertyRegistryPuzzleHash(),
       },
       ...(firstVoteAmount !== undefined ? { firstVoteAmount } : {}),
@@ -1258,8 +1258,8 @@ export class MintDetailComponent {
     }
 
     const registry = await this.registryMaterial.build({
-      registryLauncherId: environment.populisProtocol.propertyRegistryLauncherId,
-      registryGovPubkey: environment.populisProtocol.propertyRegistryGovPubkey,
+      registryLauncherId: environment.solslotProtocol.propertyRegistryLauncherId,
+      registryGovPubkey: environment.solslotProtocol.propertyRegistryGovPubkey,
       propertyIdCanon: result.args.propertyIdCanon,
     });
     if (registry.kind !== 'ok') {
@@ -1284,7 +1284,7 @@ export class MintDetailComponent {
   private preflightPropertyRegistryPuzzleHash(): string {
     return (
       valid32ByteHex(this.propertyRegistryPuzzleHash()) ||
-      valid32ByteHex(environment.populisProtocol.propertyRegistryCurrentPuzzleHash) ||
+      valid32ByteHex(environment.solslotProtocol.propertyRegistryCurrentPuzzleHash) ||
       ZERO_PROPERTY_REGISTRY_PUZZLE_HASH
     );
   }
@@ -1292,7 +1292,7 @@ export class MintDetailComponent {
   private previewPropertyRegistryPuzzleHash(): string {
     return (
       this.propertyRegistryPuzzleHash() ||
-      environment.populisProtocol.propertyRegistryCurrentPuzzleHash ||
+      environment.solslotProtocol.propertyRegistryCurrentPuzzleHash ||
       '—'
     );
   }

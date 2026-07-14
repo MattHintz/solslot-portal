@@ -6,8 +6,9 @@
  *   * Validates the publish-intent + create-coin-preview agree
  *     (the API canonicalises but the caller may have stitched them
  *     from separate fetches).
- *   * Asks the connected wallet to send 1 mojo to the marker
- *     puzzle hash with the two recovery anchor memos.
+ *   * Builds a standard wallet spend locally that creates the 1-mojo
+ *     marker coin with the two recovery anchor memos, then asks the
+ *     connected wallet to sign that spend via signCoinSpends.
  *   * Walks the signed bundle for the ``CREATE_COIN(marker_ph, 1,
  *     [tag_memo, payload_memo])`` condition, derives the marker
  *     coin id, then pushes to coinset.org.
@@ -30,6 +31,7 @@
  *     the matching one and ignores change outputs.
  */
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 
 import {
   BootstrapRecoveryAnchorCreateCoinPreviewResponse,
@@ -39,9 +41,10 @@ import { ChiaWalletService, SignedSpendBundle } from './chia-wallet.service';
 import { ChiaWasmService } from './chia-wasm.service';
 import { CoinsetService, PushTxResponse } from './coinset.service';
 import { RecoveryAnchorBroadcastService } from './recovery-anchor-broadcast.service';
+import { WalletCoinPickerService } from './wallet-coin-picker.service';
 
 const MARKER_PH = '0x' + 'ef'.repeat(32);
-const TAG_MEMO_UTF8 = 'POPULIS_BOOTSTRAP_V1';
+const TAG_MEMO_UTF8 = 'SOLSLOT_BOOTSTRAP_V2';
 const PAYLOAD_MEMO_UTF8 =
   '{"admin_authority_v2_launcher_id":"0x' +
   '88'.repeat(32) +
@@ -51,7 +54,7 @@ const PAYLOAD_MEMO_UTF8 =
   '22'.repeat(32) +
   '","network":"testnet11","portal_runtime_config_hash":"sha256:' +
   '33'.repeat(32) +
-  '","tag":"POPULIS_BOOTSTRAP_V1","version":1}';
+  '","tag":"SOLSLOT_BOOTSTRAP_V2","version":2}';
 const TAG_MEMO_HEX =
   '0x' +
   Array.from(new TextEncoder().encode(TAG_MEMO_UTF8), (b) =>
@@ -69,6 +72,7 @@ const FUNDING_PH = '0x' + '02'.repeat(32);
 const FUNDING_AMOUNT = 1_000_000n;
 const PUZZLE_REVEAL = '0xff01ff80';
 const SOLUTION = '0xff8080';
+const PUBKEY = '0x' + '03'.repeat(48);
 
 const VALID_INTENT: BootstrapRecoveryAnchorPublishIntentResponse = {
   network: 'testnet11',
@@ -81,7 +85,7 @@ const VALID_INTENT: BootstrapRecoveryAnchorPublishIntentResponse = {
   tag_memo_utf8: TAG_MEMO_UTF8,
   tag_memo_hex: TAG_MEMO_HEX,
   payload_memo_json: {
-    version: 1,
+    version: 2,
     tag: TAG_MEMO_UTF8,
     network: 'testnet11',
     admin_authority_v2_launcher_id: '0x' + '88'.repeat(32),
@@ -158,38 +162,89 @@ function createCoinCondition(args: {
  * ``deserialize().run()`` call will return.
  */
 function makeWasmStub(conditions: FakeProgram): Partial<ChiaWasmService> {
+  let lastCoinSpend:
+    | {
+        coin: {
+          parentCoinInfo: Uint8Array;
+          puzzleHash: Uint8Array;
+          amount: bigint;
+          coinId: () => Uint8Array;
+        };
+        puzzleReveal: Uint8Array;
+        solution: Uint8Array;
+      }
+    | null = null;
+
+  class FakeCoin {
+    constructor(
+      readonly parentCoinInfo: Uint8Array,
+      readonly puzzleHash: Uint8Array,
+      readonly amount: bigint,
+    ) {}
+    coinId(): Uint8Array {
+      // Deterministic, easy-to-assert coin id derivation:
+      // sha256-shaped 32 bytes packing parent[0], puzhash[0], amount-low.
+      // Real chia would sha256(parent || ph || amount_atom); the
+      // service treats the result as opaque so any bijective
+      // function works for tests.
+      const out = new Uint8Array(32);
+      out[0] = this.parentCoinInfo[0] ?? 0;
+      out[1] = this.puzzleHash[0] ?? 0;
+      out[2] = Number(this.amount & 0xffn);
+      return out;
+    }
+  }
+
   return {
     sdk: () =>
       ({
         Clvm: class {
+          atom(bytes: Uint8Array): FakeProgram {
+            return atom(bytes);
+          }
+          list(items: FakeProgram[]): FakeProgram {
+            return list(items);
+          }
+          createCoin(
+            puzzleHash: Uint8Array,
+            amount: bigint,
+            memos: FakeProgram | undefined,
+          ): FakeProgram {
+            return list([
+              atom(new Uint8Array([51])),
+              atom(puzzleHash),
+              atom(new Uint8Array([Number(amount)])),
+              memos ?? list([]),
+            ]);
+          }
+          delegatedSpend(_conditions: FakeProgram[]): FakeProgram {
+            return {};
+          }
+          spendStandardCoin(
+            coin: FakeCoin,
+            _syntheticKey: unknown,
+            _innerSpend: FakeProgram,
+          ): void {
+            lastCoinSpend = {
+              coin,
+              puzzleReveal: hexToBytes(PUZZLE_REVEAL),
+              solution: hexToBytes(SOLUTION),
+            };
+          }
+          coinSpends(): Array<NonNullable<typeof lastCoinSpend>> {
+            return lastCoinSpend ? [lastCoinSpend] : [];
+          }
           deserialize(_bytes: Uint8Array): FakeProgram {
             return {
               run: (_solution, _cost, _mempool) => ({ value: conditions }),
             };
           }
         },
-        Coin: class {
-          private readonly parent: Uint8Array;
-          private readonly puzzleHash: Uint8Array;
-          private readonly amount: bigint;
-          constructor(parent: Uint8Array, puzzleHash: Uint8Array, amount: bigint) {
-            this.parent = parent;
-            this.puzzleHash = puzzleHash;
-            this.amount = amount;
-          }
-          coinId(): Uint8Array {
-            // Deterministic, easy-to-assert coin id derivation:
-            // sha256-shaped 32 bytes packing parent[0], puzhash[0], amount-low.
-            // Real chia would sha256(parent || ph || amount_atom); the
-            // service treats the result as opaque so any bijective
-            // function works for tests.
-            const out = new Uint8Array(32);
-            out[0] = this.parent[0] ?? 0;
-            out[1] = this.puzzleHash[0] ?? 0;
-            out[2] = Number(this.amount & 0xffn);
-            return out;
-          }
+        Coin: FakeCoin,
+        PublicKey: {
+          fromBytes: (bytes: Uint8Array) => bytes,
         },
+        standardPuzzleHash: (_syntheticKey: unknown) => hexToBytes(FUNDING_PH),
       }) as unknown as ReturnType<ChiaWasmService['sdk']>,
   };
 }
@@ -198,12 +253,14 @@ function makeWalletStub(
   bundle: SignedSpendBundle | Error,
 ): jasmine.SpyObj<ChiaWalletService> {
   const spy = jasmine.createSpyObj<ChiaWalletService>('ChiaWalletService', [
-    'transfer',
-  ]);
+    'signSpendBundle',
+  ], {
+    pubkey: signal(PUBKEY).asReadonly(),
+  });
   if (bundle instanceof Error) {
-    spy.transfer.and.rejectWith(bundle);
+    spy.signSpendBundle.and.rejectWith(bundle);
   } else {
-    spy.transfer.and.resolveTo(bundle);
+    spy.signSpendBundle.and.resolveTo(bundle);
   }
   return spy;
 }
@@ -213,12 +270,37 @@ function makeCoinsetStub(
 ): jasmine.SpyObj<CoinsetService> {
   const spy = jasmine.createSpyObj<CoinsetService>('CoinsetService', [
     'pushTransaction',
+    'getCoinRecordByName',
   ]);
+  spy.getCoinRecordByName.and.resolveTo({
+    coin: {
+      parent_coin_info: FUNDING_PARENT,
+      puzzle_hash: FUNDING_PH,
+      amount: Number(FUNDING_AMOUNT),
+    },
+    coinbase: false,
+    confirmed_block_index: 1,
+    spent_block_index: 0,
+    timestamp: 0,
+  });
   if (result instanceof Error) {
     spy.pushTransaction.and.rejectWith(result);
   } else {
     spy.pushTransaction.and.resolveTo(result);
   }
+  return spy;
+}
+
+function makeCoinPickerStub(): jasmine.SpyObj<WalletCoinPickerService> {
+  const spy = jasmine.createSpyObj<WalletCoinPickerService>('WalletCoinPickerService', [
+    'pickLargestUnspentCoinForPuzzleHash',
+  ]);
+  spy.pickLargestUnspentCoinForPuzzleHash.and.resolveTo({
+    coinId: '0x' + '99'.repeat(32),
+    address: 'txch1test',
+    puzzleHash: FUNDING_PH,
+    amount: FUNDING_AMOUNT,
+  });
   return spy;
 }
 
@@ -259,6 +341,7 @@ describe('RecoveryAnchorBroadcastService', () => {
   let service: RecoveryAnchorBroadcastService;
   let wallet: jasmine.SpyObj<ChiaWalletService>;
   let coinset: jasmine.SpyObj<CoinsetService>;
+  let coinPicker: jasmine.SpyObj<WalletCoinPickerService>;
 
   function setupTestBed(args: {
     bundle: SignedSpendBundle | Error;
@@ -267,11 +350,13 @@ describe('RecoveryAnchorBroadcastService', () => {
   }): void {
     wallet = makeWalletStub(args.bundle);
     coinset = makeCoinsetStub(args.pushResult);
+    coinPicker = makeCoinPickerStub();
     TestBed.configureTestingModule({
       providers: [
         { provide: ChiaWalletService, useValue: wallet },
         { provide: CoinsetService, useValue: coinset },
         { provide: ChiaWasmService, useValue: makeWasmStub(args.conditions) },
+        { provide: WalletCoinPickerService, useValue: coinPicker },
       ],
     });
     service = TestBed.inject(RecoveryAnchorBroadcastService);
@@ -294,13 +379,12 @@ describe('RecoveryAnchorBroadcastService', () => {
       createCoinPreview: VALID_PREVIEW,
     });
 
-    // Wallet was asked to transfer 1 mojo to the marker puzzle hash
-    // with both memos as UTF-8 strings.
-    expect(wallet.transfer).toHaveBeenCalledOnceWith({
-      targetPuzzleHash: MARKER_PH,
-      amount: 1,
-      memos: [TAG_MEMO_UTF8, PAYLOAD_MEMO_UTF8],
-    });
+    // The service selected a wallet coin under the connected standard
+    // puzzle hash, built a local marker CREATE_COIN spend, then asked
+    // the wallet only for a signature.
+    expect(coinPicker.pickLargestUnspentCoinForPuzzleHash)
+      .toHaveBeenCalledOnceWith({ puzzleHash: FUNDING_PH });
+    expect(wallet.signSpendBundle).toHaveBeenCalledTimes(1);
 
     // push_tx was called with the wallet-signed bundle verbatim.
     expect(coinset.pushTransaction).toHaveBeenCalledOnceWith({
@@ -374,7 +458,7 @@ describe('RecoveryAnchorBroadcastService', () => {
       }),
     ).toBeRejectedWithError(/payload_hash does not match/);
 
-    expect(wallet.transfer).not.toHaveBeenCalled();
+    expect(wallet.signSpendBundle).not.toHaveBeenCalled();
     expect(coinset.pushTransaction).not.toHaveBeenCalled();
   });
 
@@ -393,7 +477,7 @@ describe('RecoveryAnchorBroadcastService', () => {
         createCoinPreview: drifted,
       }),
     ).toBeRejectedWithError(/tag_memo_hex does not match/);
-    expect(wallet.transfer).not.toHaveBeenCalled();
+    expect(wallet.signSpendBundle).not.toHaveBeenCalled();
   });
 
   it('rejects mismatched payload_memo_hex', async () => {
@@ -411,7 +495,7 @@ describe('RecoveryAnchorBroadcastService', () => {
         createCoinPreview: drifted,
       }),
     ).toBeRejectedWithError(/payload_memo_hex does not match/);
-    expect(wallet.transfer).not.toHaveBeenCalled();
+    expect(wallet.signSpendBundle).not.toHaveBeenCalled();
   });
 
   it('rejects previews with the wrong opcode or amount', async () => {
@@ -434,7 +518,7 @@ describe('RecoveryAnchorBroadcastService', () => {
         createCoinPreview: { ...VALID_PREVIEW, marker_coin_amount_mojos: 1000 },
       }),
     ).toBeRejectedWithError(/marker coin must be 1 mojo/);
-    expect(wallet.transfer).not.toHaveBeenCalled();
+    expect(wallet.signSpendBundle).not.toHaveBeenCalled();
   });
 
   // ───────────────────────────────────────────────────────────────────
@@ -464,7 +548,7 @@ describe('RecoveryAnchorBroadcastService', () => {
     ).toBeRejectedWithError(/aborting before push_tx/);
 
     // Wallet was asked to sign, but push_tx was never invoked.
-    expect(wallet.transfer).toHaveBeenCalled();
+    expect(wallet.signSpendBundle).toHaveBeenCalled();
     expect(coinset.pushTransaction).not.toHaveBeenCalled();
   });
 

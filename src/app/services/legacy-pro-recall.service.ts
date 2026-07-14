@@ -18,7 +18,7 @@ export class LegacyProRecallService {
     }
     const subject = this.session.subject();
     const headers = subject
-      ? new HttpHeaders({ 'X-Populis-Admin-Subject': subject })
+      ? new HttpHeaders({ 'X-Solslot-Admin-Subject': subject })
       : undefined;
     const params = new HttpParams().set('q', trimmed);
     return firstValueFrom(

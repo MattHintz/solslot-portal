@@ -1,8 +1,6 @@
-import { Component, inject } from '@angular/core';
+import { Component, EnvironmentInjector, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { EvmWalletService } from '../../services/evm-wallet.service';
-import { ChiaWalletService } from '../../services/chia-wallet.service';
 import { SessionService } from '../../services/session.service';
 
 @Component({
@@ -45,8 +43,7 @@ import { SessionService } from '../../services/session.service';
 })
 export class HeaderComponent {
   readonly session = inject(SessionService);
-  private readonly evm = inject(EvmWalletService);
-  private readonly chia = inject(ChiaWalletService);
+  private readonly injector = inject(EnvironmentInjector);
 
   shortAddr(addr: string): string {
     if (!addr) return '';
@@ -55,8 +52,12 @@ export class HeaderComponent {
   }
 
   async disconnect(): Promise<void> {
-    await this.evm.disconnect();
-    this.chia.disconnect();
+    const [{ EvmWalletService }, { ChiaWalletService }] = await Promise.all([
+      import('../../services/evm-wallet.service'),
+      import('../../services/chia-wallet.service'),
+    ]);
+    await this.injector.get(EvmWalletService).disconnect();
+    this.injector.get(ChiaWalletService).disconnect();
     this.session.clear();
   }
 }

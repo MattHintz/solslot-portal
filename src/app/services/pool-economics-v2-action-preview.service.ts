@@ -67,6 +67,7 @@ export interface PoolV2ActionPreview {
 const PREVIEW_IDS = {
   poolCoinId: b32('10'),
   deedId: b32('11'),
+  deedLauncherId: b32('1f'),
   p2VaultPuzzleHash: b32('12'),
   collectionIdCanon: b32('13'),
   registryCoinId: b32('14'),
@@ -91,6 +92,10 @@ export class PoolEconomicsV2ActionPreviewService {
     const spec = this.economics.buildSpecificDeedSwapSpec({
       state: args.state,
       deedId: PREVIEW_IDS.deedId,
+      deedLauncherId: PREVIEW_IDS.deedLauncherId,
+      parValueMojos: args.collectionNavMojos,
+      assetClass: 1n,
+      propertyIdCanon: PREVIEW_IDS.propertyIdCanon,
       p2VaultPuzzleHash: PREVIEW_IDS.p2VaultPuzzleHash,
       collectionIdCanon: PREVIEW_IDS.collectionIdCanon,
       sharePpm: args.sharePpm,
@@ -114,6 +119,10 @@ export class PoolEconomicsV2ActionPreviewService {
     const spec = this.economics.buildTrueRedemptionSpec({
       state: args.state,
       deedId: PREVIEW_IDS.deedId,
+      deedLauncherId: PREVIEW_IDS.deedLauncherId,
+      parValueMojos: args.collectionNavMojos,
+      assetClass: 1n,
+      propertyIdCanon: PREVIEW_IDS.propertyIdCanon,
       p2VaultPuzzleHash: PREVIEW_IDS.p2VaultPuzzleHash,
       collectionIdCanon: PREVIEW_IDS.collectionIdCanon,
       sharePpm: args.sharePpm,
@@ -134,6 +143,7 @@ export class PoolEconomicsV2ActionPreviewService {
     const spec = this.economics.buildReserveAcquisitionSpec({
       state: args.state,
       deedId: PREVIEW_IDS.deedId,
+      deedLauncherId: PREVIEW_IDS.deedLauncherId,
       propertyIdCanon: PREVIEW_IDS.propertyIdCanon,
       parValueMojos: args.collectionNavMojos,
       assetClass: 1n,

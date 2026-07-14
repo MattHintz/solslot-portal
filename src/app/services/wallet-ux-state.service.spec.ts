@@ -19,10 +19,10 @@ describe('WalletUxStateService', () => {
     service.setLastWalletKind('chia');
 
     expect(service.lastWalletKind()).toBe('chia');
-    const raw = localStorage.getItem('populis_wallet_ux_v1');
+    const raw = localStorage.getItem('SOLSLOT_WALLET_UX_V2');
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw ?? '{}') as Record<string, unknown>;
-    expect(parsed['version']).toBe(1);
+    expect(parsed['version']).toBe(2);
     expect(parsed['lastWalletKind']).toBe('chia');
     expect(typeof parsed['updatedAt']).toBe('number');
     expect(raw).not.toContain('signature');
@@ -33,8 +33,8 @@ describe('WalletUxStateService', () => {
 
   it('restores a valid saved wallet kind on startup', () => {
     localStorage.setItem(
-      'populis_wallet_ux_v1',
-      JSON.stringify({ version: 1, lastWalletKind: 'evm', updatedAt: 123 }),
+      'SOLSLOT_WALLET_UX_V2',
+      JSON.stringify({ version: 2, lastWalletKind: 'evm', updatedAt: 123 }),
     );
 
     const service = TestBed.inject(WalletUxStateService);
@@ -44,13 +44,13 @@ describe('WalletUxStateService', () => {
 
   it('drops malformed or unexpected stored values', () => {
     localStorage.setItem(
-      'populis_wallet_ux_v1',
-      JSON.stringify({ version: 1, lastWalletKind: 'signature', updatedAt: 123 }),
+      'SOLSLOT_WALLET_UX_V2',
+      JSON.stringify({ version: 2, lastWalletKind: 'signature', updatedAt: 123 }),
     );
 
     const service = TestBed.inject(WalletUxStateService);
 
     expect(service.lastWalletKind()).toBeNull();
-    expect(localStorage.getItem('populis_wallet_ux_v1')).toBeNull();
+    expect(localStorage.getItem('SOLSLOT_WALLET_UX_V2')).toBeNull();
   });
 });

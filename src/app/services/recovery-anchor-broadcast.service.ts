@@ -4,13 +4,18 @@ import {
   BootstrapRecoveryAnchorCreateCoinPreviewResponse,
   BootstrapRecoveryAnchorPublishIntentResponse,
 } from './admin-bootstrap.service';
-import { ChiaWalletService, SignedSpendBundle } from './chia-wallet.service';
+import {
+  ChiaWalletService,
+  SignedSpendBundle,
+  UnsignedCoinSpend,
+} from './chia-wallet.service';
 import { ChiaWasmService } from './chia-wasm.service';
 import {
   CoinsetService,
   PushTxResponse,
   PushTxSpendBundle,
 } from './coinset.service';
+import { WalletCoinPickerService } from './wallet-coin-picker.service';
 import { bytesToHex, hexToBytes } from '../utils/chia-hash';
 
 /**
@@ -20,17 +25,17 @@ import { bytesToHex, hexToBytes } from '../utils/chia-hash';
  * **Why this exists.** After ``/admin/bootstrap/finalize`` writes
  * ``bootstrap_recovery_anchor.json`` to API disk, the operator still
  * has to *publish* it somewhere durable.  An on-chain marker coin
- * tagged with ``POPULIS_BOOTSTRAP_V1`` is the canonical home: any
+ * tagged with ``SOLSLOT_BOOTSTRAP_V2`` is the canonical home: any
  * future scanner can discover the deployment's coordinates by memo
  * lookup without needing to trust a particular HTTP endpoint or
  * remember a file backup.
  *
  * **Boundary.** This service does NOT see private keys.  It hands a
  * one-output ``CREATE_COIN(marker_ph, 1 mojo, [tag_memo,
- * payload_memo])`` transfer to ``ChiaWalletService.transfer``, lets
- * the connected wallet (Goby or Sage) build + sign the funding
- * spend, walks the signed bundle to recover the funding coin id +
- * derive the marker coin id, then pushes via
+ * payload_memo])`` standard spend locally, asks the connected wallet
+ * (Goby or Sage) to sign that spend via CHIP-0002 signCoinSpends,
+ * walks the signed bundle to recover the funding coin id + derive
+ * the marker coin id, then pushes via
  * ``CoinsetService.pushTransaction``.  Nothing here mutates the API.
  *
  * **Failure safety.** If the wallet drops or reorders our memos,
@@ -44,6 +49,7 @@ export class RecoveryAnchorBroadcastService {
   private readonly wallet = inject(ChiaWalletService);
   private readonly coinset = inject(CoinsetService);
   private readonly chiaWasm = inject(ChiaWasmService);
+  private readonly coinPicker = inject(WalletCoinPickerService);
 
   /** CLVM opcode for the ``CREATE_COIN`` condition. */
   static readonly CREATE_COIN_OPCODE = 51;
@@ -79,14 +85,18 @@ export class RecoveryAnchorBroadcastService {
     const { publishIntent, createCoinPreview } = inputs;
     this.assertPreviewMatchesIntent(publishIntent, createCoinPreview);
 
-    // Ask the connected wallet to send 1 mojo to the marker puzzle
-    // hash with the two recovery anchor memos attached.  Goby + Sage
-    // both accept UTF-8 strings here; the recovery anchor's
-    // canonical JSON is ASCII so this round-trips losslessly.
-    const signedBundle = await this.wallet.transfer({
-      targetPuzzleHash: createCoinPreview.marker_puzzle_hash,
-      amount: RecoveryAnchorBroadcastService.MARKER_COIN_AMOUNT_MOJOS,
-      memos: [publishIntent.tag_memo_utf8, publishIntent.payload_memo_utf8],
+    // Build the marker spend locally and ask the wallet only for a
+    // CHIP-0002 signCoinSpends signature. Sage WalletConnect sessions
+    // commonly do not authorize wallet-native send methods like
+    // chia_send, while signCoinSpends is already required for the
+    // admin-authority launch path.
+    const signedBundle = await this.buildAndSignMarkerFundingSpend({
+      markerPuzzleHash: createCoinPreview.marker_puzzle_hash,
+      markerCoinAmountMojos: BigInt(
+        RecoveryAnchorBroadcastService.MARKER_COIN_AMOUNT_MOJOS,
+      ),
+      tagMemoHex: createCoinPreview.tag_memo_hex,
+      payloadMemoHex: createCoinPreview.payload_memo_hex,
     });
     if (signedBundle.coinSpends.length === 0) {
       throw new Error(
@@ -125,6 +135,104 @@ export class RecoveryAnchorBroadcastService {
       pushStatus: pushResult.status,
       signedSpendBundle: signedBundle,
     };
+  }
+
+  private async buildAndSignMarkerFundingSpend(args: {
+    markerPuzzleHash: string;
+    markerCoinAmountMojos: bigint;
+    tagMemoHex: string;
+    payloadMemoHex: string;
+  }): Promise<SignedSpendBundle> {
+    const sdk = this.fundingSdk();
+    const pubkeyHex = this.wallet.pubkey();
+    if (!pubkeyHex) {
+      throw new Error('broadcastMarkerCoin: wallet not connected');
+    }
+    const syntheticKey = sdk.PublicKey.fromBytes(hexToBytes(pubkeyHex));
+    const fundingPuzzleHashBytes = sdk.standardPuzzleHash(syntheticKey);
+    const fundingPuzzleHash = bytesToHex(fundingPuzzleHashBytes);
+
+    const pick = await this.coinPicker.pickLargestUnspentCoinForPuzzleHash({
+      puzzleHash: fundingPuzzleHash,
+    });
+    const record = await this.coinset.getCoinRecordByName(pick.coinId);
+    if (!record) {
+      throw new Error(
+        `broadcastMarkerCoin: funding coin ${pick.coinId} not found on chain. ` +
+          'It may have been spent between selection and broadcast. Retry.',
+      );
+    }
+    if (!sameHex(record.coin.puzzle_hash, fundingPuzzleHash)) {
+      throw new Error(
+        'broadcastMarkerCoin: selected funding coin no longer matches the ' +
+          'connected wallet key. Retry with an unlocked standard wallet coin.',
+      );
+    }
+    const coinAmount = BigInt(record.coin.amount);
+    if (coinAmount < args.markerCoinAmountMojos) {
+      throw new Error(
+        `broadcastMarkerCoin: funding coin holds only ${coinAmount} mojos; ` +
+          `need ${args.markerCoinAmountMojos}.`,
+      );
+    }
+
+    const clvm = new sdk.Clvm();
+    const markerMemos = clvm.list([
+      clvm.atom(hexToBytes(args.tagMemoHex)),
+      clvm.atom(hexToBytes(args.payloadMemoHex)),
+    ]);
+    const conditions = [
+      clvm.createCoin(
+        hexToBytes(args.markerPuzzleHash),
+        args.markerCoinAmountMojos,
+        markerMemos,
+      ),
+    ];
+    const changeAmount = coinAmount - args.markerCoinAmountMojos;
+    if (changeAmount > 0n) {
+      conditions.push(
+        clvm.createCoin(fundingPuzzleHashBytes, changeAmount, undefined),
+      );
+    }
+    const innerSpend = clvm.delegatedSpend(conditions);
+    const sourceCoin = new sdk.Coin(
+      hexToBytes(record.coin.parent_coin_info),
+      hexToBytes(record.coin.puzzle_hash),
+      coinAmount,
+    );
+    clvm.spendStandardCoin(sourceCoin, syntheticKey, innerSpend);
+
+    const coinSpends = clvm.coinSpends();
+    if (coinSpends.length !== 1) {
+      throw new Error(
+        `broadcastMarkerCoin: expected exactly 1 funding coin spend, got ` +
+          `${coinSpends.length}.`,
+      );
+    }
+    const cs = coinSpends[0];
+    const unsigned: UnsignedCoinSpend[] = [
+      {
+        coin: {
+          parentCoinInfo: bytesToHex(cs.coin.parentCoinInfo),
+          puzzleHash: bytesToHex(cs.coin.puzzleHash),
+          amount: cs.coin.amount,
+        },
+        puzzleReveal: bytesToHex(cs.puzzleReveal),
+        solution: bytesToHex(cs.solution),
+      },
+    ];
+    return this.wallet.signSpendBundle(unsigned);
+  }
+
+  private fundingSdk(): FundingSdk {
+    const sdk = this.chiaWasm.sdk() as Partial<FundingSdk>;
+    if (!sdk.Clvm || !sdk.Coin || !sdk.PublicKey || !sdk.standardPuzzleHash) {
+      throw new Error(
+        'broadcastMarkerCoin: chia-wallet-sdk-wasm is missing ' +
+          'Clvm/Coin/PublicKey/standardPuzzleHash exports.',
+      );
+    }
+    return sdk as FundingSdk;
   }
 
   private assertPreviewMatchesIntent(
@@ -313,7 +421,7 @@ export interface BroadcastRecoveryAnchorResult {
   markerPuzzleHash: string;
   /** Marker coin amount in mojos (always 1). */
   markerCoinAmountMojos: number;
-  /** UTF-8 ``POPULIS_BOOTSTRAP_V1`` tag bytes echoed for audit. */
+  /** UTF-8 ``SOLSLOT_BOOTSTRAP_V2`` tag bytes echoed for audit. */
   tagMemoUtf8: string;
   /** UTF-8 canonical JSON recovery anchor payload echoed for audit. */
   payloadMemoUtf8: string;
@@ -361,4 +469,55 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+function sameHex(a: string, b: string): boolean {
+  return a.replace(/^0x/i, '').toLowerCase() === b.replace(/^0x/i, '').toLowerCase();
+}
+
+interface FundingProgramShape {
+  treeHash?: () => Uint8Array;
+}
+
+interface FundingSpendShape {}
+
+interface FundingCoinShape {
+  parentCoinInfo: Uint8Array;
+  puzzleHash: Uint8Array;
+  amount: bigint;
+  coinId(): Uint8Array;
+}
+
+interface FundingCoinSpendShape {
+  coin: FundingCoinShape;
+  puzzleReveal: Uint8Array;
+  solution: Uint8Array;
+}
+
+interface FundingClvmShape {
+  atom(value: Uint8Array): FundingProgramShape;
+  list(values: FundingProgramShape[]): FundingProgramShape;
+  createCoin(
+    puzzleHash: Uint8Array,
+    amount: bigint,
+    memos?: FundingProgramShape | undefined,
+  ): FundingProgramShape;
+  delegatedSpend(conditions: FundingProgramShape[]): FundingSpendShape;
+  spendStandardCoin(
+    coin: FundingCoinShape,
+    syntheticKey: unknown,
+    spend: FundingSpendShape,
+  ): void;
+  coinSpends(): FundingCoinSpendShape[];
+}
+
+interface FundingSdk {
+  Clvm: new () => FundingClvmShape;
+  Coin: new (
+    parentCoinInfo: Uint8Array,
+    puzzleHash: Uint8Array,
+    amount: bigint,
+  ) => FundingCoinShape;
+  PublicKey: { fromBytes(bytes: Uint8Array): unknown };
+  standardPuzzleHash(syntheticKey: unknown): Uint8Array;
 }

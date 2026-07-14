@@ -8,9 +8,9 @@ import {
 } from '../committee-api.service';
 import { GovernanceTrackerReaderService } from '../governance-tracker-reader.service';
 import {
-  PgtVoteSpendBuilderService,
+  SgtVoteSpendBuilderService,
   UnsignedCoinSpendHex,
-} from '../pgt-driver/pgt-vote-spend-builder.service';
+} from '../sgt-driver/sgt-vote-spend-builder.service';
 import { canonicalPropertyIdHash } from '../../utils/mint-property-id';
 
 import {
@@ -22,14 +22,14 @@ describe('MintProposalV2ExecuteRunnerService', () => {
   let tracker: jasmine.SpyObj<
     Pick<GovernanceTrackerReaderService, 'getAwaitingExecuteInputs'>
   >;
-  let builder: jasmine.SpyObj<Pick<PgtVoteSpendBuilderService, 'buildTrackerExecuteCoinSpend'>>;
+  let builder: jasmine.SpyObj<Pick<SgtVoteSpendBuilderService, 'buildTrackerExecuteCoinSpend'>>;
   let api: jasmine.SpyObj<Pick<CommitteeApiService, 'castVote'>>;
 
   beforeEach(() => {
     tracker = jasmine.createSpyObj('GovernanceTrackerReaderService', [
       'getAwaitingExecuteInputs',
     ]);
-    builder = jasmine.createSpyObj('PgtVoteSpendBuilderService', [
+    builder = jasmine.createSpyObj('SgtVoteSpendBuilderService', [
       'buildTrackerExecuteCoinSpend',
     ]);
     api = jasmine.createSpyObj('CommitteeApiService', ['castVote']);
@@ -42,7 +42,7 @@ describe('MintProposalV2ExecuteRunnerService', () => {
       providers: [
         MintProposalV2ExecuteRunnerService,
         { provide: GovernanceTrackerReaderService, useValue: tracker },
-        { provide: PgtVoteSpendBuilderService, useValue: builder },
+        { provide: SgtVoteSpendBuilderService, useValue: builder },
         { provide: CommitteeApiService, useValue: api },
       ],
     });
@@ -109,7 +109,7 @@ describe('MintProposalV2ExecuteRunnerService', () => {
   function proposal(): MintProposalResponse {
     return {
       id: 'mint-draft-1',
-      owner_pubkey: '0x0e61d3bb1148bdd802f747caea112333d156626a',
+      owner_pubkey: '0x1111111111111111111111111111111111111111',
       state: 'PASSED',
       par_value: 125_000,
       asset_class: 'RWA-RE-RES',
@@ -127,7 +127,7 @@ describe('MintProposalV2ExecuteRunnerService', () => {
       },
       on_chain: {
         proposal_tracker_coin_id: b32('54'),
-        pgt_lock_coin_id: b32('55'),
+        sgt_lock_coin_id: b32('55'),
         deed_launcher_id: b32('56'),
         published_bundle_id: b32('57'),
         executed_bundle_id: null,

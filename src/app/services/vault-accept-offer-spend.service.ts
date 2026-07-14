@@ -1,14 +1,16 @@
 import { Injectable, inject } from '@angular/core';
 import { sha256 } from 'ethers';
 
-import { environment } from '../../environments/environment';
 import { ChiaSingletonReaderService, SingletonLineage } from './chia-singleton-reader.service';
 import { ChiaWasmService } from './chia-wasm.service';
 import { CoinsetService } from './coinset.service';
 import type { UnsignedCoinSpend } from './chia-wallet.service';
 import type { OfferDetail } from './offer-domain';
+import {
+  protocolCoordinateFromEnvironment,
+  resolveProtocolCoordinate,
+} from './protocol-coordinate-guard';
 import { VAULT_SINGLETON_INNER_PUZZLE_HEX } from './zkpassport-vault-enrollment.puzzle-hex';
-import { ZKPASSPORT_EMPTY_ATTEST_ROOT } from './zkpassport-attestation.service';
 import type { VaultAcceptOfferProofParams } from './zkpassport-accept-offer-proof.service';
 import { AUTH_TYPE_BLS, AUTH_TYPE_SECP256K1, AUTH_TYPE_SECP256R1, bytesToHex, coinId, hexToBytes } from '../utils/chia-hash';
 
@@ -17,6 +19,8 @@ const SINGLETON_LAUNCHER_HASH = '0xeff07522495060c066f66f32acc2a77e3a3e737aca8ba
 const DEFAULT_ZKPASSPORT_BRIDGE_POLICY_HASH = '0x' + '00'.repeat(32);
 const SPEND_ACCEPT_OFFER = 0x61;
 const ZERO_BYTES32 = '0x' + '00'.repeat(32);
+const ZKPASSPORT_EMPTY_ATTEST_ROOT =
+  '0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a';
 
 @Injectable({ providedIn: 'root' })
 export class VaultAcceptOfferSpendService {
@@ -65,13 +69,37 @@ export class VaultAcceptOfferSpendService {
     const membersMerkleRoot = input.membersMerkleRoot
       ? bytes32(input.membersMerkleRoot, 'membersMerkleRoot')
       : oneLeafMerkleRoot(ownerPubkey);
-    const poolLauncherIdHex = input.poolLauncherId ?? environment.populisProtocol.poolLauncherId;
+    const poolLauncherIdHex = resolveProtocolCoordinate({
+      coordinateName: 'pool launcher id',
+      pinned: protocolCoordinateFromEnvironment('poolLauncherId'),
+      candidate: input.poolLauncherId,
+      candidateLabel: 'builder input',
+      errorPrefix: 'vault accept-offer spend',
+    });
     if (!poolLauncherIdHex) {
       throw new Error('vault accept-offer spend: pool launcher id is not configured');
     }
     const poolLauncherId = bytes32(poolLauncherIdHex, 'poolLauncherId');
-    const bridgePolicyHash = bytes32(input.bridgePolicyHash ?? DEFAULT_ZKPASSPORT_BRIDGE_POLICY_HASH, 'bridgePolicyHash');
-    const poolInnerPuzzleHash = bytes32(input.poolInnerPuzzleHash, 'poolInnerPuzzleHash');
+    const bridgePolicyHashHex =
+      resolveProtocolCoordinate({
+        coordinateName: 'bridge policy hash',
+        pinned: protocolCoordinateFromEnvironment('bridgePolicyHash'),
+        candidate: input.bridgePolicyHash,
+        candidateLabel: 'builder input',
+        errorPrefix: 'vault accept-offer spend',
+      }) ?? DEFAULT_ZKPASSPORT_BRIDGE_POLICY_HASH;
+    const poolInnerPuzzleHashHex = resolveProtocolCoordinate({
+      coordinateName: 'pool inner puzzle hash',
+      pinned: protocolCoordinateFromEnvironment('poolInnerPuzzleHash'),
+      candidate: input.poolInnerPuzzleHash,
+      candidateLabel: 'builder input',
+      errorPrefix: 'vault accept-offer spend',
+    });
+    if (!poolInnerPuzzleHashHex) {
+      throw new Error('vault accept-offer spend: pool inner puzzle hash is not configured');
+    }
+    const bridgePolicyHash = bytes32(bridgePolicyHashHex, 'bridgePolicyHash');
+    const poolInnerPuzzleHash = bytes32(poolInnerPuzzleHashHex, 'poolInnerPuzzleHash');
     const identityAttestRoot = bytes32(input.identityAttestRoot, 'identityAttestRoot');
     const attestationLeafHash = bytes32(input.attestationLeafHash, 'attestationLeafHash');
     if (bytesToHex(identityAttestRoot) === ZKPASSPORT_EMPTY_ATTEST_ROOT) {

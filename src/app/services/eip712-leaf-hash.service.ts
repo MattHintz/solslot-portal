@@ -4,7 +4,7 @@ import { ChiaWasmService } from './chia-wasm.service';
 
 /**
  * Hex constant — Chia testnet11 genesis challenge.  Mirrors
- * ``populis_protocol/populis_puzzles/eip712_helpers.py``'s
+ * ``solslot_protocol/solslot_puzzles/eip712_helpers.py``'s
  * ``TESTNET11_GENESIS_CHALLENGE`` and the value pinned in the chia-blockchain
  * config (``selected_network: testnet11``).
  *
@@ -18,7 +18,7 @@ export const TESTNET11_GENESIS_CHALLENGE_HEX =
 
 /**
  * Hex constant — Chia mainnet genesis challenge.  Mirrors
- * ``populis_protocol/populis_puzzles/eip712_helpers.py``'s
+ * ``solslot_protocol/solslot_puzzles/eip712_helpers.py``'s
  * ``MAINNET_GENESIS_CHALLENGE``.
  */
 export const MAINNET_GENESIS_CHALLENGE_HEX =
@@ -66,7 +66,7 @@ function bytesToHex(bytes: Uint8Array): string {
 /**
  * Full curry-args bundle for an ``Eip712Member`` admin leaf.
  *
- * Mirrors the wire shape of ``populis_api``'s
+ * Mirrors the wire shape of ``solslot_api``'s
  * ``ComputeLeafHashResponse`` — callers can drop this directly into the
  * admin records JSON's ``leaves[i]`` block without re-deriving anything.
  */
@@ -85,7 +85,7 @@ export interface Eip712LeafHash {
 
 /**
  * Compute Eip712Member admin-leaf hashes **in the browser** via the
- * chia-wallet-sdk WASM, mirroring populis_api's
+ * chia-wallet-sdk WASM, mirroring solslot_api's
  * ``POST /admin/auth/eip712/compute_leaf_hash`` endpoint without the
  * round-trip.
  *
@@ -97,7 +97,7 @@ export interface Eip712LeafHash {
  * time, and is the value that gets folded into ``ADMINS_HASH`` via the
  * launch-time ``compute_admins_hash`` driver.
  *
- * Cross-verified against ``populis_protocol``'s
+ * Cross-verified against ``solslot_protocol``'s
  * ``compute_eip712_member_leaf_hash`` Python helper (which uses
  * ``chia.wallet.util.curry_and_treehash`` semantics) by
  * ``test_matches_chia_curry_and_treehash`` — see the spec file for
@@ -193,7 +193,7 @@ export class Eip712LeafHashService {
    *   controller: spending it requires only the EIP-712 envelope; no
    *   ``index_wrapper`` / ``m_of_n`` outer dispatch.  Matches the
    *   pattern in
-   *   ``populis_protocol/tests/test_admin_authority_v2.py:1530-1542``
+   *   ``solslot_protocol/tests/test_admin_authority_v2.py:1530-1542``
    *   (see comment "In production this would be wrapped in MIPS m_of_n;
    *   for this test we use it directly as if it were a 1-of-1 quorum").
    *

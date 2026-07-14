@@ -508,9 +508,9 @@ export class AddAdminSlotComponent {
   readonly copyConfirmation = signal<string | null>(null);
 
   readonly wasmReady = computed(() => this.wasm.ready());
-  readonly launcherId = computed(() => environment.populisProtocol.adminAuthorityV2LauncherId || '');
+  readonly launcherId = computed(() => environment.solslotProtocol.adminAuthorityV2LauncherId || '');
   readonly currentMipsRootHash = computed(() =>
-    normalizeHex(environment.populisProtocol.adminAuthorityV2MipsRootHash || ''),
+    normalizeHex(environment.solslotProtocol.adminAuthorityV2MipsRootHash || ''),
   );
   readonly currentAddress = computed(() => normalizeHex(this.session.subject() ?? ''));
   readonly currentPubkey = computed(() => normalizeHex(this.session.pubkey() ?? ''));
@@ -965,7 +965,10 @@ export class AddAdminSlotComponent {
       if (kind === 'injected') {
         await this.evmWallet.connectInjected();
       } else {
-        await this.evmWallet.connectWalletConnect();
+        await this.evmWallet.connectWalletConnect({
+          optionalChains: 'none',
+          resetSession: true,
+        });
       }
     } catch (e) {
       this.evmConnectError.set(formatError(e));

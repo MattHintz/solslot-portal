@@ -18,7 +18,8 @@
  *   * Empty coinSpends array — clear error.
  *   * String-only signature reply (older wallets) — accepted.
  */
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
+import SignClient from '@walletconnect/sign-client';
 
 import {
   ChiaWalletService,
@@ -449,8 +450,8 @@ describe('ChiaWalletService.signSpendBundle', () => {
 
     it('Goby: passes the optional memos array through to the wallet', async () => {
       setConnectedState('goby');
-      const TAG_MEMO = 'POPULIS_BOOTSTRAP_V1';
-      const PAYLOAD_MEMO = '{"version":1,"tag":"POPULIS_BOOTSTRAP_V1"}';
+      const TAG_MEMO = 'SOLSLOT_BOOTSTRAP_V2';
+      const PAYLOAD_MEMO = '{"version":1,"tag":"SOLSLOT_BOOTSTRAP_V2"}';
       const mock = installMockWallet('chia', (_method, params) => {
         const p = params as { memos: unknown };
         expect(p.memos)
@@ -472,8 +473,8 @@ describe('ChiaWalletService.signSpendBundle', () => {
 
     it('Sage: passes the optional memos array through to chia_send', async () => {
       setConnectedState('sage');
-      const TAG_MEMO = 'POPULIS_BOOTSTRAP_V1';
-      const PAYLOAD_MEMO = '{"version":1,"tag":"POPULIS_BOOTSTRAP_V1"}';
+      const TAG_MEMO = 'SOLSLOT_BOOTSTRAP_V2';
+      const PAYLOAD_MEMO = '{"version":1,"tag":"SOLSLOT_BOOTSTRAP_V2"}';
       const mock = installMockWallet('sage', (_method, params) => {
         const p = params as { memos: unknown };
         expect(p.memos)
@@ -590,6 +591,424 @@ describe('ChiaWalletService.signSpendBundle', () => {
     expect(params.coinSpends[0].puzzle_reveal).toBe('0xff01ff80');
     expect(params.coinSpends[0].solution).toBe('0xff8080');
   });
+
+  it('restores a persisted Sage WalletConnect session after refresh', async () => {
+    const restoredPubkey = '0x' + '45'.repeat(48);
+    const client = {
+      session: {
+        keys: ['mainnet-topic', 'testnet-topic'],
+        get: jasmine.createSpy('get').and.callFake((topic: string) => ({
+          topic,
+          namespaces: {
+            chia: {
+              accounts: [
+                topic === 'testnet-topic'
+                  ? 'chia:testnet:123456'
+                  : 'chia:mainnet:123456',
+              ],
+            },
+          },
+        })),
+      },
+      request: jasmine.createSpy('request').and.resolveTo([restoredPubkey]),
+      on: jasmine.createSpy('on'),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+
+    const result = await service.restoreSageWalletConnectSession();
+
+    expect(result).toBe(restoredPubkey);
+    expect(service.connectionKind()).toBe('sage-walletconnect');
+    expect(service.pubkey()).toBe(restoredPubkey);
+    expect(client.session.get).toHaveBeenCalledWith('testnet-topic');
+    expect(client.request).toHaveBeenCalledOnceWith({
+      topic: 'testnet-topic',
+      chainId: 'chia:testnet',
+      request: {
+        method: 'chip0002_getPublicKeys',
+        params: {},
+      },
+    });
+  });
+
+  it('reuses a persisted Sage WalletConnect session on explicit connect without pairing', async () => {
+    const restoredPubkey = '0x' + '46'.repeat(48);
+    const client = {
+      session: {
+        getAll: jasmine.createSpy('getAll').and.returnValue([
+          {
+            topic: 'approved-topic',
+            namespaces: {
+              chia: {
+                accounts: ['chia:testnet:123456'],
+                methods: ['chip0002_getPublicKeys', 'chip0002_signCoinSpends'],
+              },
+            },
+          },
+        ]),
+      },
+      connect: jasmine.createSpy('connect'),
+      request: jasmine.createSpy('request').and.resolveTo([restoredPubkey]),
+      on: jasmine.createSpy('on'),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+
+    const result = await service.connectSageWalletConnect();
+
+    expect(result).toBe(restoredPubkey);
+    expect(service.connectionKind()).toBe('sage-walletconnect');
+    expect(service.sageWalletConnectUri()).toBeNull();
+    expect(client.connect).not.toHaveBeenCalled();
+    expect(client.request).toHaveBeenCalledOnceWith({
+      topic: 'approved-topic',
+      chainId: 'chia:testnet',
+      request: {
+        method: 'chip0002_getPublicKeys',
+        params: {},
+      },
+    });
+  });
+
+  it('falls back to fresh Sage WalletConnect pairing when no restorable session exists', async () => {
+    const connectedPubkey = '0x' + '47'.repeat(48);
+    const client = {
+      session: {
+        getAll: jasmine.createSpy('getAll').and.returnValue([]),
+      },
+      connect: jasmine.createSpy('connect').and.resolveTo({
+        uri: 'wc:fresh-solslot-pairing',
+        approval: () => Promise.resolve({
+          topic: 'fresh-topic',
+          namespaces: {
+            chia: { accounts: ['chia:testnet:123456'] },
+          },
+        }),
+      }),
+      request: jasmine.createSpy('request').and.resolveTo([connectedPubkey]),
+      on: jasmine.createSpy('on'),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+
+    const result = await service.connectSageWalletConnect();
+
+    expect(result).toBe(connectedPubkey);
+    expect(client.connect).toHaveBeenCalledTimes(1);
+    expect(service.sageWalletConnectUri()).toBeNull();
+    expect(service.connectionKind()).toBe('sage-walletconnect');
+  });
+
+  it('falls back to fresh pairing after a stale restored session public-key timeout', fakeAsync(() => {
+    const connectedPubkey = '0x' + '48'.repeat(48);
+    const client = {
+      session: {
+        getAll: jasmine.createSpy('getAll').and.returnValue([
+          {
+            topic: 'stale-topic',
+            namespaces: {
+              chia: {
+                accounts: ['chia:testnet:123456'],
+                methods: ['chip0002_getPublicKeys', 'chip0002_signCoinSpends'],
+              },
+            },
+          },
+        ]),
+      },
+      connect: jasmine.createSpy('connect').and.resolveTo({
+        uri: 'wc:fresh-after-stale',
+        approval: () => Promise.resolve({
+          topic: 'fresh-topic',
+          namespaces: {
+            chia: { accounts: ['chia:testnet:123456'] },
+          },
+        }),
+      }),
+      request: jasmine.createSpy('request').and.callFake(({ topic }: { topic: string }) => {
+        if (topic === 'stale-topic') return new Promise(() => {});
+        return Promise.resolve([connectedPubkey]);
+      }),
+      on: jasmine.createSpy('on'),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+    let result: unknown = null;
+    let rejected: unknown = null;
+
+    service.connectSageWalletConnect()
+      .then((value) => {
+        result = value;
+      })
+      .catch((e) => {
+        rejected = e;
+      });
+    flushMicrotasks();
+    flushMicrotasks();
+
+    expect(service.restoringSageWalletConnect()).toBeTrue();
+    expect(client.connect).not.toHaveBeenCalled();
+
+    tick(7_001);
+    flushMicrotasks();
+    flushMicrotasks();
+    flushMicrotasks();
+
+    expect(rejected).toBeNull();
+    expect(result).toBe(connectedPubkey);
+    expect(client.connect).toHaveBeenCalledTimes(1);
+    expect(service.restoringSageWalletConnect()).toBeFalse();
+    expect(service.connectionKind()).toBe('sage-walletconnect');
+  }));
+
+  it('reuses an in-flight Sage WalletConnect restore when the operator clicks connect', async () => {
+    const restoredPubkey = '0x' + '49'.repeat(48);
+    let resolveKeys: (keys: string[]) => void = () => {};
+    const client = {
+      session: {
+        getAll: jasmine.createSpy('getAll').and.returnValue([
+          {
+            topic: 'slow-approved-topic',
+            namespaces: {
+              chia: {
+                accounts: ['chia:testnet:123456'],
+                methods: ['chip0002_getPublicKeys', 'chip0002_signCoinSpends'],
+              },
+            },
+          },
+        ]),
+      },
+      connect: jasmine.createSpy('connect'),
+      request: jasmine.createSpy('request').and.returnValue(
+        new Promise<string[]>((resolve) => {
+          resolveKeys = resolve;
+        }),
+      ),
+      on: jasmine.createSpy('on'),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+
+    const restorePromise = service.restoreSageWalletConnectSession();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(service.restoringSageWalletConnect()).toBeTrue();
+
+    const clickPromise = service.connectSageWalletConnect();
+    resolveKeys([restoredPubkey]);
+
+    await expectAsync(Promise.all([restorePromise, clickPromise])).toBeResolvedTo([
+      restoredPubkey,
+      restoredPubkey,
+    ]);
+    expect(client.connect).not.toHaveBeenCalled();
+    expect(client.request).toHaveBeenCalledTimes(1);
+    expect(service.restoringSageWalletConnect()).toBeFalse();
+  });
+
+  it('selects the newest testnet Sage WalletConnect session from getAll()', async () => {
+    const restoredPubkey = '0x' + '50'.repeat(48);
+    const client = {
+      session: {
+        getAll: jasmine.createSpy('getAll').and.returnValue([
+          {
+            topic: 'old-testnet-topic',
+            namespaces: {
+              chia: {
+                accounts: ['chia:testnet:111111'],
+                methods: ['chip0002_getPublicKeys', 'chip0002_signCoinSpends'],
+              },
+            },
+          },
+          {
+            topic: 'new-mainnet-topic',
+            namespaces: {
+              chia: {
+                accounts: ['chia:mainnet:222222'],
+                methods: ['chip0002_getPublicKeys', 'chip0002_signCoinSpends'],
+              },
+            },
+          },
+          {
+            topic: 'new-testnet-topic',
+            namespaces: {
+              chia: {
+                accounts: ['chia:testnet:333333'],
+                methods: ['chip0002_getPublicKeys', 'chip0002_signCoinSpends'],
+              },
+            },
+          },
+        ]),
+      },
+      request: jasmine.createSpy('request').and.resolveTo([restoredPubkey]),
+      on: jasmine.createSpy('on'),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+
+    await service.restoreSageWalletConnectSession();
+
+    expect(client.request).toHaveBeenCalledOnceWith({
+      topic: 'new-testnet-topic',
+      chainId: 'chia:testnet',
+      request: {
+        method: 'chip0002_getPublicKeys',
+        params: {},
+      },
+    });
+  });
+
+  it('clears restored Sage WalletConnect state on session delete and expire', async () => {
+    const restoredPubkey = '0x' + '51'.repeat(48);
+    const handlers: Record<string, () => void> = {};
+    const client = {
+      session: {
+        getAll: jasmine.createSpy('getAll').and.returnValue([
+          {
+            topic: 'approved-topic',
+            namespaces: {
+              chia: {
+                accounts: ['chia:testnet:123456'],
+                methods: ['chip0002_getPublicKeys', 'chip0002_signCoinSpends'],
+              },
+            },
+          },
+        ]),
+      },
+      request: jasmine.createSpy('request').and.resolveTo([restoredPubkey]),
+      on: jasmine.createSpy('on').and.callFake((event: string, handler: () => void) => {
+        handlers[event] = handler;
+      }),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+
+    await service.restoreSageWalletConnectSession();
+    expect(service.isConnected()).toBeTrue();
+    handlers['session_delete']();
+    expect(service.isConnected()).toBeFalse();
+
+    await service.restoreSageWalletConnectSession();
+    expect(service.isConnected()).toBeTrue();
+    handlers['session_expire']();
+    expect(service.isConnected()).toBeFalse();
+  });
+
+  it('times out stale Sage WalletConnect approval and clears the pairing URI', fakeAsync(() => {
+    const client = {
+      connect: jasmine.createSpy('connect').and.resolveTo({
+        uri: 'wc:stale-solslot-pairing',
+        approval: () => new Promise(() => {}),
+      }),
+      request: jasmine.createSpy('request'),
+      on: jasmine.createSpy('on'),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+    let rejected: unknown = null;
+
+    service.connectSageWalletConnect().catch((e) => {
+      rejected = e;
+    });
+    flushMicrotasks();
+    flushMicrotasks();
+
+    expect(service.sageWalletConnectUri()).toBe('wc:stale-solslot-pairing');
+
+    tick(90_001);
+    flushMicrotasks();
+
+    expect(rejected).toEqual(jasmine.any(Error));
+    expect((rejected as Error).message).toContain('Sage WalletConnect approval timed out');
+    expect(service.sageWalletConnectUri()).toBeNull();
+    expect(service.isConnected()).toBeFalse();
+  }));
+
+  it('times out when a connected Sage WalletConnect session does not return public keys', fakeAsync(() => {
+    const client = {
+      connect: jasmine.createSpy('connect').and.resolveTo({
+        uri: 'wc:public-key-hang',
+        approval: () => Promise.resolve({
+          topic: 'public-key-hang-topic',
+          namespaces: {
+            chia: { accounts: ['chia:testnet:123456'] },
+          },
+        }),
+      }),
+      request: jasmine.createSpy('request').and.returnValue(new Promise(() => {})),
+      on: jasmine.createSpy('on'),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+    let rejected: unknown = null;
+
+    service.connectSageWalletConnect().catch((e) => {
+      rejected = e;
+    });
+    flushMicrotasks();
+    flushMicrotasks();
+
+    expect(service.sageWalletConnectUri()).toBe('wc:public-key-hang');
+
+    tick(45_001);
+    flushMicrotasks();
+
+    expect(rejected).toEqual(jasmine.any(Error));
+    expect((rejected as Error).message).toContain('did not return public keys');
+    expect(service.sageWalletConnectUri()).toBeNull();
+    expect(service.isConnected()).toBeFalse();
+  }));
+
+  it('ignores a stale Sage WalletConnect approval after the operator cancels it', fakeAsync(() => {
+    const restoredPubkey = '0x' + '61'.repeat(48);
+    let resolveApproval: (session: unknown) => void = () => {};
+    const client = {
+      connect: jasmine.createSpy('connect').and.resolveTo({
+        uri: 'wc:cancel-me',
+        approval: () => new Promise((resolve) => {
+          resolveApproval = resolve;
+        }),
+      }),
+      request: jasmine.createSpy('request').and.resolveTo([restoredPubkey]),
+      on: jasmine.createSpy('on'),
+    };
+    spyOn(SignClient, 'init').and.resolveTo(
+      client as unknown as Awaited<ReturnType<typeof SignClient.init>>,
+    );
+    let rejected: unknown = null;
+
+    service.connectSageWalletConnect().catch((e) => {
+      rejected = e;
+    });
+    flushMicrotasks();
+    flushMicrotasks();
+
+    expect(service.sageWalletConnectUri()).toBe('wc:cancel-me');
+
+    service.cancelPendingConnection();
+    expect(service.sageWalletConnectUri()).toBeNull();
+    resolveApproval({
+      topic: 'stale-topic',
+      namespaces: {
+        chia: { accounts: ['chia:testnet:123456'] },
+      },
+    });
+    flushMicrotasks();
+
+    expect(rejected).toEqual(jasmine.any(Error));
+    expect((rejected as Error).message).toContain('pairing was canceled');
+    expect(client.request).not.toHaveBeenCalled();
+    expect(service.isConnected()).toBeFalse();
+  }));
 });
 
 // ─────────────────────────────────────────────────────────────────────

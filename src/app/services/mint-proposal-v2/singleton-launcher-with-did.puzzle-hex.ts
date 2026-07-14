@@ -1,28 +1,6 @@
 /**
- * Compiled bytecode of `singleton_launcher_with_did.clsp` (Phase 4 mint-publish).
- *
- * Bundled at build time from
- * ``populis_protocol/populis_puzzles/singleton_launcher_with_did.clsp.hex``
- * via the helper script
- * ``populis_protocol/scripts/dump_mint_publish_puzzle_hex.sh``.
- *
- * Purpose: DID-gated singleton launcher used by the deed to constrain its launch authorisation to the protocol DID singleton lineage
- *
- * The portal feeds this hex into ``Clvm.deserialize()`` (chia-wallet-sdk-wasm)
- * to construct the puzzle Program client-side.  No API call needed.
- *
- * **CRITICAL**: this constant MUST stay in sync with the .hex file in
- * populis_protocol.  The cross-repo Karma spec
- * ``mint-publish.service.spec.ts`` reads the canonical fixture
- * emitted by ``populis_protocol/scripts/dump_mint_publish_fixtures.py``
- * and asserts byte-equivalence — drift here surfaces there.
- *
- * If the puzzle source changes, regenerate via:
- *
- *     cd populis_protocol
- *     bash scripts/dump_mint_publish_puzzle_hex.sh
- *
- * which rewrites this file.
+ * Generated from solslot-protocol/solslot_puzzles/singleton_launcher_with_did.clsp.hex.
+ * Do not edit by hand; run scripts/dump_portal_puzzle_hex.sh.
  */
 export const SINGLETON_LAUNCHER_WITH_DID_PUZZLE_HEX =
   '0x' +

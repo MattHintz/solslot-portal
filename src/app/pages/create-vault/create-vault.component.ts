@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { EvmWalletService } from '../../services/evm-wallet.service';
 import { ChiaWalletService } from '../../services/chia-wallet.service';
-import { PopulisApiService } from '../../services/populis-api.service';
+import { SolslotApiService } from '../../services/solslot-api.service';
 import { SessionService } from '../../services/session.service';
 import { VaultDiscoveryService } from '../../services/vault-discovery.service';
 import { formatError } from '../../utils/format-error';
@@ -96,7 +96,7 @@ type Phase =
 export class CreateVaultComponent {
   private readonly evm = inject(EvmWalletService);
   private readonly chia = inject(ChiaWalletService);
-  private readonly api = inject(PopulisApiService);
+  private readonly api = inject(SolslotApiService);
   private readonly session = inject(SessionService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -169,7 +169,7 @@ export class CreateVaultComponent {
 
     // Step 2: chain-only discovery — find an existing vault for this pubkey.
     // No backend involvement: queries coinset.org by the deterministic
-    // CHIP-22 hint sha256("populis-vault-discovery-v1"||auth_type||pubkey).
+    // CHIP-22 hint sha256("solslot-vault-discovery-v2"||auth_type||pubkey).
     this.phase.set('discovering_vault');
     const existing = await this.discovery.discoverEvmVault(compressedPubkey);
 

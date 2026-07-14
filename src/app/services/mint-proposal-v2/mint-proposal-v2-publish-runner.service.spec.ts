@@ -10,8 +10,8 @@ import {
   GovernanceTrackerReaderService,
   IdleStateProposeInputs,
 } from '../governance-tracker-reader.service';
-import { PgtCoinDiscoveryService } from '../pgt-driver/pgt-coin-discovery.service';
-import { PgtDriverService } from '../pgt-driver/pgt-driver.service';
+import { SgtCoinDiscoveryService } from '../sgt-driver/sgt-coin-discovery.service';
+import { SgtDriverService } from '../sgt-driver/sgt-driver.service';
 import { WalletCoinPickerService } from '../wallet-coin-picker.service';
 import { MintProposalV2Service } from './mint-proposal-v2.service';
 import { MintPublishService } from './mint-publish.service';
@@ -27,8 +27,8 @@ const TRACKER_LAUNCHER = '0x' + 'bb'.repeat(32);
 const PROPOSAL_HASH = '0x' + 'ee'.repeat(32);
 const PROPOSAL_DATA_HASH = '0x' + 'cd'.repeat(32);
 const BILL_OP_HEX = '0xff4d80';
-const PGT_PUZZLE_HASH = '0x' + 'ff'.repeat(32);
-const PGT_LOCKED_CAT_PUZZLE_HASH = '0x' + '31'.repeat(32);
+const SGT_PUZZLE_HASH = '0x' + 'ff'.repeat(32);
+const SGT_LOCKED_CAT_PUZZLE_HASH = '0x' + '31'.repeat(32);
 const XCH_COIN_ID = '0x' + '99'.repeat(32);
 // Shared 32-byte value used by the fake Clvm so the XCH-parent
 // WRONG_PUZZLE_HASH guard (deserialize().treeHash() === coin.puzzleHash)
@@ -95,7 +95,7 @@ function makeMockedRunner(overrides: {
   pubkey?: string | null;
   idle?: IdleStateProposeInputs | null;
   idleThrows?: boolean;
-  discoverKind?: 'found' | 'no-coins' | 'pgt-not-deployed' | 'governance-not-deployed';
+  discoverKind?: 'found' | 'no-coins' | 'sgt-not-deployed' | 'governance-not-deployed';
   coins?: Array<{ parentCoinInfo: string; puzzleHash: string; amount: number; confirmedBlockIndex: number }>;
   pickerThrows?: boolean;
   coinRecordNull?: boolean;
@@ -103,7 +103,7 @@ function makeMockedRunner(overrides: {
   buildEveImpl?: jasmine.Spy;
   buildRegistryAssertImpl?: jasmine.Spy;
   buildTrackerImpl?: jasmine.Spy;
-  buildPgtImpl?: jasmine.Spy;
+  buildSgtImpl?: jasmine.Spy;
   publishImpl?: jasmine.Spy;
 }): {
   service: MintProposalV2PublishRunnerService;
@@ -188,19 +188,19 @@ function makeMockedRunner(overrides: {
   } as unknown as GovernanceTrackerReaderService;
 
   const discoveryResult =
-    overrides.discoverKind === 'pgt-not-deployed'
-      ? { kind: 'pgt-not-deployed' as const }
+    overrides.discoverKind === 'sgt-not-deployed'
+      ? { kind: 'sgt-not-deployed' as const }
       : overrides.discoverKind === 'governance-not-deployed'
         ? { kind: 'governance-not-deployed' as const }
         : overrides.discoverKind === 'no-coins'
-          ? { kind: 'no-coins' as const, catPgtFreePuzzleHash: PGT_PUZZLE_HASH }
+          ? { kind: 'no-coins' as const, catSgtFreePuzzleHash: SGT_PUZZLE_HASH }
           : {
               kind: 'found' as const,
-              catPgtFreePuzzleHash: PGT_PUZZLE_HASH,
+              catSgtFreePuzzleHash: SGT_PUZZLE_HASH,
               coins: overrides.coins ?? [
                 {
                   parentCoinInfo: '0x' + '55'.repeat(32),
-                  puzzleHash: PGT_PUZZLE_HASH,
+                  puzzleHash: SGT_PUZZLE_HASH,
                   amount: 10_000,
                   confirmedBlockIndex: 1,
                 },
@@ -209,16 +209,16 @@ function makeMockedRunner(overrides: {
             };
   const discovery = {
     discover: jasmine.createSpy('discover').and.resolveTo(discoveryResult),
-  } as unknown as PgtCoinDiscoveryService;
+  } as unknown as SgtCoinDiscoveryService;
 
-  const pgt = {
+  const sgt = {
     trackerStructHash: jasmine.createSpy('trackerStructHash').and.returnValue(bytes(0x10)),
-    pgtLockedInnerHash: jasmine.createSpy('pgtLockedInnerHash').and.returnValue(bytes(0x20)),
-    pgtTailHash: jasmine.createSpy('pgtTailHash').and.returnValue(bytes(0x30)),
-    catPgtFreePuzzleHash: jasmine
-      .createSpy('catPgtFreePuzzleHash')
+    sgtLockedInnerHash: jasmine.createSpy('sgtLockedInnerHash').and.returnValue(bytes(0x20)),
+    sgtTailHash: jasmine.createSpy('sgtTailHash').and.returnValue(bytes(0x30)),
+    catSgtFreePuzzleHash: jasmine
+      .createSpy('catSgtFreePuzzleHash')
       .and.returnValue(bytes(0x31)),
-  } as unknown as PgtDriverService;
+  } as unknown as SgtDriverService;
 
   const publish = {
     buildMintPublishArtifacts: jasmine.createSpy('buildMintPublishArtifacts').and.returnValue({
@@ -269,10 +269,10 @@ function makeMockedRunner(overrides: {
         puzzleReveal: '0xff01',
         solution: '0xff80',
       }),
-    buildPgtFirstVoteCoinSpend:
-      overrides.buildPgtImpl ??
-      jasmine.createSpy('buildPgtFirstVoteCoinSpend').and.returnValue({
-        coin: { parentCoinInfo: '0x' + '55'.repeat(32), puzzleHash: PGT_PUZZLE_HASH, amount: 10_000 },
+    buildSgtFirstVoteCoinSpend:
+      overrides.buildSgtImpl ??
+      jasmine.createSpy('buildSgtFirstVoteCoinSpend').and.returnValue({
+        coin: { parentCoinInfo: '0x' + '55'.repeat(32), puzzleHash: SGT_PUZZLE_HASH, amount: 10_000 },
         puzzleReveal: '0xff01',
         solution: '0xff80',
       }),
@@ -326,8 +326,8 @@ function makeMockedRunner(overrides: {
       { provide: ChiaWasmService, useValue: wasm },
       { provide: CoinsetService, useValue: coinset },
       { provide: GovernanceTrackerReaderService, useValue: tracker },
-      { provide: PgtCoinDiscoveryService, useValue: discovery },
-      { provide: PgtDriverService, useValue: pgt },
+      { provide: SgtCoinDiscoveryService, useValue: discovery },
+      { provide: SgtDriverService, useValue: sgt },
       { provide: MintPublishService, useValue: publish },
       { provide: MintProposalV2Service, useValue: v2 },
       { provide: MintPublishSpendBuilderService, useValue: spendBuilder },
@@ -348,17 +348,17 @@ function hexToBytesLocal(hex: string): Uint8Array {
 }
 
 describe('MintProposalV2PublishRunnerService', () => {
-  let originalPgtTailGenesisCoinId: string;
+  let originalSgtTailGenesisCoinId: string;
 
   beforeEach(() => {
-    originalPgtTailGenesisCoinId = environment.populisProtocol.pgtTailGenesisCoinId;
-    (environment.populisProtocol as { pgtTailGenesisCoinId: string }).pgtTailGenesisCoinId =
+    originalSgtTailGenesisCoinId = environment.solslotProtocol.sgtGenesisCoinId;
+    (environment.solslotProtocol as { sgtGenesisCoinId: string }).sgtGenesisCoinId =
       '0x' + 'a0'.repeat(32);
   });
 
   afterEach(() => {
-    (environment.populisProtocol as { pgtTailGenesisCoinId: string }).pgtTailGenesisCoinId =
-      originalPgtTailGenesisCoinId;
+    (environment.solslotProtocol as { sgtGenesisCoinId: string }).sgtGenesisCoinId =
+      originalSgtTailGenesisCoinId;
   });
 
   const PUBKEY = '0x' + 'a0'.repeat(48);
@@ -404,29 +404,29 @@ describe('MintProposalV2PublishRunnerService', () => {
     expect(res.kind).toBe('tracker-read-failed');
   });
 
-  it("returns 'pgt-not-deployed' when the genesis coin id is empty", async () => {
-    (environment.populisProtocol as { pgtTailGenesisCoinId: string }).pgtTailGenesisCoinId = '';
+  it("returns 'sgt-not-deployed' when the genesis coin id is empty", async () => {
+    (environment.solslotProtocol as { sgtGenesisCoinId: string }).sgtGenesisCoinId = '';
     const { service } = makeMockedRunner({ pubkey: PUBKEY });
     const res = await service.publishMint(defaultArgs());
-    expect(res.kind).toBe('pgt-not-deployed');
+    expect(res.kind).toBe('sgt-not-deployed');
   });
 
-  it("returns 'no-pgt-coins' when discovery surfaces no-coins", async () => {
+  it("returns 'no-sgt-coins' when discovery surfaces no-coins", async () => {
     const { service } = makeMockedRunner({ pubkey: PUBKEY, discoverKind: 'no-coins' });
     const res = await service.publishMint(defaultArgs());
-    expect(res.kind).toBe('no-pgt-coins');
+    expect(res.kind).toBe('no-sgt-coins');
   });
 
-  it("returns 'no-pgt-coin-matches-stake' when no coin equals the stake", async () => {
+  it("returns 'no-sgt-coin-matches-stake' when no coin equals the stake", async () => {
     const { service } = makeMockedRunner({
       pubkey: PUBKEY,
       coins: [
-        { parentCoinInfo: '0x' + '55'.repeat(32), puzzleHash: PGT_PUZZLE_HASH, amount: 9_999, confirmedBlockIndex: 1 },
+        { parentCoinInfo: '0x' + '55'.repeat(32), puzzleHash: SGT_PUZZLE_HASH, amount: 9_999, confirmedBlockIndex: 1 },
       ],
     });
     const res = await service.publishMint(defaultArgs({ firstVoteAmount: 10_000 }));
-    expect(res.kind).toBe('no-pgt-coin-matches-stake');
-    if (res.kind === 'no-pgt-coin-matches-stake') {
+    expect(res.kind).toBe('no-sgt-coin-matches-stake');
+    if (res.kind === 'no-sgt-coin-matches-stake') {
       expect(res.availableAmounts).toEqual([9_999]);
       expect(res.requestedAmount).toBe(BigInt(10_000));
     }
@@ -463,7 +463,7 @@ describe('MintProposalV2PublishRunnerService', () => {
     expect(signSpy).toHaveBeenCalledTimes(1);
     expect(publishSpy).toHaveBeenCalledTimes(1);
     // The bundle handed to the wallet must contain exactly 5 spends:
-    // XCH parent, Artifact A launcher, tracker PROPOSE, PGT lock, registry registration.
+    // XCH parent, Artifact A launcher, tracker PROPOSE, SGT lock, registry registration.
     const passed = signSpy.calls.mostRecent().args[0] as unknown[];
     expect(passed.length).toBe(5);
     expect(passed[4]).toBe(REGISTRY_COIN_SPEND);
@@ -474,11 +474,11 @@ describe('MintProposalV2PublishRunnerService', () => {
       expect(res.apiResponse.pushed).toBe(true);
       expect(res.xchCoinId).toBe(XCH_COIN_ID);
       expect(res.artifacts.proposalHash).toBe(PROPOSAL_HASH);
-      expect(res.pickedPgtCoin.amount).toBe(10_000);
-      expect(res.pgtLockCoinId).toBe(
+      expect(res.pickedSgtCoin.amount).toBe(10_000);
+      expect(res.sgtLockCoinId).toBe(
         coinId(
-          coinId('0x' + '55'.repeat(32), PGT_PUZZLE_HASH, 10_000),
-          PGT_LOCKED_CAT_PUZZLE_HASH,
+          coinId('0x' + '55'.repeat(32), SGT_PUZZLE_HASH, 10_000),
+          SGT_LOCKED_CAT_PUZZLE_HASH,
           10_000,
         ),
       );

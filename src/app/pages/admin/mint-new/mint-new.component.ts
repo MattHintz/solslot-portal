@@ -4,7 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
-import { ProposeMintRequest } from '../../../services/admin-api.service';
+import {
+  ProposeMintRequest,
+  SmartDeedFilingStatus,
+  SmartDeedSecurityStructure,
+  SmartDeedSettlementBasis,
+  SmartDeedTermsMetadata,
+} from '../../../services/admin-api.service';
 import {
   canonicalizeMintCollectionId,
   canonicalizeMintPropertyId,
@@ -14,7 +20,7 @@ import { formatError } from '../../../utils/format-error';
 /**
  * Compose a new DRAFT mint proposal.
  *
- * The fields map 1:1 to `populis_api.mint_endpoints.ProposeMintRequest`.
+ * The fields map 1:1 to `solslot_api.mint_endpoints.ProposeMintRequest`.
  * Server-side validation handles the heavy lifting (length bounds,
  * royalty range, property_id canonicalisation per POP-CANON-014); the
  * client checks shape so the user gets immediate feedback before we
@@ -32,7 +38,7 @@ import { formatError } from '../../../utils/format-error';
     <section class="container-p pt-12 pb-24 max-w-3xl">
       <header>
         <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-2">
-          Populis · Admin Desk
+          Solslot · Admin Desk
         </div>
         <h1 class="font-display text-4xl md:text-5xl">New mint proposal.</h1>
         <p class="mt-3 text-text-muted text-sm max-w-xl">
@@ -186,7 +192,7 @@ import { formatError } from '../../../utils/format-error';
           <legend class="font-display text-2xl">Governance</legend>
 
           <div>
-            <label class="form-label">Quorum required (PGT mojos)</label>
+            <label class="form-label">Quorum required (SGT mojos)</label>
             <input
               [(ngModel)]="quorumRequiredRaw"
               name="quorum_required"
@@ -197,15 +203,106 @@ import { formatError } from '../../../utils/format-error';
               placeholder="100000000"
             />
             <p class="form-hint">
-              Minimum PGT-mojos of YES votes for the proposal to pass.
+              Minimum SGT-mojos of YES votes for the proposal to pass.
               Snapshot from the protocol manifest's
-              <code class="mono">quorum_bps × pgt_total_supply ÷ 10_000</code>.
+              <code class="mono">quorum_bps × sgt_total_supply ÷ 10_000</code>.
             </p>
           </div>
         </fieldset>
 
         <fieldset class="card grid gap-5">
-          <legend class="font-display text-2xl">Off-chain metadata <span class="text-text-muted text-sm">(optional)</span></legend>
+          <legend class="font-display text-2xl">Legal and security structure</legend>
+
+          <div class="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label class="form-label">Security structure</label>
+              <select [(ngModel)]="securityStructure" name="security_structure" required>
+                <option value="entity_ucc">Entity-level UCC security interest</option>
+                <option value="real_property_lien">Real-property lien</option>
+                <option value="deed_of_trust">Deed of trust</option>
+                <option value="mortgage">Mortgage</option>
+                <option value="hybrid">Hybrid UCC + real-property security</option>
+                <option value="contract_only">Contractual rights; no lien stated</option>
+                <option value="unsecured">Unsecured obligation</option>
+                <option value="other">Other disclosed structure</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Filing / recording status</label>
+              <select [(ngModel)]="filingStatus" name="filing_status" required>
+                <option value="recorded">Recorded / filed</option>
+                <option value="pending">Pending</option>
+                <option value="intended">Intended; not confirmed</option>
+                <option value="not_applicable">Not applicable</option>
+                <option value="none">No filing stated</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label">What the structure gives the holder</label>
+            <textarea [(ngModel)]="securityDescription" name="security_description" rows="3" required minlength="20" maxlength="2000" placeholder="Describe the holder's rights and explicitly distinguish security from title, equity, occupancy, and management control."></textarea>
+          </div>
+
+          <div class="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label class="form-label">Legal obligor</label>
+              <input [(ngModel)]="obligor" name="obligor" required minlength="2" maxlength="256" placeholder="Full legal name" />
+            </div>
+            <div>
+              <label class="form-label">Filing / recording reference</label>
+              <input [(ngModel)]="filingReference" name="filing_reference" maxlength="256" placeholder="Instrument, filing, county, or UCC reference" />
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label">Collateral description</label>
+            <textarea [(ngModel)]="collateralDescription" name="collateral_description" rows="3" required minlength="10" maxlength="2000" placeholder="Identify the entity assets, real property, instrument, exclusions, and limitations."></textarea>
+          </div>
+
+          <div>
+            <label class="form-label">Priority and senior claims</label>
+            <textarea [(ngModel)]="priorityDescription" name="priority_description" rows="3" required minlength="10" maxlength="2000" placeholder="Describe priority, senior debt, permitted liens, subordination, and remedies."></textarea>
+          </div>
+
+          <div class="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label class="form-label">Settlement / redemption basis</label>
+              <select [(ngModel)]="settlementBasis" name="settlement_basis" required>
+                <option value="nav_redemption">Governed collection-NAV redemption</option>
+                <option value="governance_settlement">Governance-approved pool settlement</option>
+                <option value="property_sale">Property sale proceeds</option>
+                <option value="appraisal_buyout">Appraisal-based buyout</option>
+                <option value="fixed_maturity">Stated maturity mechanics</option>
+                <option value="hybrid">Multiple defined paths</option>
+                <option value="other">Other disclosed method</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Definitive documents URL</label>
+              <input [(ngModel)]="definitiveDocumentsUrl" name="definitive_documents_url" type="url" required maxlength="1000" placeholder="https://…" />
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label">Settlement calculation and waterfall</label>
+            <textarea [(ngModel)]="settlementDescription" name="settlement_description" rows="3" required minlength="20" maxlength="2000" placeholder="State inputs, valuation source, adjustments, expenses, priority, timing, and governance conditions."></textarea>
+          </div>
+
+          <div>
+            <label class="form-label">Transfer and eligibility policy</label>
+            <textarea [(ngModel)]="transferPolicy" name="transfer_policy" rows="3" required minlength="20" maxlength="2000" placeholder="Describe vault/pool paths, eligibility, zkPassport, restrictions, and available liquidity routes."></textarea>
+          </div>
+
+          <div>
+            <label class="form-label">Document package SHA-256</label>
+            <input [(ngModel)]="documentPackageHash" name="document_package_hash" required pattern="^sha256:[a-fA-F0-9]{64}$" placeholder="sha256:…" class="mono" />
+            <p class="form-hint">Hash the exact definitive document package reviewed for this submission.</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="card grid gap-5">
+          <legend class="font-display text-2xl">Additional off-chain metadata <span class="text-text-muted text-sm">(optional)</span></legend>
 
           <div>
             <label class="form-label">JSON</label>
@@ -294,6 +391,18 @@ export class MintNewComponent {
   royaltyPuzhash = '';
   royaltyBpsRaw = '';
   quorumRequiredRaw = '';
+  securityStructure: SmartDeedSecurityStructure = 'entity_ucc';
+  filingStatus: SmartDeedFilingStatus = 'pending';
+  settlementBasis: SmartDeedSettlementBasis = 'nav_redemption';
+  securityDescription = '';
+  obligor = '';
+  collateralDescription = '';
+  filingReference = '';
+  priorityDescription = '';
+  settlementDescription = '';
+  transferPolicy = '';
+  definitiveDocumentsUrl = '';
+  documentPackageHash = '';
   offChainJson = '';
 
   readonly busy = signal(false);
@@ -368,7 +477,12 @@ export class MintNewComponent {
       { min: 1 },
     );
     const royaltyPuzhash = this.normalizeBytes32(this.royaltyPuzhash);
-    const offChainMetadata = this.parseOptionalJson(this.offChainJson);
+    const customMetadata = this.parseOptionalJson(this.offChainJson);
+    const smartDeedTerms = this.buildSmartDeedTerms();
+    const offChainMetadata = {
+      ...(customMetadata ?? {}),
+      smartDeedTerms,
+    };
     return {
       par_value: parValue,
       asset_class: this.assetClass.trim(),
@@ -411,6 +525,47 @@ export class MintNewComponent {
       throw new Error('royalty_puzhash must be a 32-byte hex string (64 hex chars)');
     }
     return '0x' + hex;
+  }
+
+  private buildSmartDeedTerms(): SmartDeedTermsMetadata {
+    const definitiveDocumentsUrl = this.definitiveDocumentsUrl.trim();
+    try {
+      const url = new URL(definitiveDocumentsUrl);
+      if (url.protocol !== 'https:') {
+        throw new Error();
+      }
+    } catch {
+      throw new Error('definitive_documents_url must be a valid HTTPS URL');
+    }
+    const documentPackageHash = this.documentPackageHash.trim().toLowerCase();
+    if (!/^sha256:[a-f0-9]{64}$/.test(documentPackageHash)) {
+      throw new Error('document_package_hash must be sha256 followed by 64 hex characters');
+    }
+    return {
+      schemaVersion: 'solslot.smartdeed.submission.v2',
+      securityStructure: this.securityStructure,
+      securityDescription: this.requireText(this.securityDescription, 'security_description', 20),
+      obligor: this.requireText(this.obligor, 'obligor', 2),
+      collateralDescription: this.requireText(this.collateralDescription, 'collateral_description', 10),
+      filingStatus: this.filingStatus,
+      ...(this.filingReference.trim()
+        ? { filingReference: this.filingReference.trim() }
+        : {}),
+      priorityDescription: this.requireText(this.priorityDescription, 'priority_description', 10),
+      settlementBasis: this.settlementBasis,
+      settlementDescription: this.requireText(this.settlementDescription, 'settlement_description', 20),
+      transferPolicy: this.requireText(this.transferPolicy, 'transfer_policy', 20),
+      definitiveDocumentsUrl,
+      documentPackageHash,
+    };
+  }
+
+  private requireText(raw: string, fieldName: string, minLength: number): string {
+    const value = raw.trim();
+    if (value.length < minLength) {
+      throw new Error(`${fieldName} must contain at least ${minLength} characters`);
+    }
+    return value;
   }
 
   private parseOptionalJson(raw: string): Record<string, unknown> | undefined {

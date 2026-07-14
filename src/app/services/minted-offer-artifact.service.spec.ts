@@ -27,7 +27,7 @@ describe('MintedOfferArtifactService', () => {
     expect(plan.protocolArtifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(plan.protocolArtifact).toEqual(
       jasmine.objectContaining({
-        version: 1,
+        version: 2,
         kind: 'solslot_protocol_offer',
         network: 'testnet11',
         paymentTerms: {

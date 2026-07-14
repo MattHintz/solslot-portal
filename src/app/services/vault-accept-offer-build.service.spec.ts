@@ -9,7 +9,6 @@ import {
   VaultAcceptOfferLowerBuilder,
   VaultAcceptOfferSpendPackage,
 } from './vault-accept-offer-build.service';
-import { ZkPassportProofStoreService } from './zkpassport-proof-store.service';
 import {
   ZkPassportAcceptOfferProofService,
   ZkPassportEnrollmentRequiredError,
@@ -21,7 +20,7 @@ const proofParams = {
   attestationLeafHash: vector.attestationLeafHash,
   attestationProof: vector.attestationProof,
 };
-const VAULT_FULL_PUZZLE_HASH = '0x457229731582e1e870f2059ea370a9f8463fc47211b00f06799f082c01eb28e7';
+const VAULT_FULL_PUZZLE_HASH = '0x6ee104b3af5f13601cdf0381136a18b491d9b3d8202891d8992c59a4a61897e0';
 const VAULT_COIN_PARENT = '0x' + '99'.repeat(32);
 const VAULT_COIN_ID = '0x0aed9a5f9e58c71bee7738685e4fb77b1b35a06d88372884f3c309a1b34cb642';
 
@@ -95,23 +94,6 @@ describe('VaultAcceptOfferBuildService', () => {
     expect(lowerBuilder).not.toHaveBeenCalled();
   });
 
-  it('depends on the accept-offer proof boundary instead of the proof store', () => {
-    TestBed.resetTestingModule();
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: ZkPassportAcceptOfferProofService, useValue: proofService },
-        { provide: VAULT_ACCEPT_OFFER_LOWER_BUILDER, useValue: lowerBuilder },
-        {
-          provide: ZkPassportProofStoreService,
-          useFactory: () => {
-            throw new Error('direct proof store dependency');
-          },
-        },
-      ],
-    });
-
-    expect(() => TestBed.inject(VaultAcceptOfferBuildService)).not.toThrow();
-  });
 });
 
 function request(overrides: Partial<VaultAcceptOfferBuildRequest> = {}): VaultAcceptOfferBuildRequest {

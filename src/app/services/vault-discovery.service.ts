@@ -7,13 +7,13 @@ import { coinId, vaultDiscoveryHint, hexToBytes, AUTH_TYPE_SECP256K1, AUTH_TYPE_
  *
  * Given a user's pubkey + auth type, walks chain to find their existing
  * vault singleton without consulting the backend at all.  This is the core
- * of Populis's "create-once, never-touch-the-backend-again" login flow.
+ * of Solslot's "create-once, never-touch-the-backend-again" login flow.
  *
  * Algorithm:
  *
- *   1. Compute hint = sha256("populis-vault-discovery-v1" || authType || pubkey)
+ *   1. Compute hint = sha256("solslot-vault-discovery-v2" || authType || pubkey)
  *      Same formula the faucet used at registration time
- *      (see populis_puzzles/vault_driver.py:vault_discovery_hint).
+ *      (see solslot_puzzles/vault_driver.py:vault_discovery_hint).
  *
  *   2. Query coinset.org `get_coin_records_by_hint(hint, includeSpent=true)`.
  *      Returns the launcher coin (always spent — its spend created the eve

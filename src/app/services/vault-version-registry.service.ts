@@ -2,7 +2,7 @@
  * Chain reader for the vault-version registry singleton.
  *
  * Walks the registry lineage from its launcher id (in
- * ``environment.populisProtocol.vaultVersionRegistryLauncherId``) and parses
+ * ``environment.solslotProtocol.vaultVersionRegistryLauncherId``) and parses
  * the current state from the most recently spent non-launcher coin's puzzle
  * reveal.  No backend is used — only coinset.org + the WASM CLVM SDK.
  *
@@ -125,7 +125,7 @@ export class VaultVersionRegistryService {
    * available / no upgrade signal".
    */
   async getCurrentState(): Promise<RegistryState | null> {
-    const launcherId = environment.populisProtocol.vaultVersionRegistryLauncherId;
+    const launcherId = environment.solslotProtocol.vaultVersionRegistryLauncherId;
     if (!launcherId) {
       return null;
     }
@@ -150,7 +150,7 @@ export class VaultVersionRegistryService {
       return null;
     }
     const clvm: ClvmShape = new Clvm();
-    const registryModHash = hexToBytes(environment.populisProtocol.vaultVersionRegistryModHash);
+    const registryModHash = hexToBytes(environment.solslotProtocol.vaultVersionRegistryModHash);
     return parseRegistryFullPuzzleReveal(clvm, registryModHash, hexToBytes(ps.puzzleReveal));
   }
 

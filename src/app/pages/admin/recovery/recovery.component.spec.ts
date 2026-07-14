@@ -64,7 +64,7 @@ const bootstrapManifest = {
 };
 const recoveryAnchorPayload = {
   version: 1,
-  tag: 'POPULIS_BOOTSTRAP_V1',
+  tag: 'SOLSLOT_BOOTSTRAP_V2',
   network: 'testnet11',
   admin_authority_v2_launcher_id: launcherId,
   authority_version: 1,
@@ -80,14 +80,14 @@ const discoveredAnchor: DiscoveredRecoveryAnchor = {
   confirmedBlockIndex: 123,
   spentBlockIndex: 0,
   timestamp: 1_700_000_000,
-  tagMemoUtf8: 'POPULIS_BOOTSTRAP_V1',
+  tagMemoUtf8: 'SOLSLOT_BOOTSTRAP_V2',
   payloadMemoUtf8: JSON.stringify(recoveryAnchorPayload),
   payloadHash: contentHash(recoveryAnchorPayload),
   bootstrapRecoveryAnchor: recoveryAnchorPayload,
 };
 const discoveryReport: RecoveryAnchorDiscoveryReport = {
-  tagMemoUtf8: 'POPULIS_BOOTSTRAP_V1',
-  tagMemoHex: '0x504f50554c49535f424f4f5453545241505f5631',
+  tagMemoUtf8: 'SOLSLOT_BOOTSTRAP_V2',
+  tagMemoHex: '0x534f4c534c4f545f424f4f5453545241505f5632',
   scannedCandidateCount: 1,
   anchors: [discoveredAnchor],
   rejectedCandidates: [],

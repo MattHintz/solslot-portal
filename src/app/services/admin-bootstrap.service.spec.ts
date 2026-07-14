@@ -35,14 +35,14 @@ describe('AdminBootstrapService', () => {
     admin_authority_launcher_id: `0x${'88'.repeat(32)}`,
     admins_hash: `0x${'ab'.repeat(32)}`,
     mips_root: `0x${'cd'.repeat(32)}`,
-    read_only_api_url: 'https://api.populis.example',
+    read_only_api_url: 'https://api.solslot.example',
     read_only_coinset_url: 'https://coinset.example',
   };
   const protocol = {
     pool_launcher_id: `0x${'11'.repeat(32)}`,
     did_launcher_id: `0x${'22'.repeat(32)}`,
     tracker_launcher_id: `0x${'33'.repeat(32)}`,
-    pgt_tail_hash: `0x${'44'.repeat(32)}`,
+    sgt_tail_hash: `0x${'44'.repeat(32)}`,
     pool_token_tail_hash: `0x${'55'.repeat(32)}`,
     pool_full_puzhash: `0x${'66'.repeat(32)}`,
     tracker_full_puzhash: `0x${'77'.repeat(32)}`,
@@ -54,7 +54,7 @@ describe('AdminBootstrapService', () => {
   };
   const recoveryAnchor = {
     version: 1,
-    tag: 'POPULIS_BOOTSTRAP_V1',
+    tag: 'SOLSLOT_BOOTSTRAP_V2',
     network: 'testnet11',
     admin_authority_v2_launcher_id: finalizeRequest.admin_authority_launcher_id,
     authority_version: 1,
@@ -70,12 +70,12 @@ describe('AdminBootstrapService', () => {
     bootstrap_manifest_hash: recoveryAnchor.bootstrap_manifest_hash,
     portal_runtime_config_hash: recoveryAnchor.portal_runtime_config_hash,
     admin_records_hash: recoveryAnchor.admin_records_hash,
-    tag_memo_utf8: 'POPULIS_BOOTSTRAP_V1',
-    tag_memo_hex: '0x504f50554c49535f424f4f5453545241505f5631',
+    tag_memo_utf8: 'SOLSLOT_BOOTSTRAP_V2',
+    tag_memo_hex: '0x534f4c534c4f545f424f4f5453545241505f5632',
     payload_memo_json: recoveryAnchor,
     payload_memo_utf8: JSON.stringify(recoveryAnchor),
     payload_memo_hex: `0x${'ab'.repeat(32)}`,
-    memos_hex: ['0x504f50554c49535f424f4f5453545241505f5631', `0x${'ab'.repeat(32)}`],
+    memos_hex: ['0x534f4c534c4f545f424f4f5453545241505f5632', `0x${'ab'.repeat(32)}`],
     payload_hash: `sha256:${'45'.repeat(32)}`,
   };
   const createCoinPreview = {

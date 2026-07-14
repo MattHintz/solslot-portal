@@ -61,7 +61,7 @@ export class MintProposalChainStateService {
       };
     }
 
-    const pgtLock = await this.checkPgtLockCoin(proposal.on_chain.pgt_lock_coin_id);
+    const sgtLock = await this.checkSgtLockCoin(proposal.on_chain.sgt_lock_coin_id);
     const expectedPuzzleHash = expectedMintProposalDraftFullPuzzleHash(
       launcherId,
       expectedInnerPuzzleHash,
@@ -106,7 +106,7 @@ export class MintProposalChainStateService {
         ...base,
         proposalPuzzleState: 'DRAFT',
         stateVersion: 0,
-        ...(pgtLock ? { pgtLock } : {}),
+        ...(sgtLock ? { sgtLock } : {}),
         ...(tracker ? { tracker } : {}),
         ...(propertyRegistry ? { propertyRegistry } : {}),
       };
@@ -118,7 +118,7 @@ export class MintProposalChainStateService {
       launcherId,
       expectedDraftPuzzleHash: expectedPuzzleHash,
       livePuzzleHash,
-      pgtLock,
+      sgtLock,
       propertyRegistry: await this.checkPropertyRegistry(proposal),
     });
     if (transition) return transition;
@@ -130,9 +130,9 @@ export class MintProposalChainStateService {
     };
   }
 
-  private async checkPgtLockCoin(
+  private async checkSgtLockCoin(
     storedCoinId: string | null | undefined,
-  ): Promise<PgtLockCoinEvidence | null> {
+  ): Promise<SgtLockCoinEvidence | null> {
     if (!storedCoinId) return null;
     const coinId = normalize32(storedCoinId);
     if (!coinId) {
@@ -297,7 +297,7 @@ export class MintProposalChainStateService {
       };
     }
     return this.propertyRegistry.checkProperty({
-      registryLauncherId: environment.populisProtocol.propertyRegistryLauncherId,
+      registryLauncherId: environment.solslotProtocol.propertyRegistryLauncherId,
       propertyIdCanon: bill.propertyIdCanon,
     });
   }
@@ -326,7 +326,7 @@ export class MintProposalChainStateService {
     launcherId: string;
     expectedDraftPuzzleHash: string;
     livePuzzleHash: string;
-    pgtLock: PgtLockCoinEvidence | null;
+    sgtLock: SgtLockCoinEvidence | null;
     propertyRegistry: PropertyRegistryEvidence | null;
   }): Promise<MintProposalConfirmedTransitionEvidence | null> {
     if (args.lineage.nodes.length < 3) return null;
@@ -364,7 +364,7 @@ export class MintProposalChainStateService {
       confirmedBlockIndex: args.live.confirmedBlockIndex,
       spentBlockIndex: replay.node.spentBlockIndex ?? 0,
       lineageDepth: args.lineage.nodes.length - 1,
-      ...(args.pgtLock ? { pgtLock: args.pgtLock } : {}),
+      ...(args.sgtLock ? { sgtLock: args.sgtLock } : {}),
       ...(args.propertyRegistry ? { propertyRegistry: args.propertyRegistry } : {}),
     };
   }
@@ -694,7 +694,7 @@ export type MintProposalChainEvidence =
       stateVersion: 0;
       confirmedBlockIndex: number;
       lineageDepth: number;
-      pgtLock?: PgtLockCoinEvidence;
+      sgtLock?: SgtLockCoinEvidence;
       tracker?: TrackerProposalEvidence;
       propertyRegistry?: PropertyRegistryEvidence;
     }
@@ -726,11 +726,11 @@ export type MintProposalConfirmedTransitionEvidence = {
   confirmedBlockIndex: number;
   spentBlockIndex: number;
   lineageDepth: number;
-  pgtLock?: PgtLockCoinEvidence;
+  sgtLock?: SgtLockCoinEvidence;
   propertyRegistry?: PropertyRegistryEvidence;
 };
 
-export type PgtLockCoinEvidence =
+export type SgtLockCoinEvidence =
   | { kind: 'invalid-stored-id'; storedValue: string }
   | { kind: 'unconfirmed'; coinId: string }
   | {

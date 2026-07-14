@@ -4,7 +4,7 @@ import { ChiaWasmService } from './chia-wasm.service';
 import { coinId as computeCoinIdFromBytes, hexToBytes } from '../utils/chia-hash';
 
 /**
- * Generic on-chain reader for any Populis singleton (A.x or vault).
+ * Generic on-chain reader for any Solslot singleton (A.x or vault).
  *
  * Two operations matter:
  *
@@ -18,7 +18,7 @@ import { coinId as computeCoinIdFromBytes, hexToBytes } from '../utils/chia-hash
  *      from coinset.org, run the puzzle in chia-wallet-sdk-wasm to
  *      recover its emitted conditions, and pull the
  *      `CREATE_PUZZLE_ANNOUNCEMENT` body whose first byte is the
- *      Populis protocol prefix (`0x50`).  For every A.x trust-root
+ *      Solslot protocol prefix (`0x53`).  For every A.x trust-root
  *      puzzle that announcement body equals `PROTOCOL_PREFIX ||
  *      state_hash` — so the suffix is the canonical state hash that
  *      off-chain consumers (the API at /protocol, this portal) must
@@ -34,8 +34,8 @@ export class ChiaSingletonReaderService {
   private readonly coinset = inject(CoinsetService);
   private readonly chiaWasm = inject(ChiaWasmService);
 
-  /** Populis-specific announcement namespace byte (the "P" prefix). */
-  static readonly PROTOCOL_PREFIX = 0x50;
+  /** Solslot-specific announcement namespace byte (ASCII "S"). */
+  static readonly PROTOCOL_PREFIX = 0x53;
 
   /** Bound on lineage walk depth — singletons in production won't have this many spends. */
   static readonly MAX_DEPTH = 10_000;
@@ -118,7 +118,7 @@ export class ChiaSingletonReaderService {
       // Singleton invariant: exactly one child.  If for some reason there
       // are multiple, take the most recent confirmed one (defensive — a
       // misconfigured launch could in principle emit several CREATE_COINs
-      // but no Populis puzzle does this).
+      // but no Solslot puzzle does this).
       children.sort((a, b) => b.confirmed_block_index - a.confirmed_block_index);
       const child = children[0];
       const childId = computeCoinIdFromBytes(
@@ -189,13 +189,13 @@ export class ChiaSingletonReaderService {
   /**
    * Convenience: replay the latest spend and return the
    * `CREATE_PUZZLE_ANNOUNCEMENT` body whose leading byte is
-   * {@link PROTOCOL_PREFIX} (0x50).  Most A.x trust-root puzzles use
+   * {@link PROTOCOL_PREFIX} (0x53).  Most A.x trust-root puzzles use
    * `PROTOCOL_PREFIX || state_hash`; admin-authority v2 includes an
    * extra one-byte spend tag and emits `PROTOCOL_PREFIX || tag ||
    * state_hash`.  In both cases the final 32 bytes are the canonical
    * state hash that off-chain consumers should verify against.
    *
-   * Returns null when no Populis-prefixed announcement exists in the
+   * Returns null when no Solslot-prefixed announcement exists in the
    * spend, or when prerequisites aren't met (WASM not ready, lineage
    * has no spends yet, etc.).
    */

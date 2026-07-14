@@ -9,13 +9,13 @@ import { mojoAmountToSafeNumber } from '../utils/mojo-amount';
  *
  * Reads (lineage walks, coin lookups) are the daily-driver use case.
  *
- * Writes (``push_tx``) were originally routed through the Populis API,
+ * Writes (``push_tx``) were originally routed through the Solslot API,
  * but that creates a censorship vector for trust-minimised flows like
  * the v2 admin-authority lifecycle (Phase 9-Hermes-D).  Solslot's
  * frontend (research/solslot-frontend/slui/src/app/services/chia-aggregator.service.ts)
  * proves direct browser → coinset push works in production; we adopt
  * the same pattern for v2 launches + rotations so admins can submit
- * spend bundles even when Populis is offline or compromised.
+ * spend bundles even when Solslot is offline or compromised.
  *
  * For non-trust-critical writes (vault registration, mint proposals)
  * the API path is still preferred for rate-limit + audit-log
@@ -166,7 +166,7 @@ export class CoinsetService {
    * Broadcast a signed spend bundle directly to coinset.org.
    *
    * This is the trust-minimised submission path for the v2 admin-authority
-   * lifecycle: launches + rotations don't depend on the Populis API
+   * lifecycle: launches + rotations don't depend on the Solslot API
    * being reachable.  Mirrors solslot's
    * ``ChiaAggregatorService.pushTransaction`` pattern.
    *

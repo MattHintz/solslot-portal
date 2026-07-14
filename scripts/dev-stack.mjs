@@ -10,15 +10,17 @@ import { fileURLToPath } from 'node:url';
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const portalDir = resolve(scriptDir, '..');
 const workspaceDir = resolve(portalDir, '..');
-const apiDir = resolve(workspaceDir, 'populis_api');
+const apiDir = resolve(workspaceDir, 'solslot-api');
 const logsDir = resolve(portalDir, '.dev-stack');
 const args = new Set(process.argv.slice(2));
 
-const apiPort = readPort('POPULIS_API_PORT', 'API_PORT', 8787);
-const portalPort = readPort('POPULIS_PORTAL_PORT', 'PORTAL_PORT', 4200);
-const apiHost = process.env.POPULIS_API_HOST || process.env.API_HOST || '127.0.0.1';
-const portalHost = process.env.POPULIS_PORTAL_HOST || process.env.PORTAL_HOST || '0.0.0.0';
-const reuseExisting = !args.has('--no-reuse') && process.env.POPULIS_STACK_REUSE !== 'false';
+const apiPort = readPort(['SOLSLOT_API_PORT'], 8787);
+const portalPort = readPort(['SOLSLOT_PORTAL_PORT'], 4200);
+const apiHost = process.env.SOLSLOT_API_HOST || '127.0.0.1';
+const portalHost = process.env.SOLSLOT_PORTAL_HOST || '0.0.0.0';
+const reuseExisting =
+  !args.has('--no-reuse') &&
+  process.env.SOLSLOT_STACK_REUSE !== 'false';
 const apiUrl = `http://127.0.0.1:${apiPort}`;
 const portalUrl = `http://127.0.0.1:${portalPort}`;
 const childProcesses = [];
@@ -27,16 +29,16 @@ let shuttingDown = false;
 if (args.has('--help') || args.has('-h')) {
   console.log(`Usage: npm run dev:stack -- [--no-reuse]
 
-Starts the local Populis stack:
+Starts the local Solslot stack:
   API    http://127.0.0.1:${apiPort}
   Portal http://127.0.0.1:${portalPort}
 
 Environment overrides:
-  POPULIS_API_PORT      API port, default 8787
-  POPULIS_PORTAL_PORT   portal port, default 4200
-  POPULIS_API_HOST      API bind host, default 127.0.0.1
-  POPULIS_PORTAL_HOST   portal bind host, default 0.0.0.0
-  POPULIS_STACK_REUSE   false to fail instead of reusing healthy existing services
+  SOLSLOT_API_PORT      API port, default 8787
+  SOLSLOT_PORTAL_PORT   portal port, default 4200
+  SOLSLOT_API_HOST      API bind host, default 127.0.0.1
+  SOLSLOT_PORTAL_HOST   portal bind host, default 0.0.0.0
+  SOLSLOT_STACK_REUSE   false to fail instead of reusing healthy existing services
 `);
   process.exit(0);
 }
@@ -85,20 +87,20 @@ async function main() {
 }
 
 function preflight() {
-  assertExists(resolve(apiDir, '.env'), 'populis_api/.env is missing. Copy populis_api/.env.example to .env and configure the API first.');
-  assertExists(resolve(apiDir, '.venv/bin/uvicorn'), 'populis_api/.venv/bin/uvicorn is missing. Run: cd populis_api && python3 -m venv .venv && .venv/bin/pip install -e . -e ../populis_protocol');
-  assertExists(resolve(portalDir, 'node_modules/.bin/ng'), 'populis_portal/node_modules/.bin/ng is missing. Run: cd populis_portal && npm install --legacy-peer-deps');
+  assertExists(resolve(apiDir, '.env'), 'solslot-api/.env is missing. Copy solslot-api/.env.example to .env and configure the API first.');
+  assertExists(resolve(apiDir, '.venv/bin/uvicorn'), 'solslot-api/.venv/bin/uvicorn is missing. Run: cd solslot-api && python3 -m venv .venv && .venv/bin/pip install -e . -e ../solslot-protocol');
+  assertExists(resolve(portalDir, 'node_modules/.bin/ng'), 'solslot-portal/node_modules/.bin/ng is missing. Run: cd solslot-portal && npm install');
 
   const envPath = resolve(apiDir, '.env');
   const mode = statSync(envPath).mode & 0o777;
   if (mode & 0o077) {
-    log('api', `warning: populis_api/.env mode is ${mode.toString(8)}; if it contains secrets, the API may require chmod 600 populis_api/.env`);
+    log('api', `warning: solslot-api/.env mode is ${mode.toString(8)}; if it contains secrets, run chmod 600 solslot-api/.env`);
   }
 }
 
 function startApi() {
   startProcess('api', resolve(apiDir, '.venv/bin/uvicorn'), [
-    'populis_api.app:app',
+    'solslot_api.app:app',
     '--host',
     apiHost,
     '--port',
@@ -230,7 +232,7 @@ async function assertPortAvailable(name, host, port, alreadyHealthy) {
     throw new Error(`${name} is already running on ${host}:${port}. Stop it or rerun without --no-reuse.`);
   }
   if (await tcpListening(host, port)) {
-    throw new Error(`${name} port ${host}:${port} is occupied but did not answer its health check. Stop that process or set ${name === 'api' ? 'POPULIS_API_PORT' : 'POPULIS_PORTAL_PORT'}.`);
+    throw new Error(`${name} port ${host}:${port} is occupied but did not answer its health check. Stop that process or set ${name === 'api' ? 'SOLSLOT_API_PORT' : 'SOLSLOT_PORTAL_PORT'}.`);
   }
 }
 
@@ -249,12 +251,13 @@ function tcpListening(host, port) {
   });
 }
 
-function readPort(primaryKey, fallbackKey, fallback) {
-  const raw = process.env[primaryKey] || process.env[fallbackKey];
+function readPort(keys, fallback) {
+  const activeKey = keys.find((key) => process.env[key]);
+  const raw = activeKey ? process.env[activeKey] : undefined;
   if (!raw) return fallback;
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-    throw new Error(`${primaryKey} must be a TCP port number`);
+    throw new Error(`${activeKey} must be a TCP port number`);
   }
   return parsed;
 }

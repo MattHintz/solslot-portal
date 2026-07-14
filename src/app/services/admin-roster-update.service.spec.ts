@@ -58,9 +58,9 @@ describe('AdminRosterUpdateService', () => {
       nonce: '0x' + '99'.repeat(32),
       expires_at: 1234,
       typed_data: {
-        domain: { name: 'Populis Protocol', version: '1', chainId: 1 },
-        types: { EIP712Domain: [], PopulisAdminLogin: [] },
-        primaryType: 'PopulisAdminLogin',
+        domain: { name: 'Solslot Protocol', version: '1', chainId: 1 },
+        types: { EIP712Domain: [], SolslotAdminLogin: [] },
+        primaryType: 'SolslotAdminLogin',
         message: {},
       },
     });

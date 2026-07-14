@@ -5,11 +5,11 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 /**
- * Thin HTTP client for ``populis_api``'s committee-action forwarder
+ * Thin HTTP client for ``solslot_api``'s committee-action forwarder
  * endpoint ``POST /admin/committee/vote`` (Brick 3.5c-3).
  *
  * **Auth model.**  The endpoint is **publish-only** and **not** gated
- * by admin JWT (POP-CANON-013).  Authority comes from the PGT lock
+ * by admin JWT (POP-CANON-013).  Authority comes from the SGT lock
  * announcement embedded in the bundle's coin spends.  The API
  * performs only structural validation (well-formed SpendBundle JSON
  * with ≥1 coin spend) before handing off to coinset.org's mempool,
@@ -18,8 +18,8 @@ import { environment } from '../../environments/environment';
  *
  * **Why not push directly to coinset?**  The same endpoint is used by
  * mint PROPOSE / EXECUTE as well; centralising the publish path
- * through populis_api keeps the network-side rate limits + audit
- * logs in one place.  If populis_api is down, the runner could fall
+ * through solslot_api keeps the network-side rate limits + audit
+ * logs in one place.  If solslot_api is down, the runner could fall
  * back to direct coinset push (already supported by
  * {@link CoinsetService.pushTx}), but that's left to a future brick.
  */
@@ -30,7 +30,7 @@ export class CommitteeApiService {
 
   /**
    * Forward a signed committee-action spend bundle (PROPOSE / VOTE /
-   * EXECUTE) to chain via populis_api → coinset.org.
+   * EXECUTE) to chain via solslot_api → coinset.org.
    *
    * @param spendBundle  ``SpendBundle.to_json_dict()`` shape:
    *   ``{ coin_spends: [...], aggregated_signature: '0x...' }``.
@@ -68,12 +68,12 @@ export class CommitteeApiService {
 
   /**
    * Forward a signed MINT-proposal **publish** spend bundle to chain
-   * via populis_api → coinset.org.
+   * via solslot_api → coinset.org.
    *
    * Mint PROPOSE shares the committee-action forwarder's trust model
    * with VOTE (POP-CANON-013): publish-only, no admin JWT.  Authority
    * comes from the bundle's own coin spends (the tracker IDLE → OPEN
-   * transition's announcements + the proposer's PGT-lock stake); the
+   * transition's announcements + the proposer's SGT-lock stake); the
    * API only structurally validates before handing to the mempool,
    * which enforces every semantic rule.
    *
@@ -140,7 +140,7 @@ export interface SpendBundleJson {
 
 /**
  * Per-proposal metadata for the server-side re-derivation guard
- * (``PublishProposalMetadataRequest`` in ``populis_api``, Brick 4e.2c.3).
+ * (``PublishProposalMetadataRequest`` in ``solslot_api``, Brick 4e.2c.3).
  *
  * All ``*_hash`` / ``*_puzhash`` / ``property_id_canon`` fields are
  * 0x-prefixed hex of exactly 32 bytes.  ``jurisdiction`` is hex of the

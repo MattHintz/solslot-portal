@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { environment } from '../../environments/environment';
 import { Eip712LeafHashService } from './eip712-leaf-hash.service';
-import { Eip712TypedData } from './populis-api.service';
+import { Eip712TypedData } from './solslot-api.service';
 
 /**
  * Wallet-signed admin auth verifier.
@@ -10,7 +10,7 @@ import { Eip712TypedData } from './populis-api.service';
  * the JWT-based admin login (challenge \u2192 sign \u2192 ``/admin/auth/login``
  * \u2192 JWT) with a fully client-side wallet-signed handshake:
  *
- *   1. Browser builds a PopulisAdminLogin EIP-712 envelope with a
+ *   1. Browser builds a SolslotAdminLogin EIP-712 envelope with a
  *      fresh nonce + expiry.
  *   2. User signs it with their EVM wallet (Goby / MetaMask / WC).
  *   3. Browser recovers the 33-byte compressed secp256k1 pubkey from
@@ -33,9 +33,9 @@ import { Eip712TypedData } from './populis-api.service';
  * (typical during a launcher's first hours, before the eve has been
  * spent and its curry args become recoverable from chain), we fall
  * back to a literal check of ``evm.address()`` against
- * ``environment.populisProtocol.adminAuthorityV2AdminAddresses``.
+ * ``environment.solslotProtocol.adminAuthorityV2AdminAddresses``.
  * This is the direct equivalent of the legacy
- * ``POPULIS_ADMIN_PUBKEY_ALLOWLIST`` API env var (which despite its
+ * ``SOLSLOT_ADMIN_PUBKEY_ALLOWLIST`` API env var (which despite its
  * name accepted EVM addresses too) — same trust surface, just
  * committed at frontend deploy time instead of at API deploy time.
  * Addresses are the natural fallback identifier because wallets
@@ -61,10 +61,10 @@ export class AdminWalletAuthService {
 
   /**
    * App-name baked into the EIP-712 domain so a signed admin login
-   * envelope can never be replayed against any other Populis surface
+   * envelope can never be replayed against any other Solslot surface
    * (vault registration, faucet drip, etc.).
    */
-  static readonly APP_NAME = 'Populis Admin Login';
+  static readonly APP_NAME = 'Solslot Admin Login';
 
   /**
    * Build the EIP-712 envelope the user signs to prove possession of
@@ -90,8 +90,8 @@ export class AdminWalletAuthService {
   buildLoginTypedData(expiresAt: number, nonce: string): Eip712TypedData {
     return {
       domain: {
-        name: AdminWalletAuthService.APP_NAME,
-        version: '1',
+        name: environment.eip712Name,
+        version: environment.eip712Version,
         chainId: environment.eip712ChainId,
       },
       types: {
@@ -100,19 +100,45 @@ export class AdminWalletAuthService {
           { name: 'version', type: 'string' },
           { name: 'chainId', type: 'uint256' },
         ],
-        PopulisAdminLogin: [
+        SolslotAdminLogin: [
           { name: 'app', type: 'string' },
           { name: 'nonce', type: 'bytes32' },
           { name: 'expires_at', type: 'uint256' },
         ],
       },
-      primaryType: 'PopulisAdminLogin',
+      primaryType: 'SolslotAdminLogin',
       message: {
         app: AdminWalletAuthService.APP_NAME,
         nonce,
         expires_at: expiresAt,
       },
     };
+  }
+
+  /**
+   * Build a Tangem-compatible admin-login proof message for wallets
+   * that cannot sign EIP-712 on the staging/testnet EVM chain.
+   *
+   * This is intentionally not an on-chain credential.  It is a local
+   * EIP-191 style proof of key possession whose recovered pubkey is
+   * still checked against the env-pinned admin-authority MIPS root.
+   * The message carries the same replay controls as the EIP-712
+   * envelope: app/domain, chain id, nonce, expiry, and site origin.
+   */
+  buildLoginPersonalSignMessage(address: string, expiresAt: number, nonce: string): string {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown-origin';
+    return [
+      AdminWalletAuthService.APP_NAME,
+      `app=${AdminWalletAuthService.APP_NAME}`,
+      `address=${normalizeHex(address)}`,
+      `chain_id=${environment.eip712ChainId}`,
+      `domain_name=${environment.eip712Name}`,
+      `domain_version=${environment.eip712Version}`,
+      `nonce=${normalizeHex(nonce)}`,
+      `expires_at=${Math.trunc(expiresAt)}`,
+      `origin=${origin}`,
+      'local_only=true',
+    ].join(' | ');
   }
 
   /**
@@ -155,7 +181,7 @@ export class AdminWalletAuthService {
    *
    *   2. **Env address allowlist** (uses ``address``) — fallback for
    *      portals that haven't pinned a MIPS root.  Equivalent to
-   *      the legacy API env var ``POPULIS_ADMIN_PUBKEY_ALLOWLIST``
+   *      the legacy API env var ``SOLSLOT_ADMIN_PUBKEY_ALLOWLIST``
    *      (which despite its name accepted EVM addresses too).
    *
    * If both env sources are empty, the method returns
@@ -169,7 +195,7 @@ export class AdminWalletAuthService {
     /** 0x-hex 33-byte compressed secp256k1 pubkey from ``evm.recoverCompressedPubkey``. */
     pubkey: string;
   }): MembershipResult {
-    const cfg = environment.populisProtocol;
+    const cfg = environment.solslotProtocol;
     const normalizedAddress = normalizeHex(args.address);
     const normalizedPubkey = normalizeHex(args.pubkey);
 
@@ -242,14 +268,14 @@ export class AdminWalletAuthService {
         `Your wallet address ${normalizedAddress} is not in the portal's ` +
         `admin allowlist (${allowlist.length} entr${allowlist.length === 1 ? 'y' : 'ies'}).  ` +
         `Ask the operator to add it to ` +
-        `environment.populisProtocol.adminAuthorityV2AdminAddresses.`,
+        `environment.solslotProtocol.adminAuthorityV2AdminAddresses.`,
     };
   }
 }
 
 /**
  * Normalise a hex string to ``0x``-prefixed lowercase form, leaving
- * the data intact.  Mirrors the convention every other Populis hex
+ * the data intact.  Mirrors the convention every other Solslot hex
  * field uses; lets the membership check accept either ``0x...`` or
  * bare hex inputs without surprise.
  */

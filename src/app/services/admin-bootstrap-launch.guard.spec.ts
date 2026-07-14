@@ -72,14 +72,13 @@ describe('adminBootstrapLaunchGuard', () => {
     expect(url).toContain('returnTo=%2Fadmin%2Flaunch-authority-v2');
   });
 
-  it('redirects locked bootstrap sessions back to genesis', async () => {
+  it('allows locked bootstrap sessions to review finalized launch artifacts', async () => {
     session.isAuthenticated.and.returnValue(false);
     bootstrap.getBootstrapStatus.and.resolveTo({ locked: true, authenticated: false });
 
     const result = await runGuard();
 
-    expect(result instanceof UrlTree).toBeTrue();
-    expect(router.serializeUrl(result as UrlTree)).toContain('/admin/genesis');
+    expect(result).toBeTrue();
   });
 
   it('fails closed when bootstrap status cannot be checked', async () => {

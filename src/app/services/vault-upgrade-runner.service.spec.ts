@@ -9,6 +9,7 @@
  */
 import { TestBed } from '@angular/core/testing';
 
+import { environment } from '../../environments/environment';
 import { coinId as computeCoinId } from '../utils/chia-hash';
 import { ChiaWasmService } from './chia-wasm.service';
 import { ChiaWalletService } from './chia-wallet.service';
@@ -28,6 +29,8 @@ const FUNDING_COIN_ID = '0x' + '33'.repeat(32);
 const NEW_LAUNCHER = '0x' + '99'.repeat(32);
 const NEW_VAULT_FULL_PH = '0x' + '88'.repeat(32);
 const OLD_INNER_PH = '0x' + 'a5'.repeat(32);
+const originalProtocol = { ...environment.solslotProtocol } as Record<string, unknown>;
+const originalZkPassport = { ...environment.zkPassport } as Record<string, unknown>;
 
 // ── Fake WASM funding SDK ───────────────────────────────────────────────
 class FakeProgram {
@@ -151,6 +154,13 @@ describe('VaultUpgradeRunnerService', () => {
   let coinset: jasmine.SpyObj<CoinsetService>;
 
   beforeEach(() => {
+    Object.assign(environment.solslotProtocol as Record<string, unknown>, {
+      poolLauncherId: h('01'),
+    });
+    Object.assign(environment.zkPassport as Record<string, unknown>, {
+      validatorPubkeys: ['0x' + 'a8'.repeat(48)],
+      validatorThreshold: 1,
+    });
     upgrade = jasmine.createSpyObj<VaultUpgradeService>('VaultUpgradeService', [
       'loadUpgradeContext',
       'buildLaunchPlan',
@@ -217,6 +227,11 @@ describe('VaultUpgradeRunnerService', () => {
         timestamp: 1,
       };
     });
+  });
+
+  afterEach(() => {
+    restoreEnvironment(environment.solslotProtocol as Record<string, unknown>, originalProtocol);
+    restoreEnvironment(environment.zkPassport as Record<string, unknown>, originalZkPassport);
   });
 
   it('launches: combines funding + launcher into one bundle and awaits the eve coin', async () => {
@@ -317,3 +332,13 @@ describe('VaultUpgradeRunnerService', () => {
     expect(params.zkpassportBridgePolicyHash).toBe('0x' + 'ab'.repeat(32));
   });
 });
+
+function restoreEnvironment(
+  target: Record<string, unknown>,
+  original: Record<string, unknown>,
+): void {
+  for (const key of Object.keys(target)) {
+    if (!(key in original)) delete target[key];
+  }
+  Object.assign(target, original);
+}

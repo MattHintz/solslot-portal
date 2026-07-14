@@ -190,9 +190,9 @@ describe('VaultVersionRegistryService', () => {
   let originalLauncherId: string;
 
   beforeEach(() => {
-    originalLauncherId = environment.populisProtocol.vaultVersionRegistryLauncherId;
-    environment.populisProtocol.vaultVersionRegistryLauncherId = '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
-    environment.populisProtocol.vaultVersionRegistryModHash = bytesToHex(registryModHash);
+    originalLauncherId = environment.solslotProtocol.vaultVersionRegistryLauncherId;
+    environment.solslotProtocol.vaultVersionRegistryLauncherId = '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+    environment.solslotProtocol.vaultVersionRegistryModHash = bytesToHex(registryModHash);
     singleton = jasmine.createSpyObj<ChiaSingletonReaderService>('ChiaSingletonReaderService', ['walkLineage']);
     coinset = jasmine.createSpyObj<CoinsetService>('CoinsetService', ['getPuzzleAndSolution']);
     wasm = jasmine.createSpyObj<ChiaWasmService>('ChiaWasmService', ['ready', 'sdk']);
@@ -210,7 +210,7 @@ describe('VaultVersionRegistryService', () => {
   });
 
   afterEach(() => {
-    environment.populisProtocol.vaultVersionRegistryLauncherId = originalLauncherId;
+    environment.solslotProtocol.vaultVersionRegistryLauncherId = originalLauncherId;
   });
 
   function makeLauncherCoinRecord(): CoinRecord {

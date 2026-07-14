@@ -1,10 +1,15 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
 import {
-  AdminWalletAuthService,
-  MembershipResult,
-} from './admin-wallet-auth.service';
-import { Eip712TypedData } from './populis-api.service';
+  EnvironmentInjector,
+  Injectable,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
+import { Router } from '@angular/router';
+import type { MembershipResult } from './admin-wallet-auth.service';
+import { Eip712TypedData } from './solslot-api.service';
+import { environment } from '../../environments/environment';
 
 /**
  * Storage key.  Bumped from ``v1`` (JWT-era) to ``v2`` so old JWT
@@ -13,16 +18,16 @@ import { Eip712TypedData } from './populis-api.service';
  * "please re-login" beat instead of mysteriously broken cached
  * sessions.
  */
-const STORAGE_KEY = 'populis_admin_session_v2';
+const STORAGE_KEY = 'SOLSLOT_ADMIN_SESSION_V2';
 
 /**
  * Persistent admin-desk session manager (post-Hermes-D).
  *
- * **Trust model.**  The portal no longer talks to a Populis API for
+ * **Trust model.**  The portal no longer talks to a Solslot API for
  * admin auth \u2014 every check is client-side, with chain (or env-pinned)
  * data as the source of truth:
  *
- *   1. Caller (login page) builds a ``PopulisAdminLogin`` EIP-712
+ *   1. Caller (login page) builds a ``SolslotAdminLogin`` EIP-712
  *      envelope via {@link AdminWalletAuthService.buildLoginTypedData}.
  *   2. User signs it in their wallet.
  *   3. Caller recovers the compressed pubkey via
@@ -35,11 +40,12 @@ const STORAGE_KEY = 'populis_admin_session_v2';
  *        c. Returns the verified address so the page can display it.
  *
  * **What's persisted.**  The full credential bundle: ``address``,
- * ``pubkey``, ``expires_at``, ``signature``, ``typed_data``.  Stored
+ * ``pubkey``, ``expires_at``, ``signature``, and either the EIP-712
+ * ``typed_data`` or the Tangem-compatible signed message.  Stored
  * in localStorage so a page reload reuses the session without
- * re-prompting the wallet.  On every load the signature is
- * re-recovered against the typed data \u2014 storage tampering surfaces
- * as "pubkey mismatch" and the session is dropped.
+ * re-prompting the wallet.  On every load the stored bundle must
+ * still match its envelope family: EIP-712 sessions keep typed data,
+ * and Tangem-compatible sessions keep the signed message.
  *
  * **Storage caveat (XSS).**  The signature is bearer-equivalent: any
  * JS injected into the portal can read it from localStorage and
@@ -50,14 +56,14 @@ const STORAGE_KEY = 'populis_admin_session_v2';
  * the cost of re-login-on-reload UX.
  *
  * **No auto-refresh.**  Unlike v1, there's nothing to refresh: the
- * wallet's signature has a fixed expiry baked into the typed data.
+ * wallet's signature has a fixed expiry baked into the login envelope.
  * To extend a session, the user signs a new envelope.  Removing the
  * refresh timer simplifies the lifecycle and removes a class of edge
  * cases (network blips during refresh, double-refresh races).
  */
 @Injectable({ providedIn: 'root' })
 export class AdminSessionService {
-  private readonly walletAuth = inject(AdminWalletAuthService);
+  private readonly injector = inject(EnvironmentInjector);
   private readonly router = inject(Router);
 
   private readonly _state = signal<AdminSessionState>(this.load());
@@ -86,11 +92,17 @@ export class AdminSessionService {
         localStorage.setItem(
           STORAGE_KEY,
           JSON.stringify({
+            schemaVersion: 2,
+            protocolVersion: environment.protocolVersion,
+            network: 'testnet11',
             address: s.address,
             pubkey: s.pubkey,
             expiresAt: s.expiresAt,
+            signatureKind: s.signatureKind,
             signature: s.signature,
-            typedData: s.typedData,
+            typedData: s.typedData ?? null,
+            signedMessage: s.signedMessage ?? null,
+            signingMethod: s.signingMethod ?? null,
           } satisfies PersistedAdminSession),
         );
       } else {
@@ -104,8 +116,8 @@ export class AdminSessionService {
    * Verify a wallet-signed admin login bundle and seed a session.
    *
    * The caller (``AdminLoginComponent``) drives the wallet
-   * handshake \u2014 build typed data, sign, recover pubkey \u2014 and passes
-   * the resulting bundle here.  This service:
+   * handshake \u2014 build the login envelope, sign, recover pubkey \u2014 and
+   * passes the resulting bundle here.  This service:
    *
    *   1. Asks {@link AdminWalletAuthService.verifyMembership} whether
    *      the recovered pubkey is in the portal's admin set.
@@ -117,7 +129,10 @@ export class AdminSessionService {
    * also returns this once the session is seeded).
    */
   async loginWithWallet(opts: WalletLoginOptions): Promise<string> {
-    const result: MembershipResult = this.walletAuth.verifyMembership({
+    const { AdminWalletAuthService } = await import('./admin-wallet-auth.service');
+    const result: MembershipResult = this.injector
+      .get(AdminWalletAuthService)
+      .verifyMembership({
       address: opts.address,
       pubkey: opts.pubkey,
     });
@@ -133,8 +148,11 @@ export class AdminSessionService {
       address: result.address,
       pubkey: result.pubkey,
       expiresAt: opts.expiresAt,
+      signatureKind: opts.signatureKind,
       signature: opts.signature,
-      typedData: opts.typedData,
+      typedData: opts.typedData ?? null,
+      signedMessage: opts.signedMessage ?? null,
+      signingMethod: opts.signingMethod ?? null,
     });
     return result.address;
   }
@@ -196,13 +214,24 @@ export class AdminSessionService {
     }
     const nowSec = Math.floor(Date.now() / 1_000);
     if (
+      parsed.schemaVersion !== 2 ||
+      parsed.protocolVersion !== environment.protocolVersion ||
+      parsed.network !== 'testnet11' ||
       !parsed.address ||
       !parsed.pubkey ||
       !parsed.signature ||
-      !parsed.typedData ||
       typeof parsed.expiresAt !== 'number' ||
       parsed.expiresAt <= nowSec
     ) {
+      localStorage.removeItem(STORAGE_KEY);
+      return { kind: 'anonymous' };
+    }
+    const signatureKind = parsed.signatureKind ?? 'eip712';
+    if (signatureKind === 'eip712' && !parsed.typedData) {
+      localStorage.removeItem(STORAGE_KEY);
+      return { kind: 'anonymous' };
+    }
+    if (signatureKind === 'personal-sign' && !parsed.signedMessage) {
       localStorage.removeItem(STORAGE_KEY);
       return { kind: 'anonymous' };
     }
@@ -211,8 +240,11 @@ export class AdminSessionService {
       address: parsed.address,
       pubkey: parsed.pubkey,
       expiresAt: parsed.expiresAt,
+      signatureKind,
       signature: parsed.signature,
-      typedData: parsed.typedData,
+      typedData: parsed.typedData ?? null,
+      signedMessage: parsed.signedMessage ?? null,
+      signingMethod: parsed.signingMethod ?? null,
     };
   }
 }
@@ -225,13 +257,21 @@ export interface WalletLoginOptions {
   pubkey: string;
   /** Unix-seconds expiry baked into ``typedData.message.expires_at``. */
   expiresAt: number;
-  /** 0x-hex 65-byte (r, s, v) EIP-712 signature. */
+  /** Signature envelope family. */
+  signatureKind: AdminSessionSignatureKind;
+  /** 0x-hex 65-byte (r, s, v) signature. */
   signature: string;
-  /** Original typed data envelope.  Persisted so we can re-recover the pubkey on session restore. */
-  typedData: Eip712TypedData;
+  /** Original typed data envelope for EIP-712 sessions. */
+  typedData?: Eip712TypedData | null;
+  /** One-line signed message for Tangem-compatible personal-sign sessions. */
+  signedMessage?: string | null;
+  /** Concrete EVM JSON-RPC method used for message fallback sessions. */
+  signingMethod?: 'eth_sign' | 'personal_sign' | null;
 }
 
 export type AdminSessionState = { kind: 'anonymous' } | AuthenticatedAdminState;
+
+export type AdminSessionSignatureKind = 'eip712' | 'personal-sign';
 
 export interface AuthenticatedAdminState {
   kind: 'authenticated';
@@ -241,16 +281,28 @@ export interface AuthenticatedAdminState {
   pubkey: string;
   /** Unix-seconds. */
   expiresAt: number;
+  /** Signature envelope family. */
+  signatureKind: AdminSessionSignatureKind;
   /** Bearer credential.  Anyone holding it can act as the admin until expiry. */
   signature: string;
-  /** Typed data the signature commits to \u2014 needed to re-verify on session restore. */
-  typedData: Eip712TypedData;
+  /** Typed data the EIP-712 signature commits to. */
+  typedData: Eip712TypedData | null;
+  /** Tangem-compatible local message the fallback signature commits to. */
+  signedMessage: string | null;
+  /** Concrete EVM JSON-RPC method used for message fallback sessions. */
+  signingMethod: 'eth_sign' | 'personal_sign' | null;
 }
 
 interface PersistedAdminSession {
+  schemaVersion: 2;
+  protocolVersion: 'solslot-v2';
+  network: 'testnet11';
   address: string;
   pubkey: string;
   expiresAt: number;
+  signatureKind?: AdminSessionSignatureKind;
   signature: string;
-  typedData: Eip712TypedData;
+  typedData?: Eip712TypedData | null;
+  signedMessage?: string | null;
+  signingMethod?: 'eth_sign' | 'personal_sign' | null;
 }

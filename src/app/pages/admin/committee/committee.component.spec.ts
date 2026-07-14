@@ -6,7 +6,7 @@ import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import {
   CommitteeVoteRunnerService,
   VoteRunResult,
-} from '../../../services/pgt-driver/committee-vote-runner.service';
+} from '../../../services/sgt-driver/committee-vote-runner.service';
 import {
   DecodedBill,
   GovernanceTrackerReaderService,
@@ -525,10 +525,10 @@ describe('CommitteeComponent', () => {
       { kind: 'invalid-input', reason: 'additional-vote-amount-must-be-positive' },
       { kind: 'wallet-not-connected' },
       { kind: 'tracker-not-open' },
-      { kind: 'pgt-not-deployed' },
+      { kind: 'sgt-not-deployed' },
       {
-        kind: 'no-pgt-coins',
-        discovery: { kind: 'no-coins', catPgtFreePuzzleHash: '0x' + 'ff'.repeat(32) },
+        kind: 'no-sgt-coins',
+        discovery: { kind: 'no-coins', catSgtFreePuzzleHash: '0x' + 'ff'.repeat(32) },
       },
       {
         kind: 'no-coin-matches-vote-amount',

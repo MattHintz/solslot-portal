@@ -9,7 +9,7 @@ export const DEFAULT_SWAP_FEE_BPS = 100n;
 export const DEFAULT_PROTOCOL_FEE_BPS = 30n;
 export const DEFAULT_GOVERNANCE_FEE_BPS = 70n;
 export const MAX_POOL_V2_TOKEN_OUTPUTS = 3;
-export const PROTOCOL_PREFIX_HEX = '0x50';
+export const PROTOCOL_PREFIX_HEX = '0x53';
 export const TOKEN_MINT = 1;
 export const TOKEN_MELT = -1;
 export const DEED_SPEND_POOL_DEPOSIT = 0x64;
@@ -113,6 +113,7 @@ export interface PoolV2ActionSpec<
   nextState: PoolEconomicState;
   navEvidenceMessage: string;
   requiredNavEvidenceMessage: string;
+  deedCommitment: string;
   poolActionMessage: string;
   deedMessage: string;
   tokenOutputs: PoolV2TokenOutput[];
@@ -284,24 +285,44 @@ export class PoolEconomicsV2Service {
     return prefixMessage(this.collectionNavEvidenceMessage(evidence));
   }
 
-  deedPoolRedeemMessage(args: {
-    deedId: string;
-    p2VaultPuzzleHash: string;
+  deedMetadataCommitment(args: {
+    deedLauncherId: string;
+    parValueMojos: BigintLike;
+    assetClass: BigintLike;
+    propertyIdCanon: string;
     collectionIdCanon: string;
     sharePpm: BigintLike;
   }): string {
-    const sharePpm = this.normaliseSharePpm(args.sharePpm);
+    const parValueMojos = toBigInt(args.parValueMojos);
+    const assetClass = toBigInt(args.assetClass);
+    if (parValueMojos <= 0n) throw new Error('parValueMojos must be positive');
+    if (assetClass < 0n) throw new Error('assetClass must be non-negative');
+    return bytesToHex(
+      treeHashList([
+        bytes32(args.deedLauncherId, 'deedLauncherId'),
+        parValueMojos,
+        assetClass,
+        bytes32(args.propertyIdCanon, 'propertyIdCanon'),
+        bytes32(args.collectionIdCanon, 'collectionIdCanon'),
+        this.normaliseSharePpm(args.sharePpm),
+      ]),
+    );
+  }
+
+  deedPoolRedeemMessage(args: {
+    deedCommitment: string;
+    p2VaultPuzzleHash: string;
+  }): string {
     return prefixedTreeMessage([
       DEED_SPEND_POOL_REDEEM,
-      bytes32(args.deedId, 'deedId'),
+      bytes32(args.deedCommitment, 'deedCommitment'),
       bytes32(args.p2VaultPuzzleHash, 'p2VaultPuzzleHash'),
-      bytes32(args.collectionIdCanon, 'collectionIdCanon'),
-      sharePpm,
     ]);
   }
 
   deedPoolDepositMessage(args: {
     deedId: string;
+    deedLauncherId: string;
     parValueMojos: BigintLike;
     assetClass: BigintLike;
     propertyIdCanon: string;
@@ -312,9 +333,11 @@ export class PoolEconomicsV2Service {
     const assetClass = toBigInt(args.assetClass);
     if (parValueMojos <= 0n) throw new Error('parValueMojos must be positive');
     if (assetClass <= 0n) throw new Error('assetClass must be positive');
+    const commitment = this.deedMetadataCommitment(args);
     return prefixedTreeMessage([
       DEED_SPEND_POOL_DEPOSIT,
       bytes32(args.deedId, 'deedId'),
+      bytes32(commitment, 'deedCommitment'),
       parValueMojos,
       assetClass,
       bytes32(args.propertyIdCanon, 'propertyIdCanon'),
@@ -362,6 +385,10 @@ export class PoolEconomicsV2Service {
   buildSpecificDeedSwapSpec(args: {
     state: PoolEconomicStateInput;
     deedId: string;
+    deedLauncherId: string;
+    parValueMojos: BigintLike;
+    assetClass: BigintLike;
+    propertyIdCanon: string;
     p2VaultPuzzleHash: string;
     collectionIdCanon: string;
     sharePpm: BigintLike;
@@ -379,6 +406,7 @@ export class PoolEconomicsV2Service {
       sharePpm: args.sharePpm,
     });
     const deedId = bytes32(args.deedId, 'deedId');
+    const deedCommitment = this.deedMetadataCommitment(args);
     const p2Vault = bytes32(args.p2VaultPuzzleHash, 'p2VaultPuzzleHash');
     const collection = bytes32(args.collectionIdCanon, 'collectionIdCanon');
     const reserve = bytes32(args.treasuryReservePuzhash, 'treasuryReservePuzhash');
@@ -402,7 +430,7 @@ export class PoolEconomicsV2Service {
       {
         puzzleHash: args.governanceRewardsPuzhash,
         amount: quote.fee.governanceRewardsTokens,
-        role: 'pgt_rewards_fee',
+        role: 'sgt_rewards_fee',
         memos: [args.governanceRewardsPuzhash, args.governanceRewardsRoot],
       },
     ]);
@@ -412,9 +440,11 @@ export class PoolEconomicsV2Service {
       nextState: this.stateAfterSwap(quote),
       navEvidenceMessage: this.collectionNavEvidenceMessage(args.navEvidence),
       requiredNavEvidenceMessage: this.collectionNavEvidenceAnnouncement(args.navEvidence),
+      deedCommitment,
       poolActionMessage: prefixedTreeMessage([
         POOL_V2_SPECIFIC_DEED_SWAP_TAG,
         deedId,
+        bytes32(deedCommitment, 'deedCommitment'),
         p2Vault,
         collection,
         sharePpm,
@@ -433,10 +463,8 @@ export class PoolEconomicsV2Service {
         rewardsRoot,
       ]),
       deedMessage: this.deedPoolRedeemMessage({
-        deedId: args.deedId,
+        deedCommitment,
         p2VaultPuzzleHash: args.p2VaultPuzzleHash,
-        collectionIdCanon: args.collectionIdCanon,
-        sharePpm,
       }),
       tokenOutputs,
       tokenAuthorizations: [],
@@ -446,6 +474,10 @@ export class PoolEconomicsV2Service {
   buildTrueRedemptionSpec(args: {
     state: PoolEconomicStateInput;
     deedId: string;
+    deedLauncherId: string;
+    parValueMojos: BigintLike;
+    assetClass: BigintLike;
+    propertyIdCanon: string;
     p2VaultPuzzleHash: string;
     collectionIdCanon: string;
     sharePpm: BigintLike;
@@ -460,6 +492,7 @@ export class PoolEconomicsV2Service {
       sharePpm: args.sharePpm,
     });
     const sharePpm = this.normaliseSharePpm(args.sharePpm);
+    const deedCommitment = this.deedMetadataCommitment(args);
     const auth: PoolV2TokenAuthorization = {
       mintOrMelt: TOKEN_MELT,
       tokenCoinId: normalizeHex(args.tokenCoinId),
@@ -476,9 +509,11 @@ export class PoolEconomicsV2Service {
       nextState: this.stateAfterRedemption(quote),
       navEvidenceMessage: this.collectionNavEvidenceMessage(args.navEvidence),
       requiredNavEvidenceMessage: this.collectionNavEvidenceAnnouncement(args.navEvidence),
+      deedCommitment,
       poolActionMessage: prefixedTreeMessage([
         POOL_V2_TRUE_REDEMPTION_TAG,
         bytes32(args.deedId, 'deedId'),
+        bytes32(deedCommitment, 'deedCommitment'),
         bytes32(args.p2VaultPuzzleHash, 'p2VaultPuzzleHash'),
         bytes32(args.collectionIdCanon, 'collectionIdCanon'),
         sharePpm,
@@ -492,10 +527,8 @@ export class PoolEconomicsV2Service {
         bytes32(args.tokenCoinId, 'tokenCoinId'),
       ]),
       deedMessage: this.deedPoolRedeemMessage({
-        deedId: args.deedId,
+        deedCommitment,
         p2VaultPuzzleHash: args.p2VaultPuzzleHash,
-        collectionIdCanon: args.collectionIdCanon,
-        sharePpm,
       }),
       tokenOutputs: [],
       tokenAuthorizations: [auth],
@@ -505,6 +538,7 @@ export class PoolEconomicsV2Service {
   buildReserveAcquisitionSpec(args: {
     state: PoolEconomicStateInput;
     deedId: string;
+    deedLauncherId: string;
     propertyIdCanon: string;
     parValueMojos: BigintLike;
     assetClass: BigintLike;
@@ -527,7 +561,8 @@ export class PoolEconomicsV2Service {
       throw new Error('mintTokenCoinId is required when reserve has a fresh mint shortfall');
     }
     const sharePpm = this.normaliseSharePpm(args.sharePpm);
-    const mintTokenCoinId = args.mintTokenCoinId
+    const deedCommitment = this.deedMetadataCommitment(args);
+    const mintTokenCoinId = quote.freshMintShortfallTokens > 0n && args.mintTokenCoinId
       ? bytes32(args.mintTokenCoinId, 'mintTokenCoinId')
       : null;
     const tokenOutputs =
@@ -562,9 +597,11 @@ export class PoolEconomicsV2Service {
       nextState: this.stateAfterAcquisition(quote),
       navEvidenceMessage: this.collectionNavEvidenceMessage(args.navEvidence),
       requiredNavEvidenceMessage: this.collectionNavEvidenceAnnouncement(args.navEvidence),
+      deedCommitment,
       poolActionMessage: prefixedTreeMessage([
         POOL_V2_RESERVE_ACQUISITION_TAG,
         bytes32(args.deedId, 'deedId'),
+        bytes32(deedCommitment, 'deedCommitment'),
         bytes32(args.propertyIdCanon, 'propertyIdCanon'),
         toBigInt(args.parValueMojos),
         toBigInt(args.assetClass),
@@ -584,6 +621,7 @@ export class PoolEconomicsV2Service {
       ]),
       deedMessage: this.deedPoolDepositMessage({
         deedId: args.deedId,
+        deedLauncherId: args.deedLauncherId,
         parValueMojos: args.parValueMojos,
         assetClass: args.assetClass,
         propertyIdCanon: args.propertyIdCanon,

@@ -39,26 +39,31 @@ export class AdminGenesisService {
 export interface GenesisDeployRequest {
   quorum_bps?: number;
   voting_window_seconds?: number;
-  pgt_total_supply?: number;
+  sgt_total_supply?: number;
   min_proposal_stake?: number;
   fp_scale?: number;
+  min_nav_registry_version?: number;
   initial_pool_status?: number;
   fee_per_spend?: number;
-  pgt_coin_id?: string | null;
+  sgt_coin_id?: string | null;
   pool_coin_id?: string | null;
   did_coin_id?: string | null;
   gov_coin_id?: string | null;
+  nav_registry_coin_id?: string | null;
+  protocol_config_coin_id?: string | null;
   dry_run?: boolean;
 }
 
 export interface GenesisDeployResponse {
   spend_bundle_id: string | null;
   pushed: boolean;
+  network: 'testnet11' | 'mainnet' | string;
   manifest: GenesisDeploymentManifest;
 }
 
 export interface GenesisDeploymentStatus {
   deployed: boolean;
+  network: 'testnet11' | 'mainnet' | string;
   manifest: GenesisDeploymentManifest | null;
 }
 

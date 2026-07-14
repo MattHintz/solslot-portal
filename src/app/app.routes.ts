@@ -166,20 +166,13 @@ export const routes: Routes = [
   },
   {
     // Public: no guard.  Per POP-CANON-013 the committee endpoints are
-    // open to any PGT holder, not just allowlisted admins.
+    // open to any SGT holder, not just allowlisted admins.
     path: 'committee',
     loadComponent: () =>
       import('./pages/admin/committee/committee.component').then(
         (m) => m.CommitteeComponent,
       ),
     title: 'Committee · Solslot',
-  },
-
-  {
-    path: 'verify',
-    loadComponent: () =>
-      import('./pages/verify/verify.component').then((m) => m.VerifyComponent),
-    title: 'Verify Identity · Solslot',
   },
 
   {

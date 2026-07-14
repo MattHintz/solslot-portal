@@ -8,7 +8,20 @@ import { mojoAmountToSafeNumber } from '../utils/mojo-amount';
 type WalletConnectSignClient = Awaited<ReturnType<typeof SignClient.init>>;
 interface ChiaWalletConnectSession {
   topic: string;
+  namespaces?: Record<string, { accounts?: string[]; methods?: string[] }>;
 }
+
+const CHIA_WALLET_PROMPT_TIMEOUT_MS = 45_000;
+const SAGE_WALLETCONNECT_RESTORE_TIMEOUT_MS = 7_000;
+const SAGE_WALLETCONNECT_APPROVAL_TIMEOUT_MS = 90_000;
+const SAGE_WALLETCONNECT_PUBLIC_KEY_METHODS = [
+  'chip0002_getPublicKeys',
+  'chia_getPublicKeys',
+] as const;
+const SAGE_WALLETCONNECT_SIGN_COIN_METHODS = [
+  'chip0002_signCoinSpends',
+  'chia_signCoinSpends',
+] as const;
 
 /**
  * Chia wallet service.
@@ -20,7 +33,7 @@ interface ChiaWalletConnectSession {
  * Returns the user's master BLS public key (48-byte G1 element) which will
  * be curried into the vault singleton as OWNER_PUBKEY (AUTH_TYPE_BLS = 1).
  *
- * For signing we request `signMessage` against the Populis registration
+ * For signing we request `signMessage` against the Solslot registration
  * challenge.  The backend then re-verifies the BLS signature and launches
  * the vault.
  */
@@ -29,12 +42,16 @@ export class ChiaWalletService {
   private readonly chiaWasm = inject(ChiaWasmService);
   private readonly _state = signal<ChiaState>({ kind: 'disconnected' });
   private readonly _sageWalletConnectUri = signal<string | null>(null);
+  private readonly _restoringSageWalletConnect = signal(false);
   private sageWcClient: WalletConnectSignClient | null = null;
   private sageWcInitPromise: Promise<WalletConnectSignClient> | null = null;
   private sageWcSession: ChiaWalletConnectSession | null = null;
   private sageWcBridge: ChiaInjected | null = null;
+  private sageWcRestorePromise: Promise<string | null> | null = null;
+  private sageWcAttemptId = 0;
   readonly state = this._state.asReadonly();
   readonly sageWalletConnectUri = this._sageWalletConnectUri.asReadonly();
+  readonly restoringSageWalletConnect = this._restoringSageWalletConnect.asReadonly();
 
   readonly isConnected = computed(() => this._state().kind === 'connected');
   readonly pubkey = computed(() => {
@@ -60,16 +77,25 @@ export class ChiaWalletService {
 
   /** Connect to Goby (browser extension). */
   async connectGoby(): Promise<string> {
+    this.cancelPendingConnection();
     const goby = (window as WindowWithChia).chia;
     if (!goby) throw new Error('Goby wallet extension not detected');
 
-    const connected = await goby.request({ method: 'connect' });
+    const connected = await withChiaWalletPromptTimeout(
+      goby.request({ method: 'connect' }),
+      CHIA_WALLET_PROMPT_TIMEOUT_MS,
+      'Goby did not respond to the connect request. Close any stale wallet prompt, then retry.',
+    );
     if (!connected) throw new Error('Goby connect rejected');
 
-    const pubkey = (await goby.request({
-      method: 'getPublicKeys',
-      params: { limit: 1 },
-    })) as string[];
+    const pubkey = (await withChiaWalletPromptTimeout(
+      goby.request({
+        method: 'getPublicKeys',
+        params: { limit: 1 },
+      }),
+      CHIA_WALLET_PROMPT_TIMEOUT_MS,
+      'Goby did not return public keys. Close any stale wallet prompt, then retry.',
+    )) as string[];
     if (!pubkey || pubkey.length === 0) {
       throw new Error('Goby returned no public keys');
     }
@@ -80,13 +106,18 @@ export class ChiaWalletService {
 
   /** Connect to Sage (browser + WC bridge). */
   async connectSage(): Promise<string> {
+    this.cancelPendingConnection();
     const sage = (window as WindowWithChia).sage;
     if (!sage) throw new Error('Sage wallet not detected');
 
-    const accounts = (await sage.request({
-      method: 'chia_getPublicKeys',
-      params: {},
-    })) as string[];
+    const accounts = (await withChiaWalletPromptTimeout(
+      sage.request({
+        method: 'chia_getPublicKeys',
+        params: {},
+      }),
+      CHIA_WALLET_PROMPT_TIMEOUT_MS,
+      'Sage did not return public keys. Close any stale wallet prompt, then retry.',
+    )) as string[];
     if (!accounts || accounts.length === 0) {
       throw new Error('Sage returned no public keys');
     }
@@ -102,57 +133,113 @@ export class ChiaWalletService {
           'to connect Sage through WalletConnect.',
       );
     }
+    const current = this._state();
+    if (current.kind === 'connected') return current.pubkey;
+
+    const restored = await this.restoreSageWalletConnectSession();
+    if (restored) return restored;
+
+    const attemptId = ++this.sageWcAttemptId;
+    this._sageWalletConnectUri.set(null);
     const client = await this.getOrInitSageWalletConnectClient();
+    this.assertSageWalletConnectAttemptActive(attemptId);
     const chainId = chiaWalletConnectChainId();
-    const { uri, approval } = await client.connect({
-      optionalNamespaces: {
-        chia: {
-          methods: [
-            'chip0002_getPublicKeys',
-            'chia_getPublicKeys',
-            'chia_getAddress',
-            'chia_getCurrentAddress',
-            'chip0002_getCurrentAddress',
-            'chip0002_signCoinSpends',
-            'chia_signCoinSpends',
-            'chia_filterUnlockedCoins',
-            'chip0002_filterUnlockedCoins',
-            'filterUnlockedCoins',
-            'chia_signMessageByAddress',
-          ],
-          chains: [chainId],
-          events: [],
+    const { uri, approval } = await withChiaWalletPromptTimeout(
+      client.connect({
+        optionalNamespaces: {
+          chia: {
+            methods: [
+              'chip0002_getPublicKeys',
+              'chia_getPublicKeys',
+              'chia_getAddress',
+              'chia_getCurrentAddress',
+              'chip0002_getCurrentAddress',
+              'chip0002_signCoinSpends',
+              'chia_signCoinSpends',
+              'chia_filterUnlockedCoins',
+              'chip0002_filterUnlockedCoins',
+              'filterUnlockedCoins',
+              'chia_signMessageByAddress',
+            ],
+            chains: [chainId],
+            events: [],
+          },
         },
-      },
-    });
-    this._sageWalletConnectUri.set(uri ?? null);
+      }),
+      CHIA_WALLET_PROMPT_TIMEOUT_MS,
+      'Sage WalletConnect did not create a pairing request. Reload the page and try a fresh pairing URI.',
+    );
+    this.assertSageWalletConnectAttemptActive(attemptId);
+    if (uri) this._sageWalletConnectUri.set(uri);
     try {
-      this.sageWcSession = await approval();
-      this.sageWcBridge = this.makeSageWalletConnectBridge(client, this.sageWcSession, chainId);
-      const keys = (await this.sageWcBridge.request({
-        method: 'chip0002_getPublicKeys',
-        params: {},
-      })) as string[];
-      if (!keys || keys.length === 0) {
-        throw new Error('Sage WalletConnect returned no public keys');
-      }
-      const blsHex = normalizeHex(keys[0]);
-      this._state.set({
-        kind: 'connected',
-        pubkey: blsHex,
-        connection: 'sage-walletconnect',
-      });
-      return blsHex;
+      this.sageWcSession = await withChiaWalletPromptTimeout(
+        approval(),
+        SAGE_WALLETCONNECT_APPROVAL_TIMEOUT_MS,
+        'Sage WalletConnect approval timed out. Delete the old Solslot Portal pairing in Sage, then paste a fresh pairing URI.',
+      );
+      this.assertSageWalletConnectAttemptActive(attemptId);
+      return await this.activateSageWalletConnectSession(
+        client,
+        this.sageWcSession,
+        chainId,
+        attemptId,
+      );
     } finally {
-      this._sageWalletConnectUri.set(null);
+      if (this.sageWcAttemptId === attemptId) this._sageWalletConnectUri.set(null);
     }
+  }
+
+  cancelPendingConnection(): void {
+    this.sageWcAttemptId += 1;
+    this._sageWalletConnectUri.set(null);
+  }
+
+  async restoreSageWalletConnectSession(): Promise<string | null> {
+    if (!environment.walletConnectProjectId) return null;
+    const current = this._state();
+    if (current.kind === 'connected') return current.pubkey;
+    if (this.sageWcRestorePromise) return this.sageWcRestorePromise;
+
+    const restoreAttemptId = this.sageWcAttemptId;
+    this._restoringSageWalletConnect.set(true);
+    this.sageWcRestorePromise = (async () => {
+      try {
+        const client = await this.getOrInitSageWalletConnectClient();
+        const session = findLatestChiaWalletConnectSession(client, chiaWalletConnectChainId());
+        if (!session) return null;
+        if (this.sageWcAttemptId !== restoreAttemptId) return null;
+        return await this.activateSageWalletConnectSession(
+          client,
+          session,
+          chiaWalletConnectChainId(),
+          restoreAttemptId,
+          SAGE_WALLETCONNECT_RESTORE_TIMEOUT_MS,
+        );
+      } catch (e) {
+        // A stale persisted WalletConnect session should not block the page.
+        // The explicit connect button remains available and will create a
+        // fresh pairing if this background restore cannot talk to Sage.
+        console.warn('[chia-wallet] Sage WalletConnect restore failed', e);
+        this.sageWcSession = null;
+        this.sageWcBridge = null;
+        const state = this._state();
+        if (state.kind === 'connected' && state.connection === 'sage-walletconnect') {
+          this._state.set({ kind: 'disconnected' });
+        }
+        return null;
+      } finally {
+        this.sageWcRestorePromise = null;
+        this._restoringSageWalletConnect.set(false);
+      }
+    })();
+    return this.sageWcRestorePromise;
   }
 
   /**
    * Sign an arbitrary message with the user's master BLS key.
    *
    * Returns a 96-byte BLS signature, hex-encoded.  The backend verifies it
-   * against the Populis registration challenge + the reported pubkey.
+   * against the Solslot registration challenge + the reported pubkey.
    */
   async signMessage(message: string): Promise<string> {
     const state = this._state();
@@ -280,7 +367,7 @@ export class ChiaWalletService {
    * @param amount Mojos to send (1 for a singleton launcher coin).
    * @param memos Optional UTF-8 strings to attach as memos on the
    *   ``CREATE_COIN`` condition.  Used by the bootstrap recovery
-   *   anchor broadcast flow to embed the ``POPULIS_BOOTSTRAP_V1`` tag
+   *   anchor broadcast flow to embed the ``SOLSLOT_BOOTSTRAP_V2`` tag
    *   + canonical-JSON payload on a small marker coin so any future
    *   recovery scanner can find the deployment's coordinates on chain.
    *   Pure-ASCII strings only (Goby + Sage both treat memos as UTF-8;
@@ -640,14 +727,40 @@ export class ChiaWalletService {
       projectId: environment.walletConnectProjectId,
       relayUrl: 'wss://relay.walletconnect.com',
       metadata: {
-        name: 'Populis Portal',
-        description: 'Populis genesis admin-authority launch',
-        url: typeof window !== 'undefined' ? window.location.origin : 'https://populis.xyz',
+        name: 'Solslot Portal',
+        description: 'Solslot genesis admin-authority launch',
+        url: typeof window !== 'undefined' ? window.location.origin : 'https://solslot.com',
         icons: [],
       },
     }).then((client) => {
       this.sageWcClient = client;
+      client.on(
+        'session_update',
+        ({
+          topic,
+          params,
+        }: {
+          topic: string;
+          params: { namespaces: ChiaWalletConnectSession['namespaces'] };
+        }) => {
+          if (this.sageWcSession?.topic !== topic) return;
+          this.sageWcSession = { ...this.sageWcSession, namespaces: params.namespaces };
+          this.sageWcBridge = this.makeSageWalletConnectBridge(
+            client,
+            this.sageWcSession,
+            chiaWalletConnectChainId(),
+          );
+        },
+      );
       client.on('session_delete', () => {
+        if (this._state().kind === 'connected') {
+          const state = this._state();
+          if (state.kind === 'connected' && state.connection === 'sage-walletconnect') {
+            this.disconnect();
+          }
+        }
+      });
+      client.on('session_expire', () => {
         if (this._state().kind === 'connected') {
           const state = this._state();
           if (state.kind === 'connected' && state.connection === 'sage-walletconnect') {
@@ -658,6 +771,65 @@ export class ChiaWalletService {
       return client;
     });
     return this.sageWcInitPromise;
+  }
+
+  private async activateSageWalletConnectSession(
+    client: WalletConnectSignClient,
+    session: ChiaWalletConnectSession,
+    chainId: string,
+    attemptId?: number,
+    publicKeyTimeoutMs = CHIA_WALLET_PROMPT_TIMEOUT_MS,
+  ): Promise<string> {
+    if (attemptId !== undefined) this.assertSageWalletConnectAttemptActive(attemptId);
+    this.sageWcSession = session;
+    this.sageWcBridge = this.makeSageWalletConnectBridge(client, session, chainId);
+    const keys = await this.requestSageWalletConnectPublicKeys(
+      this.sageWcBridge,
+      publicKeyTimeoutMs,
+    );
+    if (attemptId !== undefined) this.assertSageWalletConnectAttemptActive(attemptId);
+    if (!keys || keys.length === 0) {
+      throw new Error('Sage WalletConnect returned no public keys');
+    }
+    const blsHex = normalizeHex(keys[0]);
+    this._state.set({
+      kind: 'connected',
+      pubkey: blsHex,
+      connection: 'sage-walletconnect',
+    });
+    return blsHex;
+  }
+
+  private assertSageWalletConnectAttemptActive(attemptId: number): void {
+    if (this.sageWcAttemptId !== attemptId) {
+      throw new Error('Sage WalletConnect pairing was canceled. Start a fresh connection to retry.');
+    }
+  }
+
+  private async requestSageWalletConnectPublicKeys(
+    bridge: ChiaInjected,
+    timeoutMs = CHIA_WALLET_PROMPT_TIMEOUT_MS,
+  ): Promise<string[]> {
+    let lastError: unknown = null;
+    for (const method of SAGE_WALLETCONNECT_PUBLIC_KEY_METHODS) {
+      try {
+        return parseStringArrayResult(
+          await withChiaWalletPromptTimeout(
+            bridge.request({ method, params: {} }),
+            timeoutMs,
+            'Sage WalletConnect connected but did not return public keys. Delete the old Solslot Portal pairing in Sage, then retry.',
+          ),
+          'Sage WalletConnect public keys',
+        );
+      } catch (err: unknown) {
+        if (!isMethodNotSupportedError(err)) throw err;
+        lastError = err;
+      }
+    }
+    throw new Error(
+      'Sage WalletConnect public keys: wallet rejected all method names tried. ' +
+        `Last error: ${formatErrorMessage(lastError)}`,
+    );
   }
 
   private makeSageWalletConnectBridge(
@@ -777,6 +949,76 @@ function stripHexPrefix(s: string): string {
 
 function chiaWalletConnectChainId(): string {
   return environment.chiaNetwork === 'mainnet' ? 'chia:mainnet' : 'chia:testnet';
+}
+
+function findLatestChiaWalletConnectSession(
+  client: WalletConnectSignClient,
+  chainId: string,
+): ChiaWalletConnectSession | null {
+  const sessionStore = (client as unknown as {
+    session?: {
+      length?: number;
+      keys?: string[];
+      getAll?: () => ChiaWalletConnectSession[];
+      get?: (topic: string) => ChiaWalletConnectSession;
+    };
+  }).session;
+  const allSessions = sessionStore?.getAll?.();
+  if (Array.isArray(allSessions) && allSessions.length > 0) {
+    return selectBestChiaWalletConnectSession(allSessions, chainId);
+  }
+  const keys = Array.isArray(sessionStore?.keys) ? sessionStore.keys : [];
+  if (!sessionStore?.get || keys.length === 0) return null;
+
+  const sessions: ChiaWalletConnectSession[] = [];
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const session = sessionStore.get(keys[i]);
+      sessions.push(session);
+    } catch {}
+  }
+  return selectBestChiaWalletConnectSession(sessions, chainId);
+}
+
+function sessionHasChiaChain(session: ChiaWalletConnectSession, chainId: string): boolean {
+  const accounts =
+    session.namespaces && typeof session.namespaces === 'object'
+      ? Object.values(session.namespaces).flatMap((namespace) =>
+          Array.isArray(namespace.accounts) ? namespace.accounts : [],
+        )
+      : [];
+  return accounts.some((account) => account === chainId || account.startsWith(`${chainId}:`));
+}
+
+function selectBestChiaWalletConnectSession(
+  sessions: ReadonlyArray<ChiaWalletConnectSession>,
+  chainId: string,
+): ChiaWalletConnectSession | null {
+  const matching = sessions.filter((session) => sessionHasChiaChain(session, chainId));
+  if (matching.length === 0) return null;
+  const capable = matching.filter(sessionHasPreferredSageWalletConnectMethods);
+  const candidates = capable.length > 0 ? capable : matching;
+  return candidates[candidates.length - 1] ?? null;
+}
+
+function sessionHasPreferredSageWalletConnectMethods(session: ChiaWalletConnectSession): boolean {
+  const methods = sessionMethods(session);
+  if (methods.length === 0) return true;
+  const hasPublicKeys = SAGE_WALLETCONNECT_PUBLIC_KEY_METHODS.some((method) =>
+    methods.includes(method),
+  );
+  const hasSignCoinSpends = SAGE_WALLETCONNECT_SIGN_COIN_METHODS.some((method) =>
+    methods.includes(method),
+  );
+  return hasPublicKeys && hasSignCoinSpends;
+}
+
+function sessionMethods(session: ChiaWalletConnectSession): string[] {
+  return session.namespaces && typeof session.namespaces === 'object'
+    ? Object.values(session.namespaces).flatMap((namespace) =>
+        Array.isArray(namespace.methods) ? namespace.methods : [],
+      )
+    : [];
 }
 
 /**
@@ -1000,4 +1242,18 @@ function formatErrorMessage(err: unknown): string {
     return String(obj['message'] ?? JSON.stringify(obj));
   }
   return String(err);
+}
+
+function withChiaWalletPromptTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+  });
 }

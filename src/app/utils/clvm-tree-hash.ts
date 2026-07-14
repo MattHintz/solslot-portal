@@ -9,7 +9,7 @@
  *
  * Mirrors `Program.to([...]).get_tree_hash()` in chia byte-for-byte; the
  * cross-language vectors are pinned in `vault-version-detection.spec.ts`
- * against `populis_puzzles.vault_version_registry_driver` (Python).
+ * against `solslot_puzzles.vault_version_registry_driver` (Python).
  */
 import { sha256 } from 'ethers';
 

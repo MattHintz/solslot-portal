@@ -8,9 +8,10 @@ import { App } from './app/app';
 // We use the same pattern proven in production by solslot's portal
 // (research/solslot-frontend/slui/src/main.ts):
 //
-//   1. The .wasm binary lives at /assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm
-//      (copied from node_modules by scripts/copy-chia-wasm.mjs at postinstall;
-//      Angular's asset glob in angular.json picks it up at build time).
+//   1. The .wasm binary lives under the Angular assets root:
+//      assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm.  The URL is resolved
+//      relative to document.baseURI so hosted builds under /solslot-admin/
+//      fetch /solslot-admin/assets/... while local dev still fetches /assets/....
 //
 //   2. The JS "glue" — wasm-bindgen's exported bindings — comes from npm
 //      via a direct deep import of the package's
@@ -33,7 +34,11 @@ import { App } from './app/app';
 // assume the SDK is ready when it asks for it via ChiaWasmService.
 // ─────────────────────────────────────────────────────────────────────────
 
-const WASM_URL = '/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm';
+const WASM_ASSET_PATH = 'assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm';
+
+function wasmAssetUrl(): string {
+  return new URL(WASM_ASSET_PATH, document.baseURI).toString();
+}
 
 async function initializeChiaWasm(): Promise<void> {
   try {
@@ -58,10 +63,11 @@ async function initializeChiaWasm(): Promise<void> {
     // @ts-ignore — deep-import path; types come from chia_wallet_sdk_wasm.d.ts.
     const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
 
-    const response = await fetch(WASM_URL);
+    const wasmUrl = wasmAssetUrl();
+    const response = await fetch(wasmUrl);
     if (!response.ok) {
       throw new Error(
-        `[main] Failed to fetch ${WASM_URL}: ${response.status} ${response.statusText}`,
+        `[main] Failed to fetch ${wasmUrl}: ${response.status} ${response.statusText}`,
       );
     }
     const bytes = await response.arrayBuffer();

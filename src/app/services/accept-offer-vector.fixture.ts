@@ -37,7 +37,7 @@ export interface AcceptOfferVectorFixture {
 }
 
 export const ACCEPT_OFFER_PROTOCOL_VECTOR = normalizeAcceptOfferVectorFixture({
-  protocolCommit: 'a9e9a53',
+  protocolCommit: 'c3c032e',
   inputs: {
     vaultLauncherId: '0x' + 'aa'.repeat(32),
     ownerPubkey: '0x' + '00'.repeat(48),
@@ -45,7 +45,7 @@ export const ACCEPT_OFFER_PROTOCOL_VECTOR = normalizeAcceptOfferVectorFixture({
     membersMerkleRoot: '0x' + 'ee'.repeat(32),
     poolLauncherId: '0x' + 'bb'.repeat(32),
     vaultCoinId: '0x' + '11'.repeat(32),
-    vaultInnerPuzzleHash: '0x8beb045c100661077c239ad965fb72c1228dd212c757419ec0f5dbec103fefe5',
+    vaultInnerPuzzleHash: '0x17fcdf15e47df2ee1ad4784d145dec2f56038e9ae66b4666c66eaaf21d7a1516',
     vaultAmount: 1,
     spendCase: '0x61',
     deedLauncherId: '0x' + 'dd'.repeat(32),
@@ -59,10 +59,10 @@ export const ACCEPT_OFFER_PROTOCOL_VECTOR = normalizeAcceptOfferVectorFixture({
   },
   expected: {
     serializedSolution:
-      '0xffa01111111111111111111111111111111111111111111111111111111111111111ffa08beb045c100661077c239ad965fb72c1228dd212c757419ec0f5dbec103fefe5ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080',
-    solutionTreeHash: '0x8ed1ff5aa20d26c56343e3ad838789f03d2c81a778bfb509b66615271733ad9e',
+      '0xffa01111111111111111111111111111111111111111111111111111111111111111ffa017fcdf15e47df2ee1ad4784d145dec2f56038e9ae66b4666c66eaaf21d7a1516ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080',
+    solutionTreeHash: '0x8ab99e40a3787a000e6973027f9fead2d96b2e7e3b00e45c46aa4eee961f0657',
     aggSigMeMessage: '0x2d33d2424799d4a31f7225871d9a56239729293e44e574c47905587fa84d81db',
-    poolAnnouncementAssert: '0x56b6a1ffd1538a3e346f0475ca7818a6ef7d79b27d5e3aedb200aca897383446',
+    poolAnnouncementAssert: '0xedcf4c2a4cf369fc74cc94bda7effb4747c383acacd1f11aa0885a00c261ef89',
   },
 });
 

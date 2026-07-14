@@ -12,7 +12,7 @@ import { formatError } from '../../../utils/format-error';
  * Flow:
  *   1. User connects an EVM wallet (injected or WalletConnect v2).
  *   2. User clicks "Sign in as Admin".  The page:
- *        a. Builds a ``PopulisAdminLogin`` EIP-712 envelope via
+ *        a. Builds a ``SolslotAdminLogin`` EIP-712 envelope via
  *           {@link AdminWalletAuthService.buildLoginTypedData} (fresh
  *           nonce, 12h expiry, chainId-bound).
  *        b. Asks the wallet to sign it (no API call).
@@ -41,8 +41,8 @@ import { formatError } from '../../../utils/format-error';
       <p class="mt-4 text-text-muted max-w-xl">
         Authenticate with the EVM key whose pubkey is in the on-chain
         admin authority's MIPS quorum (or, fallback, the portal's
-        env pubkey allowlist).  The signed envelope is bound to this
-        chain id and to this site's EIP-712 domain &mdash; nothing is
+        env pubkey allowlist).  The signed proof is bound to this
+        deployment's chain id and site domain &mdash; nothing is
         broadcast on chain and nothing reaches an API server.
       </p>
 
@@ -168,7 +168,10 @@ export class AdminLoginComponent {
     this.busy.set(true);
     try {
       this.status.set('Opening WalletConnect modal…');
-      await this.evm.connectWalletConnect();
+      await this.evm.connectWalletConnect({
+        optionalChains: 'none',
+        resetSession: true,
+      });
       this.status.set('');
     } catch (e) {
       this.error.set(formatError(e));
@@ -196,16 +199,41 @@ export class AdminLoginComponent {
       const typedData = this.walletAuth.buildLoginTypedData(expiresAt, nonce);
 
       this.status.set('Awaiting wallet signature…');
-      const signature = await this.evm.signTypedData(typedData);
+      let signatureKind: 'eip712' | 'personal-sign' = 'eip712';
+      let signature: string;
+      let pubkey: string;
+      let signedMessage: string | null = null;
+      let signingMethod: 'eth_sign' | 'personal_sign' | null = null;
+      try {
+        signature = await this.evm.signTypedData(typedData);
+        pubkey = this.evm.recoverCompressedPubkey(typedData, signature);
+      } catch (signError) {
+        if (!this.evm.canUseMessageSignatureFallback(signError)) {
+          throw signError;
+        }
+        this.status.set('Typed-data signing unsupported. Awaiting Tangem-compatible admin proof…');
+        signedMessage = this.walletAuth.buildLoginPersonalSignMessage(
+          address,
+          expiresAt,
+          nonce,
+        );
+        const fallback = await this.evm.signAdminLoginMessage(signedMessage);
+        signatureKind = 'personal-sign';
+        signature = fallback.signature;
+        pubkey = fallback.pubkey;
+        signingMethod = fallback.method;
+      }
 
-      this.status.set('Recovering pubkey + verifying admin membership…');
-      const pubkey = this.evm.recoverCompressedPubkey(typedData, signature);
+      this.status.set('Verifying admin membership…');
       await this.session.loginWithWallet({
         address,
         pubkey,
         expiresAt,
+        signatureKind,
         signature,
-        typedData,
+        typedData: signatureKind === 'eip712' ? typedData : null,
+        signedMessage,
+        signingMethod,
       });
 
       this.status.set('Signed in. Redirecting…');

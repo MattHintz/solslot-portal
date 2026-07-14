@@ -13,6 +13,7 @@ export const adminBootstrapLaunchGuard: CanActivateFn = async (_route, state): P
 
   try {
     const status = await bootstrap.getBootstrapStatus();
+    if (status.locked) return true;
     if (!status.locked && status.authenticated) return true;
   } catch {
   }

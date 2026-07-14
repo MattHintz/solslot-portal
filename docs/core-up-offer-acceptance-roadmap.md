@@ -33,7 +33,7 @@ Avoid large cross-layer bricks. Every brick should leave the tree shippable, tes
 | Code | Artifact | Meaning |
 |---|---|---|
 | `MP` | Mint proposal | Admin-created proposal record and canonical proposal hash. |
-| `GB` | Governance bill | On-chain executable payload governed by committee/PGT rules. |
+| `GB` | Governance bill | On-chain executable payload governed by committee/SGT rules. |
 | `DL` | Deed launcher id | Singleton launcher id for the minted deed. |
 | `OF` | Offer artifact | The spend/offer data that lets an eligible vault accept a deed. |
 | `VAULT` | Member vault singleton | Chia singleton controlled by the member. |
@@ -106,7 +106,7 @@ Commit style:
 
 ### Brick 16 — Offer domain model and state notation
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Layer: portal domain only.
 
@@ -137,7 +137,7 @@ offers: add member offer domain model
 
 ### Brick 17 — Protocol accept-offer vector audit
 
-Repo: `populis_protocol`.
+Repo: `solslot_protocol`.
 
 Layer: protocol/driver.
 
@@ -167,7 +167,7 @@ vault: pin accept-offer proof vectors
 
 ### Brick 18 — Portal accept-offer vector fixtures
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Layer: portal fixture/test harness.
 
@@ -193,7 +193,7 @@ offers: add accept-offer vector fixtures
 
 ### Brick 19 — Gated accept-offer builder seam
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Layer: portal service.
 
@@ -221,7 +221,7 @@ vault: wire zkPassport proof into accept-offer builder
 
 ### Brick 20 — Accept-offer spend construction from vectors
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Layer: portal WASM/CLVM service.
 
@@ -248,7 +248,7 @@ offers: build gated accept-offer spend package
 
 ### Brick 21 — Accept-offer signer and commit service
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Layer: portal service.
 
@@ -275,7 +275,7 @@ offers: authorize and commit gated acceptance
 
 ### Brick 22 — Member offer detail UX shell
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Layer: UI/UX.
 
@@ -304,7 +304,7 @@ offers: add member acceptance state shell
 
 ### Brick 23 — Offer source abstraction
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Layer: portal data service.
 
@@ -330,7 +330,7 @@ offers: add offer source abstraction
 
 ### Brick 24 — Admin mint to offer planning seam
 
-Repo: `populis_portal` and/or `populis_api`.
+Repo: `solslot_portal` and/or `solslot_api`.
 
 Layer: admin/governance planning and API contract.
 
@@ -360,7 +360,7 @@ admin: define minted deed offer artifact
 
 ### Brick 25 — Governance committee UX state alignment
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Layer: governance UI/UX.
 
@@ -386,7 +386,7 @@ governance: align committee mint lifecycle states
 
 ### Brick 26 — New member guided path
 
-Repo: `populis_portal`.
+Repo: `solslot_portal`.
 
 Layer: UI/UX orchestration.
 

@@ -4,8 +4,8 @@ import { sha256 } from 'ethers';
 import { bytesToHex, coinId, hexToBytes } from '../utils/chia-hash';
 import type { UnsignedCoinSpend } from './chia-wallet.service';
 import { ChiaWasmService } from './chia-wasm.service';
-import { CAT_MOD_PUZZLE_HEX } from './pgt-driver/cat-mod.puzzle-hex';
-import { PgtDriverService } from './pgt-driver/pgt-driver.service';
+import { CAT_MOD_PUZZLE_HEX } from './sgt-driver/cat-mod.puzzle-hex';
+import { SgtDriverService } from './sgt-driver/sgt-driver.service';
 import { POOL_TOKEN_TAIL_PUZZLE_HEX } from './pool-token-tail.puzzle-hex';
 import {
   PoolEconomicsV2Service,
@@ -345,7 +345,7 @@ export class PoolEconomicsV2TokenAuthorizationService {
     args: { tailHash: Uint8Array; innerPuzzle: ProgramShape },
   ): ProgramShape {
     return clvm.deserialize(hexToBytes(CAT_MOD_PUZZLE_HEX)).curry([
-      clvm.atom(hexToBytes(PgtDriverService.CAT_MOD_HASH)),
+      clvm.atom(hexToBytes(SgtDriverService.CAT_MOD_HASH)),
       clvm.atom(args.tailHash),
       args.innerPuzzle,
     ]);

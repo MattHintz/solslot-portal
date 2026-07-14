@@ -10,7 +10,7 @@ import {
   AdminProtocolConfigService,
   ProtocolConfigFinalizeResponse,
 } from '../../../services/admin-protocol-config.service';
-import { ProtocolInfo } from '../../../services/populis-api.service';
+import { ProtocolInfo } from '../../../services/solslot-api.service';
 import {
   ProtocolConfigLaunchResult,
   ProtocolConfigLaunchService,
@@ -27,6 +27,7 @@ describe('LaunchProtocolConfigComponent', () => {
   const walletPubkey = signal<string | null>(null);
   const walletConnectionKind = signal<'goby' | 'sage' | 'sage-walletconnect' | null>(null);
   const sageWalletConnectUri = signal<string | null>(null);
+  const restoringSageWalletConnect = signal(false);
 
   beforeEach(async () => {
     http = jasmine.createSpyObj('HttpClient', ['get']);
@@ -42,6 +43,7 @@ describe('LaunchProtocolConfigComponent', () => {
       pubkey: walletPubkey.asReadonly(),
       connectionKind: walletConnectionKind.asReadonly(),
       sageWalletConnectUri: sageWalletConnectUri.asReadonly(),
+      restoringSageWalletConnect: restoringSageWalletConnect.asReadonly(),
     });
     wallet.hasGoby.and.returnValue(true);
     wallet.hasSage.and.returnValue(true);
@@ -91,6 +93,7 @@ describe('LaunchProtocolConfigComponent', () => {
     walletPubkey.set(null);
     walletConnectionKind.set(null);
     sageWalletConnectUri.set(null);
+    restoringSageWalletConnect.set(false);
     fixture = TestBed.createComponent(LaunchProtocolConfigComponent);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -138,7 +141,7 @@ describe('LaunchProtocolConfigComponent', () => {
       governancePubkey: `0x${'33'.repeat(48)}`,
     });
     expect(text).toContain('A.3 launch submitted');
-    expect(text).toContain(`POPULIS_PROTOCOL_CONFIG_LAUNCHER_ID=0x${'aa'.repeat(32)}`);
+    expect(text).toContain(`SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID=0x${'aa'.repeat(32)}`);
     expect(text).toContain('Finalize API configuration');
   });
 
@@ -167,7 +170,7 @@ describe('LaunchProtocolConfigComponent', () => {
   });
 
   it('shows the Sage WalletConnect pairing URI while approval is pending', () => {
-    sageWalletConnectUri.set('wc:populis-test-pairing');
+    sageWalletConnectUri.set('wc:solslot-test-pairing');
     fixture.detectChanges();
 
     const text = normalizeText(fixture.nativeElement.textContent as string);
@@ -175,7 +178,18 @@ describe('LaunchProtocolConfigComponent', () => {
     expect(text).toContain('Sage WalletConnect is waiting.');
     expect(text).toContain('Copy pairing URI');
     expect(text).toContain('Cancel');
-    expect(text).toContain('wc:populis-test-pairing');
+    expect(text).toContain('wc:solslot-test-pairing');
+  });
+
+  it('shows silent Sage WalletConnect restore progress before pairing', () => {
+    restoringSageWalletConnect.set(true);
+    sageWalletConnectUri.set(null);
+    fixture.detectChanges();
+
+    const text = normalizeText(fixture.nativeElement.textContent as string);
+
+    expect(text).toContain('Checking existing Sage session...');
+    expect(text).not.toContain('Sage WalletConnect is waiting.');
   });
 
   it('cancels a pending Sage WalletConnect pairing from the A.3 wizard', () => {
@@ -195,7 +209,7 @@ function protocolWithoutA3(): ProtocolInfo {
     pool_launcher_id: `0x${'11'.repeat(32)}`,
     governance_launcher_id: `0x${'22'.repeat(32)}`,
     vault_inner_mod_hash: `0x${'99'.repeat(32)}`,
-    eip712_domain: { name: 'Populis', version: '1', chainId: 11 },
+    eip712_domain: { name: 'Solslot', version: '1', chainId: 11 },
     eip712_typehash_string: 'VaultRegistration(address wallet)',
     faucet_address: null,
     faucet_balance_mojos: null,

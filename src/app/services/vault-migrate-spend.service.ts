@@ -2,7 +2,7 @@
  * Client-side deed-migrate co-spend builder (vault upgrade Brick 6b).
  *
  * The on-chain second half of a one-click vault upgrade
- * (``research/POPULIS_VAULT_UPGRADE_DESIGN.md``): re-bind each deed (an NFT
+ * (``research/SOLSLOT_VAULT_UPGRADE_DESIGN.md``): re-bind each deed (an NFT
  * singleton whose inner puzzle is ``p2_vault`` curried to the OLD vault's
  * launcher) to the freshly-launched NEW vault.  This is done by co-spending
  * two coins in one bundle:

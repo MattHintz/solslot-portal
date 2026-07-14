@@ -11,7 +11,7 @@ import {
 import {
   CommitteeVoteRunnerService,
   VoteRunResult,
-} from '../../../services/pgt-driver/committee-vote-runner.service';
+} from '../../../services/sgt-driver/committee-vote-runner.service';
 import {
   CommitteeMintLifecycleView,
   committeeMintLifecycleView,
@@ -20,31 +20,31 @@ import { formatError } from '../../../utils/format-error';
 
 /**
  * Public committee view — the live on-chain governance proposal (if any)
- * available for PGT-weighted voting.
+ * available for SGT-weighted voting.
  *
  * No authentication.  Per POP-CANON-013, the committee endpoints are
- * intentionally not gated by `require_admin_jwt`: any PGT holder can
+ * intentionally not gated by `require_admin_jwt`: any SGT holder can
  * read this state and (in the VOTE-wiring follow-up) submit a signed
  * vote bundle.  Locking this behind the admin allowlist would conflate
  * operator authority with token-holder governance.
  *
- * **Data source (Phase B2).**  This page walks the PGT-backed
+ * **Data source (Phase B2).**  This page walks the SGT-backed
  * governance tracker singleton on chain
- * ({@link environment.populisProtocol.governanceLauncherId}) via
+ * ({@link environment.solslotProtocol.governanceLauncherId}) via
  * {@link GovernanceTrackerReaderService}.  The tracker holds at most
  * one proposal at a time; its state machine (IDLE → PROPOSED →
  * VOTING → EXECUTE / EXPIRE → IDLE) is reconstructed by decoding each
  * spend's solution in chain order.  No API call required.
  *
  * **Vote button.**  Wired (Phase 3e).  Delegates to
- * {@link CommitteeVoteRunnerService} which discovers the voter's PGT
- * coin, assembles a CAT2-wrapped PGT lock + singleton-wrapped tracker
- * VOTE bundle via {@link PgtVoteSpendBuilderService}, asks the wallet
+ * {@link CommitteeVoteRunnerService} which discovers the voter's SGT
+ * coin, assembles a CAT2-wrapped SGT lock + singleton-wrapped tracker
+ * VOTE bundle via {@link SgtVoteSpendBuilderService}, asks the wallet
  * to sign via {@link ChiaWalletService.signSpendBundle}, and POSTs
  * the result to the publish-only ``/admin/committee/vote`` forwarder
- * (Brick 3.5c-3).  Vote amount is the user-input PGT mojo count;
+ * (Brick 3.5c-3).  Vote amount is the user-input SGT mojo count;
  * LOCK is a full-coin operation so it must equal one of the voter's
- * free PGT coin amounts exactly.
+ * free SGT coin amounts exactly.
  */
 @Component({
   selector: 'pp-committee',
@@ -119,9 +119,9 @@ import { formatError } from '../../../utils/format-error';
                   chain it will appear here automatically.
                 </p>
                 <p class="mt-3 mono text-[0.7rem]">
-                  Quorum required: {{ formatPgt(snap.quorumRequired) }} SGT ·
+                  Quorum required: {{ formatSgt(snap.quorumRequired) }} SGT ·
                   Voting window: {{ Number(snap.votingWindowSeconds) }}s ·
-                  Min stake: {{ formatPgt(snap.minProposalStake) }} SGT
+                  Min stake: {{ formatSgt(snap.minProposalStake) }} SGT
                 </p>
               </div>
             }
@@ -207,7 +207,7 @@ import { formatError } from '../../../utils/format-error';
                   <div class="flex items-center justify-between text-xs mono mb-1">
                     <span class="text-text-muted">Quorum progress</span>
                     <span>
-                      {{ formatPgt(snap.voteTally) }} / {{ formatPgt(snap.quorumRequired) }} SGT
+                      {{ formatSgt(snap.voteTally) }} / {{ formatSgt(snap.quorumRequired) }} SGT
                       ({{ progressPct(snap) }}%)
                     </span>
                   </div>
@@ -331,7 +331,7 @@ export class CommitteeComponent {
   readonly error = signal<string | null>(null);
   readonly lastCheckedAt = signal<number | null>(null);
 
-  /** Vote-cast input (PGT mojos).  ngModel-bound so users can edit. */
+  /** Vote-cast input (SGT mojos).  ngModel-bound so users can edit. */
   voteAmountInput = '';
 
   /** True while a vote is being assembled / signed / submitted. */
@@ -357,7 +357,7 @@ export class CommitteeComponent {
    * Read the live tracker singleton state from chain.  Idempotent —
    * safe to call as often as the user clicks Refresh.  The on-chain
    * walk is shallow (≤ MAX_DEPTH proposal-tracker transitions) and
-   * results are not cached locally; PGT holders should always see
+   * results are not cached locally; SGT holders should always see
    * the freshest possible state.
    */
   async reload(): Promise<void> {
@@ -461,9 +461,9 @@ export class CommitteeComponent {
         return 'Connect a Chia wallet to vote.';
       case 'tracker-not-open':
         return 'Tracker is no longer in OPEN state.';
-      case 'pgt-not-deployed':
+      case 'sgt-not-deployed':
         return 'SGT has not been issued on this network yet.';
-      case 'no-pgt-coins':
+      case 'no-sgt-coins':
         return "You don't appear to hold any free SGT / Committee Coin.";
       case 'no-coin-matches-vote-amount':
         return 'No free SGT coin matches the requested vote amount.';
@@ -482,9 +482,9 @@ export class CommitteeComponent {
         return 'Use the wallet panel to connect Goby or Sage, then retry.';
       case 'tracker-not-open':
         return 'Refresh the page; the proposal may have moved to AWAITING_EXECUTE / EXPIRE.';
-      case 'pgt-not-deployed':
+      case 'sgt-not-deployed':
         return 'Wait until SGT issuance lands, then refresh.';
-      case 'no-pgt-coins':
+      case 'no-sgt-coins':
         return `Discovery: ${result.discovery.kind}`;
       case 'no-coin-matches-vote-amount':
         return (
@@ -539,7 +539,7 @@ export class CommitteeComponent {
 
   // ── Formatting helpers ──────────────────────────────────────────────
 
-  formatPgt(mojos: bigint): string {
+  formatSgt(mojos: bigint): string {
     return mojos.toLocaleString('en-US');
   }
 
@@ -549,7 +549,7 @@ export class CommitteeComponent {
     }
     if (snap.quorumRequired <= 0n) return 0;
     // Convert to Number for the percentage display — both operands fit
-    // easily within Number precision (PGT supply is 1M).
+    // easily within Number precision (SGT supply is 1M).
     const ratio =
       Number(snap.voteTally) / Number(snap.quorumRequired);
     return Math.max(0, Math.min(100, Math.round(ratio * 100)));

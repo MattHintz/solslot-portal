@@ -28,6 +28,9 @@ describe('LaunchAuthorityV2Component', () => {
   >;
   let onChain: jasmine.SpyObj<Pick<OnChainStateService, 'getAuthorityV2'>>;
   let chiaWalletConnected: boolean;
+  let chiaWalletRestoring: boolean;
+  let chiaWalletConnectionKind: 'goby' | 'sage' | 'sage-walletconnect' | null;
+  let chiaWalletPubkey: string | null;
   let evmWallet: jasmine.SpyObj<{
     recoverFirstAdminPubkey: EvmWalletService['recoverFirstAdminPubkey'];
     connectInjected: EvmWalletService['connectInjected'];
@@ -54,6 +57,9 @@ describe('LaunchAuthorityV2Component', () => {
 
   beforeEach(async () => {
     chiaWalletConnected = false;
+    chiaWalletRestoring = false;
+    chiaWalletConnectionKind = null;
+    chiaWalletPubkey = null;
     session = jasmine.createSpyObj('AdminSessionService', ['isAuthenticated']);
     bootstrap = jasmine.createSpyObj('AdminBootstrapService', [
       'getBootstrapStatus',
@@ -78,6 +84,7 @@ describe('LaunchAuthorityV2Component', () => {
     evmWallet.connectionKind.and.returnValue(null);
     evmWallet.connectInjected.and.resolveTo(evmAddress);
     evmWallet.connectWalletConnect.and.resolveTo(evmAddress);
+    bootstrap.getBootstrapStatus.and.resolveTo({ locked: false, authenticated: false });
     eip712Leaf = jasmine.createSpyObj('Eip712LeafHashService', [
       'compute',
       'computeMipsRoot1Of1',
@@ -97,14 +104,19 @@ describe('LaunchAuthorityV2Component', () => {
             hasGoby: () => false,
             hasSage: () => false,
             hasSageWalletConnect: () => true,
+            restoringSageWalletConnect: () => chiaWalletRestoring,
             sageWalletConnectUri: () => null,
-            connectionKind: () => null,
-            pubkey: () => null,
+            connectionKind: () => chiaWalletConnectionKind,
+            pubkey: () => chiaWalletPubkey,
             connectGoby: jasmine.createSpy('connectGoby').and.resolveTo(`0x${'11'.repeat(48)}`),
             connectSage: jasmine.createSpy('connectSage').and.resolveTo(`0x${'22'.repeat(48)}`),
             connectSageWalletConnect: jasmine
               .createSpy('connectSageWalletConnect')
               .and.resolveTo(`0x${'33'.repeat(48)}`),
+            cancelPendingConnection: jasmine.createSpy('cancelPendingConnection'),
+            restoreSageWalletConnectSession: jasmine
+              .createSpy('restoreSageWalletConnectSession')
+              .and.resolveTo(null),
           },
         },
         {
@@ -159,16 +171,57 @@ describe('LaunchAuthorityV2Component', () => {
     return fixture.componentInstance;
   }
 
-  it('shows permanent admin navigation without checking bootstrap status', async () => {
+  it('shows permanent admin navigation after checking unlocked bootstrap status', async () => {
     session.isAuthenticated.and.returnValue(true);
 
     const component = await create();
     const text = fixture.nativeElement.textContent as string;
 
     expect(component.launchAccessMode()).toBe('permanent-admin');
-    expect(bootstrap.getBootstrapStatus).not.toHaveBeenCalled();
+    expect(bootstrap.getBootstrapStatus).toHaveBeenCalledOnceWith();
     expect(text).toContain('← Admin desk');
     expect(text).not.toContain('Genesis bootstrap access');
+  });
+
+  it('prioritizes finalized bootstrap lock over permanent admin sign-in', async () => {
+    session.isAuthenticated.and.returnValue(true);
+    bootstrap.getBootstrapStatus.and.resolveTo({ locked: true, authenticated: false });
+
+    const component = await create();
+    const text = fixture.nativeElement.textContent as string;
+
+    expect(component.launchAccessMode()).toBe('locked');
+    expect(bootstrap.getBootstrapStatus).toHaveBeenCalledOnceWith();
+    expect(text).toContain('Genesis already finalized');
+    expect(text).toContain('Bootstrap access unavailable');
+    expect(text).not.toContain('Create first-admin authority');
+    expect(text).not.toContain('Inputs');
+    expect(text).not.toContain('Funding coin id');
+  });
+
+  it('shows silent Sage WalletConnect restore progress without a pairing URI', async () => {
+    session.isAuthenticated.and.returnValue(true);
+    chiaWalletRestoring = true;
+
+    await create();
+    const text = fixture.nativeElement.textContent as string;
+
+    expect(text).toContain('Checking existing Sage session...');
+    expect(text).not.toContain('Open Sage WalletConnect and paste this pairing URI');
+  });
+
+  it('shows a restored Sage WalletConnect funding wallet as connected', async () => {
+    session.isAuthenticated.and.returnValue(true);
+    chiaWalletConnected = true;
+    chiaWalletConnectionKind = 'sage-walletconnect';
+    chiaWalletPubkey = `0x${'33'.repeat(48)}`;
+
+    await create();
+    const text = fixture.nativeElement.textContent as string;
+
+    expect(text).toContain('✓ Chia funding wallet connected (sage-walletconnect).');
+    expect(text).toContain(`0x${'33'.repeat(48)}`);
+    expect(text).not.toContain('Open Sage WalletConnect and paste this pairing URI');
   });
 
   it('shows temporary bootstrap warning for unlocked bootstrap access', async () => {
@@ -207,6 +260,8 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).toContain('The bootstrapper is locked');
     expect(text).toContain('cannot be run again');
     expect(text).toContain('Inspect finalized artifacts');
+    expect(text).toContain('Publish recovery marker');
+    expect(text).toContain('Load handoff bundle');
     expect(text).toContain('Permanent admin login');
     expect(text).toContain('Open Admin desk');
     expect(text).toContain('recorded admin slot 0 wallet');
@@ -273,6 +328,34 @@ describe('LaunchAuthorityV2Component', () => {
     expect(text).not.toContain(rawSignature);
   });
 
+  it('can cancel a stuck first-admin recovery and ignore its late wallet reply', async () => {
+    session.isAuthenticated.and.returnValue(true);
+    evmWallet.isConnected.and.returnValue(true);
+    evmWallet.address.and.returnValue(evmAddress);
+    evmWallet.connectionKind.and.returnValue('walletconnect');
+    let resolveRecovery!: (value: { pubkey: string; address: string }) => void;
+    evmWallet.recoverFirstAdminPubkey.and.returnValue(
+      new Promise((resolve) => {
+        resolveRecovery = resolve;
+      }),
+    );
+    const component = await create();
+
+    const recovery = component.recoverFirstAdminFromWallet();
+    expect(component.recoveringFirstAdmin()).toBeTrue();
+
+    component.cancelFirstAdminRecovery();
+    expect(component.recoveringFirstAdmin()).toBeFalse();
+    expect(component.firstAdminError()).toContain('Recovery request canceled');
+
+    resolveRecovery({ pubkey, address: evmAddress });
+    await recovery;
+
+    expect(component.firstAdminLeaf()).toBeNull();
+    expect(component.adminRecordsInput()).toBe('');
+    expect(eip712Leaf.compute).not.toHaveBeenCalled();
+  });
+
   it('explains that first-admin recovery needs an EVM wallet, not the Chia funding wallet', async () => {
     session.isAuthenticated.and.returnValue(true);
 
@@ -322,8 +405,8 @@ describe('LaunchAuthorityV2Component', () => {
     });
     const lower = (json as string).toLowerCase();
     for (const forbidden of [
-      'populis_admin_token',
-      'populis_bootstrap_session',
+      'solslot_admin_token',
+      'solslot_bootstrap_session',
       'bootstrap_session',
       'bearer',
       'jwt',
@@ -350,7 +433,7 @@ describe('LaunchAuthorityV2Component', () => {
     pool_launcher_id: `0x${'11'.repeat(32)}`,
     did_launcher_id: `0x${'22'.repeat(32)}`,
     tracker_launcher_id: `0x${'33'.repeat(32)}`,
-    pgt_tail_hash: `0x${'44'.repeat(32)}`,
+    sgt_tail_hash: `0x${'44'.repeat(32)}`,
     pool_token_tail_hash: `0x${'55'.repeat(32)}`,
     pool_full_puzhash: `0x${'66'.repeat(32)}`,
     tracker_full_puzhash: `0x${'77'.repeat(32)}`,
@@ -362,7 +445,7 @@ describe('LaunchAuthorityV2Component', () => {
   };
   const recoveryAnchor = {
     version: 1,
-    tag: 'POPULIS_BOOTSTRAP_V1',
+    tag: 'SOLSLOT_BOOTSTRAP_V2',
     network: 'testnet11',
     admin_authority_v2_launcher_id: launcherId,
     authority_version: 1,
@@ -393,12 +476,12 @@ describe('LaunchAuthorityV2Component', () => {
     bootstrap_manifest_hash: recoveryAnchor.bootstrap_manifest_hash,
     portal_runtime_config_hash: recoveryAnchor.portal_runtime_config_hash,
     admin_records_hash: recoveryAnchor.admin_records_hash,
-    tag_memo_utf8: 'POPULIS_BOOTSTRAP_V1',
-    tag_memo_hex: '0x504f50554c49535f424f4f5453545241505f5631',
+    tag_memo_utf8: 'SOLSLOT_BOOTSTRAP_V2',
+    tag_memo_hex: '0x534f4c534c4f545f424f4f5453545241505f5632',
     payload_memo_json: recoveryAnchor,
     payload_memo_utf8: JSON.stringify(recoveryAnchor),
     payload_memo_hex: `0x${'ab'.repeat(32)}`,
-    memos_hex: ['0x504f50554c49535f424f4f5453545241505f5631', `0x${'ab'.repeat(32)}`],
+    memos_hex: ['0x534f4c534c4f545f424f4f5453545241505f5632', `0x${'ab'.repeat(32)}`],
     payload_hash: `sha256:${'45'.repeat(32)}`,
   };
   const createCoinPreview = {
@@ -480,7 +563,7 @@ describe('LaunchAuthorityV2Component', () => {
       authority_version: null,
       state_hash: chainStateHash,
       phase: '2-informational-only',
-      gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST',
+      gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
       informational_only: true,
     });
   }
@@ -550,7 +633,7 @@ describe('LaunchAuthorityV2Component', () => {
           authority_version: 1,
           admin_records_hash: `sha256:${'12'.repeat(32)}`,
         },
-        read_only_api_url: 'https://api.populis.example',
+        read_only_api_url: 'https://api.solslot.example',
         read_only_coinset_url: 'https://coinset.example',
       },
       bootstrap_recovery_anchor: recoveryAnchor,
@@ -614,10 +697,10 @@ describe('LaunchAuthorityV2Component', () => {
     expect(component.finalizedManifestJson()).toContain('"network": "testnet11"');
     expect(component.finalizedManifestJson()).toContain('"artifact_hashes"');
     expect(component.finalizedRuntimeJson()).toContain('"network": "testnet11"');
-    expect(component.finalizedRuntimeJson()).toContain('"read_only_api_url": "https://api.populis.example"');
+    expect(component.finalizedRuntimeJson()).toContain('"read_only_api_url": "https://api.solslot.example"');
     expect(component.finalizedManifestJson()).toContain('"authority_version": 1');
     expect(component.finalizedRuntimeJson()).toContain('"authority_version": 1');
-    expect(component.finalizedRecoveryAnchorJson()).toContain('"tag": "POPULIS_BOOTSTRAP_V1"');
+    expect(component.finalizedRecoveryAnchorJson()).toContain('"tag": "SOLSLOT_BOOTSTRAP_V2"');
     expect(component.finalizedRecoveryAnchorJson()).toContain('"bootstrap_manifest_hash"');
     expect(component.finalizedRecoveryAnchorJson()).toContain('"portal_runtime_config_hash"');
     expect(component.finalizedRecoveryAnchorJson()).toContain('"admin_records_hash"');
@@ -630,8 +713,8 @@ describe('LaunchAuthorityV2Component', () => {
     // public artifacts.
     const lower = text.toLowerCase();
     for (const forbidden of [
-      'populis_admin_token',
-      'populis_bootstrap_session',
+      'solslot_admin_token',
+      'solslot_bootstrap_session',
       'bootstrap_session',
       'bearer ',
       'jwt_secret',
@@ -685,8 +768,8 @@ describe('LaunchAuthorityV2Component', () => {
 
     const lower = json.toLowerCase();
     for (const forbidden of [
-      'populis_admin_token',
-      'populis_bootstrap_session',
+      'solslot_admin_token',
+      'solslot_bootstrap_session',
       'bootstrap_session',
       'bearer',
       'jwt_secret',
@@ -730,6 +813,102 @@ describe('LaunchAuthorityV2Component', () => {
     expect(click).toHaveBeenCalled();
     expect(revokeObjectUrl).toHaveBeenCalledOnceWith('blob:handoff');
     expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it('resumes recovery marker broadcast from a downloaded handoff bundle after bootstrap lock', async () => {
+    session.isAuthenticated.and.returnValue(false);
+    bootstrap.getBootstrapStatus.and.resolveTo({
+      locked: true,
+      authenticated: false,
+    });
+    bootstrap.verifyRecoveryArtifacts.and.resolveTo(verifiedRecoveryResponse);
+    onChain.getAuthorityV2.and.resolveTo({
+      enabled: true,
+      launcher_id: launcherId,
+      mips_root_hash: null,
+      admins_hash: null,
+      pending_ops_hash: null,
+      authority_version: null,
+      state_hash: chainStateHash,
+      phase: '2-informational-only',
+      gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
+      informational_only: true,
+    });
+    chiaWalletConnected = true;
+    const component = await create();
+    const adminRecords = {
+      version: 1,
+      launcher_id: launcherId,
+      admin_records: [],
+    };
+    const handoffBundle = {
+      version: 1,
+      artifacts: {
+        bootstrap_manifest: finalizedResponse.bootstrap_manifest,
+        portal_runtime_config: finalizedResponse.portal_runtime_config,
+        bootstrap_recovery_anchor: finalizedResponse.bootstrap_recovery_anchor,
+        admin_records: adminRecords,
+      },
+      verifier: { kind: 'idle' },
+      chain_state: { kind: 'idle' },
+      recovery_anchor_publish_intent: publishIntent,
+      recovery_anchor_create_coin_preview: createCoinPreview,
+      recovery_anchor_broadcast: null,
+    };
+    component.recoveryHandoffBundleInput.set(JSON.stringify(handoffBundle));
+
+    await component.loadRecoveryHandoffBundle();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.finalizeState().kind).toBe('finalized');
+    expect(component.resumedAdminRecords()).toEqual(adminRecords);
+    expect(component.recoveryHandoffResumeState().kind).toBe('loaded');
+    expect(component.recoveryVerifyState().kind).toBe('verified');
+    expect(component.recoveryPublishIntentState().kind).toBe('ready');
+    expect(component.recoveryCreateCoinPreviewState().kind).toBe('ready');
+    expect(component.recoveryMarkerPuzzleHashInput()).toBe(
+      createCoinPreview.marker_puzzle_hash,
+    );
+    expect(bootstrap.verifyRecoveryArtifacts).toHaveBeenCalledOnceWith({
+      bootstrap_recovery_anchor: finalizedResponse.bootstrap_recovery_anchor,
+      bootstrap_manifest: finalizedResponse.bootstrap_manifest,
+      portal_runtime_config: finalizedResponse.portal_runtime_config,
+      admin_records: adminRecords,
+    });
+    expect(bootstrap.getRecoveryAnchorPublishIntent).not.toHaveBeenCalled();
+
+    const broadcastSpy = TestBed.inject(
+      RecoveryAnchorBroadcastService,
+    ) as jasmine.SpyObj<RecoveryAnchorBroadcastService>;
+    broadcastSpy.broadcastMarkerCoin.and.resolveTo({
+      fundingCoinId: `0x${'fc'.repeat(32)}`,
+      markerCoinId: `0x${'aa'.repeat(32)}`,
+      markerPuzzleHash: createCoinPreview.marker_puzzle_hash,
+      markerCoinAmountMojos: 1,
+      tagMemoUtf8: publishIntent.tag_memo_utf8,
+      payloadMemoUtf8: publishIntent.payload_memo_utf8,
+      payloadHash: publishIntent.payload_hash,
+      pushStatus: 'SUCCESS',
+      signedSpendBundle: {
+        coinSpends: [],
+        aggregatedSignature: `0x${'ab'.repeat(96)}`,
+      },
+    });
+
+    await component.broadcastRecoveryAnchorMarkerCoin();
+    fixture.detectChanges();
+
+    expect(broadcastSpy.broadcastMarkerCoin).toHaveBeenCalledOnceWith({
+      publishIntent,
+      createCoinPreview,
+    });
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Loaded recovery handoff bundle');
+    expect(text).toContain('Recovery anchor handoff');
+    expect(text).toContain('CREATE_COIN preview ready');
+    expect(text).toContain('Broadcast accepted by coinset.org');
+    expect(text).not.toContain('Inputs');
   });
 
   it('surfaces finalize errors without locking the bootstrapper', async () => {
@@ -912,6 +1091,45 @@ describe('LaunchAuthorityV2Component', () => {
     );
   });
 
+  it('builds the recovery marker preview locally when the post-lock API returns 401', async () => {
+    configureBootstrapMode();
+    bootstrap.createRecoveryAnchorCoinPreview.and.rejectWith(
+      new Error('Http failure response for /create-coin-preview: 401'),
+    );
+    const component = await create();
+    primeFinalizeReadyState(component);
+    component.finalizeState.set({
+      kind: 'finalized',
+      bootstrapManifest: finalizedResponse.bootstrap_manifest,
+      portalRuntimeConfig: finalizedResponse.portal_runtime_config,
+      bootstrapRecoveryAnchor: finalizedResponse.bootstrap_recovery_anchor,
+    });
+    component.recoveryPublishIntentState.set({ kind: 'ready', response: publishIntent });
+    component.recoveryMarkerPuzzleHashInput.set(createCoinPreview.marker_puzzle_hash);
+    fixture.detectChanges();
+
+    await component.previewRecoveryAnchorMarkerCoin();
+    fixture.detectChanges();
+
+    expect(bootstrap.createRecoveryAnchorCoinPreview).toHaveBeenCalledOnceWith({
+      marker_puzzle_hash: createCoinPreview.marker_puzzle_hash,
+    });
+    expect(component.recoveryCreateCoinPreviewState().kind).toBe('ready');
+    expect(component.recoveryCreateCoinPreview()).toEqual(
+      jasmine.objectContaining({
+        condition_opcode: 51,
+        marker_puzzle_hash: createCoinPreview.marker_puzzle_hash,
+        marker_coin_amount_mojos: publishIntent.marker_coin_amount_mojos,
+        tag_memo_hex: publishIntent.tag_memo_hex,
+        payload_memo_hex: publishIntent.payload_memo_hex,
+        payload_hash: publishIntent.payload_hash,
+      }),
+    );
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('CREATE_COIN preview ready');
+    expect(text).not.toContain('CREATE_COIN preview unavailable');
+  });
+
   it('broadcasts the recovery anchor marker via the RecoveryAnchorBroadcastService', async () => {
     configureBootstrapMode();
     chiaWalletConnected = true;
@@ -1082,7 +1300,7 @@ describe('LaunchAuthorityV2Component', () => {
       authority_version: null,
       state_hash: `0x${'11'.repeat(32)}`,
       phase: '2-informational-only',
-      gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST',
+      gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
       informational_only: true,
     });
     const component = await create();
@@ -1141,7 +1359,7 @@ describe('LaunchAuthorityV2Component', () => {
       authority_version: null,
       state_hash: null,
       phase: '2-informational-only',
-      gating_source: 'POPULIS_ADMIN_PUBKEY_ALLOWLIST',
+      gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
       informational_only: true,
     });
     const component = await create();

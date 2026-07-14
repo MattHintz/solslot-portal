@@ -79,8 +79,9 @@ interface FixtureFile {
   constants: FixtureConstants;
   common: {
     state: FixtureState;
-    pool_coin_id: string;
-    deed_id: string;
+  pool_coin_id: string;
+  deed_id: string;
+  deed_launcher_id: string;
     p2_vault_puzzle_hash: string;
     property_id_canon: string;
     collection_id_canon: string;
@@ -103,6 +104,12 @@ interface FixtureFile {
 }
 
 const fixture = fixturesJson as FixtureFile;
+const DEED_METADATA = {
+  deedLauncherId: fixture.common.deed_launcher_id,
+  parValueMojos: fixture.reserve_acquisition.inputs['par_value_mojos'],
+  assetClass: fixture.reserve_acquisition.inputs['asset_class'],
+  propertyIdCanon: fixture.common.property_id_canon,
+};
 
 describe('PoolEconomicsV2Service', () => {
   let service: PoolEconomicsV2Service;
@@ -208,6 +215,7 @@ describe('PoolEconomicsV2Service', () => {
     const spec = service.buildSpecificDeedSwapSpec({
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       p2VaultPuzzleHash: fixture.common.p2_vault_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: fixture.specific_deed_swap.inputs['share_ppm'],
@@ -239,6 +247,7 @@ describe('PoolEconomicsV2Service', () => {
     const spec = service.buildTrueRedemptionSpec({
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       p2VaultPuzzleHash: fixture.common.p2_vault_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: fixture.true_redemption.inputs['share_ppm'],
@@ -259,6 +268,7 @@ describe('PoolEconomicsV2Service', () => {
     const spec = service.buildReserveAcquisitionSpec({
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
+      ...DEED_METADATA,
       propertyIdCanon: fixture.common.property_id_canon,
       parValueMojos: fixture.reserve_acquisition.inputs['par_value_mojos'],
       assetClass: fixture.reserve_acquisition.inputs['asset_class'],

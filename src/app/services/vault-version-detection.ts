@@ -3,7 +3,7 @@
  * the protocol.
  *
  * This is the TypeScript port of the detection primitives in
- * ``populis_puzzles/vault_version_registry_driver.py`` (Bricks 2/4b).  Keeping
+ * ``solslot_puzzles/vault_version_registry_driver.py`` (Bricks 2/4b).  Keeping
  * it pure (no WASM, no chain) means it is trivially unit-testable and the
  * cross-language vectors are pinned against Python in
  * ``vault-version-detection.spec.ts``.
@@ -12,7 +12,7 @@
  * ``(VAULT_INNER_MOD_HASH, CANONICAL_PARAMS_HASH, VAULT_VERSION)``.  A vault is
  * CURRENT iff BOTH its code hash and its canonical-params hash equal the
  * registry's; otherwise it is OUTDATED and an upgrade is offered.  See
- * ``research/POPULIS_VAULT_UPGRADE_DESIGN.md``.
+ * ``research/SOLSLOT_VAULT_UPGRADE_DESIGN.md``.
  */
 import { bytesToHex, canonicalIntBytes, hexToBytes } from '../utils/chia-hash';
 import { treeHashAtomList } from '../utils/clvm-tree-hash';

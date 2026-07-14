@@ -13,7 +13,7 @@ const CREATE_COIN = 51;
 const AGG_SIG_ME = 50;
 const CREATE_PUZZLE_ANNOUNCEMENT = 62;
 const ASSERT_MY_AMOUNT = 73;
-const PROTOCOL_PREFIX = 0x50;
+const PROTOCOL_PREFIX = 0x53;
 const DEFAULT_MAX_MIPS_EXECUTION_COST = 11_000_000_000n;
 
 @Injectable({ providedIn: 'root' })

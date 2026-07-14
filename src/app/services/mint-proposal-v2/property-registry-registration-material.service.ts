@@ -10,7 +10,7 @@ import { bytesToHex, hexToBytes } from '../../utils/chia-hash';
 
 import {
   LineageProofShape,
-} from '../pgt-driver/pgt-vote-spend-builder.service';
+} from '../sgt-driver/sgt-vote-spend-builder.service';
 import {
   MintPublishSpendBuilderService,
   PropertyRegistryRegistrationSpend,
@@ -97,7 +97,7 @@ export class PropertyRegistryRegistrationMaterialService {
   ): RegistrySpendMaterial {
     if (!is48ByteHex(registryGovPubkey)) {
       throw new Error(
-        'Fresh property registry requires environment.populisProtocol.propertyRegistryGovPubkey.',
+        'Fresh property registry requires environment.solslotProtocol.propertyRegistryGovPubkey.',
       );
     }
     return {

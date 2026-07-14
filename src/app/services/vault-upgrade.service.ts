@@ -6,7 +6,7 @@
  * {@link VaultMigrateSpendService}) — into the bundles a wallet signs and
  * coinset.org broadcasts, and reads the chain state those bundles need.
  *
- * **Upgrade shape** (``research/POPULIS_VAULT_UPGRADE_DESIGN.md``):
+ * **Upgrade shape** (``research/SOLSLOT_VAULT_UPGRADE_DESIGN.md``):
  *   1. Launch a NEW vault singleton at the registry's canonical descriptor,
  *      reusing the user's identity (one independent bundle).
  *   2. Migrate each deed from the OLD vault to the new one.  Each migration

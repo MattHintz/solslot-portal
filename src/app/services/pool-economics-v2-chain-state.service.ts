@@ -27,7 +27,7 @@ export class PoolEconomicsV2ChainStateService {
   private readonly wasm = inject(ChiaWasmService);
 
   async readCurrentState(
-    poolLauncherId = environment.populisProtocol.poolLauncherId,
+    poolLauncherId = environment.solslotProtocol.poolLauncherId,
   ): Promise<PoolV2ChainStateEvidence> {
     const launcherId = normalize32(poolLauncherId);
     if (!launcherId) {
@@ -193,9 +193,9 @@ export function decodePoolEconomicStateTransition(
   const oldInner = fullArgs[1];
   const oldInnerUncurried = oldInner.uncurry();
   const oldInnerArgs = oldInnerUncurried ? curriedArgs(oldInnerUncurried, 'pool inner puzzle') : null;
-  if (!oldInnerUncurried || !oldInnerArgs || oldInnerArgs.length !== 13) {
+  if (!oldInnerUncurried || !oldInnerArgs || oldInnerArgs.length !== 22) {
     throw new Error(
-      `Pool inner puzzle expects 13 curried args, got ${oldInnerArgs?.length ?? 0}.`,
+      `Pool V3 inner puzzle expects 22 curried args, got ${oldInnerArgs?.length ?? 0}.`,
     );
   }
 
@@ -213,13 +213,13 @@ export function decodePoolEconomicStateTransition(
   const params = requireList(innerSolution[4], 'pool spend params');
   const state = applyPoolSpendTransition({
     previousState,
-    fpScale: requireInt(oldInnerArgs[7], 'FP_SCALE'),
+    fpScale: requireInt(oldInnerArgs[16], 'FP_SCALE'),
     spendCase,
     params,
   });
 
   const currentInner = oldInnerUncurried.program.curry([
-    ...oldInnerArgs.slice(0, 8),
+    ...oldInnerArgs.slice(0, 17),
     clvm.int(state.poolStatus),
     clvm.int(state.totalNavLockedMojos),
     clvm.int(state.deedCount),
@@ -258,8 +258,8 @@ function applyPoolSpendTransition(args: {
   const s = args.previousState;
   switch (args.spendCase) {
     case POOL_SPEND_DEPOSIT: {
-      requireParamCount(args.params, 4, 'POOL_SPEND_DEPOSIT');
-      const deedParValue = requireInt(args.params[1], 'deed_par_value');
+      requireParamCount(args.params, 9, 'POOL_SPEND_DEPOSIT');
+      const deedParValue = requireInt(args.params[2], 'deed_par_value');
       const minted = fixedParTokenAmount(deedParValue, args.fpScale);
       return {
         poolStatus: s.poolStatus,
@@ -269,18 +269,8 @@ function applyPoolSpendTransition(args: {
         treasuryReserveTokens: s.treasuryReserveTokens,
       };
     }
-    case POOL_SPEND_REDEEM: {
-      requireParamCount(args.params, 5, 'POOL_SPEND_REDEEM');
-      const deedParValue = requireInt(args.params[1], 'deed_par_value');
-      const burned = fixedParTokenAmount(deedParValue, args.fpScale);
-      return {
-        poolStatus: s.poolStatus,
-        totalNavLockedMojos: s.totalNavLockedMojos - deedParValue,
-        deedCount: s.deedCount - 1n,
-        totalPoolTokenSupply: s.totalPoolTokenSupply - burned,
-        treasuryReserveTokens: s.treasuryReserveTokens,
-      };
-    }
+    case POOL_SPEND_REDEEM:
+      throw new Error('POOL_SPEND_REDEEM is disabled in Pool V3.');
     case POOL_SPEND_SETTLEMENT:
       return {
         poolStatus: 1n,
@@ -290,24 +280,15 @@ function applyPoolSpendTransition(args: {
         treasuryReserveTokens: s.treasuryReserveTokens,
       };
     case POOL_SPEND_GOVERNANCE:
-      requireParamCount(args.params, 3, 'POOL_SPEND_GOVERNANCE');
+      requireParamCount(args.params, 2, 'POOL_SPEND_GOVERNANCE');
       return { ...s, poolStatus: requireInt(args.params[0], 'new_status') };
-    case POOL_SPEND_GENERATE_OFFER: {
-      requireParamCount(args.params, 4, 'POOL_SPEND_GENERATE_OFFER');
-      const deedParValue = requireInt(args.params[1], 'deed_par_value');
-      return {
-        poolStatus: s.poolStatus,
-        totalNavLockedMojos: s.totalNavLockedMojos - deedParValue,
-        deedCount: s.deedCount - 1n,
-        totalPoolTokenSupply: s.totalPoolTokenSupply,
-        treasuryReserveTokens: s.treasuryReserveTokens,
-      };
-    }
+    case POOL_SPEND_GENERATE_OFFER:
+      throw new Error('POOL_SPEND_GENERATE_OFFER is disabled in Pool V3.');
     case POOL_SPEND_V2_SPECIFIC_DEED_SWAP: {
-      requireParamCount(args.params, 14, 'POOL_SPEND_V2_SPECIFIC_DEED_SWAP');
+      requireParamCount(args.params, 18, 'POOL_SPEND_V2_SPECIFIC_DEED_SWAP');
       const deedNav = computeDeedNav(
-        requireInt(args.params[3], 'collection_nav_mojos'),
-        requireInt(args.params[2], 'share_ppm'),
+        requireInt(args.params[7], 'collection_nav_mojos'),
+        requireInt(args.params[6], 'share_ppm'),
       );
       const principal = principalTokensForNav(deedNav, s);
       return {
@@ -319,10 +300,10 @@ function applyPoolSpendTransition(args: {
       };
     }
     case POOL_SPEND_V2_TRUE_REDEMPTION: {
-      requireParamCount(args.params, 11, 'POOL_SPEND_V2_TRUE_REDEMPTION');
+      requireParamCount(args.params, 15, 'POOL_SPEND_V2_TRUE_REDEMPTION');
       const deedNav = computeDeedNav(
-        requireInt(args.params[3], 'collection_nav_mojos'),
-        requireInt(args.params[2], 'share_ppm'),
+        requireInt(args.params[7], 'collection_nav_mojos'),
+        requireInt(args.params[6], 'share_ppm'),
       );
       const principal = principalTokensForNav(deedNav, s);
       return {
@@ -334,12 +315,12 @@ function applyPoolSpendTransition(args: {
       };
     }
     case POOL_SPEND_V2_RESERVE_ACQUISITION: {
-      requireParamCount(args.params, 14, 'POOL_SPEND_V2_RESERVE_ACQUISITION');
+      requireParamCount(args.params, 15, 'POOL_SPEND_V2_RESERVE_ACQUISITION');
       const deedNav = computeDeedNav(
-        requireInt(args.params[6], 'collection_nav_mojos'),
-        requireInt(args.params[5], 'share_ppm'),
+        requireInt(args.params[7], 'collection_nav_mojos'),
+        requireInt(args.params[6], 'share_ppm'),
       );
-      const sellerTokenPrice = requireInt(args.params[12], 'seller_token_price');
+      const sellerTokenPrice = requireInt(args.params[13], 'seller_token_price');
       const reservePaid = minBigint(s.treasuryReserveTokens, sellerTokenPrice);
       const freshMint = sellerTokenPrice - reservePaid;
       return {
@@ -357,11 +338,11 @@ function applyPoolSpendTransition(args: {
 
 function stateFromCurriedArgs(args: ProgramShape[]): PoolV2DecodedEconomicState {
   return {
-    poolStatus: requireInt(args[8], 'POOL_STATUS'),
-    totalNavLockedMojos: requireInt(args[9], 'TOTAL_VALUE_LOCKED'),
-    deedCount: requireInt(args[10], 'DEED_COUNT'),
-    totalPoolTokenSupply: requireInt(args[11], 'TOTAL_POOL_TOKEN_SUPPLY'),
-    treasuryReserveTokens: requireInt(args[12], 'TREASURY_RESERVE_TOKENS'),
+    poolStatus: requireInt(args[17], 'POOL_STATUS'),
+    totalNavLockedMojos: requireInt(args[18], 'TOTAL_VALUE_LOCKED'),
+    deedCount: requireInt(args[19], 'DEED_COUNT'),
+    totalPoolTokenSupply: requireInt(args[20], 'TOTAL_POOL_TOKEN_SUPPLY'),
+    treasuryReserveTokens: requireInt(args[21], 'TREASURY_RESERVE_TOKENS'),
   };
 }
 

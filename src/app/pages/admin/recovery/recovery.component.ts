@@ -38,7 +38,7 @@ import {
         <div class="card-head">
           <div>
             <h2>1. Find recovery anchors</h2>
-            <p>Scans coinset.org by the POPULIS_BOOTSTRAP_V1 marker memo.</p>
+            <p>Scans coinset.org by the SOLSLOT_BOOTSTRAP_V2 marker memo.</p>
           </div>
           <button type="button" class="primary" (click)="scanAnchors()" [disabled]="discoveryState().kind === 'pending'">
             {{ discoveryState().kind === 'pending' ? 'Scanning…' : 'Scan chain' }}

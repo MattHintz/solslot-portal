@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
-import { environment } from '../../../environments/environment';
 import { ChiaWalletService } from '../../services/chia-wallet.service';
 import { EvmWalletService } from '../../services/evm-wallet.service';
 import {
@@ -18,6 +17,10 @@ import {
 } from '../../services/vault-accept-offer-authorize.service';
 import { VaultAcceptOfferCommitResult } from '../../services/vault-accept-offer-commit.service';
 import { VaultAcceptOfferLifecycleService } from '../../services/vault-accept-offer-lifecycle.service';
+import {
+  protocolCoordinateFromEnvironment,
+  resolveProtocolCoordinate,
+} from '../../services/protocol-coordinate-guard';
 import { ZkPassportAcceptOfferProofService } from '../../services/zkpassport-accept-offer-proof.service';
 import { formatError } from '../../utils/format-error';
 import { AUTH_TYPE_BLS, AUTH_TYPE_SECP256K1, AUTH_TYPE_SECP256R1 } from '../../utils/chia-hash';
@@ -380,9 +383,27 @@ export class OfferDetailComponent {
     const ownerPubkey = vault?.owner_pubkey || session?.compressedPubkey || '';
     const authTypeLabel = vault?.auth_type ?? session?.authType ?? null;
     const authType = authTypeFromLabel(authTypeLabel);
-    const poolLauncherId = offer.artifact?.poolLauncherId ?? environment.populisProtocol.poolLauncherId;
-    const poolInnerPuzzleHash = offer.artifact?.poolInnerPuzzleHash ?? protocolHex('poolInnerPuzzleHash');
-    const bridgePolicyHash = offer.artifact?.bridgePolicyHash ?? protocolHex('bridgePolicyHash');
+    const poolLauncherId = resolveProtocolCoordinate({
+      coordinateName: 'pool launcher id',
+      pinned: protocolCoordinateFromEnvironment('poolLauncherId'),
+      candidate: offer.artifact?.poolLauncherId,
+      candidateLabel: 'offer artifact',
+      errorPrefix: 'Offer acceptance',
+    });
+    const poolInnerPuzzleHash = resolveProtocolCoordinate({
+      coordinateName: 'pool inner puzzle hash',
+      pinned: protocolCoordinateFromEnvironment('poolInnerPuzzleHash'),
+      candidate: offer.artifact?.poolInnerPuzzleHash,
+      candidateLabel: 'offer artifact',
+      errorPrefix: 'Offer acceptance',
+    });
+    const bridgePolicyHash = resolveProtocolCoordinate({
+      coordinateName: 'bridge policy hash',
+      pinned: protocolCoordinateFromEnvironment('bridgePolicyHash'),
+      candidate: offer.artifact?.bridgePolicyHash,
+      candidateLabel: 'offer artifact',
+      errorPrefix: 'Offer acceptance',
+    });
     const membersMerkleRoot = offer.artifact?.membersMerkleRoot ?? undefined;
     const missing: string[] = [];
 
@@ -536,9 +557,4 @@ function authTypeFromLabel(label: string | null): number | null {
     default:
       return null;
   }
-}
-
-function protocolHex(key: string): string | undefined {
-  const value = (environment.populisProtocol as Record<string, unknown>)[key];
-  return typeof value === 'string' && value.trim() ? value : undefined;
 }

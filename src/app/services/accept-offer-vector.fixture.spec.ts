@@ -8,7 +8,7 @@ describe('ACCEPT_OFFER_PROTOCOL_VECTOR', () => {
   it('parses and validates the required accept-offer fields', () => {
     const vector = ACCEPT_OFFER_PROTOCOL_VECTOR;
 
-    expect(vector.protocolCommit).toBe('a9e9a53');
+    expect(vector.protocolCommit).toBe('c3c032e');
     expect(Object.keys(vector.inputs)).toEqual([
       'vaultLauncherId',
       'ownerPubkey',
@@ -41,7 +41,7 @@ describe('ACCEPT_OFFER_PROTOCOL_VECTOR', () => {
     expect(vector.inputs.attestationProof).toEqual({ bitpath: 0, siblings: [] });
     expect(vector.inputs.signatureData).toBeNull();
     expect(vector.expected.solutionTreeHash).toBe(
-      '0x8ed1ff5aa20d26c56343e3ad838789f03d2c81a778bfb509b66615271733ad9e',
+      '0x8ab99e40a3787a000e6973027f9fead2d96b2e7e3b00e45c46aa4eee961f0657',
     );
   });
 

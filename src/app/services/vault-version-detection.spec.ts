@@ -8,11 +8,11 @@ import {
 
 /**
  * Cross-language pin: every hash here is the EXACT value produced by
- * ``populis_puzzles.vault_version_registry_driver`` in Python.  If the portal
+ * ``solslot_puzzles.vault_version_registry_driver`` in Python.  If the portal
  * and protocol ever diverge, outdated detection silently breaks — so these
  * vectors are the contract.
  *
- * Generated with (from populis_protocol, that venv):
+ * Generated with (from solslot_protocol, that venv):
  *   compute_canonical_params_hash(0x71*32, 0x72*32, 0x73*32, 0x74*32)
  *   compute_content_hash(0xc3*32, 0xd4*32, 1)
  */

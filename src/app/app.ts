@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { afterNextRender, Component, EnvironmentInjector, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { HeaderComponent } from './layout/header/header.component';
 import { FooterComponent } from './layout/footer/footer.component';
@@ -15,4 +15,16 @@ import { FooterComponent } from './layout/footer/footer.component';
     <pp-footer />
   `,
 })
-export class App {}
+export class App {
+  private readonly injector = inject(EnvironmentInjector);
+
+  constructor() {
+    afterNextRender(() => {
+      void import('./services/chia-wallet.service').then(({ ChiaWalletService }) =>
+        this.injector
+          .get(ChiaWalletService)
+          .restoreSageWalletConnectSession(),
+      );
+    });
+  }
+}

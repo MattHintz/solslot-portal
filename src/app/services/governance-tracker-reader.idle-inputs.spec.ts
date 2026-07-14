@@ -4,7 +4,7 @@ import { ChiaSingletonReaderService, SingletonLineage } from './chia-singleton-r
 import { ChiaWasmService } from './chia-wasm.service';
 import { CoinsetService, PuzzleAndSolution } from './coinset.service';
 import { GovernanceTrackerReaderService } from './governance-tracker-reader.service';
-import { GOVERNANCE_TRACKER_INNER_PUZZLE_HEX } from './pgt-driver/governance-singleton-inner.puzzle-hex';
+import { GOVERNANCE_TRACKER_INNER_PUZZLE_HEX } from './sgt-driver/governance-singleton-inner.puzzle-hex';
 import { environment } from '../../environments/environment';
 import { bytesToHex, hexToBytes } from '../utils/chia-hash';
 
@@ -32,7 +32,8 @@ describe('GovernanceTrackerReaderService.getIdleStateProposeInputs', () => {
   const SINGLETON_MOD_HASH =
     '0x7faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9f';
 
-  const LAUNCHER_ID = environment.populisProtocol.governanceLauncherId;
+  const LAUNCHER_ID = '0x' + 'aa'.repeat(32);
+  const originalGovernanceLauncherId = environment.solslotProtocol.governanceLauncherId;
   const EVE = '0x' + 'bb'.repeat(32);
   const POST_EVE = '0x' + 'cc'.repeat(32);
   const CURRENT = '0x' + 'dd'.repeat(32);
@@ -68,6 +69,7 @@ describe('GovernanceTrackerReaderService.getIdleStateProposeInputs', () => {
   });
 
   beforeEach(() => {
+    environment.solslotProtocol.governanceLauncherId = LAUNCHER_ID;
     reader = jasmine.createSpyObj('ChiaSingletonReaderService', ['walkLineage']);
     coinset = jasmine.createSpyObj('CoinsetService', ['getPuzzleAndSolution']);
 
@@ -80,6 +82,10 @@ describe('GovernanceTrackerReaderService.getIdleStateProposeInputs', () => {
     });
     TestBed.inject(ChiaWasmService).probeReady();
     service = TestBed.inject(GovernanceTrackerReaderService);
+  });
+
+  afterEach(() => {
+    environment.solslotProtocol.governanceLauncherId = originalGovernanceLauncherId;
   });
 
   // ── Null-path: non-IDLE snapshots return null ─────────────────────────
@@ -289,10 +295,10 @@ describe('GovernanceTrackerReaderService.getIdleStateProposeInputs', () => {
           clvm.atom(hexToBytes(SINGLETON_LAUNCHER_HASH)),
         ),
       ),
-      clvm.atom(hexToBytes('0x' + '10'.repeat(32))), // pgt_free_mod_hash
-      clvm.atom(hexToBytes('0x' + '11'.repeat(32))), // pgt_locked_mod_hash
+      clvm.atom(hexToBytes('0x' + '10'.repeat(32))), // sgt_free_mod_hash
+      clvm.atom(hexToBytes('0x' + '11'.repeat(32))), // sgt_locked_mod_hash
       clvm.atom(hexToBytes('0x' + '12'.repeat(32))), // cat_mod_hash
-      clvm.atom(hexToBytes('0x' + '13'.repeat(32))), // pgt_tail_hash
+      clvm.atom(hexToBytes('0x' + '13'.repeat(32))), // sgt_tail_hash
       clvm.atom(hexToBytes('0x' + '14'.repeat(32))), // protocol_did_puzhash
       clvm.pair(
         clvm.atom(hexToBytes(SINGLETON_MOD_HASH)),
@@ -303,7 +309,7 @@ describe('GovernanceTrackerReaderService.getIdleStateProposeInputs', () => {
       ), // pool_singleton_struct
       clvm.int(1000n), // quorum_bps
       clvm.int(86400n), // voting_window_seconds
-      clvm.int(1_000_000n), // pgt_total_supply
+      clvm.int(1_000_000n), // sgt_total_supply
       clvm.int(10_000n), // min_proposal_stake
     ];
   }

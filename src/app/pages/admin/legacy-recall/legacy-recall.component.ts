@@ -22,7 +22,7 @@ import { formatError } from '../../../utils/format-error';
           </div>
           <h1 class="font-display text-4xl md:text-5xl">Legacy recall.</h1>
           <p class="mt-2 text-text-muted text-sm">
-            Pro Account and Pro Vault records remain separate from Populis vaults.
+            Pro Account and Pro Vault records remain separate from Solslot vaults.
           </p>
         </div>
 
@@ -92,7 +92,7 @@ import { formatError } from '../../../utils/format-error';
         </div>
         <p class="text-sm text-text-muted">
           Old Solslot offer rows are historical evidence only. New properties and purchase artifacts
-          are created through the Populis-Solslot protocol flow, while this page preserves legacy
+          are created through the Solslot-Solslot protocol flow, while this page preserves legacy
           Pro Account and Pro Vault records for customer redemption recall.
         </p>
       </aside>

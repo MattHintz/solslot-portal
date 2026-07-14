@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { SignedSpendBundle } from './chia-wallet.service';
 import { CoinsetService } from './coinset.service';
-import { VaultState } from './populis-api.service';
+import { VaultState } from './solslot-api.service';
 import { SessionService } from './session.service';
 import { VaultAcceptOfferAuthorizationResult } from './vault-accept-offer-authorize.service';
 import { VaultAcceptOfferSpendPackage } from './vault-accept-offer-spend.service';
