@@ -15,13 +15,13 @@ export const environment = {
   walletConnectProjectId: '3145bc617be2b491a8e6033b3b0fcf43',
   eip712Name: 'Solslot Protocol' as const,
   eip712Version: '2' as const,
-  eip712ChainId: 84532,
+  eip712ChainId: 11155111,
 
   zkPassport: {
     policyVersion: 2,
     verificationUrl: '/verify',
     evmRpcUrl: '',
-    evmChainId: 84532,
+    evmChainId: 11155111,
     attestationEmitterAddress: '',
     attestationEmitterFromBlock: 0,
     trustedForwarderAddress: '',
@@ -37,11 +37,14 @@ export const environment = {
   /** Populated only from the signed Solslot V2 ceremony artifact. */
   solslotProtocol: {
     artifactHash: '',
+    adminPortalSourceSha: '',
+    artifactVerified: false,
     retiredCoordinates: [] as string[],
     adminAuthorityV2LauncherId: '',
     adminAuthorityV2MipsRootHash: '',
     adminAuthorityV2QuorumMode: 'mofn1of1' as 'bare' | 'mofn1of1',
     adminAuthorityV2AdminAddresses: [] as string[],
+    adminAuthorityV2AdminPubkeys: [] as string[],
     protocolConfigLauncherId: '',
     propertyRegistryLauncherId: '',
     propertyRegistryGovPubkey: '',

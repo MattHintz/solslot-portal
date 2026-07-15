@@ -1,905 +1,416 @@
-import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { ChiaSingletonReaderService } from '../../../services/chia-singleton-reader.service';
+import { CoinsetService } from '../../../services/coinset.service';
 import {
-  AdminAuthorityResponse,
-  AdminAuthorityV2Response,
-} from '../../../services/admin-api.service';
-import { ProtocolInfo } from '../../../services/solslot-api.service';
-import { OnChainStateService } from '../../../services/on-chain-state.service';
-import { AdminSessionService } from '../../../services/admin-session.service';
-import {
-  ChiaSingletonReaderService,
-  SingletonLineage,
-} from '../../../services/chia-singleton-reader.service';
-import { ChiaWasmService } from '../../../services/chia-wasm.service';
+  SolslotPublicArtifact,
+} from '../../../services/solslot-api.service';
+import { SolslotProtocolArtifactService } from '../../../services/solslot-protocol-artifact.service';
 import { formatError } from '../../../utils/format-error';
-import { environment } from '../../../../environments/environment';
 
-/**
- * Verification status for a single trust-root singleton card.
- *
- * - ``not-configured`` — operator hasn't deployed this singleton yet.
- * - ``pending`` — verification not yet attempted on this page load.
- * - ``walking`` — actively walking lineage / fetching spend.
- * - ``replaying`` — running the puzzle in WASM.
- * - ``match`` — on-chain state_hash matches API's published value.
- * - ``mismatch`` — they differ; operator drift.
- * - ``error`` — coinset.org or WASM raised; surfaces details.
- * - ``no-spends-yet`` — singleton confirmed but never spent (pristine launch).
- */
-type VerifyStatus =
-  | { kind: 'not-configured' }
-  | { kind: 'pending' }
-  | { kind: 'walking' | 'replaying' }
+type RootKey =
+  | 'sgt'
+  | 'pool'
+  | 'did'
+  | 'governance'
+  | 'navRegistry'
+  | 'protocolConfig'
+  | 'adminAuthority'
+  | 'vaultVersionRegistry';
+
+type RootStatus =
+  | { kind: 'unverified' }
+  | { kind: 'checking' }
   | {
-      kind: 'match';
-      onChainStateHash: string;
-      apiStateHash: string;
+      kind: 'confirmed';
+      currentCoinId: string;
+      confirmedBlockIndex: number;
       lineageDepth: number;
-      latestBlockIndex: number;
     }
-  | {
-      kind: 'mismatch';
-      onChainStateHash: string;
-      apiStateHash: string;
-    }
-  | { kind: 'no-spends-yet'; lineageDepth: number }
   | { kind: 'error'; message: string };
 
+interface TrustRootView {
+  key: RootKey;
+  label: string;
+  role: string;
+  coordinate: string;
+  expectedHash: string | null;
+  kind: 'coin' | 'singleton';
+}
+
 /**
- * Trust Roots admin page (Phase 3).
- *
- * Surfaces the four A.x trust-root singletons published by the API at
- * /protocol + /admin/auth/authority and lets the operator (or any
- * curious admin) verify that the published state matches what's
- * actually on chain.  Verification is end-to-end:
- *
- *   1. Read the API's claim — launcher_id, mod_hash, state_hash.
- *   2. Walk the singleton lineage on coinset.org (no API involvement).
- *   3. Replay the most recent spend in chia-wallet-sdk-wasm.
- *   4. Pull the CREATE_PUZZLE_ANNOUNCEMENT body whose first byte is
- *      PROTOCOL_PREFIX (0x53).  For every A.x puzzle that body is
- *      `PROTOCOL_PREFIX || state_hash` by construction.
- *   5. Compare the on-chain state_hash with the API-published value.
- *      Match  -> green badge "verified".
- *      Differ -> red banner "operator drift; check on coinset.org".
- *
- * The page surfaces three audit-driven UX features (POP-CANON-017/018/021):
- *
- *   - A Phase-2 disclaimer banner (POP-CANON-021): published BLS state
- *     is informational; gating source is the EVM allowlist.
- *   - Per-pubkey-hash size validity badge (POP-CANON-018): each
- *     allowlist_pubkey_hashes entry should be 32 bytes (sha256 of
- *     the original 48-byte BLS G1 pubkey).
- *   - Cardinality summary (POP-CANON-017 spirit): allowlist size +
- *     quorum_m so dilution is visible at a glance.
- *
- * Auth: gated by adminAuthGuard.  A signed-in admin is required to
- * view this page (third parties can already read /admin/auth/authority
- * and /protocol directly without us ever needing to mediate).
+ * Post-genesis trust-root inspector. The signed public artifact supplies the
+ * only accepted coordinates; Coinset lineage checks prove those coordinates
+ * were created in the ceremony block and still resolve to a live state coin.
  */
 @Component({
   selector: 'pp-trust-roots',
   standalone: true,
   imports: [CommonModule, RouterLink],
   template: `
-    <section class="container-p pt-12 pb-24">
+    <section class="container-p py-12 md:py-16">
       <header class="flex flex-wrap items-end justify-between gap-6">
         <div>
           <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-2">
-            Solslot · Admin Desk
+            Solslot Admin Desk
           </div>
-          <h1 class="font-display text-4xl md:text-5xl">Trust roots.</h1>
-          <p class="mt-2 max-w-2xl text-text-muted text-sm">
-            On-chain singletons that hold protocol authority.  Each card
-            shows what the API publishes, then lets you verify it against
-            chain via coinset.org and chia-wallet-sdk WASM running in your
-            browser.  Operator-state-vs-on-chain-state drift becomes
-            visible.
+          <h1 class="font-display text-4xl md:text-5xl">Trust roots</h1>
+          <p class="mt-3 max-w-3xl text-sm leading-relaxed text-text-muted">
+            Inspect the signed V2 artifact and independently resolve every
+            ceremony coordinate on Chia testnet11. This page cannot launch,
+            replace, or paste protocol coordinates.
           </p>
         </div>
-        <a routerLink="/admin" class="btn btn--ghost">&larr; Back to dashboard</a>
+        <a routerLink="/admin" class="btn btn--ghost">&larr; Dashboard</a>
       </header>
 
-      <!-- POP-CANON-021 Phase-2 disclaimer banner -->
-      @if (primaryAuthority(); as a) {
-        @if (a.informational_only) {
-          <div class="mt-8 rounded-card border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
-            <div class="font-display text-base text-amber-300 mb-1">
-              Phase {{ a.phase || '2-informational-only' }} — informational only
-            </div>
-            <p class="text-text-muted leading-relaxed">
-              The on-chain admin-authority state below is published as a
-              transparency surface.  Today the actual gating source for
-              <span class="mono text-text">/admin/*</span> is
-              <span class="mono text-text">{{ a.gating_source || 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST' }}</span>.
-              Phase 2.5 will swap the gating source to the on-chain
-              singleton; until then operators must keep the EVM ↔ BLS
-              allowlist mapping consistent off-chain (the API's startup
-              validator refuses to boot if it detects drift; see
-              <span class="mono">POP-CANON-021</span>).
-            </p>
+      @if (!artifact()) {
+        <div class="mt-10 border border-red-500/40 bg-red-500/10 p-5">
+          <div class="mono text-xs uppercase tracking-[0.2em] text-red-300">
+            Protocol writes locked
           </div>
-        }
-      }
-
-      @if (!chiaWasmReady()) {
-        <div class="mt-8 rounded-card border border-red-500/40 bg-red-500/10 p-4 text-sm">
-          <div class="font-display text-base text-red-300 mb-1">
-            Chia WASM not loaded
-          </div>
-          <p class="text-text-muted leading-relaxed">
-            On-chain verification needs chia-wallet-sdk-wasm to replay
-            spend bundles.  The WASM init failed at page load; the cards
-            below show the API's published state but no chain-verify
-            badges will appear.  Reload the page to retry.
+          <h2 class="font-display mt-2 text-2xl">Signed artifact unavailable</h2>
+          <p class="mt-2 max-w-3xl text-sm text-text-muted">
+            {{ artifactFailure() }} No administrator action is available until
+            this build verifies a 2-of-3 signed Solslot V2 artifact pinned to
+            its frozen source commit.
           </p>
+          <a routerLink="/admin/genesis" class="btn btn--primary mt-5">
+            Open Genesis desk
+          </a>
         </div>
-      }
-
-      <div class="mt-10 grid gap-6 md:grid-cols-2">
-        <h2 class="font-display text-xl md:col-span-2 mt-2 -mb-2">
-          Admin authority
-          <span class="mono text-[0.65rem] uppercase tracking-[0.2em] text-text-muted ml-2 align-middle">
-            {{ authorityV2()?.launcher_id ? 'A.5' : 'A.2 / A.5' }}
-          </span>
-        </h2>
-        <!-- A.2 admin authority -->
-        @if (showLegacyAuthority()) {
-        <div class="card flex flex-col">
-          <div class="flex items-center justify-between gap-4">
+      } @else {
+        <div class="mt-10 border border-brand/35 bg-brand/5 p-5">
+          <div class="flex flex-wrap items-start justify-between gap-5">
             <div>
-              <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">
-                A.2
+              <div class="mono text-xs uppercase tracking-[0.2em] text-brand">
+                Signed artifact verified
               </div>
-              <h3 class="font-display text-2xl mt-1">BLS quorum (v1)</h3>
-              <p class="text-xs text-text-muted mt-1">
-                m-of-n BLS quorum with on-chain rotation.
-              </p>
+              <div class="mono mt-2 break-all text-xs text-text-muted">
+                {{ signedArtifact.artifactHash }}
+              </div>
             </div>
-            <ng-container [ngTemplateOutlet]="statusBadge" [ngTemplateOutletContext]="{ s: adminAuthorityStatus() }"></ng-container>
-          </div>
-
-          @if (!authority()?.launcher_id) {
-            <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
-              Legacy v1 is not configured.  Populate
-              <span class="mono">SOLSLOT_ADMIN_AUTHORITY_*</span>
-              on the API to enable on-chain verification here.
-            </p>
-          } @else {
-          <dl class="mt-5 space-y-3 text-sm flex-1">
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Launcher ID
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ authority()?.launcher_id }}
-              </dd>
-            </div>
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Quorum
-              </dt>
-              <dd class="font-display text-xl mt-1">
-                @if (authority()?.enabled) {
-                  {{ authority()?.quorum_m }} of {{ authority()?.allowlist_pubkey_hashes?.length || 0 }}
-                  <span class="text-xs text-text-muted ml-1">
-                    (v{{ authority()?.authority_version }})
-                  </span>
-                } @else {
-                  <span class="text-text-muted text-sm">disabled</span>
-                }
-              </dd>
-            </div>
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                State hash
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ authority()?.state_hash || '—' }}
-              </dd>
-            </div>
-
-            <!-- POP-CANON-018: surface pubkey-hash sizes so a malformed -->
-            <!-- entry is visible (sha256 results are always 32 bytes). -->
-            @if (authority()?.allowlist_pubkey_hashes?.length) {
+            <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
               <div>
-                <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                  Allowlist pubkey hashes
-                </dt>
-                <dd class="mt-1 grid gap-1">
-                  @for (h of authority()?.allowlist_pubkey_hashes; track h) {
-                    <div class="flex items-center gap-2 text-xs">
-                      <span class="mono break-all flex-1">{{ h }}</span>
-                      <span
-                        class="mono text-[0.6rem] px-1.5 py-0.5 rounded"
-                        [class.bg-brand]="isHash32(h)"
-                        [class.text-bg]="isHash32(h)"
-                        [class.bg-red-500]="!isHash32(h)"
-                        [class.text-white]="!isHash32(h)"
-                      >
-                        {{ hashLengthLabel(h) }}
-                      </span>
+                <div class="mono text-[0.65rem] uppercase text-text-muted">Network</div>
+                <div class="mt-1">{{ signedArtifact.network }}</div>
+              </div>
+              <div>
+                <div class="mono text-[0.65rem] uppercase text-text-muted">Ceremony block</div>
+                <div class="mt-1">{{ signedArtifact.ceremony.confirmedBlockIndex }}</div>
+              </div>
+              <div>
+                <div class="mono text-[0.65rem] uppercase text-text-muted">Admin quorum</div>
+                <div class="mt-1">{{ signedArtifact.adminAuthority.threshold }} of {{ signedArtifact.adminAuthority.compressedPubkeys.length }}</div>
+              </div>
+              <div>
+                <div class="mono text-[0.65rem] uppercase text-text-muted">Validator quorum</div>
+                <div class="mt-1">{{ signedArtifact.validatorSet.threshold }} of {{ signedArtifact.validatorSet.pubkeys.length }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div class="mono text-xs uppercase tracking-[0.2em] text-text-muted">
+              On-chain confirmation
+            </div>
+            <div class="font-display mt-1 text-2xl">
+              {{ confirmedCount() }} of 8 verified
+            </div>
+          </div>
+          <button
+            type="button"
+            class="btn btn--primary"
+            [disabled]="isChecking()"
+            (click)="verifyAll()"
+          >
+            {{ isChecking() ? 'Checking testnet11...' : 'Verify all on chain' }}
+          </button>
+        </div>
+
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+          @for (root of roots(); track root.key) {
+            <article class="card">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">
+                    {{ root.key }}
+                  </div>
+                  <h2 class="font-display mt-1 text-2xl">{{ root.label }}</h2>
+                  <p class="mt-1 text-xs text-text-muted">{{ root.role }}</p>
+                </div>
+                <span class="state-pill" [attr.data-state]="status(root.key).kind">
+                  {{ statusLabel(root.key) }}
+                </span>
+              </div>
+
+              <dl class="mt-5 space-y-4 text-sm">
+                <div>
+                  <dt class="mono text-[0.65rem] uppercase text-text-muted">
+                    {{ root.kind === 'coin' ? 'Genesis coin ID' : 'Launcher ID' }}
+                  </dt>
+                  <dd class="mono mt-1 break-all text-xs">{{ root.coordinate }}</dd>
+                </div>
+                @if (root.expectedHash) {
+                  <div>
+                    <dt class="mono text-[0.65rem] uppercase text-text-muted">Committed hash</dt>
+                    <dd class="mono mt-1 break-all text-xs">{{ root.expectedHash }}</dd>
+                  </div>
+                }
+                @if (status(root.key); as rootStatus) {
+                  @if (rootStatus.kind === 'confirmed') {
+                    <div class="grid grid-cols-2 gap-4">
+                      <div>
+                        <dt class="mono text-[0.65rem] uppercase text-text-muted">Block</dt>
+                        <dd class="mt-1">{{ rootStatus.confirmedBlockIndex }}</dd>
+                      </div>
+                      <div>
+                        <dt class="mono text-[0.65rem] uppercase text-text-muted">Lineage depth</dt>
+                        <dd class="mt-1">{{ rootStatus.lineageDepth }}</dd>
+                      </div>
+                    </div>
+                    <div>
+                      <dt class="mono text-[0.65rem] uppercase text-text-muted">Current coin</dt>
+                      <dd class="mono mt-1 break-all text-xs">{{ rootStatus.currentCoinId }}</dd>
+                    </div>
+                  } @else if (rootStatus.kind === 'error') {
+                    <div class="border border-red-500/30 bg-red-500/5 p-3 text-xs text-red-200">
+                      {{ rootStatus.message }}
                     </div>
                   }
-                </dd>
+                }
+              </dl>
+
+              <button
+                type="button"
+                class="btn btn--ghost mt-5 text-xs"
+                [disabled]="status(root.key).kind === 'checking'"
+                (click)="verifyRoot(root)"
+              >
+                {{ status(root.key).kind === 'confirmed' ? 'Re-verify' : 'Verify on chain' }}
+              </button>
+            </article>
+          }
+        </div>
+
+        <section class="mt-10 border-t border-border pt-8">
+          <div class="mono text-xs uppercase tracking-[0.2em] text-text-muted">
+            Frozen source commits
+          </div>
+          <dl class="mt-4 grid gap-3 md:grid-cols-2">
+            @for (source of sourceEntries(signedArtifact); track source.name) {
+              <div class="border border-border p-3">
+                <dt class="mono text-[0.65rem] uppercase text-text-muted">{{ source.name }}</dt>
+                <dd class="mono mt-1 break-all text-xs">{{ source.sha }}</dd>
               </div>
             }
           </dl>
-          }
-
-          @if (authority()?.launcher_id) {
-            <div class="mt-5 flex items-center gap-3 flex-wrap">
-              <button
-                type="button"
-                class="btn btn--ghost text-xs"
-                [disabled]="!chiaWasmReady() || isWalking(adminAuthorityStatus())"
-                (click)="verifyAdminAuthority()"
-              >
-                {{ verifyButtonLabel(adminAuthorityStatus()) }}
-              </button>
-              @if (verifyDetail(adminAuthorityStatus()); as detail) {
-                <span class="text-xs text-text-muted">{{ detail }}</span>
-              }
-            </div>
-          }
-        </div>
-        }
-
-        <!-- A.5 admin authority v2 (Phase 9-Hermes-C) -->
-        <div class="card flex flex-col">
-          <div class="flex items-center justify-between gap-4">
-            <div>
-              <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">
-                A.5
-              </div>
-              <h3 class="font-display text-2xl mt-1">MIPS quorum (v2)</h3>
-              <p class="text-xs text-text-muted mt-1">
-                MIPS m-of-n quorum with per-admin OneOfN
-                (BLS / EIP-712 / passkey).
-              </p>
-            </div>
-            <ng-container [ngTemplateOutlet]="statusBadge" [ngTemplateOutletContext]="{ s: adminAuthorityV2Status() }"></ng-container>
-          </div>
-
-          @if (!authorityV2()?.launcher_id) {
-            <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
-              Launch the v2 admin-authority singleton to enable
-              chain verification here.
-            </p>
-          } @else {
-          <dl class="mt-5 space-y-3 text-sm flex-1">
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Launcher ID
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ authorityV2()?.launcher_id }}
-              </dd>
-            </div>
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Migration phase
-              </dt>
-              <dd class="font-display text-xl mt-1">
-                @if (authorityV2()?.enabled) {
-                  {{ authorityV2()?.phase }}
-                  <span class="text-xs text-text-muted ml-1">
-                    (v{{ authorityV2()?.authority_version }})
-                  </span>
-                } @else {
-                  <span class="text-text-muted text-sm">disabled</span>
-                }
-              </dd>
-            </div>
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                MIPS root hash
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ authorityV2()?.mips_root_hash || '—' }}
-              </dd>
-            </div>
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Admins-list hash
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ authorityV2()?.admins_hash || '—' }}
-              </dd>
-            </div>
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Pending-ops hash
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ authorityV2()?.pending_ops_hash || '— empty —' }}
-              </dd>
-            </div>
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                State hash
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ authorityV2()?.state_hash || '—' }}
-              </dd>
-            </div>
-          </dl>
-          }
-
-          @if (authorityV2()?.launcher_id) {
-            <div class="mt-5 flex items-center gap-3 flex-wrap">
-              <button
-                type="button"
-                class="btn btn--ghost text-xs"
-                [disabled]="!chiaWasmReady() || isWalking(adminAuthorityV2Status())"
-                (click)="verifyAdminAuthorityV2()"
-              >
-                {{ verifyButtonLabel(adminAuthorityV2Status()) }}
-              </button>
-              @if (verifyDetail(adminAuthorityV2Status()); as detail) {
-                <span class="text-xs text-text-muted">{{ detail }}</span>
-              }
-            </div>
-          }
-        </div>
-
-        <h2 class="font-display text-xl md:col-span-2 mt-6 -mb-2">
-          Protocol surfaces
-          <span class="mono text-[0.65rem] uppercase tracking-[0.2em] text-text-muted ml-2 align-middle">
-            A.3 / A.4
-          </span>
-        </h2>
-        <!-- A.3 protocol config -->
-        <div class="card flex flex-col">
-          <div class="flex items-center justify-between gap-4">
-            <div>
-              <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">A.3</div>
-              <h3 class="font-display text-2xl mt-1">Protocol config</h3>
-              <p class="text-xs text-text-muted mt-1">
-                Pool / governance launcher ids + chain network.
-              </p>
-            </div>
-            <ng-container [ngTemplateOutlet]="statusBadge" [ngTemplateOutletContext]="{ s: protocolConfigStatus() }"></ng-container>
-          </div>
-
-          @if (!protocol()?.protocol_config_launcher_id) {
-            <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
-              Network: <span class="mono">{{ protocol()?.network || '—' }}</span>.
-              Launch the protocol-config singleton, then set
-              <span class="mono">SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID</span>.
-            </p>
-            <div class="mt-4 rounded-card border border-yellow-500/30 bg-yellow-500/5 p-3 text-xs text-text-muted">
-              <div class="font-display text-sm text-yellow-100">Vault registration is locked</div>
-              <p class="mt-2 leading-relaxed">
-                A.3 is the protocol configuration trust root.  It records the pool, governance,
-                network, and version on chain so a broker or auditor can later verify that users
-                registered against the intended protocol.
-              </p>
-              <div class="mt-3 grid gap-3">
-                <div>
-                  <div class="font-display text-sm text-text">Who launches it</div>
-                  <p class="mt-1 leading-relaxed">
-                    An authorized technical protocol operator launches this singleton after the
-                    firm's off-chain approval record is complete.  This page does not create legal
-                    approval, register a vault, mint securities, or ask for private keys.
-                  </p>
-                </div>
-                <div>
-                  <div class="font-display text-sm text-text">What must be ready</div>
-                  <ul class="mt-1 list-disc space-y-1 pl-5">
-                    <li>Approved pool launcher id.</li>
-                    <li>Approved governance launcher id.</li>
-                    <li>Correct network, such as testnet11 or mainnet.</li>
-                    <li>Governance public key and a funded Chia wallet coin for the singleton launch.</li>
-                  </ul>
-                </div>
-                <div>
-                  <div class="font-display text-sm text-text">After launch</div>
-                  <ul class="mt-1 list-disc space-y-1 pl-5">
-                    <li>Capture the A.3 launcher id.</li>
-                    <li>Set <span class="mono">SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID</span> in the API environment.</li>
-                    <li>Restart the API, then verify <span class="mono">/protocol</span> and this Trust Roots card.</li>
-                    <li>Keep the approval record, launcher id, environment change, and verification result for audit review.</li>
-                  </ul>
-                </div>
-              </div>
-              <p class="mt-3 leading-relaxed">
-                Technical support procedure: <span class="mono">solslot_api/GENESIS_README.md §A.3</span>
-                and <span class="mono">solslot_api/SECURITY.md §A.3</span>.
-              </p>
-              <a routerLink="/admin/launch-protocol-config" class="btn btn--primary text-xs mt-4">
-                Launch A.3 in portal
-              </a>
-            </div>
-          } @else {
-          <dl class="mt-5 space-y-3 text-sm flex-1">
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Launcher ID
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ protocol()?.protocol_config_launcher_id }}
-              </dd>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                  Network
-                </dt>
-                <dd class="font-display text-lg mt-1">
-                  {{ protocol()?.network }}
-                </dd>
-              </div>
-              <div>
-                <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                  Version
-                </dt>
-                <dd class="font-display text-lg mt-1">
-                  {{ protocol()?.protocol_config_version }}
-                </dd>
-              </div>
-            </div>
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Content hash
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ protocol()?.protocol_config_hash || '—' }}
-              </dd>
-            </div>
-          </dl>
-          }
-
-          @if (protocol()?.protocol_config_launcher_id) {
-            <div class="mt-5 flex items-center gap-3 flex-wrap">
-              <button
-                type="button"
-                class="btn btn--ghost text-xs"
-                [disabled]="!chiaWasmReady() || isWalking(protocolConfigStatus())"
-                (click)="verifyProtocolConfig()"
-              >
-                {{ verifyButtonLabel(protocolConfigStatus()) }}
-              </button>
-              @if (verifyDetail(protocolConfigStatus()); as detail) {
-                <span class="text-xs text-text-muted">{{ detail }}</span>
-              }
-            </div>
-          }
-        </div>
-
-        <!-- A.4 property registry -->
-        <div class="card flex flex-col">
-          <div class="flex items-center justify-between gap-4">
-            <div>
-              <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">A.4</div>
-              <h3 class="font-display text-2xl mt-1">Property registry</h3>
-              <p class="text-xs text-text-muted mt-1">
-                Append-only, uniqueness-enforced property-id registry.
-              </p>
-            </div>
-            <ng-container [ngTemplateOutlet]="statusBadge" [ngTemplateOutletContext]="{ s: propertyRegistryStatus() }"></ng-container>
-          </div>
-
-          @if (!protocol()?.property_registry_launcher_id) {
-            <p class="mt-5 text-xs text-text-muted leading-relaxed flex-1">
-              Launch the property-registry singleton, then set
-              <span class="mono">SOLSLOT_PROTOCOL_PROPERTY_REGISTRY_LAUNCHER_ID</span>.
-            </p>
-          } @else {
-          <dl class="mt-5 space-y-3 text-sm flex-1">
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Launcher ID
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ protocol()?.property_registry_launcher_id }}
-              </dd>
-            </div>
-            <div>
-              <dt class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-                Mod hash
-              </dt>
-              <dd class="mono text-xs break-all mt-1">
-                {{ protocol()?.property_registry_mod_hash || '—' }}
-              </dd>
-            </div>
-          </dl>
-          }
-
-          @if (protocol()?.property_registry_launcher_id) {
-            <div class="mt-5 flex items-center gap-3 flex-wrap">
-              <button
-                type="button"
-                class="btn btn--ghost text-xs"
-                [disabled]="!chiaWasmReady() || isWalking(propertyRegistryStatus())"
-                (click)="verifyPropertyRegistry()"
-              >
-                {{ verifyButtonLabel(propertyRegistryStatus()) }}
-              </button>
-              @if (verifyDetail(propertyRegistryStatus()); as detail) {
-                <span class="text-xs text-text-muted">{{ detail }}</span>
-              }
-            </div>
-          }
-        </div>
-
-        <h2 class="font-display text-xl md:col-span-2 mt-6 -mb-2">
-          Per-proposal puzzle
-          <span class="mono text-[0.65rem] uppercase tracking-[0.2em] text-text-muted ml-2 align-middle">
-            A.1
-          </span>
-        </h2>
-        <!-- A.1 mint proposal mod hash (no per-protocol launcher; per-proposal) -->
-        <div class="card md:col-span-2">
-          <div class="flex items-center justify-between gap-4">
-            <div>
-              <div class="mono text-[0.65rem] uppercase tracking-[0.2em] text-brand">A.1</div>
-              <h3 class="font-display text-2xl mt-1">Mint proposal</h3>
-              <p class="text-xs text-text-muted mt-1">
-                A.1 is a puzzle module rather than a singleton.  Each
-                proposal launches its own singleton with its own
-                launcher_id, so verification is per-proposal.
-              </p>
-            </div>
-            <span class="state-pill" data-state="DRAFT">module</span>
-          </div>
-
-          <div class="mt-5 text-sm">
-            <div class="mono text-[0.65rem] uppercase tracking-[0.18em] text-text-muted">
-              Inner mod hash
-            </div>
-            <div class="mono text-xs break-all mt-1">
-              {{ protocol()?.mint_proposal_mod_hash || '—' }}
-            </div>
-          </div>
-          <p class="text-xs text-text-muted leading-relaxed mt-4">
-            Open any
-            <a class="text-brand hover:underline" routerLink="/admin">mint proposal detail</a>
-            page to walk that proposal's lineage and verify its
-            published state.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <ng-template #statusBadge let-s="s">
-      @switch (s.kind) {
-        @case ('match') {
-          <span class="state-pill ok">verified</span>
-        }
-        @case ('mismatch') {
-          <span class="state-pill err">drift</span>
-        }
-        @case ('walking') {
-          <span class="state-pill busy">walking…</span>
-        }
-        @case ('replaying') {
-          <span class="state-pill busy">replaying…</span>
-        }
-        @case ('no-spends-yet') {
-          <span class="state-pill">no spends</span>
-        }
-        @case ('error') {
-          <span class="state-pill err">error</span>
-        }
-        @case ('not-configured') {
-          <span class="state-pill">not deployed</span>
-        }
-        @default {
-          <span class="state-pill">unverified</span>
-        }
+        </section>
       }
-    </ng-template>
+    </section>
   `,
   styles: [
     `
       .state-pill {
+        flex: 0 0 auto;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        padding: 0.2rem 0.5rem;
         font-family: var(--font-mono);
         font-size: 0.65rem;
-        letter-spacing: 0.18em;
-        padding: 0.18rem 0.55rem;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--muted);
+        text-transform: uppercase;
       }
-      .state-pill.ok {
-        color: #04110d;
-        background: rgba(124, 255, 178, 0.85);
+      .state-pill[data-state='confirmed'] {
+        border-color: rgba(124, 255, 178, 0.5);
+        background: rgba(124, 255, 178, 0.12);
+        color: rgb(124, 255, 178);
       }
-      .state-pill.busy {
-        color: #2ce7ff;
-        background: rgba(44, 231, 255, 0.12);
+      .state-pill[data-state='checking'] {
+        color: rgb(44, 231, 255);
       }
-      .state-pill.err {
-        color: rgba(255, 120, 120, 0.95);
-        background: rgba(255, 120, 120, 0.12);
+      .state-pill[data-state='error'] {
+        border-color: rgba(248, 113, 113, 0.5);
+        color: rgb(252, 165, 165);
       }
     `,
   ],
 })
 export class TrustRootsComponent {
-  private readonly http = inject(HttpClient);
-  private readonly onChain = inject(OnChainStateService);
-  private readonly session = inject(AdminSessionService);
+  private readonly protocolArtifact = inject(SolslotProtocolArtifactService);
   private readonly singleton = inject(ChiaSingletonReaderService);
-  private readonly wasm = inject(ChiaWasmService);
-
-  readonly authority = signal<AdminAuthorityResponse | null>(null);
-  readonly authorityV2 = signal<AdminAuthorityV2Response | null>(null);
-  readonly protocol = signal<ProtocolInfo | null>(null);
-
-  readonly adminAuthorityStatus = signal<VerifyStatus>({ kind: 'pending' });
-  readonly adminAuthorityV2Status = signal<VerifyStatus>({ kind: 'pending' });
-  readonly protocolConfigStatus = signal<VerifyStatus>({ kind: 'pending' });
-  readonly propertyRegistryStatus = signal<VerifyStatus>({ kind: 'pending' });
-
-  readonly chiaWasmReady = computed(() => this.wasm.ready());
-  readonly primaryAuthority = computed(() =>
-    this.authorityV2(),
+  private readonly coinset = inject(CoinsetService);
+  private readonly statuses = signal<Record<RootKey, RootStatus>>(
+    initialStatuses(),
   );
-  readonly showLegacyAuthority = computed(() => false);
 
-  constructor() {
-    void this.loadInitial();
+  readonly artifact = computed(() => this.protocolArtifact.artifact);
+  readonly artifactFailure = computed(() => this.protocolArtifact.failure);
+  readonly roots = computed(() => buildRoots(this.protocolArtifact.artifact));
+  readonly confirmedCount = computed(() =>
+    Object.values(this.statuses()).filter((value) => value.kind === 'confirmed').length,
+  );
+  readonly isChecking = computed(() =>
+    Object.values(this.statuses()).some((value) => value.kind === 'checking'),
+  );
+
+  get signedArtifact(): SolslotPublicArtifact {
+    return this.protocolArtifact.artifact!;
   }
 
-  /**
-   * Load each singleton's on-chain state via {@link OnChainStateService}.
-   *
-   * Post-Hermes-D: there's no API to fail any more — the data is
-   * sourced from build-time env constants (launcher_ids, mod_hashes)
-   * plus on-chain singleton replays.  The shim swallows per-singleton
-   * read failures and surfaces them as null fields, so a single bad
-   * coinset response no longer hides the rest of the page.  Card-level
-   * status badges still call {@link runVerification} (the old
-   * "verify" button) which surfaces walking/replay errors per card.
-   */
-  private async loadInitial(): Promise<void> {
-    const [auth, proto, authV2] = await this.loadPublishedSnapshots();
-    this.authority.set(auth);
-    this.protocol.set(proto);
-    this.authorityV2.set(authV2);
-
-    if (!auth.launcher_id) {
-      this.adminAuthorityStatus.set({ kind: 'not-configured' });
-    }
-    if (!authV2.launcher_id) {
-      this.adminAuthorityV2Status.set({ kind: 'not-configured' });
-    }
-    if (!proto.protocol_config_launcher_id) {
-      this.protocolConfigStatus.set({ kind: 'not-configured' });
-    }
-    if (!proto.property_registry_launcher_id) {
-      this.propertyRegistryStatus.set({ kind: 'not-configured' });
-    }
+  status(key: RootKey): RootStatus {
+    return this.statuses()[key];
   }
 
-  private async loadPublishedSnapshots(): Promise<
-    [AdminAuthorityResponse, ProtocolInfo, AdminAuthorityV2Response]
-  > {
-    try {
-      return await Promise.all([
-        firstValueFrom(
-          this.http.get<AdminAuthorityResponse>(
-            `${environment.faucetApi}/admin/auth/authority`,
-          ),
-        ),
-        firstValueFrom(
-          this.http.get<ProtocolInfo>(`${environment.faucetApi}/protocol`),
-        ),
-        firstValueFrom(
-          this.http.get<AdminAuthorityV2Response>(
-            `${environment.faucetApi}/admin/auth/authority_v2`,
-          ),
-        ),
-      ]);
-    } catch {
-      return Promise.all([
-        this.onChain.getAuthority(),
-        this.onChain.getProtocolInfo(),
-        this.onChain.getAuthorityV2(),
-      ]);
-    }
-  }
-
-  /**
-   * Walk the v1 admin-authority singleton lineage and surface its
-   * latest on-chain state hash.  Post-Hermes-D ``state_hash`` may be
-   * null on first paint (the OnChainStateService shim returns null
-   * when WASM isn't ready yet); the walk re-derives it from chain so
-   * the button always works once the launcher is configured.
-   */
-  async verifyAdminAuthority(): Promise<void> {
-    const launcher = this.authority()?.launcher_id;
-    if (!launcher) return;
-    const claimed = this.authority()?.state_hash ?? null;
-    await this.runVerification(launcher, claimed, this.adminAuthorityStatus);
-  }
-
-  /**
-   * Walk the v2 admin-authority singleton lineage; semantics match
-   * {@link verifyAdminAuthority}.
-   */
-  async verifyAdminAuthorityV2(): Promise<void> {
-    const launcher = this.authorityV2()?.launcher_id;
-    if (!launcher) return;
-    const claimed = this.authorityV2()?.state_hash ?? null;
-    await this.runVerification(launcher, claimed, this.adminAuthorityV2Status);
-  }
-
-  /**
-   * Walk the protocol-config singleton lineage; semantics match
-   * {@link verifyAdminAuthority}.
-   */
-  async verifyProtocolConfig(): Promise<void> {
-    const launcher = this.protocol()?.protocol_config_launcher_id;
-    if (!launcher) return;
-    const claimed = this.protocol()?.protocol_config_hash ?? null;
-    await this.runVerification(launcher, claimed, this.protocolConfigStatus);
-  }
-
-  async verifyPropertyRegistry(): Promise<void> {
-    const launcher = this.protocol()?.property_registry_launcher_id;
-    if (!launcher) return;
-    // A.4 doesn't expose a state_hash on /protocol — its on-chain
-    // CREATE_PUZZLE_ANNOUNCEMENT body is the property_id_canon, not a
-    // state hash.  For Phase 3 we just verify lineage exists and
-    // record depth; per-property verification lives on a future page.
-    await this.runVerification(launcher, null, this.propertyRegistryStatus);
-  }
-
-  /**
-   * Common verification flow for any singleton:
-   *   1. Walk lineage from launcher_id forward.
-   *   2. Replay the latest spend in WASM.
-   *   3. Read the protocol-prefixed announcement body.
-   *   4. Compare against the claimed state hash, if provided.
-   */
-  private async runVerification(
-    launcherId: string,
-    claimedStateHash: string | null,
-    target: { set: (v: VerifyStatus) => void },
-  ): Promise<void> {
-    target.set({ kind: 'walking' });
-    try {
-      const lineage = await this.singleton.walkLineage(launcherId);
-      if (!lineage) {
-        target.set({
-          kind: 'error',
-          message: 'Launcher coin not found on chain (not yet confirmed?).',
-        });
-        return;
-      }
-
-      const hasStateSpends = lineage.nodes.some(
-        (n) => !n.isLauncher && n.spentBlockIndex !== null,
-      );
-      if (!hasStateSpends) {
-        target.set({ kind: 'no-spends-yet', lineageDepth: lineage.nodes.length });
-        return;
-      }
-
-      target.set({ kind: 'replaying' });
-      const onChain = await this.singleton.readLatestProtocolStateHash(lineage);
-      if (!onChain) {
-        target.set({
-          kind: 'error',
-          message: 'Latest spend has no PROTOCOL_PREFIX announcement.',
-        });
-        return;
-      }
-
-      const onChainHex = '0x' + bytesToHex(onChain);
-      const latestNode = this.findLatestSpentNode(lineage);
-
-      if (claimedStateHash === null) {
-        // No published state_hash to compare — treat the lineage walk
-        // alone as success (A.4 case).
-        target.set({
-          kind: 'match',
-          onChainStateHash: onChainHex,
-          apiStateHash: '(not published)',
-          lineageDepth: lineage.nodes.length,
-          latestBlockIndex: latestNode?.spentBlockIndex ?? 0,
-        });
-        return;
-      }
-
-      if (eqHex(onChainHex, claimedStateHash)) {
-        target.set({
-          kind: 'match',
-          onChainStateHash: onChainHex,
-          apiStateHash: claimedStateHash,
-          lineageDepth: lineage.nodes.length,
-          latestBlockIndex: latestNode?.spentBlockIndex ?? 0,
-        });
-      } else {
-        target.set({
-          kind: 'mismatch',
-          onChainStateHash: onChainHex,
-          apiStateHash: claimedStateHash,
-        });
-      }
-    } catch (e) {
-      target.set({ kind: 'error', message: formatError(e) });
-    }
-  }
-
-  private findLatestSpentNode(lineage: SingletonLineage) {
-    for (let i = lineage.nodes.length - 1; i >= 0; i--) {
-      if (lineage.nodes[i].spentBlockIndex !== null) return lineage.nodes[i];
-    }
-    return null;
-  }
-
-  /** Template helpers. */
-  isWalking(s: VerifyStatus): boolean {
-    return s.kind === 'walking' || s.kind === 'replaying';
-  }
-
-  isHash32(hex: string): boolean {
-    const stripped = hex.startsWith('0x') ? hex.slice(2) : hex;
-    return stripped.length === 64;
-  }
-
-  hashLengthLabel(hex: string): string {
-    const stripped = hex.startsWith('0x') ? hex.slice(2) : hex;
-    return `${stripped.length / 2}B`;
-  }
-
-  /** Render a one-line summary for the verify-status footer text. */
-  verifyDetail(s: VerifyStatus): string | null {
-    switch (s.kind) {
-      case 'match':
-        return `depth ${s.lineageDepth}, last spend at block ${s.latestBlockIndex}`;
-      case 'mismatch':
-        return 'on-chain hash differs from API';
-      case 'no-spends-yet':
-        return `launcher confirmed; lineage depth ${s.lineageDepth}`;
+  statusLabel(key: RootKey): string {
+    switch (this.status(key).kind) {
+      case 'checking':
+        return 'checking';
+      case 'confirmed':
+        return 'confirmed';
       case 'error':
-        return s.message;
+        return 'failed';
       default:
-        return null;
+        return 'unverified';
     }
   }
 
-  /**
-   * Verify-button copy.  ``Re-verify`` is only correct after a prior
-   * successful walk; otherwise the button hasn't actually verified
-   * anything yet.  ``not-configured`` cards render the button disabled
-   * with a passive label so the affordance is honest.
-   */
-  verifyButtonLabel(s: VerifyStatus): string {
-    switch (s.kind) {
-      case 'match':
-      case 'mismatch':
-      case 'no-spends-yet':
-        return 'Re-verify';
-      case 'walking':
-      case 'replaying':
-        return 'Verifying…';
-      case 'not-configured':
-        return 'Not deployed';
-      case 'error':
-        return 'Retry verify';
-      default:
-        return 'Verify on chain';
+  async verifyAll(): Promise<void> {
+    for (const root of this.roots()) await this.verifyRoot(root);
+  }
+
+  async verifyRoot(root: TrustRootView): Promise<void> {
+    const artifact = this.protocolArtifact.artifact;
+    if (!artifact) return;
+    this.setStatus(root.key, { kind: 'checking' });
+    try {
+      if (root.kind === 'coin') {
+        const record = await this.coinset.getCoinRecordByName(root.coordinate);
+        if (!record) throw new Error('Genesis coin is absent from testnet11.');
+        if (record.confirmed_block_index !== artifact.ceremony.confirmedBlockIndex) {
+          throw new Error('Genesis coin confirmation block does not match the signed ceremony.');
+        }
+        this.setStatus(root.key, {
+          kind: 'confirmed',
+          currentCoinId: root.coordinate,
+          confirmedBlockIndex: record.confirmed_block_index,
+          lineageDepth: 1,
+        });
+        return;
+      }
+
+      const lineage = await this.singleton.walkLineage(root.coordinate);
+      if (!lineage || lineage.nodes.length < 2) {
+        throw new Error('Singleton eve coin is not confirmed on testnet11.');
+      }
+      if (
+        lineage.launcher.confirmed_block_index !==
+        artifact.ceremony.confirmedBlockIndex
+      ) {
+        throw new Error('Launcher confirmation block does not match the signed ceremony.');
+      }
+      const current = lineage.nodes[lineage.nodes.length - 1];
+      if (current.isLauncher || current.spentBlockIndex !== null) {
+        throw new Error('Singleton lineage does not end at a current unspent state coin.');
+      }
+      this.setStatus(root.key, {
+        kind: 'confirmed',
+        currentCoinId: current.coinId,
+        confirmedBlockIndex: current.confirmedBlockIndex,
+        lineageDepth: lineage.nodes.length,
+      });
+    } catch (error) {
+      this.setStatus(root.key, { kind: 'error', message: formatError(error) });
     }
+  }
+
+  sourceEntries(artifact: SolslotPublicArtifact): Array<{ name: string; sha: string }> {
+    return Object.entries(artifact.sourceShas).map(([name, sha]) => ({ name, sha }));
+  }
+
+  private setStatus(key: RootKey, status: RootStatus): void {
+    this.statuses.update((current) => ({ ...current, [key]: status }));
   }
 }
 
-function bytesToHex(b: Uint8Array): string {
-  let s = '';
-  for (const byte of b) s += byte.toString(16).padStart(2, '0');
-  return s;
+function initialStatuses(): Record<RootKey, RootStatus> {
+  return {
+    sgt: { kind: 'unverified' },
+    pool: { kind: 'unverified' },
+    did: { kind: 'unverified' },
+    governance: { kind: 'unverified' },
+    navRegistry: { kind: 'unverified' },
+    protocolConfig: { kind: 'unverified' },
+    adminAuthority: { kind: 'unverified' },
+    vaultVersionRegistry: { kind: 'unverified' },
+  };
 }
 
-function eqHex(a: string, b: string): boolean {
-  const na = (a.startsWith('0x') ? a.slice(2) : a).toLowerCase();
-  const nb = (b.startsWith('0x') ? b.slice(2) : b).toLowerCase();
-  return na === nb;
+function buildRoots(artifact: SolslotPublicArtifact | null): TrustRootView[] {
+  if (!artifact) return [];
+  return [
+    {
+      key: 'sgt',
+      label: 'SGT genesis',
+      role: 'Fresh governance CAT genesis and tail commitment.',
+      coordinate: artifact.sgtGenesisCoinId,
+      expectedHash: artifact.sgtTailHash,
+      kind: 'coin',
+    },
+    singletonRoot('pool', 'Pool V3', 'Only deployable deed liquidity pool.', artifact),
+    singletonRoot('did', 'Protocol DID', 'Canonical protocol identity root.', artifact),
+    singletonRoot(
+      'governance',
+      'Governance',
+      'Trusted 2-of-3 administration and proposal authority.',
+      artifact,
+      artifact.governanceStruct.treeHash,
+    ),
+    singletonRoot(
+      'navRegistry',
+      'NAV registry',
+      'Versioned collection NAV authority.',
+      artifact,
+    ),
+    singletonRoot(
+      'protocolConfig',
+      'Protocol config',
+      'Immutable network and protocol coordinate registry.',
+      artifact,
+    ),
+    singletonRoot(
+      'adminAuthority',
+      'Admin authority',
+      'Three-member roster with a 2-of-3 threshold.',
+      artifact,
+      artifact.adminAuthority.mipsRootHash,
+    ),
+    singletonRoot(
+      'vaultVersionRegistry',
+      'Vault version registry',
+      'Approved vault code and credential policy versions.',
+      artifact,
+    ),
+  ];
+}
+
+function singletonRoot(
+  key: Exclude<RootKey, 'sgt'>,
+  label: string,
+  role: string,
+  artifact: SolslotPublicArtifact,
+  expectedHash: string | null = null,
+): TrustRootView {
+  const hash =
+    expectedHash ||
+    (key === 'pool' ? artifact.puzzleHashes.poolInnerPuzzleHash : null);
+  return {
+    key,
+    label,
+    role,
+    coordinate: artifact.launcherIds[key],
+    expectedHash: hash,
+    kind: 'singleton',
+  };
 }

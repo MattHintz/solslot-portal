@@ -7,25 +7,25 @@ import { AdminSessionService } from './admin-session.service';
  * and the public committee pages.
  *
  * Behaviour:
- *   - If the {@link AdminSessionService} reports an active authenticated
- *     session, the route activates.
+ *   - The {@link AdminSessionService} re-verifies the signed envelope against
+ *     the currently verified genesis artifact before the route activates.
  *   - Otherwise the user is redirected to `/admin/login`, with the
  *     attempted URL preserved in `?returnTo=` so the login page can route
  *     them back after a successful sign-in.
  *
- * The session service drops expired JWTs at construction time
- * (`load()` checks `expiresAt`), so a stale localStorage session can never
- * reach a guarded page even if the user reloads with a cached token.
- *
- * Note that this is a UX safety net only — the real authority check lives
- * in `solslot_api/admin_auth.py:require_admin_jwt`, which re-validates
- * live allowlist membership on every request (POP-CANON-012).
+ * The route guard is only one layer. Every API mutation still verifies its
+ * action-specific authorization and administrator threshold server-side.
  */
 export const adminAuthGuard: CanActivateFn = (route, state): boolean | UrlTree => {
   const session = inject(AdminSessionService);
   const router = inject(Router);
 
-  if (session.isAuthenticated()) return true;
+  try {
+    session.requireSession();
+    return true;
+  } catch {
+    session.logout();
+  }
 
   return router.createUrlTree(['/admin/login'], {
     queryParams: { returnTo: state.url },

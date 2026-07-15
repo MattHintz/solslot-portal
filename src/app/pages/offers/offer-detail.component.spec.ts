@@ -11,6 +11,10 @@ import { VaultState } from '../../services/solslot-api.service';
 import { PersistedSession, SessionService } from '../../services/session.service';
 import { VaultAcceptOfferLifecycleService } from '../../services/vault-accept-offer-lifecycle.service';
 import {
+  clearVerifiedProtocolCoordinates,
+  installVerifiedProtocolCoordinates,
+} from '../../services/protocol-coordinate-guard';
+import {
   VaultAcceptOfferProofParams,
   ZkPassportAcceptOfferProofService,
 } from '../../services/zkpassport-accept-offer-proof.service';
@@ -79,6 +83,11 @@ describe('OfferDetailComponent', () => {
       poolInnerPuzzleHash: PINNED_POOL_INNER_PUZZLE_HASH,
       bridgePolicyHash: PINNED_BRIDGE_POLICY_HASH,
     });
+    installVerifiedProtocolCoordinates({
+      poolLauncherId: PINNED_POOL_LAUNCHER_ID,
+      poolInnerPuzzleHash: PINNED_POOL_INNER_PUZZLE_HASH,
+      bridgePolicyHash: PINNED_BRIDGE_POLICY_HASH,
+    });
     session = new MockSessionService();
     evm = new MockEvmWalletService();
     offerSource = jasmine.createSpyObj<OfferSourceService>('OfferSourceService', ['offerById']);
@@ -109,6 +118,7 @@ describe('OfferDetailComponent', () => {
   });
 
   afterEach(() => {
+    clearVerifiedProtocolCoordinates();
     restoreProtocolEnvironment();
   });
 

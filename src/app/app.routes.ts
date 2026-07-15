@@ -1,6 +1,5 @@
 import { Routes } from '@angular/router';
 import { adminAuthGuard } from './services/admin-auth.guard';
-import { adminBootstrapLaunchGuard } from './services/admin-bootstrap-launch.guard';
 
 export const routes: Routes = [
   {
@@ -56,14 +55,6 @@ export const routes: Routes = [
     title: 'Genesis Launch · Solslot',
   },
   {
-    path: 'admin/recovery',
-    loadComponent: () =>
-      import('./pages/admin/recovery/recovery.component').then(
-        (m) => m.RecoveryComponent,
-      ),
-    title: 'Bootstrap Recovery · Solslot',
-  },
-  {
     path: 'admin',
     // The guard pushes the original URL into ?returnTo= so users land
     // back on their target page after signing in.  Static-imported so
@@ -113,47 +104,6 @@ export const routes: Routes = [
         (m) => m.TrustRootsComponent,
       ),
     title: 'Trust Roots · Solslot',
-  },
-  {
-    path: 'admin/launch-protocol-config',
-    canActivate: [adminAuthGuard],
-    loadComponent: () =>
-      import(
-        './pages/admin/launch-protocol-config/launch-protocol-config.component'
-      ).then((m) => m.LaunchProtocolConfigComponent),
-    title: 'Launch Protocol Config · Solslot',
-  },
-  {
-    path: 'admin/authority-v2/add-admin-slot',
-    canActivate: [adminAuthGuard],
-    loadComponent: () =>
-      import('./pages/admin/add-admin-slot/add-admin-slot.component').then(
-        (m) => m.AddAdminSlotComponent,
-      ),
-    title: 'Add Admin Slot · Solslot',
-  },
-  {
-    path: 'admin/authority-v2/roster-spend-package-review',
-    canActivate: [adminAuthGuard],
-    loadComponent: () =>
-      import(
-        './pages/admin/roster-spend-package-review/roster-spend-package-review.component'
-      ).then((m) => m.RosterSpendPackageReviewComponent),
-    title: 'Review Roster Spend Package · Solslot',
-  },
-  {
-    // Phase 9-Hermes-D D-2.4: launch-v2 wizard.
-    // Computes every deterministic output of a v2 admin-authority
-    // genesis launch from operator inputs (parent coin id + admin
-    // records + MIPS root).  Preview-only for now — actual on-chain
-    // submission lands in D-2.5/D-2.6.
-    path: 'admin/launch-authority-v2',
-    canActivate: [adminBootstrapLaunchGuard],
-    loadComponent: () =>
-      import(
-        './pages/admin/launch-authority-v2/launch-authority-v2.component'
-      ).then((m) => m.LaunchAuthorityV2Component),
-    title: 'Launch Authority v2 · Solslot',
   },
   {
     path: 'admin/mint/:id',

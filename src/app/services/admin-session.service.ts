@@ -1,308 +1,303 @@
-import {
-  EnvironmentInjector,
-  Injectable,
-  computed,
-  effect,
-  inject,
-  signal,
-} from '@angular/core';
+import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import type { MembershipResult } from './admin-wallet-auth.service';
-import { Eip712TypedData } from './solslot-api.service';
+import { computeAddress, SigningKey, verifyTypedData } from 'ethers';
 import { environment } from '../../environments/environment';
+import { Eip712TypedData } from './solslot-api.service';
+import { SolslotProtocolArtifactService } from './solslot-protocol-artifact.service';
+
+/** Lowercase V2 key intentionally ignores every pre-ceremony session. */
+const STORAGE_KEY = 'solslot_admin_session_v2';
+
+const ADMIN_LOGIN_TYPES = [
+  { name: 'app', type: 'string' },
+  { name: 'artifactHash', type: 'bytes32' },
+  { name: 'nonce', type: 'bytes32' },
+  { name: 'expires_at', type: 'uint256' },
+] as const;
+
+const EIP712_DOMAIN_TYPES = [
+  { name: 'name', type: 'string' },
+  { name: 'version', type: 'string' },
+  { name: 'chainId', type: 'uint256' },
+] as const;
 
 /**
- * Storage key.  Bumped from ``v1`` (JWT-era) to ``v2`` so old JWT
- * sessions are auto-invalidated on the first run after the
- * Phase 9-Hermes-D wallet-signed-auth migration; users see a single
- * "please re-login" beat instead of mysteriously broken cached
- * sessions.
- */
-const STORAGE_KEY = 'SOLSLOT_ADMIN_SESSION_V2';
-
-/**
- * Persistent admin-desk session manager (post-Hermes-D).
- *
- * **Trust model.**  The portal no longer talks to a Solslot API for
- * admin auth \u2014 every check is client-side, with chain (or env-pinned)
- * data as the source of truth:
- *
- *   1. Caller (login page) builds a ``SolslotAdminLogin`` EIP-712
- *      envelope via {@link AdminWalletAuthService.buildLoginTypedData}.
- *   2. User signs it in their wallet.
- *   3. Caller recovers the compressed pubkey via
- *      {@link EvmWalletService.recoverCompressedPubkey}.
- *   4. Caller invokes {@link AdminSessionService.loginWithWallet} which:
- *        a. Asks {@link AdminWalletAuthService.verifyMembership} whether
- *           the pubkey is in the on-chain MIPS quorum (or, fallback,
- *           in the env pubkey allowlist).
- *        b. If yes, persists the session and seeds the reactive state.
- *        c. Returns the verified address so the page can display it.
- *
- * **What's persisted.**  The full credential bundle: ``address``,
- * ``pubkey``, ``expires_at``, ``signature``, and either the EIP-712
- * ``typed_data`` or the Tangem-compatible signed message.  Stored
- * in localStorage so a page reload reuses the session without
- * re-prompting the wallet.  On every load the stored bundle must
- * still match its envelope family: EIP-712 sessions keep typed data,
- * and Tangem-compatible sessions keep the signed message.
- *
- * **Storage caveat (XSS).**  The signature is bearer-equivalent: any
- * JS injected into the portal can read it from localStorage and
- * impersonate the admin until expiry.  This is the same trade-off as
- * the v1 JWT design; for an operator-facing tool with a tightly
- * controlled bundle it's acceptable.  A future tightening could move
- * the credential into ``sessionStorage`` (cleared on tab close) at
- * the cost of re-login-on-reload UX.
- *
- * **No auto-refresh.**  Unlike v1, there's nothing to refresh: the
- * wallet's signature has a fixed expiry baked into the login envelope.
- * To extend a session, the user signs a new envelope.  Removing the
- * refresh timer simplifies the lifecycle and removes a class of edge
- * cases (network blips during refresh, double-refresh races).
+ * Tab-scoped administrator session backed by a canonical EIP-712 envelope.
+ * Every login and restore rechecks the signature, connected key, signed V2
+ * artifact hash, three-member genesis roster, and bounded expiry. Browser
+ * storage is a convenience cache and never establishes authority by itself.
  */
 @Injectable({ providedIn: 'root' })
-export class AdminSessionService {
-  private readonly injector = inject(EnvironmentInjector);
+export class AdminSessionService implements OnDestroy {
+  static readonly MAX_SESSION_SECONDS = 12 * 60 * 60;
+
   private readonly router = inject(Router);
-
+  private readonly protocolArtifact = inject(SolslotProtocolArtifactService);
   private readonly _state = signal<AdminSessionState>(this.load());
-  readonly state = this._state.asReadonly();
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
 
+  readonly state = this._state.asReadonly();
   readonly isAuthenticated = computed(() => this._state().kind === 'authenticated');
   readonly subject = computed(() => {
-    const s = this._state();
-    return s.kind === 'authenticated' ? s.address : null;
+    const state = this._state();
+    return state.kind === 'authenticated' ? state.address : null;
   });
   readonly pubkey = computed(() => {
-    const s = this._state();
-    return s.kind === 'authenticated' ? s.pubkey : null;
+    const state = this._state();
+    return state.kind === 'authenticated' ? state.pubkey : null;
   });
   readonly expiresAt = computed(() => {
-    const s = this._state();
-    return s.kind === 'authenticated' ? s.expiresAt : null;
+    const state = this._state();
+    return state.kind === 'authenticated' ? state.expiresAt : null;
   });
 
   constructor() {
-    // Persist any updates to localStorage.
-    effect(() => {
-      const s = this._state();
-      if (typeof window === 'undefined') return;
-      if (s.kind === 'authenticated') {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({
-            schemaVersion: 2,
-            protocolVersion: environment.protocolVersion,
-            network: 'testnet11',
-            address: s.address,
-            pubkey: s.pubkey,
-            expiresAt: s.expiresAt,
-            signatureKind: s.signatureKind,
-            signature: s.signature,
-            typedData: s.typedData ?? null,
-            signedMessage: s.signedMessage ?? null,
-            signingMethod: s.signingMethod ?? null,
-          } satisfies PersistedAdminSession),
-        );
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    });
+    const state = this._state();
+    if (state.kind === 'authenticated') this.scheduleExpiry(state.expiresAt);
   }
 
-  // \u2500\u2500 Public API \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  /**
-   * Verify a wallet-signed admin login bundle and seed a session.
-   *
-   * The caller (``AdminLoginComponent``) drives the wallet
-   * handshake \u2014 build the login envelope, sign, recover pubkey \u2014 and
-   * passes the resulting bundle here.  This service:
-   *
-   *   1. Asks {@link AdminWalletAuthService.verifyMembership} whether
-   *      the recovered pubkey is in the portal's admin set.
-   *   2. On success, persists the session and updates the reactive
-   *      state.  On failure, throws with the verifier's message so
-   *      the page can render it inline.
-   *
-   * Returns the verified address (the reactive ``subject()`` getter
-   * also returns this once the session is seeded).
-   */
+  ngOnDestroy(): void {
+    this.clearExpiryTimer();
+  }
+
+  /** Verify a wallet-signed envelope before creating a local UI session. */
   async loginWithWallet(opts: WalletLoginOptions): Promise<string> {
-    const { AdminWalletAuthService } = await import('./admin-wallet-auth.service');
-    const result: MembershipResult = this.injector
-      .get(AdminWalletAuthService)
-      .verifyMembership({
-      address: opts.address,
-      pubkey: opts.pubkey,
-    });
-    if (!result.ok) {
-      const e = new Error(result.message);
-      // Tag the error so the login page can route specific reasons
-      // to specific UI states (e.g., 'no-admins-configured' surfaces
-      // a different action banner than 'mips-root-mismatch').
-      (e as Error & { reason?: string }).reason = result.reason;
-      throw e;
-    }
+    const verified = this.verifyEnvelope(opts);
     this.beginSession({
-      address: result.address,
-      pubkey: result.pubkey,
+      address: verified.address,
+      pubkey: verified.pubkey,
       expiresAt: opts.expiresAt,
-      signatureKind: opts.signatureKind,
+      signatureKind: 'eip712',
       signature: opts.signature,
-      typedData: opts.typedData ?? null,
-      signedMessage: opts.signedMessage ?? null,
-      signingMethod: opts.signingMethod ?? null,
+      typedData: opts.typedData,
     });
-    return result.address;
+    return verified.address;
   }
 
-  /** Clear the session. */
+  /** Clear all tab-scoped administrator state. */
   logout(): void {
     this._state.set({ kind: 'anonymous' });
+    this.clearExpiryTimer();
+    if (typeof window !== 'undefined') sessionStorage.removeItem(STORAGE_KEY);
   }
 
-  /**
-   * Clear the session and route to the admin login page.  Intended
-   * for forced logouts (manual signout button, expired session
-   * detection, integrity-check failure on session restore).
-   */
   logoutAndRedirect(): void {
     this.logout();
     this.router.navigate(['/admin/login']);
   }
 
-  /**
-   * Throws if the user isn't authenticated.  Mint pages call this
-   * before any action so a stale tab whose session expired between
-   * route activation and form submission can't silently hand the
-   * request off into the void.
-   */
+  /** Revalidate the complete envelope before a privileged UI operation. */
   requireSession(): AuthenticatedAdminState {
-    const s = this._state();
-    if (s.kind !== 'authenticated') {
-      throw new Error('No active admin session \u2014 login first.');
+    const state = this._state();
+    if (state.kind !== 'authenticated') {
+      throw new Error('No active admin session - login first.');
     }
-    return s;
+    try {
+      this.verifyEnvelope(state);
+      return state;
+    } catch (error) {
+      this.logout();
+      throw error;
+    }
   }
 
-  // \u2500\u2500 Internal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  private beginSession(s: Omit<AuthenticatedAdminState, 'kind'>): void {
-    this._state.set({ kind: 'authenticated', ...s });
+  private beginSession(state: Omit<AuthenticatedAdminState, 'kind'>): void {
+    const authenticated: AuthenticatedAdminState = {
+      kind: 'authenticated',
+      ...state,
+    };
+    this._state.set(authenticated);
+    this.persist(authenticated);
+    this.scheduleExpiry(authenticated.expiresAt);
   }
 
-  /**
-   * Load the persisted session at construction time, dropping it on
-   * any of: expired, missing fields, or corrupt JSON.  We don't
-   * re-verify membership against current chain/env state here \u2014
-   * that runs lazily on the next ``loginWithWallet`` call (or
-   * implicitly when the user navigates to a page that requires
-   * auth).  Fail-open vs fail-closed trade-off: failing closed every
-   * page-load would re-walk chain on every navigation; failing open
-   * with expiry as the cap is the same trade-off the v1 JWT made.
-   */
+  private persist(state: AuthenticatedAdminState): void {
+    if (typeof window === 'undefined') return;
+    const persisted: PersistedAdminSession = {
+      schemaVersion: 2,
+      protocolVersion: environment.protocolVersion,
+      network: 'testnet11',
+      address: state.address,
+      pubkey: state.pubkey,
+      expiresAt: state.expiresAt,
+      signatureKind: 'eip712',
+      signature: state.signature,
+      typedData: state.typedData,
+    };
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+  }
+
+  /** Restore only a complete envelope that still verifies now. */
   private load(): AdminSessionState {
     if (typeof window === 'undefined') return { kind: 'anonymous' };
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return { kind: 'anonymous' };
-    let parsed: PersistedAdminSession;
+
     try {
-      parsed = JSON.parse(raw) as PersistedAdminSession;
+      const parsed = JSON.parse(raw) as PersistedAdminSession;
+      if (
+        parsed.schemaVersion !== 2 ||
+        parsed.protocolVersion !== environment.protocolVersion ||
+        parsed.network !== 'testnet11' ||
+        parsed.signatureKind !== 'eip712' ||
+        !parsed.typedData
+      ) {
+        throw new Error('Administrator session schema mismatch.');
+      }
+      const verified = this.verifyEnvelope(parsed);
+      return {
+        kind: 'authenticated',
+        address: verified.address,
+        pubkey: verified.pubkey,
+        expiresAt: parsed.expiresAt,
+        signatureKind: 'eip712',
+        signature: parsed.signature,
+        typedData: parsed.typedData,
+      };
     } catch {
-      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_KEY);
       return { kind: 'anonymous' };
     }
+  }
+
+  private verifyEnvelope(input: EnvelopeFields): {
+    address: string;
+    pubkey: string;
+  } {
+    const artifact = this.protocolArtifact.artifact;
+    if (!this.protocolArtifact.isReady || !artifact) {
+      throw new Error(this.protocolArtifact.failure);
+    }
+
     const nowSec = Math.floor(Date.now() / 1_000);
     if (
-      parsed.schemaVersion !== 2 ||
-      parsed.protocolVersion !== environment.protocolVersion ||
-      parsed.network !== 'testnet11' ||
-      !parsed.address ||
-      !parsed.pubkey ||
-      !parsed.signature ||
-      typeof parsed.expiresAt !== 'number' ||
-      parsed.expiresAt <= nowSec
+      !Number.isInteger(input.expiresAt) ||
+      input.expiresAt <= nowSec ||
+      input.expiresAt > nowSec + AdminSessionService.MAX_SESSION_SECONDS
     ) {
-      localStorage.removeItem(STORAGE_KEY);
-      return { kind: 'anonymous' };
+      throw new Error('Administrator session expiry is invalid.');
     }
-    const signatureKind = parsed.signatureKind ?? 'eip712';
-    if (signatureKind === 'eip712' && !parsed.typedData) {
-      localStorage.removeItem(STORAGE_KEY);
-      return { kind: 'anonymous' };
+
+    const typedData = input.typedData;
+    if (
+      typedData.primaryType !== 'SolslotAdminLogin' ||
+      !sameKeys(typedData.domain, ['chainId', 'name', 'version']) ||
+      typedData.domain.name !== 'Solslot Protocol' ||
+      typedData.domain.version !== '2' ||
+      typedData.domain.chainId !== 11155111 ||
+      !sameKeys(typedData.types, ['EIP712Domain', 'SolslotAdminLogin']) ||
+      JSON.stringify(typedData.types['EIP712Domain']) !==
+        JSON.stringify(EIP712_DOMAIN_TYPES) ||
+      JSON.stringify(typedData.types['SolslotAdminLogin']) !==
+        JSON.stringify(ADMIN_LOGIN_TYPES) ||
+      !sameKeys(typedData.message, [
+        'app',
+        'artifactHash',
+        'expires_at',
+        'nonce',
+      ]) ||
+      typedData.message['app'] !== 'Solslot Admin Login' ||
+      String(typedData.message['artifactHash'] || '').toLowerCase() !==
+        artifact.artifactHash.toLowerCase() ||
+      !/^0x[0-9a-f]{64}$/i.test(String(typedData.message['nonce'] || '')) ||
+      Number(typedData.message['expires_at']) !== input.expiresAt ||
+      !/^0x[0-9a-f]{130}$/i.test(input.signature)
+    ) {
+      throw new Error('Administrator login envelope is invalid.');
     }
-    if (signatureKind === 'personal-sign' && !parsed.signedMessage) {
-      localStorage.removeItem(STORAGE_KEY);
-      return { kind: 'anonymous' };
+
+    const address = normalizeAddress(input.address);
+    const pubkey = normalizePubkey(input.pubkey);
+    const derivedAddress = computeAddress(
+      SigningKey.computePublicKey(pubkey, false),
+    ).toLowerCase();
+    if (derivedAddress !== address) {
+      throw new Error('Administrator key does not match the connected wallet.');
     }
-    return {
-      kind: 'authenticated',
-      address: parsed.address,
-      pubkey: parsed.pubkey,
-      expiresAt: parsed.expiresAt,
-      signatureKind,
-      signature: parsed.signature,
-      typedData: parsed.typedData ?? null,
-      signedMessage: parsed.signedMessage ?? null,
-      signingMethod: parsed.signingMethod ?? null,
-    };
+
+    const types = Object.fromEntries(
+      Object.entries(typedData.types).filter(([name]) => name !== 'EIP712Domain'),
+    );
+    const recovered = verifyTypedData(
+      typedData.domain,
+      types,
+      typedData.message,
+      input.signature,
+    ).toLowerCase();
+    if (recovered !== address) {
+      throw new Error('Administrator login signature is invalid.');
+    }
+
+    if (
+      !this.protocolArtifact.adminRoster.some(
+        (candidate) => candidate.toLowerCase() === pubkey,
+      )
+    ) {
+      throw new Error('Administrator key is not in the signed genesis roster.');
+    }
+    return { address, pubkey };
+  }
+
+  private scheduleExpiry(expiresAt: number): void {
+    this.clearExpiryTimer();
+    const delay = Math.max(0, expiresAt * 1_000 - Date.now());
+    this.expiryTimer = setTimeout(() => this.logout(), delay);
+  }
+
+  private clearExpiryTimer(): void {
+    if (this.expiryTimer !== null) {
+      clearTimeout(this.expiryTimer);
+      this.expiryTimer = null;
+    }
   }
 }
 
-// \u2500\u2500 Types \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-export interface WalletLoginOptions {
-  /** 0x-hex Ethereum address (any case; we normalise to lowercase). */
-  address: string;
-  /** 0x-hex 33-byte compressed secp256k1 pubkey, recovered from the signature. */
-  pubkey: string;
-  /** Unix-seconds expiry baked into ``typedData.message.expires_at``. */
-  expiresAt: number;
-  /** Signature envelope family. */
-  signatureKind: AdminSessionSignatureKind;
-  /** 0x-hex 65-byte (r, s, v) signature. */
-  signature: string;
-  /** Original typed data envelope for EIP-712 sessions. */
-  typedData?: Eip712TypedData | null;
-  /** One-line signed message for Tangem-compatible personal-sign sessions. */
-  signedMessage?: string | null;
-  /** Concrete EVM JSON-RPC method used for message fallback sessions. */
-  signingMethod?: 'eth_sign' | 'personal_sign' | null;
+export interface WalletLoginOptions extends EnvelopeFields {
+  signatureKind: 'eip712';
 }
 
 export type AdminSessionState = { kind: 'anonymous' } | AuthenticatedAdminState;
 
-export type AdminSessionSignatureKind = 'eip712' | 'personal-sign';
-
-export interface AuthenticatedAdminState {
+export interface AuthenticatedAdminState extends EnvelopeFields {
   kind: 'authenticated';
-  /** Lowercase 0x-hex Ethereum address; the legacy ``subject`` getter returns this. */
-  address: string;
-  /** 0x-hex 33-byte compressed secp256k1 pubkey \u2014 used for membership re-checks. */
-  pubkey: string;
-  /** Unix-seconds. */
-  expiresAt: number;
-  /** Signature envelope family. */
-  signatureKind: AdminSessionSignatureKind;
-  /** Bearer credential.  Anyone holding it can act as the admin until expiry. */
-  signature: string;
-  /** Typed data the EIP-712 signature commits to. */
-  typedData: Eip712TypedData | null;
-  /** Tangem-compatible local message the fallback signature commits to. */
-  signedMessage: string | null;
-  /** Concrete EVM JSON-RPC method used for message fallback sessions. */
-  signingMethod: 'eth_sign' | 'personal_sign' | null;
+  signatureKind: 'eip712';
 }
 
-interface PersistedAdminSession {
+interface PersistedAdminSession extends EnvelopeFields {
   schemaVersion: 2;
   protocolVersion: 'solslot-v2';
   network: 'testnet11';
+  signatureKind: 'eip712';
+}
+
+interface EnvelopeFields {
   address: string;
   pubkey: string;
   expiresAt: number;
-  signatureKind?: AdminSessionSignatureKind;
   signature: string;
-  typedData?: Eip712TypedData | null;
-  signedMessage?: string | null;
-  signingMethod?: 'eth_sign' | 'personal_sign' | null;
+  typedData: Eip712TypedData;
+}
+
+function normalizeAddress(value: string): string {
+  const normalized = value.toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(normalized)) {
+    throw new Error('Administrator wallet address is invalid.');
+  }
+  return normalized;
+}
+
+function normalizePubkey(value: string): string {
+  const normalized = value.toLowerCase();
+  if (!/^0x(?:02|03)[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error('Administrator compressed public key is invalid.');
+  }
+  return normalized;
+}
+
+function sameKeys(
+  value: Record<string, unknown>,
+  expected: ReadonlyArray<string>,
+): boolean {
+  return JSON.stringify(Object.keys(value).sort()) ===
+    JSON.stringify([...expected].sort());
 }

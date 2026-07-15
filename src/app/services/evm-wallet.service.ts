@@ -8,45 +8,28 @@ import {
   computeAddress,
   getAddress,
   getBytes,
-  hashMessage,
-  hexlify,
-  toBeHex,
-  toUtf8Bytes,
 } from 'ethers';
 import { environment } from '../../environments/environment';
 import { Eip712TypedData } from './solslot-api.service';
 
 const WALLET_CONNECT_PROMPT_TIMEOUT_MS = 45_000;
-const WALLET_CONNECT_METHOD_TIMEOUT_MS = 75_000;
 // WalletConnect v2 validates request expiry as 300..604800 seconds.
 // Keep the local UX timeout shorter, but publish requests with the protocol minimum.
 const WALLET_CONNECT_REQUEST_EXPIRY_SECONDS = 300;
 const EVM_SIGNATURE_PROMPT_TIMEOUT_MS = 180_000;
-const EVM_WALLETCONNECT_STORAGE_PREFIX = 'solslot-admin-launch-authority-v2';
-const LEGACY_EVM_WALLETCONNECT_STORAGE_PREFIX = 'solslot-admin-launch-authority-v2';
+const EVM_WALLETCONNECT_STORAGE_PREFIX = 'solslot-admin-v2';
 const EVM_WALLETCONNECT_SIGNING_METHODS = [
-  'personal_sign',
-  'eth_sign',
   'eth_signTypedData',
   'eth_signTypedData_v4',
 ];
-const EVM_WALLETCONNECT_REQUIRED_CHAIN_ID = 1;
+const EVM_WALLETCONNECT_REQUIRED_CHAIN_ID = environment.eip712ChainId;
 const EVM_WALLETCONNECT_KNOWN_RPC_MAP: Record<number, string> = {
-  1: 'https://cloudflare-eth.com',
   11155111: 'https://ethereum-sepolia-rpc.publicnode.com',
-  84532: 'https://sepolia.base.org',
 };
-type PersonalSignMessageFormat = 'hex' | 'utf8';
 type EvmWalletConnectOptionalChainsMode = 'solslot' | 'none';
 export interface EvmWalletConnectOptions {
   optionalChains?: EvmWalletConnectOptionalChainsMode;
   resetSession?: boolean;
-}
-
-export interface RecoveredEvmMessageSignature {
-  signature: string;
-  pubkey: string;
-  method: 'eth_sign' | 'personal_sign';
 }
 
 /**
@@ -187,9 +170,9 @@ export class EvmWalletService {
     this.wcInitPromise = EthereumProvider.init({
       projectId: environment.walletConnectProjectId,
       customStoragePrefix: EVM_WALLETCONNECT_STORAGE_PREFIX,
-      // WalletConnect treats `chains` as hard requirements. Keep the proposal
-      // on Ethereum mainnet for broad wallet compatibility, and advertise the
-      // Solslot typed-data chain as optional for wallets that support it.
+      // The admin surface is bound to the frozen V2 Sepolia artifact. Requiring
+      // that chain at session creation prevents a mainnet-only session from
+      // appearing connected and failing later at the signature boundary.
       chains: [evmWalletConnectRequiredChainId()],
       methods: EVM_WALLETCONNECT_SIGNING_METHODS,
       optionalChains: evmWalletConnectOptionalChainIds(optionalChainsMode),
@@ -314,9 +297,22 @@ export class EvmWalletService {
     const address = this.address();
     if (!address) throw new Error('Not connected');
 
-    const domainChainIdRaw = (typedData.domain as unknown as { chainId?: number | string })
-      .chainId;
-    const targetChainId = Number(domainChainIdRaw ?? 1);
+    const domain = typedData.domain as unknown as {
+      name?: string;
+      version?: string;
+      chainId?: number | string;
+    };
+    const targetChainId = Number(domain.chainId);
+    if (
+      domain.name !== environment.eip712Name ||
+      domain.version !== environment.eip712Version ||
+      targetChainId !== environment.eip712ChainId
+    ) {
+      throw new Error(
+        `Refusing EIP-712 data outside ${environment.eip712Name} v${environment.eip712Version} ` +
+          `on Sepolia (${environment.eip712ChainId}).`,
+      );
+    }
     if (this.connectionKind() === 'walletconnect') {
       return this.signTypedDataViaWalletConnectChain(typedData, address, targetChainId);
     }
@@ -351,8 +347,8 @@ export class EvmWalletService {
     if (!walletConnectSessionSupportsChain(provider, chain)) {
       throw new Error(
         `Tangem/WalletConnect has not approved ${evmChainDisplayName(targetChainId)} (${chain}) ` +
-          `for this Solslot Portal session. In Tangem, add Base Sepolia if it is missing, ` +
-          `delete the stale Solslot Portal WalletConnect session, then reconnect and approve ` +
+          `for this Solslot Portal session. Delete the stale Solslot Portal WalletConnect ` +
+          `session, then reconnect and approve ` +
           `${chain}. This admin login is still only a local EIP-712 signature; it broadcasts ` +
           `nothing and costs no gas.`,
       );
@@ -412,10 +408,8 @@ export class EvmWalletService {
 
   /**
    * Ensure the active wallet chain equals `targetChainId`.  If not, request
-   * a switch via EIP-3326 `wallet_switchEthereumChain`. On error 4902
-   * ("unrecognized chain") we fall back to `wallet_addEthereumChain` only for
-   * Ethereum mainnet, because mobile WalletConnect wallets vary widely in
-   * which testnet add/switch methods they accept.
+   * a switch via EIP-3326 `wallet_switchEthereumChain`. The portal never adds
+   * networks on the operator's behalf; Sepolia must already be available.
    */
   private async ensureChainId(targetChainId: number): Promise<void> {
     if (!this.eip1193) throw new Error('Not connected');
@@ -435,23 +429,6 @@ export class EvmWalletService {
       });
       return;
     } catch (err: unknown) {
-      const code = (err as { code?: number }).code;
-      if (code === 4902 && targetChainId === 1) {
-        // Unknown chain — add mainnet and try again.
-        await this.eip1193.request({
-          method: 'wallet_addEthereumChain',
-          params: [
-            {
-              chainId: hexChain,
-              chainName: 'Ethereum Mainnet',
-              rpcUrls: ['https://cloudflare-eth.com'],
-              nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-              blockExplorerUrls: ['https://etherscan.io'],
-            },
-          ],
-        });
-        return;
-      }
       const chainLabel = evmChainDisplayName(targetChainId);
       throw new Error(
         `Please switch your wallet to ${chainLabel} (chainId ${targetChainId}) — ` +
@@ -485,42 +462,6 @@ export class EvmWalletService {
     return compressSecp256k1Pubkey(uncompressedHex);
   }
 
-  canUseMessageSignatureFallback(e: unknown): boolean {
-    return isRecoverableAdminRecordsProbeError(e);
-  }
-
-  /**
-   * Sign a local admin-login proof message and recover the connected
-   * wallet's compressed secp256k1 pubkey.  Used only when the wallet
-   * cannot sign the chain-bound EIP-712 envelope, e.g. Tangem lacking
-   * Base Sepolia support over WalletConnect.
-   */
-  async signAdminLoginMessage(message: string): Promise<RecoveredEvmMessageSignature> {
-    const address = this.address();
-    if (!address) {
-      throw new Error('No wallet connected — connect first.');
-    }
-
-    if (this.connectionKind() === 'walletconnect') {
-      return this.signMessageForRecoveryViaWalletConnect(message, address, 'admin-login');
-    }
-
-    const signature = await withWalletPromptTimeout(
-      this.personalSign(message, address),
-      EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
-      'EVM wallet did not respond to the admin-login personal_sign request. Close the wallet prompt, then retry.',
-    );
-    return {
-      signature,
-      method: 'personal_sign',
-      pubkey: recoverCompressedPubkeyFromDigestForAddress(
-        hashMessage(message),
-        signature,
-        address,
-      ),
-    };
-  }
-
   private recoverCompressedPubkeyForAddress(
     typedData: Eip712TypedData,
     signature: string,
@@ -539,18 +480,17 @@ export class EvmWalletService {
   }
 
   /**
-   * Sign a deterministic EIP-712 probe and return the recovered
-   * compressed secp256k1 pubkey.  Used by the launch-authority-v2
-   * wizard to populate an admin record's leaf metadata when the
-   * operator opts to be the genesis admin.
+   * Sign a deterministic EIP-712 probe and return the recovered compressed
+   * secp256k1 public key. This helper remains for admin-record forms that need
+   * the wallet public key, but it has no message-signing compatibility path.
    *
    * The probe is structurally distinct from the admin sign-in
    * challenge (different ``primaryType``) so a wallet pop-up can't
    * confuse the two — but uses the configured Solslot EIP-712 chain binding
    * so wallet prompts remain scoped to the same deployment domain.
    *
-   * The signature is NEVER submitted on chain or to the API — it's
-   * consumed locally for pubkey recovery only.
+   * The signature is consumed locally for key recovery. Wallets that cannot
+   * approve the frozen V2 Sepolia EIP-712 domain are not eligible admin wallets.
    */
   async recoverFirstAdminPubkey(): Promise<{
     pubkey: string;
@@ -576,13 +516,13 @@ export class EvmWalletService {
           { name: 'version', type: 'string' },
           { name: 'chainId', type: 'uint256' },
         ],
-        AdminRecordsProbe: [
+        SolslotAdminKeyProbe: [
           { name: 'address', type: 'address' },
           { name: 'purpose', type: 'string' },
           { name: 'timestamp', type: 'uint256' },
         ],
       },
-      primaryType: 'AdminRecordsProbe',
+      primaryType: 'SolslotAdminKeyProbe',
       message: {
         address,
         purpose: 'Recover compressed secp256k1 pubkey for admin records',
@@ -590,310 +530,15 @@ export class EvmWalletService {
       },
     };
 
-    if (this.connectionKind() === 'walletconnect') {
-      return {
-        pubkey: await this.recoverFirstAdminPubkeyViaWalletConnect(probe, address),
-        address,
-      };
-    }
-
-    let pubkey: string;
-    try {
-      const signature = await withWalletPromptTimeout(
-        this.signTypedData(probe),
-        EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
-        'EVM wallet did not respond to the typed-data signature request. Close any stale wallet prompt, then retry.',
-      );
-      pubkey = this.recoverCompressedPubkey(probe, signature);
-    } catch (e) {
-      if (!isRecoverableAdminRecordsProbeError(e)) {
-        throw e;
-      }
-      const message = buildAdminRecordsPersonalSignProbe(address, probe.message['timestamp']);
-      const signature = await withWalletPromptTimeout(
-        this.personalSign(message, address),
-        EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
-        'EVM wallet did not respond to the fallback personal_sign request. Close the wallet prompt, then retry with a fresh WalletConnect session.',
-      );
-      pubkey = recoverCompressedPubkeyFromDigestForAddress(
-        hashMessage(message),
-        signature,
-        address,
-      );
-    }
-    return { pubkey, address };
-  }
-
-  private async recoverFirstAdminPubkeyViaWalletConnect(
-    probe: Eip712TypedData,
-    address: string,
-  ): Promise<string> {
-    const message = buildAdminRecordsPersonalSignProbe(address, probe.message['timestamp']);
-    this.debugWalletConnect('admin-records:recovery:start', {
-      address: redactAddress(address),
-      timestamp: probe.message['timestamp'],
-      preferredMethod: 'eth_sign',
-      ...this.walletConnectSessionDebugInfo(),
-    });
-
-    try {
-      this.debugWalletConnect('admin-records:request:start', {
-        method: 'eth_sign',
-        timeoutMs: WALLET_CONNECT_METHOD_TIMEOUT_MS,
-        walletConnectExpirySeconds: WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
-        messageChars: message.length,
-      });
-      const signature = await withWalletPromptTimeout(
-        this.ethSign(message, address),
-        WALLET_CONNECT_METHOD_TIMEOUT_MS,
-        'EVM WalletConnect did not respond to the eth_sign request. Close the wallet prompt, delete the stale Solslot Portal WalletConnect session in Tangem, then retry with a fresh session.',
-      );
-      this.debugWalletConnect('admin-records:request:resolved', {
-        method: 'eth_sign',
-        ...debugSignatureInfo(signature),
-      });
-      this.debugWalletConnect('admin-records:recovery:method-selected', {
-        method: 'eth_sign',
-      });
-      return recoverCompressedPubkeyFromDigestForAddress(
-        hashMessage(message),
-        signature,
-        address,
-      );
-    } catch (ethSignError) {
-      this.debugWalletConnect('admin-records:request:error', {
-        method: 'eth_sign',
-        ...debugErrorInfo(ethSignError),
-      });
-      if (!isRecoverableAdminRecordsProbeError(ethSignError)) {
-        throw ethSignError;
-      }
-    }
-
-    try {
-      this.debugWalletConnect('admin-records:fallback', {
-        from: 'eth_sign',
-        to: 'personal_sign',
-      });
-      this.debugWalletConnect('admin-records:request:start', {
-        method: 'personal_sign',
-        timeoutMs: WALLET_CONNECT_METHOD_TIMEOUT_MS,
-        walletConnectExpirySeconds: WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
-        messageChars: message.length,
-      });
-      const signature = await withWalletPromptTimeout(
-        this.personalSign(message, address, 'utf8'),
-        WALLET_CONNECT_METHOD_TIMEOUT_MS,
-        'WalletConnect personal_sign admin-record probe did not respond.',
-      );
-      this.debugWalletConnect('admin-records:request:resolved', {
-        method: 'personal_sign',
-        ...debugSignatureInfo(signature),
-      });
-      this.debugWalletConnect('admin-records:recovery:method-selected', {
-        method: 'personal_sign',
-      });
-      return recoverCompressedPubkeyFromDigestForAddress(
-        hashMessage(message),
-        signature,
-        address,
-      );
-    } catch (personalSignError) {
-      this.debugWalletConnect('admin-records:request:error', {
-        method: 'personal_sign',
-        ...debugErrorInfo(personalSignError),
-      });
-      if (!isRecoverableAdminRecordsProbeError(personalSignError)) {
-        throw personalSignError;
-      }
-    }
-
-    this.debugWalletConnect('admin-records:fallback', {
-      from: 'personal_sign',
-      to: 'eth_signTypedData_v4',
-    });
-    this.debugWalletConnect('admin-records:request:start', {
-      method: 'eth_signTypedData_v4',
-      timeoutMs: WALLET_CONNECT_METHOD_TIMEOUT_MS,
-      walletConnectExpirySeconds: WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
-    });
     const signature = await withWalletPromptTimeout(
-      this.walletConnectSignTypedData(probe, address),
-      WALLET_CONNECT_METHOD_TIMEOUT_MS,
-      'WalletConnect typed-data admin-record probe did not respond.',
+      this.signTypedData(probe),
+      EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
+      'EVM wallet did not respond to the Sepolia EIP-712 key request. Close any stale wallet prompt, then reconnect and retry.',
     );
-    this.debugWalletConnect('admin-records:request:resolved', {
-      method: 'eth_signTypedData_v4',
-      ...debugSignatureInfo(signature),
-    });
-    this.debugWalletConnect('admin-records:recovery:method-selected', {
-      method: 'eth_signTypedData_v4',
-    });
-    return this.recoverCompressedPubkeyForAddress(probe, signature, address);
-  }
-
-  private async signMessageForRecoveryViaWalletConnect(
-    message: string,
-    address: string,
-    purpose: 'admin-login',
-  ): Promise<RecoveredEvmMessageSignature> {
-    this.debugWalletConnect(`${purpose}:message-recovery:start`, {
-      address: redactAddress(address),
-      preferredMethod: 'eth_sign',
-      messageChars: message.length,
-      ...this.walletConnectSessionDebugInfo(),
-    });
-
-    try {
-      this.debugWalletConnect(`${purpose}:message-request:start`, {
-        method: 'eth_sign',
-        timeoutMs: WALLET_CONNECT_METHOD_TIMEOUT_MS,
-        walletConnectExpirySeconds: WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
-        messageChars: message.length,
-      });
-      const signature = await withWalletPromptTimeout(
-        this.ethSign(message, address),
-        WALLET_CONNECT_METHOD_TIMEOUT_MS,
-        'EVM WalletConnect did not respond to the admin-login eth_sign request. Close the wallet prompt, delete the stale Solslot Portal WalletConnect session in Tangem, then retry with a fresh session.',
-      );
-      this.debugWalletConnect(`${purpose}:message-request:resolved`, {
-        method: 'eth_sign',
-        ...debugSignatureInfo(signature),
-      });
-      return {
-        signature,
-        method: 'eth_sign',
-        pubkey: recoverCompressedPubkeyFromDigestForAddress(
-          hashMessage(message),
-          signature,
-          address,
-        ),
-      };
-    } catch (ethSignError) {
-      this.debugWalletConnect(`${purpose}:message-request:error`, {
-        method: 'eth_sign',
-        ...debugErrorInfo(ethSignError),
-      });
-      if (!isRecoverableAdminRecordsProbeError(ethSignError)) {
-        throw ethSignError;
-      }
-    }
-
-    this.debugWalletConnect(`${purpose}:message-request:fallback`, {
-      from: 'eth_sign',
-      to: 'personal_sign',
-    });
-    const signature = await withWalletPromptTimeout(
-      this.personalSign(message, address, 'utf8'),
-      WALLET_CONNECT_METHOD_TIMEOUT_MS,
-      'WalletConnect personal_sign admin-login proof did not respond.',
-    );
-    this.debugWalletConnect(`${purpose}:message-request:resolved`, {
-      method: 'personal_sign',
-      ...debugSignatureInfo(signature),
-    });
     return {
-      signature,
-      method: 'personal_sign',
-      pubkey: recoverCompressedPubkeyFromDigestForAddress(
-        hashMessage(message),
-        signature,
-        address,
-      ),
+      pubkey: this.recoverCompressedPubkeyForAddress(probe, signature, address),
+      address,
     };
-  }
-
-  private async personalSign(
-    message: string,
-    address: string,
-    format: PersonalSignMessageFormat = 'hex',
-  ): Promise<string> {
-    if (!this.eip1193) throw new Error('Not connected');
-    const messageBytes = toUtf8Bytes(message).length;
-    const payload = format === 'hex' ? hexlify(toUtf8Bytes(message)) : message;
-    this.debugWalletConnect('admin-records:provider-request', {
-      method: 'personal_sign',
-      address: redactAddress(address),
-      messageBytes,
-      messageFormat: format,
-      paramsOrder: ['message', 'address'],
-    });
-    return (await this.requestWallet({
-      method: 'personal_sign',
-      params: [payload, address],
-    }, WALLET_CONNECT_REQUEST_EXPIRY_SECONDS)) as string;
-  }
-
-  private async ethSign(message: string, address: string): Promise<string> {
-    if (!this.eip1193) throw new Error('Not connected');
-    const hexMessage = hexlify(toUtf8Bytes(message));
-    this.debugWalletConnect('admin-records:provider-request', {
-      method: 'eth_sign',
-      address: redactAddress(address),
-      messageBytes: Math.trunc((hexMessage.length - 2) / 2),
-      paramsOrder: ['address', 'message'],
-    });
-    return (await this.requestWallet({
-      method: 'eth_sign',
-      params: [address, hexMessage],
-    }, WALLET_CONNECT_REQUEST_EXPIRY_SECONDS)) as string;
-  }
-
-  private async walletConnectSignTypedData(
-    typedData: Eip712TypedData,
-    address: string,
-  ): Promise<string> {
-    if (!this.eip1193) throw new Error('Not connected');
-    try {
-      this.debugWalletConnect('admin-records:provider-request', {
-        method: 'eth_signTypedData_v4',
-        address: redactAddress(address),
-      });
-      return (await this.requestWallet({
-        method: 'eth_signTypedData_v4',
-        params: [address, JSON.stringify(typedData)],
-      }, WALLET_CONNECT_REQUEST_EXPIRY_SECONDS)) as string;
-    } catch (e) {
-      this.debugWalletConnect('admin-records:provider-request-error', {
-        method: 'eth_signTypedData_v4',
-        ...debugErrorInfo(e),
-      });
-      if (!isRecoverableAdminRecordsProbeError(e)) throw e;
-    }
-    this.debugWalletConnect('admin-records:provider-request', {
-      method: 'eth_signTypedData',
-      address: redactAddress(address),
-    });
-    return (await this.requestWallet({
-      method: 'eth_signTypedData',
-      params: [address, JSON.stringify(typedData)],
-    }, WALLET_CONNECT_REQUEST_EXPIRY_SECONDS)) as string;
-  }
-
-  private async requestWallet(
-    args: { method: string; params?: unknown[] },
-    walletConnectExpirySeconds?: number,
-  ): Promise<unknown> {
-    if (this.connectionKind() === 'walletconnect' && this.wcProvider) {
-      this.debugWalletConnect('provider-request:walletconnect-dispatch', {
-        method: args.method,
-        expirySeconds: walletConnectExpirySeconds ?? null,
-        ...this.walletConnectSessionDebugInfo(),
-        ...this.walletConnectPendingDebugInfo(),
-      });
-      try {
-        return await this.wcProvider.request(args, walletConnectExpirySeconds);
-      } catch (e) {
-        this.debugWalletConnect('provider-request:walletconnect-error', {
-          method: args.method,
-          ...debugErrorInfo(e),
-          ...this.walletConnectPendingDebugInfo(),
-        });
-        throw e;
-      }
-    }
-    if (!this.eip1193) throw new Error('Not connected');
-    return this.eip1193.request(args);
   }
 
   private async requestWalletConnectChain(
@@ -1062,14 +707,6 @@ function debugErrorInfo(e: unknown): Record<string, unknown> {
   };
 }
 
-function debugSignatureInfo(signature: unknown): Record<string, unknown> {
-  return {
-    signatureType: typeof signature,
-    signatureLength: typeof signature === 'string' ? signature.length : null,
-    signatureHex: typeof signature === 'string' ? signature.startsWith('0x') : null,
-  };
-}
-
 function debugWalletConnectEventArgs(args: unknown[]): Record<string, unknown> {
   return {
     argCount: args.length,
@@ -1232,11 +869,6 @@ function compressSecp256k1Pubkey(uncompressedHex: string): string {
   return '0x' + prefix + x;
 }
 
-function recoverCompressedPubkeyFromDigest(digest: string, signature: string): string {
-  const uncompressedHex = SigningKey.recoverPublicKey(getBytes(digest), signature);
-  return compressSecp256k1Pubkey(uncompressedHex);
-}
-
 function recoverCompressedPubkeyFromDigestForAddress(
   digest: string,
   signature: string,
@@ -1277,35 +909,6 @@ function isUnsupportedTypedDataError(e: unknown): boolean {
   );
 }
 
-function isRecoverableAdminRecordsProbeError(e: unknown): boolean {
-  const message = errorMessage(e).toLowerCase();
-  return (
-    isUnsupportedTypedDataError(e) ||
-    message.includes('wallet_switchethereumchain') ||
-    message.includes('switch your wallet') ||
-    message.includes('unsupported chain') ||
-    message.includes('unsupported network') ||
-    message.includes('required network') ||
-    message.includes('unrecognized chain') ||
-    message.includes('chain id') ||
-    (message.includes('walletconnect') && message.includes('did not respond')) ||
-    message.includes('not approved') ||
-    message.includes('unauthorized') ||
-    message.includes('unsupported method')
-  );
-}
-
-function buildAdminRecordsPersonalSignProbe(address: string, timestamp: unknown): string {
-  return [
-    'Solslot Admin Records Probe',
-    'purpose=Recover compressed secp256k1 pubkey for admin records',
-    `address=${address}`,
-    `chain_id=${environment.eip712ChainId}`,
-    `timestamp=${String(timestamp)}`,
-    'local_only=true',
-  ].join(' | ');
-}
-
 function evmWalletConnectRequiredChainId(): number {
   return EVM_WALLETCONNECT_REQUIRED_CHAIN_ID;
 }
@@ -1329,11 +932,7 @@ function evmWalletConnectOptionalChainIds(
 ): number[] {
   const normalizedMode = normalizeOptionalChainsMode(mode);
   if (normalizedMode === 'none') return [];
-  return uniqueNumbers([
-    environment.eip712ChainId,
-    84532,
-    11155111,
-  ]).filter((chainId) => chainId !== evmWalletConnectRequiredChainId());
+  return [];
 }
 
 function evmWalletConnectRpcMap(
@@ -1345,16 +944,6 @@ function evmWalletConnectRpcMap(
     if (rpcUrl) rpcMap[chainId] = rpcUrl;
   }
   return rpcMap;
-}
-
-function uniqueNumbers(values: number[]): number[] {
-  const out: number[] = [];
-  for (const value of values) {
-    if (!Number.isFinite(value)) continue;
-    const normalized = Math.trunc(value);
-    if (!out.includes(normalized)) out.push(normalized);
-  }
-  return out;
 }
 
 function evmChainDisplayName(chainId: number): string {
@@ -1424,8 +1013,7 @@ function isWalletConnectStorageKey(key: string): boolean {
     lower.startsWith('wc@2:') ||
     lower.startsWith('walletconnect') ||
     lower.includes('@walletconnect') ||
-    lower.includes(EVM_WALLETCONNECT_STORAGE_PREFIX) ||
-    lower.includes(LEGACY_EVM_WALLETCONNECT_STORAGE_PREFIX)
+    lower.includes(EVM_WALLETCONNECT_STORAGE_PREFIX)
   );
 }
 
@@ -1465,21 +1053,14 @@ function normalizeChainIdHex(value: unknown): string | null {
 
 // Re-export for tests.
 export const _internal = {
-  buildAdminRecordsPersonalSignProbe,
   compressSecp256k1Pubkey,
   evmWalletConnectOptionalChainIds,
   evmWalletConnectRequiredChainId,
   evmWalletConnectRpcMap,
   evmWalletConnectStoragePrefix,
-  isRecoverableAdminRecordsProbeError,
   normalizeChainIdHex,
   normalizeOptionalChainsMode,
   recoverCompressedPubkeyFromDigestForAddress,
   walletConnectMethodTimeoutSeconds,
   withWalletPromptTimeout,
 };
-
-// Prevent dead-code elimination of imports used only for their side effects
-// (hexlify/toBeHex currently unused but kept available for upcoming spend flows).
-void hexlify;
-void toBeHex;

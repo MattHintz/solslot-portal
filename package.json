@@ -1,7 +1,7 @@
 {
   "name": "solslot-portal",
   "version": "0.0.0",
-  "description": "Angular WASM-first Solslot portal for vault registration, browser-local admin drafts, trust-root reads, and admin-authority-v2 launch via coinset.org",
+  "description": "Solslot operator portal for signed-artifact administration, deterministic genesis, trust-root reads, and audited protocol actions",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",

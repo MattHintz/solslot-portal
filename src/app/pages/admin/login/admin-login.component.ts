@@ -15,18 +15,17 @@ import { formatError } from '../../../utils/format-error';
  *        a. Builds a ``SolslotAdminLogin`` EIP-712 envelope via
  *           {@link AdminWalletAuthService.buildLoginTypedData} (fresh
  *           nonce, 12h expiry, chainId-bound).
- *        b. Asks the wallet to sign it (no API call).
+ *        b. Asks the wallet to sign it with EIP-712 (no fallback envelope).
  *        c. Recovers the 33-byte compressed secp256k1 pubkey via
  *           {@link EvmWalletService.recoverCompressedPubkey}.
  *        d. Hands the bundle to {@link AdminSessionService.loginWithWallet}
- *           which checks pubkey membership (MIPS root match for the
- *           on-chain v2 quorum, or env pubkey allowlist as a
- *           fallback) and persists the session.
+ *           which checks the signature and signed-artifact roster before
+ *           persisting a tab-scoped session.
  *   3. The user is redirected to `?returnTo=...` or `/admin`.
  *
- * No backend involvement.  Membership failures are surfaced from the
- * verifier's typed reason code so the page can render targeted help
- * (e.g., ``no-admins-configured`` → "ask the operator to update env").
+ * Membership comes only from the verified 2-of-3 roster in the signed
+ * ceremony artifact. The portal refuses admin login before that artifact is
+ * available.
  */
 @Component({
   selector: 'pp-admin-login',
@@ -39,11 +38,9 @@ import { formatError } from '../../../utils/format-error';
       </div>
       <h1 class="font-display text-4xl md:text-5xl">Sign in.</h1>
       <p class="mt-4 text-text-muted max-w-xl">
-        Authenticate with the EVM key whose pubkey is in the on-chain
-        admin authority's MIPS quorum (or, fallback, the portal's
-        env pubkey allowlist).  The signed proof is bound to this
-        deployment's chain id and site domain &mdash; nothing is
-        broadcast on chain and nothing reaches an API server.
+        Authenticate with an EIP-712-capable EVM key in the signed Solslot
+        genesis administrator roster. The proof is bound to this deployment's
+        chain id and protocol domain; nothing is broadcast on chain.
       </p>
 
       <div class="mt-10 card">
@@ -199,41 +196,17 @@ export class AdminLoginComponent {
       const typedData = this.walletAuth.buildLoginTypedData(expiresAt, nonce);
 
       this.status.set('Awaiting wallet signature…');
-      let signatureKind: 'eip712' | 'personal-sign' = 'eip712';
-      let signature: string;
-      let pubkey: string;
-      let signedMessage: string | null = null;
-      let signingMethod: 'eth_sign' | 'personal_sign' | null = null;
-      try {
-        signature = await this.evm.signTypedData(typedData);
-        pubkey = this.evm.recoverCompressedPubkey(typedData, signature);
-      } catch (signError) {
-        if (!this.evm.canUseMessageSignatureFallback(signError)) {
-          throw signError;
-        }
-        this.status.set('Typed-data signing unsupported. Awaiting Tangem-compatible admin proof…');
-        signedMessage = this.walletAuth.buildLoginPersonalSignMessage(
-          address,
-          expiresAt,
-          nonce,
-        );
-        const fallback = await this.evm.signAdminLoginMessage(signedMessage);
-        signatureKind = 'personal-sign';
-        signature = fallback.signature;
-        pubkey = fallback.pubkey;
-        signingMethod = fallback.method;
-      }
+      const signature = await this.evm.signTypedData(typedData);
+      const pubkey = this.evm.recoverCompressedPubkey(typedData, signature);
 
       this.status.set('Verifying admin membership…');
       await this.session.loginWithWallet({
         address,
         pubkey,
         expiresAt,
-        signatureKind,
+        signatureKind: 'eip712',
         signature,
-        typedData: signatureKind === 'eip712' ? typedData : null,
-        signedMessage,
-        signingMethod,
+        typedData,
       });
 
       this.status.set('Signed in. Redirecting…');

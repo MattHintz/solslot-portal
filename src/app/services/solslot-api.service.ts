@@ -30,6 +30,19 @@ export class SolslotApiService {
   private readonly http = inject(HttpClient);
   private readonly base = environment.faucetApi;
 
+  /**
+   * Fetch the signed public V2 ceremony artifact.
+   *
+   * Callers must still verify its canonical hash, release source commit, and
+   * administrator signature quorum. A successful HTTP response is not a
+   * trust decision.
+   */
+  async getSignedProtocolArtifact(): Promise<SolslotPublicArtifact> {
+    return firstValueFrom(
+      this.http.get<SolslotPublicArtifact>(`${this.base}/protocol/artifact`),
+    );
+  }
+
   // NOTE: ``health()`` was removed in the Phase 9-Hermes-D follow-up.
   // The footer's chain-state pill now hits coinset.org's
   // ``get_blockchain_state`` directly (see ``FooterComponent``); we
@@ -141,13 +154,12 @@ export interface ProtocolInfo {
   faucet_address: string | null;
   faucet_balance_mojos: number | null;
 
-  // ── Genesis-deploy state ─────────────────────────────────────────────
-  /** True after /admin/deploy/protocol has written a manifest. */
+  // ── Signed V2 genesis state ──────────────────────────────────────────
+  /** True only after a signed V2 public artifact has been verified. */
   deployed?: boolean;
   /**
-   * Full deployment manifest (populated when ``deployed`` is true).
-   * Contains all four Phase-A launcher coin ids + puzzle hashes from
-   * the atomic deploy.  Shape mirrors ``solslot_protocol`` ProtocolDeploymentPlan.
+   * Retained as a null compatibility field. Operational ceremony manifests
+   * are private; clients consume the signed public V2 artifact instead.
    */
   deployment_manifest?: {
     pool_launcher_id?: string;
@@ -343,4 +355,93 @@ export interface ZkPassportEnrollmentRecord {
   createdAt: number;
   updatedAt: number;
   receipt?: VaultCredentialReceipt | null;
+}
+
+export interface SolslotPublicArtifact {
+  schemaVersion: 2;
+  protocolVersion: 'solslot-v2';
+  network: 'testnet11';
+  evmChainId: 11155111;
+  buildTimestamp: string;
+  artifactHash: string;
+  sourceShas: {
+    protocol: string;
+    evm: string;
+    api: string;
+    customerWeb: string;
+    adminPortal: string;
+  };
+  ceremony: {
+    ceremonyId: string;
+    planHash: string;
+    spendBundleId: string;
+    confirmedBlockIndex: number;
+    requiredChiaConfirmations: number;
+  };
+  launcherIds: {
+    pool: string;
+    did: string;
+    governance: string;
+    navRegistry: string;
+    protocolConfig: string;
+    adminAuthority: string;
+    vaultVersionRegistry: string;
+  };
+  puzzleHashes: {
+    poolInnerPuzzleHash: string;
+    p2PoolModHash?: string;
+    sgtTailHash?: string;
+    [key: string]: string | undefined;
+  };
+  sgtGenesisCoinId: string;
+  sgtTailHash: string;
+  governanceStruct: {
+    treeHash: string;
+    launcherId: string;
+  };
+  protocolParameters: {
+    smartDeedPuzzleVersion: number;
+    poolPuzzleVersion: number;
+    sgtTotalSupply: number;
+    quorumBps: number;
+    votingWindowSeconds: number;
+    minProposalStake: number;
+    [key: string]: number;
+  };
+  stateVersions: {
+    navRegistry: number;
+    protocolConfig: number;
+    adminAuthority: number;
+    vault: number;
+  };
+  adminAuthority: {
+    threshold: number;
+    rosterHash: string;
+    mipsRootHash: string;
+    compressedPubkeys: string[];
+  };
+  validatorSet: { threshold: number; pubkeys: string[] };
+  bridgePolicy: {
+    policyVersion: number;
+    policyHash: string;
+    initialCoinCount: number;
+    lowWaterMark: number;
+    parentCoinIds: string[];
+    bridgeCoinIds: string[];
+  };
+  canonicalVaultParamsHash: string;
+  evmAddresses: {
+    forwarder: string;
+    verifierAdapter: string;
+    attestationEmitter: string;
+    [key: string]: string;
+  };
+  signaturePolicy: { type: string; threshold: number; rosterHash: string };
+  retiredCoordinates: string[];
+  signatures: Array<{
+    adminIndex: number;
+    compressedPubkey: string;
+    signature: string;
+  }>;
+  [key: string]: unknown;
 }

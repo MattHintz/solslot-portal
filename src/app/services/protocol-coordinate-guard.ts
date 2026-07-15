@@ -1,5 +1,7 @@
 import { environment } from '../../environments/environment';
 
+let verifiedProtocolCoordinates: Readonly<Record<string, unknown>> | null = null;
+
 export interface ProtocolCoordinateResolutionInput {
   coordinateName: string;
   pinned?: unknown;
@@ -9,8 +11,20 @@ export interface ProtocolCoordinateResolutionInput {
 }
 
 export function protocolCoordinateFromEnvironment(key: string): string | undefined {
-  const value = (environment.solslotProtocol as Record<string, unknown>)[key];
-  return optionalHex32(value, `environment.solslotProtocol.${key}`);
+  const value = verifiedProtocolCoordinates?.[key];
+  return optionalHex32(value, `signed Solslot artifact ${key}`);
+}
+
+/** Install coordinates only after the signed ceremony artifact is verified. */
+export function installVerifiedProtocolCoordinates(
+  coordinates: Readonly<Record<string, unknown>>,
+): void {
+  verifiedProtocolCoordinates = Object.freeze({ ...coordinates });
+}
+
+/** Clear runtime authority before each artifact load and in focused tests. */
+export function clearVerifiedProtocolCoordinates(): void {
+  verifiedProtocolCoordinates = null;
 }
 
 export function resolveProtocolCoordinate(
@@ -29,7 +43,7 @@ export function resolveProtocolCoordinate(
   }
   if (!pinned && environment.strictProtocolCoordinatePins) {
     throw new Error(
-      `${input.errorPrefix}: ${input.coordinateName} is not pinned in this build`,
+      `${input.errorPrefix}: ${input.coordinateName} is not present in the verified signed artifact`,
     );
   }
   return pinned ?? candidate;

@@ -1,142 +1,229 @@
-import { HttpClient } from '@angular/common/http';
-import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { Observable, of } from 'rxjs';
-
-import {
-  AdminAuthorityResponse,
-  AdminAuthorityV2Response,
-} from '../../../services/admin-api.service';
-import { AdminSessionService } from '../../../services/admin-session.service';
 import { ChiaSingletonReaderService } from '../../../services/chia-singleton-reader.service';
-import { ChiaWasmService } from '../../../services/chia-wasm.service';
-import { OnChainStateService } from '../../../services/on-chain-state.service';
-import { ProtocolInfo } from '../../../services/solslot-api.service';
+import { CoinsetService } from '../../../services/coinset.service';
+import { SolslotPublicArtifact } from '../../../services/solslot-api.service';
+import { SolslotProtocolArtifactService } from '../../../services/solslot-protocol-artifact.service';
 import { TrustRootsComponent } from './trust-roots.component';
 
 describe('TrustRootsComponent', () => {
   let fixture: ComponentFixture<TrustRootsComponent>;
-  let http: jasmine.SpyObj<{ get: (url: string) => Observable<unknown> }>;
+  let singleton: jasmine.SpyObj<ChiaSingletonReaderService>;
+  let coinset: jasmine.SpyObj<CoinsetService>;
+  let artifactService: {
+    artifact: SolslotPublicArtifact | null;
+    failure: string;
+  };
 
   beforeEach(async () => {
-    http = jasmine.createSpyObj('HttpClient', ['get']);
-    http.get.and.callFake((url: string) => {
-      if (url.endsWith('/admin/auth/authority')) return of(adminAuthority());
-      if (url.endsWith('/protocol')) return of(protocolWithoutA3());
-      if (url.endsWith('/admin/auth/authority_v2')) return of(adminAuthorityV2());
-      throw new Error(`unexpected url ${url}`);
-    });
-
+    singleton = jasmine.createSpyObj('ChiaSingletonReaderService', ['walkLineage']);
+    coinset = jasmine.createSpyObj('CoinsetService', ['getCoinRecordByName']);
+    artifactService = { artifact: artifact(), failure: '' };
     await TestBed.configureTestingModule({
       imports: [TrustRootsComponent],
       providers: [
         provideRouter([]),
-        { provide: HttpClient, useValue: http },
-        { provide: OnChainStateService, useValue: {} },
-        { provide: AdminSessionService, useValue: {} },
-        { provide: ChiaSingletonReaderService, useValue: {} },
-        { provide: ChiaWasmService, useValue: { ready: signal(true).asReadonly() } },
+        { provide: ChiaSingletonReaderService, useValue: singleton },
+        { provide: CoinsetService, useValue: coinset },
+        { provide: SolslotProtocolArtifactService, useValue: artifactService },
       ],
     }).compileComponents();
+  });
 
+  it('shows exactly the eight signed V2 ceremony roots', () => {
+    create();
+    const text = normalizedText();
+
+    expect(text).toContain('Signed artifact verified');
+    expect(text).toContain('SGT genesis');
+    expect(text).toContain('Pool V3');
+    expect(text).toContain('Protocol DID');
+    expect(text).toContain('Governance');
+    expect(text).toContain('NAV registry');
+    expect(text).toContain('Protocol config');
+    expect(text).toContain('Admin authority');
+    expect(text).toContain('Vault version registry');
+    expect(fixture.nativeElement.querySelectorAll('article.card').length).toBe(8);
+    expect(text).not.toContain('Launch A.3');
+  });
+
+  it('fails closed when this build has no verified artifact', () => {
+    artifactService.artifact = null;
+    artifactService.failure = 'Artifact signature quorum is unavailable.';
+    create();
+
+    const text = normalizedText();
+    expect(text).toContain('Protocol writes locked');
+    expect(text).toContain('Signed artifact unavailable');
+    expect(text).toContain('Artifact signature quorum is unavailable.');
+    expect(fixture.nativeElement.querySelectorAll('article.card').length).toBe(0);
+  });
+
+  it('checks the genesis coin and all seven singleton lineages', async () => {
+    const signedArtifact = artifactService.artifact!;
+    coinset.getCoinRecordByName.and.resolveTo({
+      confirmed_block_index: signedArtifact.ceremony.confirmedBlockIndex,
+    } as never);
+    singleton.walkLineage.and.callFake(async (launcherId: string) => ({
+      launcherId,
+      launcherCoinId: launcherId,
+      launcher: {
+        confirmed_block_index: signedArtifact.ceremony.confirmedBlockIndex,
+      },
+      nodes: [
+        {
+          coinId: launcherId,
+          parentCoinId: hex(50),
+          puzzleHash: hex(51),
+          amount: 1,
+          confirmedBlockIndex: signedArtifact.ceremony.confirmedBlockIndex,
+          spentBlockIndex: signedArtifact.ceremony.confirmedBlockIndex,
+          isLauncher: true,
+        },
+        {
+          coinId: hex(52),
+          parentCoinId: launcherId,
+          puzzleHash: hex(53),
+          amount: 1,
+          confirmedBlockIndex: signedArtifact.ceremony.confirmedBlockIndex,
+          spentBlockIndex: null,
+          isLauncher: false,
+        },
+      ],
+    } as never));
+    create();
+
+    await fixture.componentInstance.verifyAll();
+    fixture.detectChanges();
+
+    expect(coinset.getCoinRecordByName).toHaveBeenCalledOnceWith(
+      signedArtifact.sgtGenesisCoinId,
+    );
+    expect(singleton.walkLineage).toHaveBeenCalledTimes(7);
+    expect(fixture.componentInstance.confirmedCount()).toBe(8);
+    expect(normalizedText()).toContain('8 of 8 verified');
+  });
+
+  it('does not accept a singleton launched outside the signed ceremony block', async () => {
+    const signedArtifact = artifactService.artifact!;
+    singleton.walkLineage.and.resolveTo({
+      launcherId: signedArtifact.launcherIds.pool,
+      launcherCoinId: signedArtifact.launcherIds.pool,
+      launcher: {
+        confirmed_block_index: signedArtifact.ceremony.confirmedBlockIndex + 1,
+      },
+      nodes: [
+        { isLauncher: true, spentBlockIndex: 10 },
+        { isLauncher: false, spentBlockIndex: null },
+      ],
+    } as never);
+    create();
+
+    await fixture.componentInstance.verifyRoot(
+      fixture.componentInstance.roots().find((root) => root.key === 'pool')!,
+    );
+
+    expect(fixture.componentInstance.status('pool').kind).toBe('error');
+  });
+
+  function create(): void {
     fixture = TestBed.createComponent(TrustRootsComponent);
     fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-  });
+  }
 
-  it('explains A.3 launch requirements for non-technical admins when vault registration is locked', () => {
-    const text = normalizeText(fixture.nativeElement.textContent as string);
-
-    expect(text).toContain('Vault registration is locked');
-    expect(text).toContain(
-      'A.3 is the protocol configuration trust root. It records the pool, governance,',
-    );
-    expect(text).toContain('Who launches it');
-    expect(text).toContain(
-      "An authorized technical protocol operator launches this singleton after the firm's off-chain approval record is complete.",
-    );
-    expect(text).toContain(
-      'This page does not create legal approval, register a vault, mint securities, or ask for private keys.',
-    );
-    expect(text).toContain('What must be ready');
-    expect(text).toContain('Approved pool launcher id.');
-    expect(text).toContain('Approved governance launcher id.');
-    expect(text).toContain('Correct network, such as testnet11 or mainnet.');
-    expect(text).toContain('Governance public key and a funded Chia wallet coin for the singleton launch.');
-    expect(text).toContain('After launch');
-    expect(text).toContain('Capture the A.3 launcher id.');
-    expect(text).toContain('Set SOLSLOT_PROTOCOL_CONFIG_LAUNCHER_ID in the API environment.');
-    expect(text).toContain('Restart the API, then verify /protocol and this Trust Roots card.');
-    expect(text).toContain(
-      'Keep the approval record, launcher id, environment change, and verification result for audit review.',
-    );
-    expect(text).toContain('Technical support procedure: solslot_api/GENESIS_README.md §A.3');
-    expect(text).toContain('solslot_api/SECURITY.md §A.3');
-    expect(text).toContain('Launch A.3 in portal');
-    expect(component().protocolConfigStatus()).toEqual({ kind: 'not-configured' });
-  });
-
-  function component(): TrustRootsComponent {
-    return fixture.componentInstance;
+  function normalizedText(): string {
+    return String(fixture.nativeElement.textContent).replace(/\s+/g, ' ').trim();
   }
 });
 
-function normalizeText(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-function adminAuthority(): AdminAuthorityResponse {
-  return {
-    enabled: false,
-    launcher_id: null,
-    allowlist_pubkey_hashes: null,
-    quorum_m: null,
-    authority_version: null,
-    state_hash: null,
-    phase: '2-informational-only',
-    gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
-    informational_only: true,
+function artifact(): SolslotPublicArtifact {
+  const launchers = {
+    pool: hex(1),
+    did: hex(2),
+    governance: hex(3),
+    navRegistry: hex(4),
+    protocolConfig: hex(5),
+    adminAuthority: hex(6),
+    vaultVersionRegistry: hex(7),
   };
-}
-
-function adminAuthorityV2(): AdminAuthorityV2Response {
   return {
-    enabled: false,
-    launcher_id: null,
-    mips_root_hash: null,
-    admins_hash: null,
-    pending_ops_hash: null,
-    authority_version: null,
-    state_hash: null,
-    phase: '1-not-deployed',
-    gating_source: 'SOLSLOT_ADMIN_PUBKEY_ALLOWLIST',
-    informational_only: true,
-  };
-}
-
-function protocolWithoutA3(): ProtocolInfo {
-  return {
+    schemaVersion: 2,
+    protocolVersion: 'solslot-v2',
     network: 'testnet11',
-    pool_launcher_id: null,
-    governance_launcher_id: null,
-    vault_inner_mod_hash: '',
-    eip712_domain: {
-      name: 'Solslot',
-      version: '1',
-      chainId: 11,
+    evmChainId: 11155111,
+    buildTimestamp: '2026-07-14T00:00:00Z',
+    artifactHash: hex(8),
+    sourceShas: {
+      protocol: '1'.repeat(40),
+      evm: '2'.repeat(40),
+      api: '3'.repeat(40),
+      customerWeb: '4'.repeat(40),
+      adminPortal: '5'.repeat(40),
     },
-    eip712_typehash_string: 'ChiaCoinSpend(bytes32 coin_id,bytes32 delegated_puzzle_hash)',
-    faucet_address: null,
-    faucet_balance_mojos: null,
-    deployed: false,
-    deployment_manifest: null,
-    protocol_config_hash: null,
-    protocol_config_launcher_id: null,
-    protocol_config_version: 0,
-    property_registry_launcher_id: null,
-    property_registry_mod_hash: null,
-    mint_proposal_mod_hash: null,
+    ceremony: {
+      ceremonyId: 'ceremony-1',
+      planHash: hex(9),
+      spendBundleId: hex(10),
+      confirmedBlockIndex: 1_234,
+      requiredChiaConfirmations: 3,
+    },
+    launcherIds: launchers,
+    puzzleHashes: { poolInnerPuzzleHash: hex(11) },
+    sgtGenesisCoinId: hex(12),
+    sgtTailHash: hex(13),
+    governanceStruct: { treeHash: hex(14), launcherId: launchers.governance },
+    protocolParameters: {
+      smartDeedPuzzleVersion: 3,
+      poolPuzzleVersion: 3,
+      sgtTotalSupply: 1_000_000,
+      quorumBps: 6_667,
+      votingWindowSeconds: 86_400,
+      minProposalStake: 1,
+    },
+    stateVersions: {
+      navRegistry: 1,
+      protocolConfig: 2,
+      adminAuthority: 2,
+      vault: 2,
+    },
+    adminAuthority: {
+      threshold: 2,
+      rosterHash: hex(15),
+      mipsRootHash: hex(16),
+      compressedPubkeys: [compressed(1), compressed(2), compressed(3)],
+    },
+    validatorSet: {
+      threshold: 2,
+      pubkeys: [compressed(4), compressed(5), compressed(6)],
+    },
+    bridgePolicy: {
+      policyVersion: 2,
+      policyHash: hex(17),
+      initialCoinCount: 32,
+      lowWaterMark: 8,
+      parentCoinIds: Array.from({ length: 32 }, (_, index) => hex(30 + index)),
+      bridgeCoinIds: Array.from({ length: 32 }, (_, index) => hex(70 + index)),
+    },
+    canonicalVaultParamsHash: hex(18),
+    evmAddresses: {
+      forwarder: address(1),
+      verifierAdapter: address(2),
+      attestationEmitter: address(3),
+    },
+    signaturePolicy: { type: 'eip712', threshold: 2, rosterHash: hex(15) },
+    retiredCoordinates: [hex(19)],
+    signatures: [],
   };
+}
+
+function hex(seed: number): string {
+  return `0x${seed.toString(16).padStart(2, '0').repeat(32)}`;
+}
+
+function address(seed: number): string {
+  return `0x${seed.toString(16).padStart(2, '0').repeat(20)}`;
+}
+
+function compressed(seed: number): string {
+  return `0x02${seed.toString(16).padStart(2, '0').repeat(32)}`;
 }

@@ -1,14 +1,22 @@
-import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
 
 import { environment } from '../../environments/environment';
-import { AdminGenesisService } from './admin-genesis.service';
+import { AdminGenesisService, GenesisSourceShas } from './admin-genesis.service';
 
 describe('AdminGenesisService', () => {
+  const ceremonyId = '0x' + '11'.repeat(32);
+  const sourceShas: GenesisSourceShas = {
+    protocol: '1'.repeat(40),
+    evm: '2'.repeat(40),
+    api: '3'.repeat(40),
+    customerWeb: '4'.repeat(40),
+    adminPortal: '5'.repeat(40),
+  };
   let service: AdminGenesisService;
   let http: HttpTestingController;
 
@@ -20,72 +28,67 @@ describe('AdminGenesisService', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => {
-    http.verify();
-  });
+  afterEach(() => http.verify());
 
-  it('checks deployment status with the pasted one-shot token', async () => {
-    const promise = service.getDeployment(' token-123 ');
-
-    const req = http.expectOne(`${environment.faucetApi}/admin/deployment`);
-    expect(req.request.method).toBe('GET');
-    expect(req.request.headers.get('Authorization')).toBe('Bearer token-123');
-    req.flush({ deployed: false, network: 'testnet11', manifest: null });
-
-    await expectAsync(promise).toBeResolvedTo({
-      deployed: false,
-      network: 'testnet11',
-      manifest: null,
-    });
-  });
-
-  it('dry-runs protocol deployment without pushing or persisting', async () => {
-    const promise = service.dryRunProtocolDeploy('genesis-token', {
-      quorum_bps: 6000,
-      sgt_total_supply: 2_000_000,
-    });
-
-    const req = http.expectOne(`${environment.faucetApi}/admin/deploy/protocol`);
+  it('creates a frozen-commit draft through the V2 genesis router', async () => {
+    const promise = service.createDraft(' token ', sourceShas);
+    const req = http.expectOne(`${environment.faucetApi}/admin/genesis/drafts`);
     expect(req.request.method).toBe('POST');
-    expect(req.request.headers.get('Authorization')).toBe('Bearer genesis-token');
-    expect(req.request.body).toEqual({
-      quorum_bps: 6000,
-      sgt_total_supply: 2_000_000,
-      dry_run: true,
-    });
-    req.flush({
-      spend_bundle_id: null,
-      pushed: false,
-      network: 'testnet11',
-      manifest: { pool_launcher_id: '0x' + '11'.repeat(32) },
-    });
-
-    const result = await promise;
-    expect(result.pushed).toBeFalse();
-    expect(result.network).toBe('testnet11');
-    expect(result.manifest['pool_launcher_id']).toBe('0x' + '11'.repeat(32));
+    expect(req.request.headers.get('Authorization')).toBe('Bearer token');
+    expect(req.request.body).toEqual({ sourceShas });
+    req.flush({ ceremony_id: ceremonyId, state: 'draft' });
+    expect((await promise).ceremony_id).toBe(ceremonyId);
   });
 
-  it('pushes protocol deployment when dry_run is not set by the caller', async () => {
-    const promise = service.deployProtocol('genesis-token', { fee_per_spend: 1 });
+  it('keeps invitation preparation and acceptance token-scoped and public', async () => {
+    const typedData = {
+      domain: { name: 'Solslot Protocol', version: '2', chainId: 11155111 },
+      types: {},
+      primaryType: 'X',
+      message: {},
+    };
+    const prepared = service.prepareInvitation('fragment-token', '0x' + 'ab'.repeat(20));
+    const prepareReq = http.expectOne(
+      `${environment.faucetApi}/admin/genesis/invitations/prepare`,
+    );
+    expect(prepareReq.request.headers.has('Authorization')).toBeFalse();
+    prepareReq.flush({ ceremonyId, slot: 2, expiresAt: 99, typedData });
+    expect((await prepared).slot).toBe(2);
 
-    const req = http.expectOne(`${environment.faucetApi}/admin/deploy/protocol`);
-    expect(req.request.body).toEqual({ fee_per_spend: 1 });
-    req.flush({
-      spend_bundle_id: '0x' + 'aa'.repeat(32),
-      pushed: true,
-      network: 'testnet11',
-      manifest: { tracker_launcher_id: '0x' + '22'.repeat(32) },
-    });
-
-    const result = await promise;
-    expect(result.pushed).toBeTrue();
-    expect(result.network).toBe('testnet11');
-    expect(result.spend_bundle_id).toBe('0x' + 'aa'.repeat(32));
+    const accepted = service.acceptInvitation(
+      'fragment-token',
+      '0x' + 'ab'.repeat(20),
+      '0xsignature',
+    );
+    const acceptReq = http.expectOne(
+      `${environment.faucetApi}/admin/genesis/invitations/accept`,
+    );
+    expect(acceptReq.request.body.signature).toBe('0xsignature');
+    acceptReq.flush({ ceremonyId, slot: 2, enrolled: true, state: 'draft' });
+    expect((await accepted).enrolled).toBeTrue();
   });
 
-  it('rejects blank tokens before making HTTP requests', async () => {
-    await expectAsync(service.getDeployment('   ')).toBeRejectedWithError(/token is required/);
-    http.expectNone(`${environment.faucetApi}/admin/deployment`);
+  it('uses distinct preflight and broadcast endpoints', async () => {
+    const preflight = service.preflight('token', ceremonyId);
+    const preflightReq = http.expectOne(
+      `${environment.faucetApi}/admin/genesis/${ceremonyId}/preflight`,
+    );
+    preflightReq.flush({ ready: true, ceremonyId, spendCount: 48 });
+    await preflight;
+
+    const broadcast = service.broadcast('token', ceremonyId);
+    const broadcastReq = http.expectOne(
+      `${environment.faucetApi}/admin/genesis/${ceremonyId}/broadcast`,
+    );
+    expect(broadcastReq.request.method).toBe('POST');
+    broadcastReq.flush({ ceremony_id: ceremonyId, state: 'broadcast' });
+    expect((await broadcast).state).toBe('broadcast');
+  });
+
+  it('rejects blank operator tokens and malformed ceremony IDs before HTTP', () => {
+    expect(() => service.createDraft(' ', sourceShas)).toThrowError(
+      /operator token is required/,
+    );
+    expect(() => service.getCeremony('token', 'not-a-ceremony')).toThrowError(/ceremony ID/);
   });
 });

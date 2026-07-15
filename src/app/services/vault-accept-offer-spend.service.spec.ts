@@ -12,6 +12,10 @@ import {
   VaultAcceptOfferBuilderInput,
   VaultAcceptOfferSpendService,
 } from './vault-accept-offer-spend.service';
+import {
+  clearVerifiedProtocolCoordinates,
+  installVerifiedProtocolCoordinates,
+} from './protocol-coordinate-guard';
 
 const vector = ACCEPT_OFFER_PROTOCOL_VECTOR.inputs;
 const expected = ACCEPT_OFFER_PROTOCOL_VECTOR.expected;
@@ -62,6 +66,7 @@ describe('VaultAcceptOfferSpendService', () => {
       poolInnerPuzzleHash: vector.poolInnerPuzzleHash,
       bridgePolicyHash: '0x' + '00'.repeat(32),
     });
+    installProtocolCoordinates();
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
@@ -71,6 +76,7 @@ describe('VaultAcceptOfferSpendService', () => {
   });
 
   afterEach(() => {
+    clearVerifiedProtocolCoordinates();
     restoreProtocolEnvironment();
   });
 
@@ -131,8 +137,7 @@ describe('VaultAcceptOfferSpendService', () => {
       ),
     ).toThrowError(/offer artifact/);
 
-    (environment.solslotProtocol as Record<string, unknown>)['poolInnerPuzzleHash'] =
-      '0x' + '00'.repeat(32);
+    installProtocolCoordinates({ poolInnerPuzzleHash: '0x' + '00'.repeat(32) });
     expect(() =>
       service.buildResolved(
         resolvedRequest({
@@ -153,8 +158,7 @@ describe('VaultAcceptOfferSpendService', () => {
   });
 
   it('rejects request-scoped pool inner puzzle hash overrides when the protocol pin is configured', () => {
-    (environment.solslotProtocol as Record<string, unknown>)['poolInnerPuzzleHash'] =
-      '0x' + '13'.repeat(32);
+    installProtocolCoordinates({ poolInnerPuzzleHash: '0x' + '13'.repeat(32) });
 
     expect(() => service.buildResolved(resolvedRequest())).toThrowError(
       /pool inner puzzle hash builder input does not match pinned protocol coordinate/,
@@ -162,8 +166,7 @@ describe('VaultAcceptOfferSpendService', () => {
   });
 
   it('rejects request-scoped bridge policy hash overrides when the protocol pin is configured', () => {
-    (environment.solslotProtocol as Record<string, unknown>)['bridgePolicyHash'] =
-      '0x' + '14'.repeat(32);
+    installProtocolCoordinates({ bridgePolicyHash: '0x' + '14'.repeat(32) });
 
     expect(() => service.buildResolved(resolvedRequest())).toThrowError(
       /bridge policy hash builder input does not match pinned protocol coordinate/,
@@ -308,4 +311,19 @@ function restoreProtocolEnvironment(): void {
     }
   }
   Object.assign(protocol, originalProtocol);
+}
+
+function installProtocolCoordinates(
+  overrides: Partial<{
+    poolLauncherId: string;
+    poolInnerPuzzleHash: string;
+    bridgePolicyHash: string;
+  }> = {},
+): void {
+  installVerifiedProtocolCoordinates({
+    poolLauncherId: vector.poolLauncherId,
+    poolInnerPuzzleHash: vector.poolInnerPuzzleHash,
+    bridgePolicyHash: '0x' + '00'.repeat(32),
+    ...overrides,
+  });
 }
