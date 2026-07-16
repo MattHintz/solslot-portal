@@ -20,14 +20,14 @@ const HEX32_A = '0x' + 'a1'.repeat(32);
 const HEX32_ROYALTY = '0x' + 'a2'.repeat(32);
 const HEX32_OWNER = '0x' + 'a6'.repeat(32);
 const ZERO32 = '0x' + '0'.repeat(64);
-const PROPERTY_ID_CANON =
-  '0x37bd13f75d6f94c3ff0b42608163f0086e6ac95eab55a42d7cb0cd4218a7b6fd';
-const COLLECTION_ID_CANON =
-  '0xf618a1106b08dec32255847313c26363d359794b7dcfdf8242e1dd4b9dec0de6';
+const PROPERTY_ID_CANON = '0x37bd13f75d6f94c3ff0b42608163f0086e6ac95eab55a42d7cb0cd4218a7b6fd';
+const COLLECTION_ID_CANON = '0xf618a1106b08dec32255847313c26363d359794b7dcfdf8242e1dd4b9dec0de6';
 
 const VALID_CTX: MintPublishProtocolContext = {
   protocolDidSingletonStructHex: '0xffaa',
   protocolDidPuzhash: '0x' + 'a3'.repeat(32),
+  protocolDidInnerPuzhash: '0x' + 'a8'.repeat(32),
+  governanceSingletonStructHex: '0xffbb',
   p2PoolModHash: '0x' + 'a4'.repeat(32),
   p2VaultModHash: '0x' + 'a5'.repeat(32),
   propertyRegistryPuzzleHash: '0x' + 'a7'.repeat(32),
@@ -73,9 +73,7 @@ function makeDraft(overrides: Partial<MintProposalResponse> = {}): MintProposalR
   };
 }
 
-function baseInput(
-  overrides: Partial<AssemblePublishArgsInput> = {},
-): AssemblePublishArgsInput {
+function baseInput(overrides: Partial<AssemblePublishArgsInput> = {}): AssemblePublishArgsInput {
   return {
     draft: makeDraft(),
     ownerMemberHash: HEX32_OWNER,
@@ -100,6 +98,9 @@ describe('PublishMintArgsAssemblerService', () => {
     const { args } = result;
 
     // Draft-derived canonical values.
+    expect(args.propertyId).toBe('123 MAIN ST');
+    expect(args.collectionId).toBe('123 MAIN ST COLLECTION');
+    expect(args.assetClassName).toBe('RWA-RE-RES');
     expect(args.propertyIdCanon).toBe(PROPERTY_ID_CANON);
     expect(args.collectionIdCanon).toBe(COLLECTION_ID_CANON);
     expect(args.sharePpm).toBe(1_000_000);
@@ -115,15 +116,13 @@ describe('PublishMintArgsAssemblerService', () => {
     expect(args.proposalId).toBe('draft-123');
 
     // Protocol context threaded through from the override.
-    expect(args.protocolDidSingletonStructHex).toBe(
-      VALID_CTX.protocolDidSingletonStructHex,
-    );
+    expect(args.protocolDidSingletonStructHex).toBe(VALID_CTX.protocolDidSingletonStructHex);
     expect(args.protocolDidPuzhash).toBe(VALID_CTX.protocolDidPuzhash);
+    expect(args.protocolDidInnerPuzhash).toBe(VALID_CTX.protocolDidInnerPuzhash);
+    expect(args.governanceSingletonStructHex).toBe(VALID_CTX.governanceSingletonStructHex);
     expect(args.p2PoolModHash).toBe(VALID_CTX.p2PoolModHash);
     expect(args.p2VaultModHash).toBe(VALID_CTX.p2VaultModHash);
-    expect(args.propertyRegistryPuzzleHash).toBe(
-      VALID_CTX.propertyRegistryPuzzleHash,
-    );
+    expect(args.propertyRegistryPuzzleHash).toBe(VALID_CTX.propertyRegistryPuzzleHash);
   });
 
   it('UTF-8 encodes the jurisdiction string to 0x-hex', () => {
@@ -184,6 +183,8 @@ describe('PublishMintArgsAssemblerService', () => {
           protocolContext: {
             protocolDidSingletonStructHex: '',
             protocolDidPuzhash: '   ',
+            protocolDidInnerPuzhash: '',
+            governanceSingletonStructHex: '',
             p2PoolModHash: '',
             p2VaultModHash: VALID_CTX.p2VaultModHash,
             propertyRegistryPuzzleHash: '',
@@ -195,6 +196,8 @@ describe('PublishMintArgsAssemblerService', () => {
       expect(result.missing).toEqual([
         'protocolDidSingletonStructHex',
         'protocolDidPuzhash',
+        'protocolDidInnerPuzhash',
+        'governanceSingletonStructHex',
         'p2PoolModHash',
         'propertyRegistryPuzzleHash',
       ]);
@@ -213,26 +216,14 @@ describe('PublishMintArgsAssemblerService', () => {
         { govMemberHash: '0xbad' },
         'gov-member-hash-must-be-32-bytes',
       ],
-      [
-        'par value zero',
-        { draft: makeDraft({ par_value: 0 }) },
-        'par-value-must-be-positive',
-      ],
+      ['par value zero', { draft: makeDraft({ par_value: 0 }) }, 'par-value-must-be-positive'],
       [
         'unknown asset class',
         { draft: makeDraft({ asset_class: 'RWA-SPACEPORT' }) },
         'asset-class-unknown',
       ],
-      [
-        'first-vote amount zero',
-        { firstVoteAmount: 0 },
-        'first-vote-amount-must-be-positive',
-      ],
-      [
-        'voting window zero',
-        { votingWindowSeconds: 0 },
-        'voting-window-must-be-positive',
-      ],
+      ['first-vote amount zero', { firstVoteAmount: 0 }, 'first-vote-amount-must-be-positive'],
+      ['voting window zero', { votingWindowSeconds: 0 }, 'voting-window-must-be-positive'],
     ];
 
     for (const [name, override, reason] of cases) {
@@ -268,18 +259,14 @@ describe('PublishMintArgsAssemblerService', () => {
     });
 
     it('rejects a draft with a negative royalty_bps', () => {
-      const result = service.assemble(
-        baseInput({ draft: makeDraft({ royalty_bps: -5 }) }),
-      );
+      const result = service.assemble(baseInput({ draft: makeDraft({ royalty_bps: -5 }) }));
       expect(result.kind).toBe('invalid-input');
       if (result.kind !== 'invalid-input') return;
       expect(result.reason).toBe('royalty-bps-must-be-non-negative-integer');
     });
 
     it('rejects a draft with a negative quorum_required', () => {
-      const result = service.assemble(
-        baseInput({ draft: makeDraft({ quorum_required: -1 }) }),
-      );
+      const result = service.assemble(baseInput({ draft: makeDraft({ quorum_required: -1 }) }));
       expect(result.kind).toBe('invalid-input');
       if (result.kind !== 'invalid-input') return;
       expect(result.reason).toBe('quorum-required-must-be-non-negative-integer');

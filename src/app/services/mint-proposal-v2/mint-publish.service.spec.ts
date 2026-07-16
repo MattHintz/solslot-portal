@@ -29,10 +29,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChiaWasmService } from '../chia-wasm.service';
 import { bytesToHex } from '../../utils/chia-hash';
 
-import {
-  MintPublishService,
-  type MintPublishArtifacts,
-} from './mint-publish.service';
+import { MintPublishService, type MintPublishArtifacts } from './mint-publish.service';
 import { MintProposalV2Service } from './mint-proposal-v2.service';
 import fixturesJson from './mint-publish.fixtures.json';
 
@@ -62,6 +59,8 @@ interface Inputs {
   deed_launcher_parent_coin_name: string;
   proposal_launcher_parent_coin_name: string;
   protocol_did_puzhash: string;
+  protocol_did_inner_puzhash: string;
+  governance_singleton_struct_hex: string;
   p2_pool_mod_hash: string;
   p2_vault_mod_hash: string;
   property_registry_puzzle_hash: string;
@@ -104,17 +103,17 @@ describe('MintPublishService', () => {
     const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
     const response = await fetch('/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm');
     if (!response.ok) {
-      throw new Error(
-        `WASM asset fetch failed: ${response.status} ${response.statusText}`,
-      );
+      throw new Error(`WASM asset fetch failed: ${response.status} ${response.statusText}`);
     }
     const bytes = await response.arrayBuffer();
     const result = await WebAssembly.instantiate(bytes, {
       './chia_wallet_sdk_wasm_bg.js': wasmExports as unknown as WebAssembly.ModuleImports,
     });
-    const setWasm = (wasmExports as unknown as {
-      __wbg_set_wasm?: (w: WebAssembly.Exports) => void;
-    }).__wbg_set_wasm;
+    const setWasm = (
+      wasmExports as unknown as {
+        __wbg_set_wasm?: (w: WebAssembly.Exports) => void;
+      }
+    ).__wbg_set_wasm;
     if (typeof setWasm !== 'function') {
       throw new Error('chia_wallet_sdk_wasm_bg.js missing __wbg_set_wasm');
     }
@@ -134,23 +133,17 @@ describe('MintPublishService', () => {
   // ── Constants ──
   describe('constants', () => {
     it('BILL_MINT_TAG matches the fixture (0x4d = "M")', () => {
-      expect(MintPublishService.BILL_MINT_TAG).toBe(
-        fixture.constants.bill_mint_tag,
-      );
+      expect(MintPublishService.BILL_MINT_TAG).toBe(fixture.constants.bill_mint_tag);
       expect(MintPublishService.BILL_MINT_TAG).toBe(0x4d);
     });
 
     it('SINGLETON_AMOUNT matches the fixture (odd-amount singleton convention)', () => {
-      expect(MintPublishService.SINGLETON_AMOUNT).toBe(
-        fixture.constants.singleton_amount,
-      );
+      expect(MintPublishService.SINGLETON_AMOUNT).toBe(fixture.constants.singleton_amount);
       expect(MintPublishService.SINGLETON_AMOUNT).toBe(1);
     });
 
     it('SINGLETON_MOD_HASH matches the fixture (chia bundled value)', () => {
-      expect(MintPublishService.SINGLETON_MOD_HASH).toBe(
-        fixture.constants.singleton_mod_hash,
-      );
+      expect(MintPublishService.SINGLETON_MOD_HASH).toBe(fixture.constants.singleton_mod_hash);
     });
 
     it('SINGLETON_LAUNCHER_HASH matches the fixture (chia bundled value)', () => {
@@ -174,21 +167,15 @@ describe('MintPublishService', () => {
       // top-level builder (covered below); here we just sanity-check the
       // standalone helper produces the SAME hash that build_mint_publish_artifacts
       // uses internally.
-      const fromBuilder = service.buildMintPublishArtifacts(
-        builderArgsFromFixture(fixture),
-      );
+      const fromBuilder = service.buildMintPublishArtifacts(builderArgsFromFixture(fixture));
       // deed_launcher_id = coinId(parent, deed_launcher_puzhash, 1).
       // If deedLauncherPuzzleHash returns the same bytes, the resulting
       // coin id matches the fixture.
-      expect(fromBuilder.deedLauncherId).toBe(
-        fixture.expected.deed_launcher_id,
-      );
+      expect(fromBuilder.deedLauncherId).toBe(fixture.expected.deed_launcher_id);
       // Direct format sanity: 32 bytes.
       expect(got.length).toBe(32);
       // It is NOT the standard launcher hash (griefing-safety property).
-      expect(bytesToHex(got)).not.toBe(
-        MintPublishService.SINGLETON_LAUNCHER_HASH,
-      );
+      expect(bytesToHex(got)).not.toBe(MintPublishService.SINGLETON_LAUNCHER_HASH);
     });
   });
 
@@ -197,15 +184,11 @@ describe('MintPublishService', () => {
     let result: MintPublishArtifacts;
 
     beforeEach(() => {
-      result = service.buildMintPublishArtifacts(
-        builderArgsFromFixture(fixture),
-      );
+      result = service.buildMintPublishArtifacts(builderArgsFromFixture(fixture));
     });
 
     it('smartDeedInnerPuzhash matches Python', () => {
-      expect(result.smartDeedInnerPuzhash).toBe(
-        fixture.expected.smart_deed_inner_puzhash,
-      );
+      expect(result.smartDeedInnerPuzhash).toBe(fixture.expected.smart_deed_inner_puzhash);
     });
 
     it('eveInnerPuzhash matches Python (Artifact A DRAFT eve)', () => {
@@ -231,18 +214,12 @@ describe('MintPublishService', () => {
     });
 
     it('proposalDataHash matches Python (Artifact A audit-log binding)', () => {
-      expect(result.proposalDataHash).toBe(
-        fixture.expected.proposal_data_hash,
-      );
+      expect(result.proposalDataHash).toBe(fixture.expected.proposal_data_hash);
     });
 
     it('billOpProgram hex + tree hash match Python', () => {
-      expect(result.billOpProgramHex).toBe(
-        fixture.expected.bill_op_program_hex,
-      );
-      expect(result.billOpProgramHash).toBe(
-        fixture.expected.bill_op_program_hash,
-      );
+      expect(result.billOpProgramHex).toBe(fixture.expected.bill_op_program_hex);
+      expect(result.billOpProgramHash).toBe(fixture.expected.bill_op_program_hash);
     });
 
     it('deedSingletonStructProgram hex + tree hash match Python', () => {
@@ -286,9 +263,7 @@ describe('MintPublishService', () => {
       // is the on-wire identity:
       expect(result.proposalHash).toBe(result.billOpProgramHash);
       // And the fixture's pinned bill_op tag matches the constant:
-      expect(MintPublishService.BILL_MINT_TAG).toBe(
-        fixture.constants.bill_mint_tag,
-      );
+      expect(MintPublishService.BILL_MINT_TAG).toBe(fixture.constants.bill_mint_tag);
       // Avoid unused-var lint:
       expect(v2).toBeTruthy();
     });
@@ -317,9 +292,10 @@ function builderArgsFromFixture(f: FixtureFile) {
     govMemberHash: f.inputs.gov_member_hash,
     deedLauncherParentCoinName: f.inputs.deed_launcher_parent_coin_name,
     proposalLauncherParentCoinName: f.inputs.proposal_launcher_parent_coin_name,
-    protocolDidSingletonStructHex:
-      f.constants.protocol_did_singleton_struct_hex,
+    protocolDidSingletonStructHex: f.constants.protocol_did_singleton_struct_hex,
     protocolDidPuzhash: f.inputs.protocol_did_puzhash,
+    protocolDidInnerPuzhash: f.inputs.protocol_did_inner_puzhash,
+    governanceSingletonStructHex: f.inputs.governance_singleton_struct_hex,
     p2PoolModHash: f.inputs.p2_pool_mod_hash,
     p2VaultModHash: f.inputs.p2_vault_mod_hash,
     propertyRegistryPuzzleHash: f.inputs.property_registry_puzzle_hash,

@@ -1,8 +1,5 @@
 import { provideHttpClient } from '@angular/common/http';
-import {
-  HttpTestingController,
-  provideHttpClientTesting,
-} from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
 import { environment } from '../../environments/environment';
@@ -35,7 +32,10 @@ describe('AdminGenesisService', () => {
     const req = http.expectOne(`${environment.faucetApi}/admin/genesis/drafts`);
     expect(req.request.method).toBe('POST');
     expect(req.request.headers.get('Authorization')).toBe('Bearer token');
-    expect(req.request.body).toEqual({ sourceShas });
+    expect(req.request.body).toEqual({
+      sourceShas,
+      reviewClass: 'internal-engineering-testnet',
+    });
     req.flush({ ceremony_id: ceremonyId, state: 'draft' });
     expect((await promise).ceremony_id).toBe(ceremonyId);
   });
@@ -48,9 +48,7 @@ describe('AdminGenesisService', () => {
       message: {},
     };
     const prepared = service.prepareInvitation('fragment-token', '0x' + 'ab'.repeat(20));
-    const prepareReq = http.expectOne(
-      `${environment.faucetApi}/admin/genesis/invitations/prepare`,
-    );
+    const prepareReq = http.expectOne(`${environment.faucetApi}/admin/genesis/invitations/prepare`);
     expect(prepareReq.request.headers.has('Authorization')).toBeFalse();
     prepareReq.flush({ ceremonyId, slot: 2, expiresAt: 99, typedData });
     expect((await prepared).slot).toBe(2);
@@ -60,9 +58,7 @@ describe('AdminGenesisService', () => {
       '0x' + 'ab'.repeat(20),
       '0xsignature',
     );
-    const acceptReq = http.expectOne(
-      `${environment.faucetApi}/admin/genesis/invitations/accept`,
-    );
+    const acceptReq = http.expectOne(`${environment.faucetApi}/admin/genesis/invitations/accept`);
     expect(acceptReq.request.body.signature).toBe('0xsignature');
     acceptReq.flush({ ceremonyId, slot: 2, enrolled: true, state: 'draft' });
     expect((await accepted).enrolled).toBeTrue();
@@ -86,9 +82,7 @@ describe('AdminGenesisService', () => {
   });
 
   it('rejects blank operator tokens and malformed ceremony IDs before HTTP', () => {
-    expect(() => service.createDraft(' ', sourceShas)).toThrowError(
-      /operator token is required/,
-    );
+    expect(() => service.createDraft(' ', sourceShas)).toThrowError(/operator token is required/);
     expect(() => service.getCeremony('token', 'not-a-ceremony')).toThrowError(/ceremony ID/);
   });
 });

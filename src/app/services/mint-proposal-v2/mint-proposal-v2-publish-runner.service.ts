@@ -46,8 +46,6 @@ import { MintPublishSpendBuilderService } from './mint-publish-spend-builder.ser
  *          (``CREATE_COIN(singleton_launcher, 1)`` +
  *          ``ASSERT_COIN_ANNOUNCEMENT``) from
  *          {@link MintPublishSpendBuilderService.buildProposalEveLaunchSpend}.
- *        * ``ASSERT_PUZZLE_ANNOUNCEMENT`` for the A4 property-registry
- *          registration announcement.
  *        * a change ``CREATE_COIN`` back to the wallet.
  *      The same XCH coin is the parent for BOTH launchers — the two
  *      children have distinct puzzle hashes (DID-gated vs. standard)
@@ -58,11 +56,10 @@ import { MintPublishSpendBuilderService } from './mint-publish-spend-builder.ser
  *      IDLE → OPEN.
  *   4. **SGT first-vote LOCK spend** — the proposer's SGT free coin
  *      locked as the proposal's first vote / anti-spam stake.
- *   5. **Property-registry registration spend** — the A4 registry
- *      singleton creates the registration announcement for
- *      ``property_id_canon``.  The caller supplies this spend because it
- *      depends on the current registry witness/indexer state and the
- *      governance BLS key.
+ *
+ * Property registration is intentionally deferred to the quorum-authorized
+ * EXECUTE bundle.  The current registry coin is carried only as a witness at
+ * publish time and is never spent before governance passes.
  *
  * The wallet signs the AGG_SIG_ME conditions in (1), (4), and (5) when
  * the connected wallet controls the required keys.  (2) and (3) are
@@ -144,8 +141,7 @@ export class MintProposalV2PublishRunnerService {
     }
 
     // ── 3. SGT coin discovery (proposer's first-vote stake) ──
-    const sgtGenesisCoinId =
-      environment.solslotProtocol.sgtGenesisCoinId;
+    const sgtGenesisCoinId = environment.solslotProtocol.sgtGenesisCoinId;
     if (!sgtGenesisCoinId) {
       return { kind: 'sgt-not-deployed' };
     }
@@ -153,9 +149,7 @@ export class MintProposalV2PublishRunnerService {
     if (discovery.kind !== 'found') {
       return { kind: 'no-sgt-coins', discovery };
     }
-    const sgtPick = discovery.coins.find(
-      (c) => BigInt(c.amount) === firstVoteAmount,
-    );
+    const sgtPick = discovery.coins.find((c) => BigInt(c.amount) === firstVoteAmount);
     if (!sgtPick) {
       return {
         kind: 'no-sgt-coin-matches-stake',
@@ -211,6 +205,8 @@ export class MintProposalV2PublishRunnerService {
         proposalLauncherParentCoinName: xchCoinId,
         protocolDidSingletonStructHex: args.protocolDidSingletonStructHex,
         protocolDidPuzhash: args.protocolDidPuzhash,
+        protocolDidInnerPuzhash: args.protocolDidInnerPuzhash,
+        governanceSingletonStructHex: args.governanceSingletonStructHex,
         p2PoolModHash: args.p2PoolModHash,
         p2VaultModHash: args.p2VaultModHash,
         propertyRegistryPuzzleHash: args.propertyRegistryPuzzleHash,
@@ -227,6 +223,11 @@ export class MintProposalV2PublishRunnerService {
       ownerMemberHash: args.ownerMemberHash,
       govMemberHash: args.govMemberHash,
       proposalDataHash: artifacts.proposalDataHash,
+      governanceSingletonStructHex: args.governanceSingletonStructHex,
+      governanceProposalHash: artifacts.proposalHash,
+      deedLauncherId: artifacts.deedLauncherId,
+      didInnerPuzzleHash: args.protocolDidInnerPuzhash,
+      deedFullPuzzleHash: artifacts.deedFullPuzhash,
       proposalState: MintProposalV2Service.STATE_DRAFT,
       stateVersion: 0,
     });
@@ -235,8 +236,8 @@ export class MintProposalV2PublishRunnerService {
     // A standard p2 delegated spend that creates exactly the canonical
     // sgt_locked_inner output and nothing else; the wallet signs the
     // AGG_SIG_ME this delegated puzzle introduces.
-    const votingDeadline = BigInt(args.nowSeconds ?? Math.floor(Date.now() / 1000)) +
-      votingWindowSeconds;
+    const votingDeadline =
+      BigInt(args.nowSeconds ?? Math.floor(Date.now() / 1000)) + votingWindowSeconds;
     const trackerStructHash = this.sgt.trackerStructHash({
       trackerLauncherId: trackerInputs.trackerLauncherId,
     });
@@ -247,11 +248,7 @@ export class MintProposalV2PublishRunnerService {
       lockDeadlineSeconds: votingDeadline,
     });
     const clvm = this.clvm();
-    const lockCreateCoin = clvm.createCoin(
-      lockedPuzzleHash,
-      firstVoteAmount,
-      undefined,
-    );
+    const lockCreateCoin = clvm.createCoin(lockedPuzzleHash, firstVoteAmount, undefined);
     const lockDelegatedSpend = clvm.delegatedSpend([lockCreateCoin]);
     const lockInnerSpend = clvm.standardSpend(syntheticKey, lockDelegatedSpend);
     const voterInnerPuzzleHex = bytesToHex(lockInnerSpend.puzzle.serialize());
@@ -266,32 +263,18 @@ export class MintProposalV2PublishRunnerService {
         sgtTailHash,
       }),
     );
-    const sgtPickCoinId = coinId(
-      sgtPick.parentCoinInfo,
-      sgtPick.puzzleHash,
-      sgtPick.amount,
-    );
-    const sgtLockCoinId = coinId(
-      sgtPickCoinId,
-      lockedCatPuzzleHash,
-      firstVoteAmount,
-    );
+    const sgtPickCoinId = coinId(sgtPick.parentCoinInfo, sgtPick.puzzleHash, sgtPick.amount);
+    const sgtLockCoinId = coinId(sgtPickCoinId, lockedCatPuzzleHash, firstVoteAmount);
 
     // ── 8. Build the three publish spends ──
     let eveLaunch: ReturnType<MintPublishSpendBuilderService['buildProposalEveLaunchSpend']>;
     let trackerProposeSpend: UnsignedCoinSpend;
     let sgtLockSpend: UnsignedCoinSpend;
-    let propertyRegistryAssertConditionHex: string;
     try {
       eveLaunch = this.spendBuilder.buildProposalEveLaunchSpend({
         xchParentCoin: xchCoin,
         eveInnerPuzzleHex,
       });
-      propertyRegistryAssertConditionHex =
-        this.spendBuilder.buildPropertyRegistryAssertConditionHex({
-          propertyRegistryPuzzleHash: args.propertyRegistryPuzzleHash,
-          propertyIdCanon: args.propertyIdCanon,
-        });
       trackerProposeSpend = this.spendBuilder.buildTrackerProposeCoinSpend({
         trackerCoin: trackerInputs.trackerCoin,
         trackerInnerPuzzleHex: trackerInputs.trackerInnerPuzzleHex,
@@ -338,10 +321,7 @@ export class MintProposalV2PublishRunnerService {
         deedLauncherPuzhash: this.publish.deedLauncherPuzzleHash(
           args.protocolDidSingletonStructHex,
         ),
-        parentConditionsHex: [
-          ...eveLaunch.parentConditionsHex,
-          propertyRegistryAssertConditionHex,
-        ],
+        parentConditionsHex: eveLaunch.parentConditionsHex,
       });
     } catch (err) {
       return {
@@ -350,13 +330,12 @@ export class MintProposalV2PublishRunnerService {
       };
     }
 
-    // ── 10. Sign the bundle (wallet covers XCH parent + SGT lock + registry when keyed) ──
+    // ── 10. Sign the bundle (wallet covers XCH parent + SGT lock) ──
     const unsigned: UnsignedCoinSpend[] = [
       xchParentSpend,
       eveLaunch.launcherCoinSpend,
       trackerProposeSpend,
       sgtLockSpend,
-      args.propertyRegistryCoinSpend,
     ];
     let signedBundle: SignedSpendBundle;
     try {
@@ -375,10 +354,19 @@ export class MintProposalV2PublishRunnerService {
     // computation.  The exact same operator inputs that fed
     // buildMintPublishArtifacts in step 5 are echoed here — the API
     // pairs them with the launcher parent it extracts from the bundle.
+    const propertyRegistryCoinId = coinId(
+      args.propertyRegistryCoinSpend.coin.parentCoinInfo,
+      args.propertyRegistryCoinSpend.coin.puzzleHash,
+      args.propertyRegistryCoinSpend.coin.amount,
+    );
     const proposalMetadata: PublishProposalMetadataJson = {
+      property_id: args.propertyId,
+      collection_id: args.collectionId,
+      asset_class_name: args.assetClassName,
       property_id_canon: this.normalizeHex(args.propertyIdCanon),
       collection_id_canon: this.normalizeHex(args.collectionIdCanon),
       share_ppm: Number(args.sharePpm),
+      property_registry_coin_id: propertyRegistryCoinId,
       property_registry_puzzle_hash: this.normalizeHex(args.propertyRegistryPuzzleHash),
       par_value_mojos: Number(args.parValueMojos),
       asset_class: Number(args.assetClass),
@@ -388,6 +376,7 @@ export class MintProposalV2PublishRunnerService {
       quorum_threshold: Number(args.quorumThreshold),
       owner_member_hash: this.normalizeHex(args.ownerMemberHash),
       gov_member_hash: this.normalizeHex(args.govMemberHash),
+      voting_deadline: Number(votingDeadline),
     };
     let apiResponse: CommitteeVoteApiResponse;
     try {
@@ -425,6 +414,7 @@ export class MintProposalV2PublishRunnerService {
       sgtLockCoinId,
       votingDeadline,
       voterInnerPuzzleHash,
+      propertyRegistryCoinId,
     };
   }
 
@@ -437,7 +427,12 @@ export class MintProposalV2PublishRunnerService {
    * CREATE_COIN.
    */
   private buildXchParentSpend(args: {
-    sourceCoin: { coinId(): Uint8Array; parentCoinInfo: Uint8Array; puzzleHash: Uint8Array; amount: bigint };
+    sourceCoin: {
+      coinId(): Uint8Array;
+      parentCoinInfo: Uint8Array;
+      puzzleHash: Uint8Array;
+      amount: bigint;
+    };
     coinAmount: bigint;
     syntheticKey: unknown;
     changePuzzleHash: Uint8Array;
@@ -462,23 +457,17 @@ export class MintProposalV2PublishRunnerService {
         undefined,
       ),
       // Artifact A launcher parent conditions (CREATE_COIN + ASSERT_COIN_ANNOUNCEMENT).
-      ...args.parentConditionsHex.map((hex) =>
-        clvm.deserialize(hexToBytes(hex)),
-      ),
+      ...args.parentConditionsHex.map((hex) => clvm.deserialize(hexToBytes(hex))),
     ];
     if (changeAmount > 0n) {
-      conditions.push(
-        clvm.createCoin(args.changePuzzleHash, changeAmount, undefined),
-      );
+      conditions.push(clvm.createCoin(args.changePuzzleHash, changeAmount, undefined));
     }
     const innerSpend = clvm.delegatedSpend(conditions);
     clvm.spendStandardCoin(args.sourceCoin, args.syntheticKey, innerSpend);
 
     const coinSpends = clvm.coinSpends();
     if (coinSpends.length !== 1) {
-      throw new Error(
-        `buildXchParentSpend: expected 1 coin spend, got ${coinSpends.length}`,
-      );
+      throw new Error(`buildXchParentSpend: expected 1 coin spend, got ${coinSpends.length}`);
     }
     const cs = coinSpends[0];
     const puzzleRevealHash = bytesToHex(clvm.deserialize(cs.puzzleReveal).treeHash());
@@ -526,6 +515,9 @@ export class MintProposalV2PublishRunnerService {
 
 export interface PublishMintArgs {
   // ── Proposal metadata (from the operator's DRAFT) ──
+  propertyId: string;
+  collectionId: string;
+  assetClassName: string;
   propertyIdCanon: string;
   collectionIdCanon: string;
   sharePpm: number | bigint;
@@ -541,6 +533,8 @@ export interface PublishMintArgs {
   /** Serialized ``(SINGLETON_MOD_HASH, (DID_LAUNCHER_ID, SINGLETON_LAUNCHER_HASH))``. */
   protocolDidSingletonStructHex: string;
   protocolDidPuzhash: string;
+  protocolDidInnerPuzhash: string;
+  governanceSingletonStructHex: string;
   p2PoolModHash: string;
   p2VaultModHash: string;
   propertyRegistryPuzzleHash: string;
@@ -557,12 +551,8 @@ export interface PublishMintArgs {
   votingWindowSeconds: number | bigint;
   /** Override "now" for deterministic tests; defaults to wall-clock. */
   nowSeconds?: number;
-  /**
-   * Optional informational correlation id (the localStorage draft id)
-   * forwarded to the API for audit logging.  Not used as authority —
-   * the bundle's own coin spends bind the proposal on chain.
-   */
-  proposalId?: string;
+  /** Persisted draft id authenticated and re-derived by the API. */
+  proposalId: string;
 }
 
 export type PublishRunResult =
@@ -604,6 +594,7 @@ export type PublishRunResult =
       sgtLockCoinId: string;
       votingDeadline: bigint;
       voterInnerPuzzleHash: string;
+      propertyRegistryCoinId: string;
     };
 
 // ── SDK typing ──────────────────────────────────────────────────────────

@@ -34,7 +34,7 @@ import { MINT_PROPOSAL_INNER_V2_PUZZLE_HEX } from './mint-proposal-v2.puzzle-hex
  *     body (sans PROTOCOL_PREFIX) the puzzle emits via
  *     CREATE_PUZZLE_ANNOUNCEMENT.
  *   * {@link makeInnerPuzzleHash} \u2014 tree hash of the V2 inner curried
- *     with its 6 args.  Used for the eve coin's puzzle hash and for
+ *     with its 11 args.  Used for the eve coin's puzzle hash and for
  *     post-transition recurry checks.
  *
  * **What's NOT here yet (deferred):**
@@ -56,17 +56,18 @@ export class MintProposalV2Service {
    * and by this service's own Karma spec.  Drift here means the
    * .puzzle-hex.ts file is out of sync with .clsp.hex.
    */
-  static readonly MOD_HASH =
-    '0xa21505befe18b82a51a5644a184aad514b86a1c7e86fce04594e83bf376329d6';
+  static readonly MOD_HASH = '0xbb1379bc24f0a02ca27de58e2200ae4cd1fc1e58d53a49d1119600108741d37e';
 
   /** State machine constants (mirror the .clsp). */
   static readonly STATE_DRAFT = 1;
   static readonly STATE_APPROVED = 2;
   static readonly STATE_CANCELLED = 3;
+  static readonly STATE_EXECUTED = 4;
 
   /** Transition case opcodes (mirror the .clsp). */
   static readonly TRANSITION_APPROVE = 0x61; // 'a'
   static readonly TRANSITION_CANCEL = 0x63; // 'c'
+  static readonly TRANSITION_EXECUTE = 0x78; // 'x'
 
   /**
    * Tree hash of the uncurried V2 inner puzzle.  Derived from the
@@ -169,7 +170,8 @@ export class MintProposalV2Service {
   }
 
   /**
-   * Tree hash of the V2 inner puzzle curried with its 6 state slots.
+   * Tree hash of the V2 inner puzzle curried with its immutable execution
+   * context and state slots.
    * Currying order MUST match ``mint_proposal_inner_v2.clsp`` and
    * ``mint_proposal_v2_driver.make_inner_puzzle``:
    *
@@ -177,8 +179,13 @@ export class MintProposalV2Service {
    *   2. ``OWNER_MEMBER_HASH``
    *   3. ``GOV_MEMBER_HASH``
    *   4. ``PROPOSAL_DATA_HASH``
-   *   5. ``PROPOSAL_STATE``
-   *   6. ``STATE_VERSION``
+   *   5. ``GOVERNANCE_SINGLETON_STRUCT``
+   *   6. ``GOVERNANCE_PROPOSAL_HASH``
+   *   7. ``DEED_LAUNCHER_ID``
+   *   8. ``DID_INNER_PUZZLE_HASH``
+   *   9. ``DEED_FULL_PUZZLE_HASH``
+   *   10. ``PROPOSAL_STATE``
+   *   11. ``STATE_VERSION``
    *
    * Used as the eve coin's inner puzzle hash at launch and as the
    * post-transition hash for CREATE_COIN's recurry check.  Drift
@@ -189,6 +196,11 @@ export class MintProposalV2Service {
     ownerMemberHash: string;
     govMemberHash: string;
     proposalDataHash: string;
+    governanceSingletonStructHex: string;
+    governanceProposalHash: string;
+    deedLauncherId: string;
+    didInnerPuzzleHash: string;
+    deedFullPuzzleHash: string;
     proposalState: number;
     stateVersion: number | bigint;
   }): Uint8Array {
@@ -210,6 +222,11 @@ export class MintProposalV2Service {
     ownerMemberHash: string;
     govMemberHash: string;
     proposalDataHash: string;
+    governanceSingletonStructHex: string;
+    governanceProposalHash: string;
+    deedLauncherId: string;
+    didInnerPuzzleHash: string;
+    deedFullPuzzleHash: string;
     proposalState: number;
     stateVersion: number | bigint;
   }): string {
@@ -220,6 +237,11 @@ export class MintProposalV2Service {
     ownerMemberHash: string;
     govMemberHash: string;
     proposalDataHash: string;
+    governanceSingletonStructHex: string;
+    governanceProposalHash: string;
+    deedLauncherId: string;
+    didInnerPuzzleHash: string;
+    deedFullPuzzleHash: string;
     proposalState: number;
     stateVersion: number | bigint;
   }): ClvmProgramShape {
@@ -230,6 +252,11 @@ export class MintProposalV2Service {
       clvm.atom(hexToBytes(args.ownerMemberHash)),
       clvm.atom(hexToBytes(args.govMemberHash)),
       clvm.atom(hexToBytes(args.proposalDataHash)),
+      clvm.deserialize(hexToBytes(args.governanceSingletonStructHex)),
+      clvm.atom(hexToBytes(args.governanceProposalHash)),
+      clvm.atom(hexToBytes(args.deedLauncherId)),
+      clvm.atom(hexToBytes(args.didInnerPuzzleHash)),
+      clvm.atom(hexToBytes(args.deedFullPuzzleHash)),
       clvm.int(BigInt(args.proposalState)),
       clvm.int(BigInt(args.stateVersion)),
     ]);

@@ -1,9 +1,5 @@
 import { Injectable } from '@angular/core';
-import {
-  MintProposalResponse,
-  MintProposalState,
-  ProposeMintRequest,
-} from './admin-api.service';
+import { MintProposalResponse, MintProposalState, ProposeMintRequest } from './admin-api.service';
 import { mergeMintPublishLocalContext } from './mint-proposal-v2/mint-proposal-local-context';
 import {
   canonicalizeMintCollectionId,
@@ -93,8 +89,11 @@ export class MintDraftStorageService {
       },
       on_chain: {
         proposal_tracker_coin_id: null,
+        proposal_singleton_launcher_id: null,
         sgt_lock_coin_id: null,
         deed_launcher_id: null,
+        property_registry_coin_id: null,
+        property_registry_puzzle_hash: null,
         published_bundle_id: null,
         executed_bundle_id: null,
       },
@@ -131,13 +130,8 @@ export class MintDraftStorageService {
     const filtered =
       ownerPubkey === null
         ? records
-        : records.filter(
-            (r) =>
-              r.owner_pubkey.toLowerCase() === ownerPubkey.toLowerCase(),
-          );
-    return filtered.sort(
-      (a, b) => b.timestamps.created_at - a.timestamps.created_at,
-    );
+        : records.filter((r) => r.owner_pubkey.toLowerCase() === ownerPubkey.toLowerCase());
+    return filtered.sort((a, b) => b.timestamps.created_at - a.timestamps.created_at);
   }
 
   /** Look up a single draft by id; returns null if not in storage. */
@@ -177,10 +171,7 @@ export class MintDraftStorageService {
    * this only lets the admin desk keep showing the deterministic ids and
    * hashes that were submitted from this browser.
    */
-  markPublished(
-    id: string,
-    update: MintDraftPublishedUpdate,
-  ): MintProposalResponse | null {
+  markPublished(id: string, update: MintDraftPublishedUpdate): MintProposalResponse | null {
     const all = this.loadAll();
     const existing = all[id];
     if (!existing) return null;
@@ -203,8 +194,11 @@ export class MintDraftStorageService {
       on_chain: {
         ...existing.on_chain,
         proposal_tracker_coin_id: update.proposalTrackerCoinId,
+        proposal_singleton_launcher_id: update.proposalSingletonLauncherId,
         sgt_lock_coin_id: update.sgtLockCoinId,
         deed_launcher_id: update.deedLauncherId,
+        property_registry_coin_id: update.propertyRegistryCoinId,
+        property_registry_puzzle_hash: update.propertyRegistryPuzzleHash,
         published_bundle_id: update.publishedBundleId,
       },
       deadline: update.deadline,
@@ -214,6 +208,10 @@ export class MintDraftStorageService {
       },
       off_chain_metadata: mergeMintPublishLocalContext(existing.off_chain_metadata, {
         propertyRegistryPuzzleHash: update.propertyRegistryPuzzleHash,
+        propertyRegistryCoinId: update.propertyRegistryCoinId,
+        ownerMemberHash: update.ownerMemberHash,
+        govMemberHash: update.govMemberHash,
+        proposalDataHash: update.proposalDataHash,
       }),
     };
     all[id] = updated;
@@ -227,10 +225,7 @@ export class MintDraftStorageService {
    * marks the admin's local record so the desk stops presenting execute as a
    * pending action while chain evidence catches up.
    */
-  markExecuted(
-    id: string,
-    update: MintDraftExecutedUpdate,
-  ): MintProposalResponse | null {
+  markExecuted(id: string, update: MintDraftExecutedUpdate): MintProposalResponse | null {
     const all = this.loadAll();
     const existing = all[id];
     if (!existing) return null;
@@ -290,10 +285,7 @@ export class MintDraftStorageService {
       const parsed = JSON.parse(raw) as Record<string, MintProposalResponse>;
       if (!parsed || typeof parsed !== 'object') return {};
       return Object.fromEntries(
-        Object.entries(parsed).map(([id, draft]) => [
-          id,
-          normalizeStoredDraft(draft),
-        ]),
+        Object.entries(parsed).map(([id, draft]) => [id, normalizeStoredDraft(draft)]),
       );
     } catch {
       // Corrupt storage — surface as empty so callers don't crash.
@@ -341,10 +333,15 @@ export interface MintDraftPublishedUpdate {
   deedFullPuzhash: string;
   proposalHash: string;
   proposalTrackerCoinId: string;
+  proposalSingletonLauncherId: string;
   sgtLockCoinId: string | null;
   deedLauncherId: string;
   publishedBundleId: string;
   propertyRegistryPuzzleHash: string;
+  propertyRegistryCoinId: string;
+  ownerMemberHash: string;
+  govMemberHash: string;
+  proposalDataHash: string;
   deadline: number;
   publishedAt?: number;
 }

@@ -67,6 +67,9 @@ function idleInputs(): IdleStateProposeInputs {
 
 function defaultArgs(overrides: Partial<PublishMintArgs> = {}): PublishMintArgs {
   return {
+    propertyId: 'PROPERTY-1',
+    collectionId: 'COLLECTION-1',
+    assetClassName: 'RWA-RE-RES',
     propertyIdCanon: '0x' + '01'.repeat(32),
     collectionIdCanon: '0x' + '09'.repeat(32),
     sharePpm: 750_000,
@@ -80,6 +83,8 @@ function defaultArgs(overrides: Partial<PublishMintArgs> = {}): PublishMintArgs 
     govMemberHash: '0x' + '04'.repeat(32),
     protocolDidSingletonStructHex: '0xff80',
     protocolDidPuzhash: '0x' + '05'.repeat(32),
+    protocolDidInnerPuzhash: '0x' + '0a'.repeat(32),
+    governanceSingletonStructHex: '0xff80',
     p2PoolModHash: '0x' + '06'.repeat(32),
     p2VaultModHash: '0x' + '07'.repeat(32),
     propertyRegistryPuzzleHash: '0x' + '08'.repeat(32),
@@ -87,6 +92,7 @@ function defaultArgs(overrides: Partial<PublishMintArgs> = {}): PublishMintArgs 
     firstVoteAmount: 10_000,
     votingWindowSeconds: 86_400,
     nowSeconds: 1_000_000,
+    proposalId: 'draft-123',
     ...overrides,
   };
 }
@@ -96,7 +102,12 @@ function makeMockedRunner(overrides: {
   idle?: IdleStateProposeInputs | null;
   idleThrows?: boolean;
   discoverKind?: 'found' | 'no-coins' | 'sgt-not-deployed' | 'governance-not-deployed';
-  coins?: Array<{ parentCoinInfo: string; puzzleHash: string; amount: number; confirmedBlockIndex: number }>;
+  coins?: Array<{
+    parentCoinInfo: string;
+    puzzleHash: string;
+    amount: number;
+    confirmedBlockIndex: number;
+  }>;
   pickerThrows?: boolean;
   coinRecordNull?: boolean;
   signImpl?: jasmine.Spy;
@@ -179,9 +190,9 @@ function makeMockedRunner(overrides: {
 
   const tracker = {
     getIdleStateProposeInputs: overrides.idleThrows
-      ? jasmine.createSpy('getIdleStateProposeInputs').and.rejectWith(
-          new Error('reconstructed tracker full puzzle hash mismatch'),
-        )
+      ? jasmine
+          .createSpy('getIdleStateProposeInputs')
+          .and.rejectWith(new Error('reconstructed tracker full puzzle hash mismatch'))
       : jasmine
           .createSpy('getIdleStateProposeInputs')
           .and.resolveTo('idle' in overrides ? overrides.idle : idleInputs()),
@@ -215,9 +226,7 @@ function makeMockedRunner(overrides: {
     trackerStructHash: jasmine.createSpy('trackerStructHash').and.returnValue(bytes(0x10)),
     sgtLockedInnerHash: jasmine.createSpy('sgtLockedInnerHash').and.returnValue(bytes(0x20)),
     sgtTailHash: jasmine.createSpy('sgtTailHash').and.returnValue(bytes(0x30)),
-    catSgtFreePuzzleHash: jasmine
-      .createSpy('catSgtFreePuzzleHash')
-      .and.returnValue(bytes(0x31)),
+    catSgtFreePuzzleHash: jasmine.createSpy('catSgtFreePuzzleHash').and.returnValue(bytes(0x31)),
   } as unknown as SgtDriverService;
 
   const publish = {
@@ -236,7 +245,9 @@ function makeMockedRunner(overrides: {
       proposalSingletonStructProgramHex: '0xff80',
       proposalSingletonStructProgramHash: '0x' + 'b0'.repeat(32),
     }),
-    deedLauncherPuzzleHash: jasmine.createSpy('deedLauncherPuzzleHash').and.returnValue(bytes(0x40)),
+    deedLauncherPuzzleHash: jasmine
+      .createSpy('deedLauncherPuzzleHash')
+      .and.returnValue(bytes(0x40)),
   } as unknown as MintPublishService;
 
   const v2 = {
@@ -245,9 +256,7 @@ function makeMockedRunner(overrides: {
 
   const registryAssertSpy =
     overrides.buildRegistryAssertImpl ??
-    jasmine
-      .createSpy('buildPropertyRegistryAssertConditionHex')
-      .and.returnValue('0xff03');
+    jasmine.createSpy('buildPropertyRegistryAssertConditionHex').and.returnValue('0xff03');
   const spendBuilder = {
     buildProposalEveLaunchSpend:
       overrides.buildEveImpl ??
@@ -258,7 +267,11 @@ function makeMockedRunner(overrides: {
           puzzleReveal: '0xff01',
           solution: '0xff80',
         },
-        eveCoin: { parentCoinInfo: '0x' + 'ee'.repeat(32), puzzleHash: '0x' + 'ef'.repeat(32), amount: 1n },
+        eveCoin: {
+          parentCoinInfo: '0x' + 'ee'.repeat(32),
+          puzzleHash: '0x' + 'ef'.repeat(32),
+          amount: 1n,
+        },
         eveFullPuzzleHash: '0x' + 'ef'.repeat(32),
       }),
     buildPropertyRegistryAssertConditionHex: registryAssertSpy,
@@ -272,7 +285,11 @@ function makeMockedRunner(overrides: {
     buildSgtFirstVoteCoinSpend:
       overrides.buildSgtImpl ??
       jasmine.createSpy('buildSgtFirstVoteCoinSpend').and.returnValue({
-        coin: { parentCoinInfo: '0x' + '55'.repeat(32), puzzleHash: SGT_PUZZLE_HASH, amount: 10_000 },
+        coin: {
+          parentCoinInfo: '0x' + '55'.repeat(32),
+          puzzleHash: SGT_PUZZLE_HASH,
+          amount: 10_000,
+        },
         puzzleReveal: '0xff01',
         solution: '0xff80',
       }),
@@ -421,7 +438,12 @@ describe('MintProposalV2PublishRunnerService', () => {
     const { service } = makeMockedRunner({
       pubkey: PUBKEY,
       coins: [
-        { parentCoinInfo: '0x' + '55'.repeat(32), puzzleHash: SGT_PUZZLE_HASH, amount: 9_999, confirmedBlockIndex: 1 },
+        {
+          parentCoinInfo: '0x' + '55'.repeat(32),
+          puzzleHash: SGT_PUZZLE_HASH,
+          amount: 9_999,
+          confirmedBlockIndex: 1,
+        },
       ],
     });
     const res = await service.publishMint(defaultArgs({ firstVoteAmount: 10_000 }));
@@ -456,17 +478,16 @@ describe('MintProposalV2PublishRunnerService', () => {
     }
   });
 
-  it('happy path: signs a 5-spend bundle + POSTs to the committee API', async () => {
+  it('happy path: signs the four-spend publish bundle and POSTs it', async () => {
     const { service, signSpy, publishSpy } = makeMockedRunner({ pubkey: PUBKEY });
     const res = await service.publishMint(defaultArgs({ proposalId: 'draft-123' }));
     expect(res.kind).toBe('submitted');
     expect(signSpy).toHaveBeenCalledTimes(1);
     expect(publishSpy).toHaveBeenCalledTimes(1);
-    // The bundle handed to the wallet must contain exactly 5 spends:
-    // XCH parent, Artifact A launcher, tracker PROPOSE, SGT lock, registry registration.
+    // Property registration is deferred to quorum-authorized execution.
     const passed = signSpy.calls.mostRecent().args[0] as unknown[];
-    expect(passed.length).toBe(5);
-    expect(passed[4]).toBe(REGISTRY_COIN_SPEND);
+    expect(passed.length).toBe(4);
+    expect(passed).not.toContain(REGISTRY_COIN_SPEND);
     // The API call must forward the draft id for correlation.
     const [, proposalArg] = publishSpy.calls.mostRecent().args;
     expect(proposalArg).toBe('draft-123');
@@ -506,9 +527,17 @@ describe('MintProposalV2PublishRunnerService', () => {
     );
     const [, , metadataArg] = publishSpy.calls.mostRecent().args;
     expect(metadataArg).toEqual({
+      property_id: 'PROPERTY-1',
+      collection_id: 'COLLECTION-1',
+      asset_class_name: 'RWA-RE-RES',
       property_id_canon: '0x' + '01'.repeat(32),
       collection_id_canon: '0x' + '09'.repeat(32),
       share_ppm: 750_000,
+      property_registry_coin_id: coinId(
+        REGISTRY_COIN_SPEND.coin.parentCoinInfo,
+        REGISTRY_COIN_SPEND.coin.puzzleHash,
+        REGISTRY_COIN_SPEND.coin.amount,
+      ),
       property_registry_puzzle_hash: '0x' + '08'.repeat(32),
       par_value_mojos: 1_000_000,
       asset_class: 1,
@@ -518,10 +547,11 @@ describe('MintProposalV2PublishRunnerService', () => {
       quorum_threshold: 5000,
       owner_member_hash: '0x' + '03'.repeat(32),
       gov_member_hash: '0x' + '04'.repeat(32),
+      voting_deadline: 1_086_400,
     });
   });
 
-  it('builds the property-registry assertion from the draft metadata', async () => {
+  it('does not spend or assert the property registry before quorum', async () => {
     const { service, registryAssertSpy } = makeMockedRunner({ pubkey: PUBKEY });
     await service.publishMint(
       defaultArgs({
@@ -529,10 +559,7 @@ describe('MintProposalV2PublishRunnerService', () => {
         propertyRegistryPuzzleHash: '0x' + '08'.repeat(32),
       }),
     );
-    expect(registryAssertSpy).toHaveBeenCalledOnceWith({
-      propertyRegistryPuzzleHash: '0x' + '08'.repeat(32),
-      propertyIdCanon: '0x' + '09'.repeat(32),
-    });
+    expect(registryAssertSpy).not.toHaveBeenCalled();
   });
 
   it('narrows bigint metadata inputs to JS numbers for JSON serialisation', async () => {
@@ -640,5 +667,4 @@ describe('MintProposalV2PublishRunnerService', () => {
       fail(`expected submitted, got ${res.kind}`);
     }
   });
-
 });

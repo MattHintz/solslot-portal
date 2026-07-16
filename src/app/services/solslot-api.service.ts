@@ -38,9 +38,7 @@ export class SolslotApiService {
    * trust decision.
    */
   async getSignedProtocolArtifact(): Promise<SolslotPublicArtifact> {
-    return firstValueFrom(
-      this.http.get<SolslotPublicArtifact>(`${this.base}/protocol/artifact`),
-    );
+    return firstValueFrom(this.http.get<SolslotPublicArtifact>(`${this.base}/protocol/artifact`));
   }
 
   // NOTE: ``health()`` was removed in the Phase 9-Hermes-D follow-up.
@@ -64,7 +62,7 @@ export class SolslotApiService {
       this.http.post<ChallengeResponse>(`${this.base}/auth/challenge`, {
         address,
         auth_type: authType,
-      })
+      }),
     );
   }
 
@@ -80,14 +78,14 @@ export class SolslotApiService {
    */
   async registerEvmVault(req: RegisterEvmVaultRequest): Promise<VaultCreationResponse> {
     return firstValueFrom(
-      this.http.post<VaultCreationResponse>(`${this.base}/vault/register/evm`, req)
+      this.http.post<VaultCreationResponse>(`${this.base}/vault/register/evm`, req),
     );
   }
 
   /** Register a new BLS (Chia-native) vault. */
   async registerChiaVault(req: RegisterChiaVaultRequest): Promise<VaultCreationResponse> {
     return firstValueFrom(
-      this.http.post<VaultCreationResponse>(`${this.base}/vault/register/chia`, req)
+      this.http.post<VaultCreationResponse>(`${this.base}/vault/register/chia`, req),
     );
   }
 
@@ -342,12 +340,7 @@ export interface ZkPassportEnrollmentRecord {
   vaultLauncherId: string;
   network: string;
   policyVersion: number;
-  status:
-    | 'reserved'
-    | 'evm_confirmed'
-    | 'stamp_pending'
-    | 'chia_confirmed'
-    | 'receipt_syncing';
+  status: 'reserved' | 'evm_confirmed' | 'stamp_pending' | 'chia_confirmed' | 'receipt_syncing';
   bridgePolicyHash: string;
   bridgeParentId: string;
   bridgeAmount: number;
@@ -362,6 +355,9 @@ export interface SolslotPublicArtifact {
   protocolVersion: 'solslot-v2';
   network: 'testnet11';
   evmChainId: 11155111;
+  reviewClass: 'independent-release-review' | 'internal-engineering-testnet';
+  testOnly: boolean;
+  auditStatus: 'independently-reviewed' | 'unaudited';
   buildTimestamp: string;
   artifactHash: string;
   sourceShas: {
@@ -386,11 +382,17 @@ export interface SolslotPublicArtifact {
     protocolConfig: string;
     adminAuthority: string;
     vaultVersionRegistry: string;
+    propertyRegistry: string;
   };
   puzzleHashes: {
     poolInnerPuzzleHash: string;
     p2PoolModHash?: string;
+    p2VaultModHash?: string;
     sgtTailHash?: string;
+    didInnerPuzzleHash?: string;
+    didFullPuzzleHash?: string;
+    propertyRegistryInnerModHash?: string;
+    propertyRegistryFullPuzzleHash?: string;
     [key: string]: string | undefined;
   };
   sgtGenesisCoinId: string;
@@ -398,6 +400,18 @@ export interface SolslotPublicArtifact {
   governanceStruct: {
     treeHash: string;
     launcherId: string;
+    serialized: string;
+  };
+  protocolDid: {
+    launcherId: string;
+    singletonStruct: string;
+    innerPuzzleHash: string;
+    fullPuzzleHash: string;
+  };
+  propertyRegistry: {
+    launcherId: string;
+    governanceBlsPubkey: string;
+    currentPuzzleHash: string;
   };
   protocolParameters: {
     smartDeedPuzzleVersion: number;
@@ -413,6 +427,7 @@ export interface SolslotPublicArtifact {
     protocolConfig: number;
     adminAuthority: number;
     vault: number;
+    propertyRegistry: number;
   };
   adminAuthority: {
     threshold: number;

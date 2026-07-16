@@ -82,6 +82,12 @@ export class PublishMintArgsAssemblerService {
       missing.push('protocolDidSingletonStructHex');
     }
     if (!isNonEmpty(ctx.protocolDidPuzhash)) missing.push('protocolDidPuzhash');
+    if (!isNonEmpty(ctx.protocolDidInnerPuzhash)) {
+      missing.push('protocolDidInnerPuzhash');
+    }
+    if (!isNonEmpty(ctx.governanceSingletonStructHex)) {
+      missing.push('governanceSingletonStructHex');
+    }
     if (!isNonEmpty(ctx.p2PoolModHash)) missing.push('p2PoolModHash');
     if (!isNonEmpty(ctx.p2VaultModHash)) missing.push('p2VaultModHash');
     if (!isNonEmpty(ctx.propertyRegistryPuzzleHash)) {
@@ -140,8 +146,7 @@ export class PublishMintArgsAssemblerService {
     if (!is32ByteHex(input.ownerMemberHash)) {
       return { kind: 'invalid-input', reason: 'owner-member-hash-must-be-32-bytes' };
     }
-    const govMemberHash =
-      input.govMemberHash ?? PublishMintArgsAssemblerService.ZERO_MEMBER_HASH;
+    const govMemberHash = input.govMemberHash ?? PublishMintArgsAssemblerService.ZERO_MEMBER_HASH;
     if (!is32ByteHex(govMemberHash)) {
       return { kind: 'invalid-input', reason: 'gov-member-hash-must-be-32-bytes' };
     }
@@ -161,11 +166,9 @@ export class PublishMintArgsAssemblerService {
 
     // ── Publish-flow inputs (default to env governance mirrors) ──
     const firstVoteAmount =
-      input.firstVoteAmount ??
-      environment.solslotProtocol.governanceMinProposalStake;
+      input.firstVoteAmount ?? environment.solslotProtocol.governanceMinProposalStake;
     const votingWindowSeconds =
-      input.votingWindowSeconds ??
-      environment.solslotProtocol.governanceVotingWindowSeconds;
+      input.votingWindowSeconds ?? environment.solslotProtocol.governanceVotingWindowSeconds;
     if (BigInt(firstVoteAmount) <= 0n) {
       return { kind: 'invalid-input', reason: 'first-vote-amount-must-be-positive' };
     }
@@ -174,6 +177,9 @@ export class PublishMintArgsAssemblerService {
     }
 
     const args: PublishMintArgs = {
+      propertyId: input.draft.property_id,
+      collectionId: input.draft.collection_id,
+      assetClassName: input.draft.asset_class,
       propertyIdCanon,
       collectionIdCanon,
       sharePpm,
@@ -187,6 +193,8 @@ export class PublishMintArgsAssemblerService {
       govMemberHash,
       protocolDidSingletonStructHex: ctx.protocolDidSingletonStructHex,
       protocolDidPuzhash: ctx.protocolDidPuzhash,
+      protocolDidInnerPuzhash: ctx.protocolDidInnerPuzhash,
+      governanceSingletonStructHex: ctx.governanceSingletonStructHex,
       p2PoolModHash: ctx.p2PoolModHash,
       p2VaultModHash: ctx.p2VaultModHash,
       propertyRegistryPuzzleHash: ctx.propertyRegistryPuzzleHash,
@@ -210,6 +218,8 @@ export class PublishMintArgsAssemblerService {
 export interface MintPublishProtocolContext {
   protocolDidSingletonStructHex: string;
   protocolDidPuzhash: string;
+  protocolDidInnerPuzhash: string;
+  governanceSingletonStructHex: string;
   p2PoolModHash: string;
   p2VaultModHash: string;
   propertyRegistryPuzzleHash: string;
@@ -247,6 +257,8 @@ function defaultProtocolContext(): MintPublishProtocolContext {
   return {
     protocolDidSingletonStructHex: p.protocolDidSingletonStructHex,
     protocolDidPuzhash: p.protocolDidPuzhash,
+    protocolDidInnerPuzhash: p.protocolDidInnerPuzhash,
+    governanceSingletonStructHex: p.governanceSingletonStructHex,
     p2PoolModHash: p.p2PoolModHash,
     p2VaultModHash: p.p2VaultModHash,
     propertyRegistryPuzzleHash: p.propertyRegistryCurrentPuzzleHash,

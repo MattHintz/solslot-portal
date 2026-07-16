@@ -29,10 +29,7 @@ import {
 import { PropertyRegistryRegistrationMaterialService } from '../../../services/mint-proposal-v2/property-registry-registration-material.service';
 import { environment } from '../../../../environments/environment';
 import { formatError } from '../../../utils/format-error';
-import {
-  assetClassToCode,
-  canonicalPropertyIdHash,
-} from '../../../utils/mint-property-id';
+import { assetClassToCode, canonicalPropertyIdHash } from '../../../utils/mint-property-id';
 
 const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
 
@@ -78,12 +75,12 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
       @if (loading()) {
         <div class="mt-8 mono text-sm text-text-muted">Loading proposal&hellip;</div>
       } @else if (loadError()) {
-        <div class="mt-8 rounded-card border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
+        <div
+          class="mt-8 rounded-card border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300"
+        >
           <div class="font-display text-base mb-1">Couldn't load proposal.</div>
           <div class="mono text-xs">{{ loadError() }}</div>
-          <button class="btn btn--ghost mt-3" type="button" (click)="reload()">
-            Retry
-          </button>
+          <button class="btn btn--ghost mt-3" type="button" (click)="reload()">Retry</button>
         </div>
       } @else if (proposal(); as p) {
         <div class="mt-8 grid gap-6">
@@ -182,8 +179,7 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
           <section class="card grid gap-3">
             <h2 class="font-display text-2xl">Computed hashes</h2>
             <p class="text-xs text-text-muted">
-              Populated atomically by <code class="mono">/publish</code>;
-              null while DRAFT.
+              Populated atomically by <code class="mono">/publish</code>; null while DRAFT.
             </p>
             <dl class="grid gap-2 text-xs mono">
               <div>
@@ -209,8 +205,7 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
             <h2 class="font-display text-2xl">On-chain ids</h2>
             <p class="text-xs text-text-muted">
               Populated by <code class="mono">/publish</code> and
-              <code class="mono">/execute</code> as the proposal moves through
-              the lifecycle.
+              <code class="mono">/execute</code> as the proposal moves through the lifecycle.
             </p>
             <dl class="grid gap-2 text-xs mono">
               <div>
@@ -246,10 +241,7 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
               }
             </header>
             @if (chainEvidence(); as e) {
-              <div
-                class="rounded-card border p-3 text-xs"
-                [ngClass]="chainEvidenceClass(e)"
-              >
+              <div class="rounded-card border p-3 text-xs" [ngClass]="chainEvidenceClass(e)">
                 <div class="mono">{{ chainEvidenceDetail(e) }}</div>
                 @if (chainEvidenceExpectedPuzzleHash(e); as expected) {
                   <dl class="mt-3 grid gap-2 mono text-[0.68rem]">
@@ -267,7 +259,9 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
                 }
               </div>
             } @else {
-              <div class="rounded-card border border-white/10 bg-white/[0.03] p-3 text-xs text-text-muted">
+              <div
+                class="rounded-card border border-white/10 bg-white/[0.03] p-3 text-xs text-text-muted"
+              >
                 <div class="mono">Not checked yet.</div>
               </div>
             }
@@ -312,7 +306,9 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
           @if (p.off_chain_metadata) {
             <section class="card grid gap-3">
               <h2 class="font-display text-2xl">Off-chain metadata</h2>
-              <pre class="mono text-xs whitespace-pre-wrap break-all">{{ formatMetadata(p.off_chain_metadata) }}</pre>
+              <pre class="mono text-xs whitespace-pre-wrap break-all">{{
+                formatMetadata(p.off_chain_metadata)
+              }}</pre>
             </section>
           }
 
@@ -323,9 +319,8 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
                 <span class="mono text-[0.65rem] text-text-muted">4f alpha</span>
               </header>
               <p class="text-xs text-text-muted">
-                Assemble, sign, and submit the publish bundle from this
-                DRAFT, the pinned protocol context, and the proposer EVM
-                wallet's Eip712Member leaf.
+                Assemble, sign, and submit the publish bundle from this DRAFT, the pinned protocol
+                context, and the proposer EVM wallet's Eip712Member leaf.
               </p>
 
               @if (canonicalPreview(); as c) {
@@ -348,7 +343,9 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
                   </div>
                 </div>
                 @if (c.error) {
-                  <div class="rounded-card border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+                  <div
+                    class="rounded-card border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200"
+                  >
                     <div class="font-display text-sm mb-1">Canonical mapping failed.</div>
                     <div class="mono">{{ c.error }}</div>
                   </div>
@@ -440,7 +437,9 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
               </div>
 
               @if (previewError(); as err) {
-                <div class="rounded-card border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300">
+                <div
+                  class="rounded-card border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300"
+                >
                   {{ err }}
                 </div>
               }
@@ -448,13 +447,13 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
               @if (previewResult(); as r) {
                 @switch (r.kind) {
                   @case ('missing-protocol-context') {
-                    <div class="rounded-card border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-                      <div class="font-display text-sm mb-1">
-                        Protocol context not configured.
-                      </div>
+                    <div
+                      class="rounded-card border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200"
+                    >
+                      <div class="font-display text-sm mb-1">Protocol context not configured.</div>
                       <div>
-                        Mirror these <code class="mono">SOLSLOT_*</code> API env
-                        vars into <code class="mono">environment.solslotProtocol</code>
+                        Mirror these <code class="mono">SOLSLOT_*</code> API env vars into
+                        <code class="mono">environment.solslotProtocol</code>
                         and redeploy:
                       </div>
                       <ul class="mt-1 list-disc list-inside mono">
@@ -465,31 +464,34 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
                     </div>
                   }
                   @case ('invalid-input') {
-                    <div class="rounded-card border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300">
+                    <div
+                      class="rounded-card border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300"
+                    >
                       <div class="font-display text-sm mb-1">Invalid input.</div>
                       <div class="mono">{{ r.reason }}</div>
                     </div>
                   }
                   @case ('ok') {
-                    <div class="rounded-card border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200">
-                      <div class="font-display text-sm mb-2">
-                        Args assembled.
-                      </div>
-                      <pre class="mono text-[0.7rem] whitespace-pre-wrap break-all">{{ formatArgs(r.args) }}</pre>
+                    <div
+                      class="rounded-card border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200"
+                    >
+                      <div class="font-display text-sm mb-2">Args assembled.</div>
+                      <pre class="mono text-[0.7rem] whitespace-pre-wrap break-all">{{
+                        formatArgs(r.args)
+                      }}</pre>
                     </div>
                   }
                 }
               }
 
               @if (publishResult(); as pr) {
-                <div
-                  class="rounded-card border p-3 text-xs"
-                  [ngClass]="publishResultClass(pr)"
-                >
+                <div class="rounded-card border p-3 text-xs" [ngClass]="publishResultClass(pr)">
                   <div class="font-display text-sm mb-2">
                     {{ publishResultTitle(pr) }}
                   </div>
-                  <pre class="mono text-[0.7rem] whitespace-pre-wrap break-all">{{ formatArgs(pr) }}</pre>
+                  <pre class="mono text-[0.7rem] whitespace-pre-wrap break-all">{{
+                    formatArgs(pr)
+                  }}</pre>
                 </div>
               }
             </section>
@@ -527,19 +529,20 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
           </section>
 
           @if (executeResult(); as er) {
-            <div
-              class="rounded-card border p-3 text-xs"
-              [ngClass]="executeResultClass(er)"
-            >
+            <div class="rounded-card border p-3 text-xs" [ngClass]="executeResultClass(er)">
               <div class="font-display text-sm mb-2">
                 {{ executeResultTitle(er) }}
               </div>
-              <pre class="mono text-[0.7rem] whitespace-pre-wrap break-all">{{ formatArgs(er) }}</pre>
+              <pre class="mono text-[0.7rem] whitespace-pre-wrap break-all">{{
+                formatArgs(er)
+              }}</pre>
             </div>
           }
 
           @if (actionError()) {
-            <div class="rounded-card border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
+            <div
+              class="rounded-card border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300"
+            >
               <div class="font-display text-base mb-1">Action failed.</div>
               <div class="mono text-xs">{{ actionError() }}</div>
             </div>
@@ -660,18 +663,14 @@ export class MintDetailComponent {
   });
 
   /** Mirrors the server's cancel-eligibility rule: DRAFT + owner-only. */
-  readonly canCancel = computed(
-    () => this.proposal()?.state === 'DRAFT' && this.isOwner(),
-  );
+  readonly canCancel = computed(() => this.proposal()?.state === 'DRAFT' && this.isOwner());
 
   /**
    * Same gating rule as {@link canCancel}: only the DRAFT's owner can
    * publish.  Other states are server-enforced no-ops, but we still
    * suppress the UI to avoid implying the action is available.
    */
-  readonly canPublish = computed(
-    () => this.proposal()?.state === 'DRAFT' && this.isOwner(),
-  );
+  readonly canPublish = computed(() => this.proposal()?.state === 'DRAFT' && this.isOwner());
 
   readonly canExecute = computed(() => {
     const state = this.proposal()?.state;
@@ -716,10 +715,8 @@ export class MintDetailComponent {
     }
   });
 
-  readonly defaultFirstVote = () =>
-    environment.solslotProtocol.governanceMinProposalStake;
-  readonly defaultVotingWindow = () =>
-    environment.solslotProtocol.governanceVotingWindowSeconds;
+  readonly defaultFirstVote = () => environment.solslotProtocol.governanceMinProposalStake;
+  readonly defaultVotingWindow = () => environment.solslotProtocol.governanceVotingWindowSeconds;
 
   constructor() {
     void this.reload();
@@ -804,11 +801,7 @@ export class MintDetailComponent {
    * value strings stay decimal (matching the runner's wire format).
    */
   formatArgs(args: unknown): string {
-    return JSON.stringify(
-      args,
-      (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
-      2,
-    );
+    return JSON.stringify(args, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2);
   }
 
   async deriveOwnerMemberHash(): Promise<void> {
@@ -851,10 +844,15 @@ export class MintDetailComponent {
           deedFullPuzhash: result.artifacts.deedFullPuzhash,
           proposalHash: result.artifacts.proposalHash,
           proposalTrackerCoinId: result.artifacts.proposalSingletonLauncherId,
+          proposalSingletonLauncherId: result.artifacts.proposalSingletonLauncherId,
           sgtLockCoinId: result.sgtLockCoinId,
           deedLauncherId: result.artifacts.deedLauncherId,
           publishedBundleId: result.apiResponse.spendBundleId,
           propertyRegistryPuzzleHash: assembled.args.propertyRegistryPuzzleHash,
+          propertyRegistryCoinId: result.propertyRegistryCoinId,
+          ownerMemberHash: assembled.args.ownerMemberHash,
+          govMemberHash: assembled.args.govMemberHash,
+          proposalDataHash: result.artifacts.proposalDataHash,
           deadline: Number(result.votingDeadline),
         });
         if (updated) {
@@ -1232,9 +1230,7 @@ export class MintDetailComponent {
       if (firstVoteRaw) firstVoteAmount = BigInt(firstVoteRaw);
       if (windowRaw) votingWindowSeconds = BigInt(windowRaw);
     } catch {
-      this.previewError.set(
-        'firstVoteAmount and votingWindowSeconds must be integers.',
-      );
+      this.previewError.set('firstVoteAmount and votingWindowSeconds must be integers.');
       return null;
     }
 
@@ -1242,9 +1238,10 @@ export class MintDetailComponent {
       draft,
       ownerMemberHash,
       protocolContext: {
-        protocolDidSingletonStructHex:
-          environment.solslotProtocol.protocolDidSingletonStructHex,
+        protocolDidSingletonStructHex: environment.solslotProtocol.protocolDidSingletonStructHex,
         protocolDidPuzhash: environment.solslotProtocol.protocolDidPuzhash,
+        protocolDidInnerPuzhash: environment.solslotProtocol.protocolDidInnerPuzhash,
+        governanceSingletonStructHex: environment.solslotProtocol.governanceSingletonStructHex,
         p2PoolModHash: environment.solslotProtocol.p2PoolModHash,
         p2VaultModHash: environment.solslotProtocol.p2VaultModHash,
         propertyRegistryPuzzleHash: this.preflightPropertyRegistryPuzzleHash(),
@@ -1307,9 +1304,7 @@ interface CanonicalPublishPreview {
 }
 
 type ChainEvidenceView =
-  | MintProposalChainEvidence
-  | { kind: 'checking' }
-  | { kind: 'error'; message: string };
+  MintProposalChainEvidence | { kind: 'checking' } | { kind: 'error'; message: string };
 
 function valid32ByteHex(v: string | null | undefined): string | null {
   return typeof v === 'string' && /^0x[0-9a-fA-F]{64}$/.test(v) ? v : null;

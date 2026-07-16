@@ -2,10 +2,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
-import {
-  AdminGenesisService,
-  GenesisCeremony,
-} from '../../../services/admin-genesis.service';
+import { AdminGenesisService, GenesisCeremony } from '../../../services/admin-genesis.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { GenesisComponent } from './genesis.component';
 
@@ -47,10 +44,23 @@ describe('GenesisComponent', () => {
 
   beforeEach(async () => {
     genesis = jasmine.createSpyObj<AdminGenesisService>('AdminGenesisService', [
-      'createDraft', 'getCeremony', 'issueInvitation', 'prepareInvitation',
-      'acceptInvitation', 'freezeRoster', 'createPlan', 'preparePlanSignature',
-      'signPlan', 'preflight', 'broadcast', 'confirm', 'createArtifact',
-      'prepareArtifactSignature', 'signArtifact', 'finalize', 'abandon',
+      'createDraft',
+      'getCeremony',
+      'issueInvitation',
+      'prepareInvitation',
+      'acceptInvitation',
+      'freezeRoster',
+      'createPlan',
+      'preparePlanSignature',
+      'signPlan',
+      'preflight',
+      'broadcast',
+      'confirm',
+      'createArtifact',
+      'prepareArtifactSignature',
+      'signArtifact',
+      'finalize',
+      'abandon',
     ]);
     walletAddress.set(null);
     wallet.connectInjected.calls.reset();
@@ -120,7 +130,9 @@ describe('GenesisComponent', () => {
     expect(genesis.prepareInvitation).toHaveBeenCalledOnceWith('fragment-token', address);
     expect(wallet.signTypedData).toHaveBeenCalledOnceWith(typedData);
     expect(genesis.acceptInvitation).toHaveBeenCalledOnceWith(
-      'fragment-token', address, '0xsigned',
+      'fragment-token',
+      address,
+      '0xsigned',
     );
     expect(component.ceremonyIdInput()).toBe(ceremonyId);
   });
@@ -156,6 +168,8 @@ describe('GenesisComponent', () => {
       planHash: '0x' + '22'.repeat(32),
       spendBundleId: '0x' + '33'.repeat(32),
       spendCount: 48,
+      reviewClass: 'internal-engineering-testnet',
+      auditStatus: 'unaudited',
       auditApprovalHash: '0x' + '44'.repeat(32),
     });
 

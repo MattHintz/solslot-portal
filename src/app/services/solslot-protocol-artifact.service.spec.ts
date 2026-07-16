@@ -1,9 +1,6 @@
 import { SigningKey, Wallet } from 'ethers';
 import { environment } from '../../environments/environment';
-import {
-  SolslotApiService,
-  SolslotPublicArtifact,
-} from './solslot-api.service';
+import { SolslotApiService, SolslotPublicArtifact } from './solslot-api.service';
 import {
   canonicalArtifactHash,
   SolslotProtocolArtifactService,
@@ -20,14 +17,15 @@ const originalProtocol = { ...environment.solslotProtocol };
 const originalZkPassport = { ...environment.zkPassport };
 
 async function signedArtifact(): Promise<SolslotPublicArtifact> {
-  const wallets = ['01', '02', '03'].map(
-    (byte) => new Wallet(`0x${byte.repeat(32)}`),
-  );
+  const wallets = ['01', '02', '03'].map((byte) => new Wallet(`0x${byte.repeat(32)}`));
   const artifact = {
     schemaVersion: 2,
     protocolVersion: 'solslot-v2',
     network: 'testnet11',
     evmChainId: 11155111,
+    reviewClass: 'internal-engineering-testnet',
+    testOnly: true,
+    auditStatus: 'unaudited',
     buildTimestamp: '2026-07-14T00:00:00+00:00',
     artifactHash: '',
     sourceShas: {
@@ -52,17 +50,35 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
       protocolConfig: HASH('15'),
       adminAuthority: HASH('16'),
       vaultVersionRegistry: HASH('17'),
+      propertyRegistry: HASH('18'),
     },
     puzzleHashes: {
       poolInnerPuzzleHash: HASH('21'),
       p2PoolModHash: HASH('22'),
+      p2VaultModHash: HASH('24'),
       sgtTailHash: HASH('23'),
+      didInnerPuzzleHash: HASH('25'),
+      didFullPuzzleHash: HASH('26'),
+      propertyRegistryInnerModHash: HASH('27'),
+      propertyRegistryFullPuzzleHash: HASH('28'),
     },
     sgtGenesisCoinId: HASH('24'),
     sgtTailHash: HASH('23'),
     governanceStruct: {
-      treeHash: HASH('25'),
+      treeHash: HASH('29'),
       launcherId: HASH('13'),
+      serialized: '0xff80',
+    },
+    protocolDid: {
+      launcherId: HASH('12'),
+      singletonStruct: '0xff80',
+      innerPuzzleHash: HASH('25'),
+      fullPuzzleHash: HASH('26'),
+    },
+    propertyRegistry: {
+      launcherId: HASH('18'),
+      governanceBlsPubkey: `0x${'2a'.repeat(48)}`,
+      currentPuzzleHash: HASH('28'),
     },
     protocolParameters: {
       smartDeedPuzzleVersion: 3,
@@ -77,6 +93,7 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
       protocolConfig: 1,
       adminAuthority: 2,
       vault: 2,
+      propertyRegistry: 0,
     },
     adminAuthority: {
       threshold: 2,
@@ -166,12 +183,19 @@ describe('SolslotProtocolArtifactService', () => {
     await service.initialize();
 
     expect(service.isReady).toBeTrue();
-    expect(protocolCoordinateFromEnvironment('poolLauncherId')).toBe(
-      artifact.launcherIds.pool,
-    );
+    expect(protocolCoordinateFromEnvironment('poolLauncherId')).toBe(artifact.launcherIds.pool);
     expect(environment.zkPassport.validatorThreshold).toBe(2);
     expect(environment.solslotProtocol.adminAuthorityV2AdminPubkeys).toEqual(
       artifact.adminAuthority.compressedPubkeys,
+    );
+    expect(environment.solslotProtocol.propertyRegistryLauncherId).toBe(
+      artifact.launcherIds.propertyRegistry,
+    );
+    expect(environment.solslotProtocol.protocolDidSingletonStructHex).toBe(
+      artifact.protocolDid.singletonStruct,
+    );
+    expect(environment.solslotProtocol.governanceSingletonStructHex).toBe(
+      artifact.governanceStruct.serialized,
     );
   });
 

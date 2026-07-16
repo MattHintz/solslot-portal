@@ -64,41 +64,42 @@ describe('TrustRootsComponent', () => {
     coinset.getCoinRecordByName.and.resolveTo({
       confirmed_block_index: signedArtifact.ceremony.confirmedBlockIndex,
     } as never);
-    singleton.walkLineage.and.callFake(async (launcherId: string) => ({
-      launcherId,
-      launcherCoinId: launcherId,
-      launcher: {
-        confirmed_block_index: signedArtifact.ceremony.confirmedBlockIndex,
-      },
-      nodes: [
-        {
-          coinId: launcherId,
-          parentCoinId: hex(50),
-          puzzleHash: hex(51),
-          amount: 1,
-          confirmedBlockIndex: signedArtifact.ceremony.confirmedBlockIndex,
-          spentBlockIndex: signedArtifact.ceremony.confirmedBlockIndex,
-          isLauncher: true,
-        },
-        {
-          coinId: hex(52),
-          parentCoinId: launcherId,
-          puzzleHash: hex(53),
-          amount: 1,
-          confirmedBlockIndex: signedArtifact.ceremony.confirmedBlockIndex,
-          spentBlockIndex: null,
-          isLauncher: false,
-        },
-      ],
-    } as never));
+    singleton.walkLineage.and.callFake(
+      async (launcherId: string) =>
+        ({
+          launcherId,
+          launcherCoinId: launcherId,
+          launcher: {
+            confirmed_block_index: signedArtifact.ceremony.confirmedBlockIndex,
+          },
+          nodes: [
+            {
+              coinId: launcherId,
+              parentCoinId: hex(50),
+              puzzleHash: hex(51),
+              amount: 1,
+              confirmedBlockIndex: signedArtifact.ceremony.confirmedBlockIndex,
+              spentBlockIndex: signedArtifact.ceremony.confirmedBlockIndex,
+              isLauncher: true,
+            },
+            {
+              coinId: hex(52),
+              parentCoinId: launcherId,
+              puzzleHash: hex(53),
+              amount: 1,
+              confirmedBlockIndex: signedArtifact.ceremony.confirmedBlockIndex,
+              spentBlockIndex: null,
+              isLauncher: false,
+            },
+          ],
+        }) as never,
+    );
     create();
 
     await fixture.componentInstance.verifyAll();
     fixture.detectChanges();
 
-    expect(coinset.getCoinRecordByName).toHaveBeenCalledOnceWith(
-      signedArtifact.sgtGenesisCoinId,
-    );
+    expect(coinset.getCoinRecordByName).toHaveBeenCalledOnceWith(signedArtifact.sgtGenesisCoinId);
     expect(singleton.walkLineage).toHaveBeenCalledTimes(7);
     expect(fixture.componentInstance.confirmedCount()).toBe(8);
     expect(normalizedText()).toContain('8 of 8 verified');
@@ -145,12 +146,16 @@ function artifact(): SolslotPublicArtifact {
     protocolConfig: hex(5),
     adminAuthority: hex(6),
     vaultVersionRegistry: hex(7),
+    propertyRegistry: hex(20),
   };
   return {
     schemaVersion: 2,
     protocolVersion: 'solslot-v2',
     network: 'testnet11',
     evmChainId: 11155111,
+    reviewClass: 'internal-engineering-testnet',
+    testOnly: true,
+    auditStatus: 'unaudited',
     buildTimestamp: '2026-07-14T00:00:00Z',
     artifactHash: hex(8),
     sourceShas: {
@@ -168,10 +173,32 @@ function artifact(): SolslotPublicArtifact {
       requiredChiaConfirmations: 3,
     },
     launcherIds: launchers,
-    puzzleHashes: { poolInnerPuzzleHash: hex(11) },
+    puzzleHashes: {
+      poolInnerPuzzleHash: hex(11),
+      didInnerPuzzleHash: hex(21),
+      didFullPuzzleHash: hex(22),
+      propertyRegistryFullPuzzleHash: hex(23),
+      p2PoolModHash: hex(24),
+      p2VaultModHash: hex(25),
+    },
     sgtGenesisCoinId: hex(12),
     sgtTailHash: hex(13),
-    governanceStruct: { treeHash: hex(14), launcherId: launchers.governance },
+    governanceStruct: {
+      treeHash: hex(14),
+      launcherId: launchers.governance,
+      serialized: '0xff80',
+    },
+    protocolDid: {
+      launcherId: launchers.did,
+      singletonStruct: '0xff80',
+      innerPuzzleHash: hex(21),
+      fullPuzzleHash: hex(22),
+    },
+    propertyRegistry: {
+      launcherId: launchers.propertyRegistry,
+      governanceBlsPubkey: `0x${'31'.repeat(48)}`,
+      currentPuzzleHash: hex(23),
+    },
     protocolParameters: {
       smartDeedPuzzleVersion: 3,
       poolPuzzleVersion: 3,
@@ -185,6 +212,7 @@ function artifact(): SolslotPublicArtifact {
       protocolConfig: 2,
       adminAuthority: 2,
       vault: 2,
+      propertyRegistry: 0,
     },
     adminAuthority: {
       threshold: 2,

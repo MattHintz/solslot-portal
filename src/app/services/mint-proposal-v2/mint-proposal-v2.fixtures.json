@@ -1,6 +1,6 @@
 {
   "constants": {
-    "mod_hash": "0xa21505befe18b82a51a5644a184aad514b86a1c7e86fce04594e83bf376329d6",
+    "mod_hash": "0xbb1379bc24f0a02ca27de58e2200ae4cd1fc1e58d53a49d1119600108741d37e",
     "state_draft": 1,
     "state_approved": 2,
     "state_cancelled": 3,
@@ -100,40 +100,60 @@
         "owner_member_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "gov_member_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "proposal_data_hash": "0x3ae14bcdd0a7cfa4309c2f2ca324db9f09eef66424a045cced9c08570dbbd73c",
+        "governance_singleton_struct_hex": "0xffa07faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9fffa0bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbca0eff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9",
+        "governance_proposal_hash": "0xbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+        "deed_launcher_id": "0xbebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebe",
+        "did_inner_puzzle_hash": "0xbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf",
+        "deed_full_puzzle_hash": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
         "proposal_state": 1,
         "state_version": 0
       },
-      "expected": "0x443aacc97c129e69ba14bc86abbdf87997fbab3259ee93c8a0f5aecc841a6e06"
+      "expected": "0x694f556daf03e23274192302412c4954248ae9f55d5b076a766561142676b607"
     },
     {
       "input": {
         "owner_member_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "gov_member_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "proposal_data_hash": "0x3ae14bcdd0a7cfa4309c2f2ca324db9f09eef66424a045cced9c08570dbbd73c",
+        "governance_singleton_struct_hex": "0xffa07faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9fffa0bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbca0eff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9",
+        "governance_proposal_hash": "0xbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+        "deed_launcher_id": "0xbebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebe",
+        "did_inner_puzzle_hash": "0xbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf",
+        "deed_full_puzzle_hash": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
         "proposal_state": 2,
         "state_version": 1
       },
-      "expected": "0xd4c3f07091dd5fd0f50c88a539b38cc7c77806cf06f65a91550f7f691932b7cf"
+      "expected": "0x5774839cb6aeecc210a0ab6f16228f7b10e85ce52944c30c3e76508e97277436"
     },
     {
       "input": {
         "owner_member_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "gov_member_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "proposal_data_hash": "0x3ae14bcdd0a7cfa4309c2f2ca324db9f09eef66424a045cced9c08570dbbd73c",
+        "governance_singleton_struct_hex": "0xffa07faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9fffa0bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbca0eff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9",
+        "governance_proposal_hash": "0xbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+        "deed_launcher_id": "0xbebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebe",
+        "did_inner_puzzle_hash": "0xbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf",
+        "deed_full_puzzle_hash": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
         "proposal_state": 3,
         "state_version": 1
       },
-      "expected": "0x39e873d773ed1827e0bbda5e592597201d7868f1472af2ff3642f007ace9ea94"
+      "expected": "0x2eecde9fbbd18916a044a7039bebc690be385ddcdf81ed9bc33f8a6eb62f7161"
     },
     {
       "input": {
         "owner_member_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "gov_member_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "proposal_data_hash": "0x4213b62d7bccd152a80de1b8d07c18d8c6ee6294618dcde3af6a9f2028ffcf85",
+        "governance_singleton_struct_hex": "0xffa07faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9fffa0bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbca0eff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9",
+        "governance_proposal_hash": "0xbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+        "deed_launcher_id": "0xbebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebe",
+        "did_inner_puzzle_hash": "0xbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf",
+        "deed_full_puzzle_hash": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
         "proposal_state": 1,
         "state_version": 0
       },
-      "expected": "0xb1b429d579f109abfefc22fdf5948c8c080fc06b33399dfe228b24b8a169cbc1"
+      "expected": "0x080aa55f5f9e12ef1cc7c8783c8079a186772ee870e00dd78e228ca280f058a5"
     }
   ]
 }

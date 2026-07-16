@@ -56,7 +56,7 @@ export class SgtDriverService {
   static readonly SGT_LOCKED_INNER_MOD_HASH =
     '0x8092b7bb3f6c9d7d9e355ebc883afe2c0ef2b89336f8ef3ffb3f0716ef7c18c1';
   static readonly GOVERNANCE_TRACKER_INNER_MOD_HASH =
-    '0xae8c4e339f9f65c2772459ec9dbe792f9ea51c929345fdc6f74a26cefe0a1dd4';
+    '0x7f8b97229d0a47a5245d69ea5a8e4c5269c5652c9a32bb117a9149ebf63ad57d';
 
   /** Standard CAT v2 outer puzzle mod hash (chia_puzzles_py CAT_PUZZLE_HASH). */
   static readonly CAT_MOD_HASH =

@@ -27,14 +27,7 @@ import { Eip712TypedData } from './solslot-api.service';
 
 /** Eight-state lifecycle \u2014 see solslot_api/mint_proposals.py:ALL_STATES. */
 export type MintProposalState =
-  | 'DRAFT'
-  | 'PROPOSED'
-  | 'VOTING'
-  | 'PASSED'
-  | 'EXECUTED'
-  | 'MINTED'
-  | 'FAILED'
-  | 'CANCELED';
+  'DRAFT' | 'PROPOSED' | 'VOTING' | 'PASSED' | 'EXECUTED' | 'MINTED' | 'FAILED' | 'CANCELED';
 
 /**
  * Response shape of the legacy ``GET /admin/auth/authority`` endpoint.
@@ -94,12 +87,7 @@ export type SmartDeedSecurityStructure =
   | 'unsecured'
   | 'other';
 
-export type SmartDeedFilingStatus =
-  | 'recorded'
-  | 'pending'
-  | 'intended'
-  | 'not_applicable'
-  | 'none';
+export type SmartDeedFilingStatus = 'recorded' | 'pending' | 'intended' | 'not_applicable' | 'none';
 
 export type SmartDeedSettlementBasis =
   | 'property_sale'
@@ -173,8 +161,11 @@ export interface MintProposalResponse {
   };
   on_chain: {
     proposal_tracker_coin_id: string | null;
+    proposal_singleton_launcher_id?: string | null;
     sgt_lock_coin_id: string | null;
     deed_launcher_id: string | null;
+    property_registry_coin_id?: string | null;
+    property_registry_puzzle_hash?: string | null;
     published_bundle_id: string | null;
     executed_bundle_id: string | null;
   };

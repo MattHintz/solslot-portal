@@ -53,10 +53,7 @@ export class CommitteeApiService {
     };
     if (proposalId) body.proposal_id = proposalId;
     const res = await firstValueFrom(
-      this.http.post<CommitteeVoteApiResponseWire>(
-        `${this.base}/admin/committee/vote`,
-        body,
-      ),
+      this.http.post<CommitteeVoteApiResponseWire>(`${this.base}/admin/committee/vote`, body),
     );
     return {
       pushed: res.pushed,
@@ -96,23 +93,39 @@ export class CommitteeApiService {
    */
   async publishProposal(
     spendBundle: SpendBundleJson,
-    proposalId?: string,
-    proposalMetadata?: PublishProposalMetadataJson,
+    proposalId: string,
+    proposalMetadata: PublishProposalMetadataJson,
   ): Promise<CommitteeVoteApiResponse> {
     const body: {
       spend_bundle: SpendBundleJson;
-      proposal_id?: string;
-      proposal_metadata?: PublishProposalMetadataJson;
+      proposal_id: string;
+      proposal_metadata: PublishProposalMetadataJson;
     } = {
       spend_bundle: spendBundle,
+      proposal_id: proposalId,
+      proposal_metadata: proposalMetadata,
     };
-    if (proposalId) body.proposal_id = proposalId;
-    if (proposalMetadata) body.proposal_metadata = proposalMetadata;
     const res = await firstValueFrom(
-      this.http.post<CommitteeVoteApiResponseWire>(
-        `${this.base}/admin/committee/propose`,
-        body,
-      ),
+      this.http.post<CommitteeVoteApiResponseWire>(`${this.base}/admin/committee/propose`, body),
+    );
+    return {
+      pushed: res.pushed,
+      status: res.status,
+      spendBundleId: res.spend_bundle_id,
+      proposalId: res.proposal_id ?? undefined,
+    };
+  }
+
+  /** Submit the canonical five-spend MINT execution bundle. */
+  async executeProposal(
+    spendBundle: SpendBundleJson,
+    proposalId: string,
+  ): Promise<CommitteeVoteApiResponse> {
+    const res = await firstValueFrom(
+      this.http.post<CommitteeVoteApiResponseWire>(`${this.base}/admin/committee/execute`, {
+        spend_bundle: spendBundle,
+        proposal_id: proposalId,
+      }),
     );
     return {
       pushed: res.pushed,
@@ -151,9 +164,13 @@ export interface SpendBundleJson {
  * precision compromise).
  */
 export interface PublishProposalMetadataJson {
+  property_id: string;
+  collection_id: string;
+  asset_class_name: string;
   property_id_canon: string;
   collection_id_canon: string;
   share_ppm: number;
+  property_registry_coin_id: string;
   property_registry_puzzle_hash: string;
   par_value_mojos: number;
   asset_class: number;
@@ -163,6 +180,7 @@ export interface PublishProposalMetadataJson {
   quorum_threshold: number;
   owner_member_hash: string;
   gov_member_hash: string;
+  voting_deadline: number;
 }
 
 interface CommitteeVoteApiResponseWire {

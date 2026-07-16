@@ -11,9 +11,7 @@ import {
   PublishMintArgs,
   PublishRunResult,
 } from '../../../services/mint-proposal-v2/mint-proposal-v2-publish-runner.service';
-import {
-  MintProposalV2ExecuteRunnerService,
-} from '../../../services/mint-proposal-v2/mint-proposal-v2-execute-runner.service';
+import { MintProposalV2ExecuteRunnerService } from '../../../services/mint-proposal-v2/mint-proposal-v2-execute-runner.service';
 import { MintProposalChainStateService } from '../../../services/mint-proposal-v2/mint-proposal-chain-state.service';
 import { PropertyRegistryRegistrationMaterialService } from '../../../services/mint-proposal-v2/property-registry-registration-material.service';
 import { PropertyRegistryRegistrationSpend } from '../../../services/mint-proposal-v2/mint-publish-spend-builder.service';
@@ -27,18 +25,10 @@ import { MintDetailComponent } from './mint-detail.component';
 describe('MintDetailComponent publish flow', () => {
   let fixture: ComponentFixture<MintDetailComponent>;
   let component: MintDetailComponent;
-  let drafts: jasmine.SpyObj<
-    Pick<MintDraftStorageService, 'get' | 'markPublished'>
-  >;
-  let registryMaterial: jasmine.SpyObj<
-    Pick<PropertyRegistryRegistrationMaterialService, 'build'>
-  >;
-  let publishRunner: jasmine.SpyObj<
-    Pick<MintProposalV2PublishRunnerService, 'publishMint'>
-  >;
-  let executeRunner: jasmine.SpyObj<
-    Pick<MintProposalV2ExecuteRunnerService, 'executeMint'>
-  >;
+  let drafts: jasmine.SpyObj<Pick<MintDraftStorageService, 'get' | 'markPublished'>>;
+  let registryMaterial: jasmine.SpyObj<Pick<PropertyRegistryRegistrationMaterialService, 'build'>>;
+  let publishRunner: jasmine.SpyObj<Pick<MintProposalV2PublishRunnerService, 'publishMint'>>;
+  let executeRunner: jasmine.SpyObj<Pick<MintProposalV2ExecuteRunnerService, 'executeMint'>>;
   let chainState: jasmine.SpyObj<Pick<MintProposalChainStateService, 'check'>>;
 
   const originalProtocol = { ...environment.solslotProtocol };
@@ -68,31 +58,21 @@ describe('MintDetailComponent publish flow', () => {
       propertyRegistryCurrentPuzzleHash: '',
       protocolDidSingletonStructHex: '0xff80',
       protocolDidPuzhash: b32('30'),
+      protocolDidInnerPuzhash: b32('33'),
+      governanceSingletonStructHex: '0xff80',
       p2PoolModHash: b32('31'),
       p2VaultModHash: b32('32'),
       governanceMinProposalStake: 10_000,
       governanceVotingWindowSeconds: 300,
     });
 
-    drafts = jasmine.createSpyObj('MintDraftStorageService', [
-      'get',
-      'markPublished',
+    drafts = jasmine.createSpyObj('MintDraftStorageService', ['get', 'markPublished']);
+    registryMaterial = jasmine.createSpyObj('PropertyRegistryRegistrationMaterialService', [
+      'build',
     ]);
-    registryMaterial = jasmine.createSpyObj(
-      'PropertyRegistryRegistrationMaterialService',
-      ['build'],
-    );
-    publishRunner = jasmine.createSpyObj(
-      'MintProposalV2PublishRunnerService',
-      ['publishMint'],
-    );
-    executeRunner = jasmine.createSpyObj(
-      'MintProposalV2ExecuteRunnerService',
-      ['executeMint'],
-    );
-    chainState = jasmine.createSpyObj('MintProposalChainStateService', [
-      'check',
-    ]);
+    publishRunner = jasmine.createSpyObj('MintProposalV2PublishRunnerService', ['publishMint']);
+    executeRunner = jasmine.createSpyObj('MintProposalV2ExecuteRunnerService', ['executeMint']);
+    chainState = jasmine.createSpyObj('MintProposalChainStateService', ['check']);
 
     drafts.get.and.returnValue(draft());
     drafts.markPublished.and.returnValue(publishedDraft());
@@ -172,23 +152,25 @@ describe('MintDetailComponent publish flow', () => {
     expect(publishRunner.publishMint).toHaveBeenCalledTimes(1);
 
     const args = publishRunner.publishMint.calls.mostRecent().args[0] as PublishMintArgs;
-    expect(args).toEqual(jasmine.objectContaining({
-      proposalId,
-      propertyIdCanon,
-      collectionIdCanon,
-      sharePpm: 1_000_000,
-      parValueMojos: 125_000n,
-      assetClass: 1n,
-      jurisdictionHex: '0x55532d5458',
-      royaltyPuzhash: b32('40'),
-      royaltyBps: 250,
-      quorumThreshold: 5000,
-      ownerMemberHash,
-      propertyRegistryPuzzleHash: registryPuzzleHash,
-      propertyRegistryCoinSpend: registrySpend,
-      firstVoteAmount: 12345n,
-      votingWindowSeconds: 678n,
-    }));
+    expect(args).toEqual(
+      jasmine.objectContaining({
+        proposalId,
+        propertyIdCanon,
+        collectionIdCanon,
+        sharePpm: 1_000_000,
+        parValueMojos: 125_000n,
+        assetClass: 1n,
+        jurisdictionHex: '0x55532d5458',
+        royaltyPuzhash: b32('40'),
+        royaltyBps: 250,
+        quorumThreshold: 5000,
+        ownerMemberHash,
+        propertyRegistryPuzzleHash: registryPuzzleHash,
+        propertyRegistryCoinSpend: registrySpend,
+        firstVoteAmount: 12345n,
+        votingWindowSeconds: 678n,
+      }),
+    );
 
     expect(drafts.markPublished).toHaveBeenCalledOnceWith(proposalId, {
       smartDeedInnerPuzhash: b32('50'),
@@ -196,10 +178,15 @@ describe('MintDetailComponent publish flow', () => {
       deedFullPuzhash: b32('52'),
       proposalHash: b32('53'),
       proposalTrackerCoinId: b32('54'),
+      proposalSingletonLauncherId: b32('54'),
       sgtLockCoinId: b32('65'),
       deedLauncherId: b32('55'),
       publishedBundleId: b32('60'),
       propertyRegistryPuzzleHash: registryPuzzleHash,
+      propertyRegistryCoinId: b32('66'),
+      ownerMemberHash,
+      govMemberHash: '0x' + '0'.repeat(64),
+      proposalDataHash: b32('56'),
       deadline: 1_700_000_678,
     });
     expect(component.publishResult()?.kind).toBe('submitted');
@@ -261,7 +248,8 @@ describe('MintDetailComponent publish flow', () => {
           },
         }),
         notation: 'OP:MINTED',
-        nextStep: 'Create or verify the protocol offer artifact through the admin/API purchase intent path.',
+        nextStep:
+          'Create or verify the protocol offer artifact through the admin/API purchase intent path.',
       },
     ];
 
@@ -296,7 +284,9 @@ describe('MintDetailComponent publish flow', () => {
     );
 
     expect(text).toContain('OP:MINTED');
-    expect(text).toContain('Minted deed plus offer-artifact readiness is available for member purchase flow.');
+    expect(text).toContain(
+      'Minted deed plus offer-artifact readiness is available for member purchase flow.',
+    );
     expect(text).toContain('admin/API purchase intent');
     expect(text).toContain('protocol-offer:pi_123');
     expect(text).toContain(artifactHash);
@@ -439,9 +429,9 @@ describe('MintDetailComponent publish flow', () => {
       sgtLockCoinId: b32('65'),
       votingDeadline: 1_700_000_678n,
       voterInnerPuzzleHash: b32('64'),
+      propertyRegistryCoinId: b32('66'),
     };
   }
-
 });
 
 function b32(byteHex: string): string {

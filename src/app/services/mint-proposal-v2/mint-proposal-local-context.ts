@@ -4,6 +4,10 @@ const PUBLISH_CONTEXT_KEY = 'publish_context';
 
 export interface MintPublishLocalContext {
   propertyRegistryPuzzleHash: string;
+  propertyRegistryCoinId?: string;
+  ownerMemberHash?: string;
+  govMemberHash?: string;
+  proposalDataHash?: string;
 }
 
 export function readMintPublishLocalContext(
@@ -15,7 +19,13 @@ export function readMintPublishLocalContext(
   if (!isRecord(ctx)) return null;
   const propertyRegistryPuzzleHash = ctx['property_registry_puzzle_hash'];
   if (!is32ByteHex(propertyRegistryPuzzleHash)) return null;
-  return { propertyRegistryPuzzleHash: propertyRegistryPuzzleHash.toLowerCase() };
+  return {
+    propertyRegistryPuzzleHash: propertyRegistryPuzzleHash.toLowerCase(),
+    ...optionalHex32(ctx, 'property_registry_coin_id', 'propertyRegistryCoinId'),
+    ...optionalHex32(ctx, 'owner_member_hash', 'ownerMemberHash'),
+    ...optionalHex32(ctx, 'gov_member_hash', 'govMemberHash'),
+    ...optionalHex32(ctx, 'proposal_data_hash', 'proposalDataHash'),
+  };
 }
 
 export function mergeMintPublishLocalContext(
@@ -29,8 +39,27 @@ export function mergeMintPublishLocalContext(
     [PUBLISH_CONTEXT_KEY]: {
       ...(isRecord(existing) ? existing : {}),
       property_registry_puzzle_hash: context.propertyRegistryPuzzleHash.toLowerCase(),
+      ...(context.propertyRegistryCoinId
+        ? { property_registry_coin_id: context.propertyRegistryCoinId.toLowerCase() }
+        : {}),
+      ...(context.ownerMemberHash
+        ? { owner_member_hash: context.ownerMemberHash.toLowerCase() }
+        : {}),
+      ...(context.govMemberHash ? { gov_member_hash: context.govMemberHash.toLowerCase() } : {}),
+      ...(context.proposalDataHash
+        ? { proposal_data_hash: context.proposalDataHash.toLowerCase() }
+        : {}),
     },
   };
+}
+
+function optionalHex32(
+  source: Record<string, unknown>,
+  wireKey: string,
+  propertyKey: string,
+): Record<string, string> {
+  const value = source[wireKey];
+  return is32ByteHex(value) ? { [propertyKey]: value.toLowerCase() } : {};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

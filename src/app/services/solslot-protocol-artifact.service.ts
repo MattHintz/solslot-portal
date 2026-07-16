@@ -1,10 +1,7 @@
 import { Injectable } from '@angular/core';
 import { computeAddress, SigningKey, verifyTypedData } from 'ethers';
 import { environment } from '../../environments/environment';
-import {
-  SolslotApiService,
-  SolslotPublicArtifact,
-} from './solslot-api.service';
+import { SolslotApiService, SolslotPublicArtifact } from './solslot-api.service';
 import {
   clearVerifiedProtocolCoordinates,
   installVerifiedProtocolCoordinates,
@@ -14,6 +11,7 @@ const HEX_20 = /^0x[0-9a-f]{40}$/i;
 const HEX_32 = /^0x[0-9a-f]{64}$/i;
 const HEX_33 = /^0x[0-9a-f]{66}$/i;
 const HEX_48 = /^0x[0-9a-f]{96}$/i;
+const HEX_PROGRAM = /^0x(?:[0-9a-f]{2})+$/i;
 const GIT_SHA = /^[0-9a-f]{40}$/i;
 const REQUIRED_LAUNCHERS = [
   'pool',
@@ -23,6 +21,7 @@ const REQUIRED_LAUNCHERS = [
   'protocolConfig',
   'adminAuthority',
   'vaultVersionRegistry',
+  'propertyRegistry',
 ] as const;
 
 export interface SolslotProtocolCoordinates {
@@ -34,6 +33,7 @@ export interface SolslotProtocolCoordinates {
   protocolConfigLauncherId: string;
   adminAuthorityV2LauncherId: string;
   vaultVersionRegistryLauncherId: string;
+  propertyRegistryLauncherId: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -72,9 +72,7 @@ export class SolslotProtocolArtifactService {
 
     const config = environment.solslotProtocol as Record<string, unknown>;
     const expectedHash = String(config['artifactHash'] || '').toLowerCase();
-    const expectedSourceSha = String(
-      config['adminPortalSourceSha'] || '',
-    ).toLowerCase();
+    const expectedSourceSha = String(config['adminPortalSourceSha'] || '').toLowerCase();
 
     if (!HEX_32.test(expectedHash) || !GIT_SHA.test(expectedSourceSha)) {
       this.failureValue =
@@ -101,13 +99,9 @@ export class SolslotProtocolArtifactService {
   }
 }
 
-export async function canonicalArtifactHash(
-  artifact: SolslotPublicArtifact,
-): Promise<string> {
+export async function canonicalArtifactHash(artifact: SolslotPublicArtifact): Promise<string> {
   const unsigned = Object.fromEntries(
-    Object.entries(artifact).filter(
-      ([key]) => key !== 'artifactHash' && key !== 'signatures',
-    ),
+    Object.entries(artifact).filter(([key]) => key !== 'artifactHash' && key !== 'signatures'),
   );
   const bytes = new TextEncoder().encode(asciiStableJson(unsigned));
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -128,6 +122,16 @@ async function verifyArtifact(
     artifact.evmChainId !== 11155111
   ) {
     throw new Error('The public artifact does not describe Solslot V2 testnet11.');
+  }
+  const reviewIsValid =
+    (artifact.reviewClass === 'internal-engineering-testnet' &&
+      artifact.testOnly === true &&
+      artifact.auditStatus === 'unaudited') ||
+    (artifact.reviewClass === 'independent-release-review' &&
+      artifact.testOnly === false &&
+      artifact.auditStatus === 'independently-reviewed');
+  if (!reviewIsValid) {
+    throw new Error('The public artifact review classification is invalid.');
   }
   if (
     artifact.artifactHash.toLowerCase() !== expectedHash ||
@@ -164,9 +168,29 @@ async function verifyArtifact(
     !HEX_32.test(artifact.sgtGenesisCoinId || '') ||
     !HEX_32.test(artifact.sgtTailHash || '') ||
     artifact.sgtTailHash.toLowerCase() !==
-      String(artifact.puzzleHashes?.sgtTailHash || '').toLowerCase()
+      String(artifact.puzzleHashes?.sgtTailHash || '').toLowerCase() ||
+    !HEX_32.test(artifact.puzzleHashes?.p2PoolModHash || '') ||
+    !HEX_32.test(artifact.puzzleHashes?.p2VaultModHash || '')
   ) {
     throw new Error('The public artifact has incomplete or duplicate protocol coordinates.');
+  }
+  if (
+    artifact.protocolDid?.launcherId?.toLowerCase() !== artifact.launcherIds.did.toLowerCase() ||
+    artifact.protocolDid?.innerPuzzleHash?.toLowerCase() !==
+      String(artifact.puzzleHashes?.didInnerPuzzleHash || '').toLowerCase() ||
+    artifact.protocolDid?.fullPuzzleHash?.toLowerCase() !==
+      String(artifact.puzzleHashes?.didFullPuzzleHash || '').toLowerCase() ||
+    !HEX_PROGRAM.test(artifact.protocolDid?.singletonStruct || '') ||
+    artifact.governanceStruct?.launcherId?.toLowerCase() !==
+      artifact.launcherIds.governance.toLowerCase() ||
+    !HEX_PROGRAM.test(artifact.governanceStruct?.serialized || '') ||
+    artifact.propertyRegistry?.launcherId?.toLowerCase() !==
+      artifact.launcherIds.propertyRegistry.toLowerCase() ||
+    artifact.propertyRegistry?.currentPuzzleHash?.toLowerCase() !==
+      String(artifact.puzzleHashes?.propertyRegistryFullPuzzleHash || '').toLowerCase() ||
+    !HEX_48.test(artifact.propertyRegistry?.governanceBlsPubkey || '')
+  ) {
+    throw new Error('The public artifact mint authority material is incomplete.');
   }
 
   const retired = artifact.retiredCoordinates || [];
@@ -187,9 +211,7 @@ async function verifyArtifact(
     !HEX_32.test(bridge?.policyHash || '') ||
     bridge?.parentCoinIds?.length !== 32 ||
     bridge?.bridgeCoinIds?.length !== 32 ||
-    [...bridge.parentCoinIds, ...bridge.bridgeCoinIds].some(
-      (value) => !HEX_32.test(value),
-    ) ||
+    [...bridge.parentCoinIds, ...bridge.bridgeCoinIds].some((value) => !HEX_32.test(value)) ||
     new Set(bridge.parentCoinIds.map((value) => value.toLowerCase())).size !== 32 ||
     new Set(bridge.bridgeCoinIds.map((value) => value.toLowerCase())).size !== 32
   ) {
@@ -230,9 +252,7 @@ async function verifyArtifact(
       continue;
     }
     const rosterKey = artifact.adminAuthority.compressedPubkeys[index];
-    if (
-      rosterKey.toLowerCase() !== String(item.compressedPubkey || '').toLowerCase()
-    ) {
+    if (rosterKey.toLowerCase() !== String(item.compressedPubkey || '').toLowerCase()) {
       continue;
     }
     try {
@@ -258,9 +278,7 @@ async function verifyArtifact(
         },
         item.signature,
       );
-      const rosterAddress = computeAddress(
-        SigningKey.computePublicKey(rosterKey, false),
-      );
+      const rosterAddress = computeAddress(SigningKey.computePublicKey(rosterKey, false));
       if (signer.toLowerCase() === rosterAddress.toLowerCase()) {
         seen.add(index);
         valid += 1;
@@ -274,9 +292,7 @@ async function verifyArtifact(
   }
 }
 
-function artifactCoordinates(
-  artifact: SolslotPublicArtifact,
-): SolslotProtocolCoordinates {
+function artifactCoordinates(artifact: SolslotPublicArtifact): SolslotProtocolCoordinates {
   return {
     poolLauncherId: artifact.launcherIds.pool,
     poolInnerPuzzleHash: artifact.puzzleHashes.poolInnerPuzzleHash,
@@ -286,6 +302,7 @@ function artifactCoordinates(
     protocolConfigLauncherId: artifact.launcherIds.protocolConfig,
     adminAuthorityV2LauncherId: artifact.launcherIds.adminAuthority,
     vaultVersionRegistryLauncherId: artifact.launcherIds.vaultVersionRegistry,
+    propertyRegistryLauncherId: artifact.launcherIds.propertyRegistry,
   };
 }
 
@@ -303,13 +320,22 @@ function installRuntimeBindings(
     adminAuthorityV2AdminAddresses: adminAddresses,
     adminAuthorityV2AdminPubkeys: [...artifact.adminAuthority.compressedPubkeys],
     governanceQuorumBps: artifact.protocolParameters.quorumBps,
-    governanceVotingWindowSeconds:
-      artifact.protocolParameters.votingWindowSeconds,
+    governanceVotingWindowSeconds: artifact.protocolParameters.votingWindowSeconds,
     governanceSgtTotalSupply: artifact.protocolParameters.sgtTotalSupply,
     governanceMinProposalStake: artifact.protocolParameters.minProposalStake,
     sgtGenesisCoinId: artifact.sgtGenesisCoinId,
     sgtTailHash: artifact.sgtTailHash,
+    propertyRegistryLauncherId: artifact.launcherIds.propertyRegistry,
+    propertyRegistryGovPubkey: artifact.propertyRegistry.governanceBlsPubkey,
+    propertyRegistryCurrentPuzzleHash: artifact.propertyRegistry.currentPuzzleHash,
+    propertyRegistryModHash: artifact.puzzleHashes.propertyRegistryInnerModHash || '',
+    protocolDidLauncherId: artifact.protocolDid.launcherId,
+    protocolDidSingletonStructHex: artifact.protocolDid.singletonStruct,
+    protocolDidPuzhash: artifact.protocolDid.fullPuzzleHash,
+    protocolDidInnerPuzhash: artifact.protocolDid.innerPuzzleHash,
+    governanceSingletonStructHex: artifact.governanceStruct.serialized,
     p2PoolModHash: artifact.puzzleHashes.p2PoolModHash || '',
+    p2VaultModHash: artifact.puzzleHashes.p2VaultModHash || '',
   });
   Object.assign(environment.zkPassport, {
     policyVersion: artifact.bridgePolicy.policyVersion,
@@ -339,7 +365,17 @@ function clearRuntimeBindings(): void {
     governanceLauncherId: '',
     sgtGenesisCoinId: '',
     sgtTailHash: '',
+    propertyRegistryLauncherId: '',
+    propertyRegistryGovPubkey: '',
+    propertyRegistryCurrentPuzzleHash: '',
+    propertyRegistryModHash: '',
+    protocolDidLauncherId: '',
+    protocolDidSingletonStructHex: '',
+    protocolDidPuzhash: '',
+    protocolDidInnerPuzhash: '',
+    governanceSingletonStructHex: '',
     p2PoolModHash: '',
+    p2VaultModHash: '',
     vaultVersionRegistryLauncherId: '',
   });
   Object.assign(environment.zkPassport, {
@@ -354,8 +390,7 @@ function clearRuntimeBindings(): void {
 function asciiStableJson(value: unknown): string {
   return JSON.stringify(sortJson(value)).replace(
     /[\u007f-\uffff]/g,
-    (character) =>
-      `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
   );
 }
 

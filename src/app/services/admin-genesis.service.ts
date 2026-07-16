@@ -10,8 +10,15 @@ export class AdminGenesisService {
   private readonly http = inject(HttpClient);
   private readonly base = `${environment.faucetApi}/admin/genesis`;
 
-  createDraft(token: string, sourceShas: GenesisSourceShas): Promise<GenesisCeremony> {
-    return this.adminPost<GenesisCeremony>('/drafts', token, { sourceShas });
+  createDraft(
+    token: string,
+    sourceShas: GenesisSourceShas,
+    reviewClass: GenesisReviewClass = 'internal-engineering-testnet',
+  ): Promise<GenesisCeremony> {
+    return this.adminPost<GenesisCeremony>('/drafts', token, {
+      sourceShas,
+      reviewClass,
+    });
   }
 
   getCeremony(token: string, ceremonyId: string): Promise<GenesisCeremony> {
@@ -150,11 +157,9 @@ export class AdminGenesisService {
   }
 
   abandon(token: string, ceremonyId: string, reason: string): Promise<GenesisCeremony> {
-    return this.adminPost<GenesisCeremony>(
-      `/${normalizeCeremonyId(ceremonyId)}/abandon`,
-      token,
-      { reason },
-    );
+    return this.adminPost<GenesisCeremony>(`/${normalizeCeremonyId(ceremonyId)}/abandon`, token, {
+      reason,
+    });
   }
 
   private adminPost<T>(path: string, token: string, body: unknown): Promise<T> {
@@ -246,8 +251,12 @@ export interface GenesisPreflight {
   planHash: string;
   spendBundleId: string;
   spendCount: number;
+  reviewClass: GenesisReviewClass;
+  auditStatus: 'independently-reviewed' | 'unaudited';
   auditApprovalHash: string;
 }
+
+export type GenesisReviewClass = 'independent-release-review' | 'internal-engineering-testnet';
 
 export interface GenesisFinalizeResult {
   locked: boolean;

@@ -103,12 +103,8 @@ export class MintPublishService {
    */
   deedLauncherPuzzleHash(protocolDidSingletonStructHex: string): Uint8Array {
     const clvm = this.clvm();
-    const launcherMod = clvm.deserialize(
-      hexToBytes(SINGLETON_LAUNCHER_WITH_DID_PUZZLE_HEX),
-    );
-    const didStruct = clvm.deserialize(
-      hexToBytes(protocolDidSingletonStructHex),
-    );
+    const launcherMod = clvm.deserialize(hexToBytes(SINGLETON_LAUNCHER_WITH_DID_PUZZLE_HEX));
+    const didStruct = clvm.deserialize(hexToBytes(protocolDidSingletonStructHex));
     return launcherMod.curry([didStruct]).treeHash();
   }
 
@@ -148,6 +144,8 @@ export class MintPublishService {
     /** Serialized Program: ``(SINGLETON_MOD_HASH, (DID_LAUNCHER_ID, SINGLETON_LAUNCHER_HASH))``. */
     protocolDidSingletonStructHex: string;
     protocolDidPuzhash: string;
+    protocolDidInnerPuzhash: string;
+    governanceSingletonStructHex: string;
     p2PoolModHash: string;
     p2VaultModHash: string;
     propertyRegistryPuzzleHash: string;
@@ -155,9 +153,7 @@ export class MintPublishService {
     const clvm = this.clvm();
 
     // ── Step 1: Pre-spawned launcher coins → ids ──
-    const deedLauncherPuzhash = this.deedLauncherPuzzleHash(
-      args.protocolDidSingletonStructHex,
-    );
+    const deedLauncherPuzhash = this.deedLauncherPuzzleHash(args.protocolDidSingletonStructHex);
     const deedLauncherId = coinId(
       args.deedLauncherParentCoinName,
       deedLauncherPuzhash,
@@ -173,10 +169,7 @@ export class MintPublishService {
     // Struct = (SINGLETON_MOD_HASH, (deedLauncherId, deedLauncherPuzhash))
     const deedStructProgram = clvm.pair(
       clvm.atom(hexToBytes(MintPublishService.SINGLETON_MOD_HASH)),
-      clvm.pair(
-        clvm.atom(hexToBytes(deedLauncherId)),
-        clvm.atom(deedLauncherPuzhash),
-      ),
+      clvm.pair(clvm.atom(hexToBytes(deedLauncherId)), clvm.atom(deedLauncherPuzhash)),
     );
 
     const smartDeedMod = clvm.deserialize(hexToBytes(SMART_DEED_INNER_PUZZLE_HEX));
@@ -199,14 +192,10 @@ export class MintPublishService {
     const smartDeedInnerPuzhash = smartDeedInner.treeHash();
 
     // ── Step 3: mint-offer eve inner + deed_full_puzhash ──
-    const purchasePaymentMod = clvm.deserialize(
-      hexToBytes(PURCHASE_PAYMENT_PUZZLE_HEX),
-    );
+    const purchasePaymentMod = clvm.deserialize(hexToBytes(PURCHASE_PAYMENT_PUZZLE_HEX));
     const purchasePaymentModHash = purchasePaymentMod.treeHash();
 
-    const mintOfferMod = clvm.deserialize(
-      hexToBytes(MINT_OFFER_DELEGATE_PUZZLE_HEX),
-    );
+    const mintOfferMod = clvm.deserialize(hexToBytes(MINT_OFFER_DELEGATE_PUZZLE_HEX));
     const eveMintOfferInner = mintOfferMod.curry([
       clvm.atom(smartDeedInnerPuzhash),
       clvm.atom(purchasePaymentModHash),
@@ -244,6 +233,11 @@ export class MintPublishService {
       ownerMemberHash: args.ownerMemberHash,
       govMemberHash: args.govMemberHash,
       proposalDataHash: bytesToHex(proposalDataHash),
+      governanceSingletonStructHex: args.governanceSingletonStructHex,
+      governanceProposalHash: bytesToHex(proposalHash),
+      deedLauncherId,
+      didInnerPuzzleHash: args.protocolDidInnerPuzhash,
+      deedFullPuzzleHash: bytesToHex(deedFullPuzhash),
       proposalState: MintProposalV2Service.STATE_DRAFT,
       stateVersion: 0,
     });
@@ -272,15 +266,9 @@ export class MintPublishService {
       billOpProgramHex: bytesToHex(billOpProgram.serialize()),
       billOpProgramHash: bytesToHex(billOpProgram.treeHash()),
       deedSingletonStructProgramHex: bytesToHex(deedStructProgram.serialize()),
-      deedSingletonStructProgramHash: bytesToHex(
-        deedStructProgram.treeHash(),
-      ),
-      proposalSingletonStructProgramHex: bytesToHex(
-        proposalStructProgram.serialize(),
-      ),
-      proposalSingletonStructProgramHash: bytesToHex(
-        proposalStructProgram.treeHash(),
-      ),
+      deedSingletonStructProgramHash: bytesToHex(deedStructProgram.treeHash()),
+      proposalSingletonStructProgramHex: bytesToHex(proposalStructProgram.serialize()),
+      proposalSingletonStructProgramHash: bytesToHex(proposalStructProgram.treeHash()),
     };
   }
 
@@ -294,12 +282,9 @@ export class MintPublishService {
    */
   private singletonTopLayerBytes(): Uint8Array {
     const constants = this.sdk().Constants;
-    const bytes =
-      constants?.singletonTopLayerV11?.() ?? constants?.singletonTopLayer?.();
+    const bytes = constants?.singletonTopLayerV11?.() ?? constants?.singletonTopLayer?.();
     if (!bytes) {
-      throw new Error(
-        'MintPublishService: singleton top-layer bytecode unavailable in WASM SDK',
-      );
+      throw new Error('MintPublishService: singleton top-layer bytecode unavailable in WASM SDK');
     }
     return bytes;
   }

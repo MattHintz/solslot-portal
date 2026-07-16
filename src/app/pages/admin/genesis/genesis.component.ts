@@ -103,13 +103,22 @@ type GenesisAction =
             <div class="section-label">Operator access</div>
             <label class="field mt-3">
               <span>SOLSLOT_ADMIN_TOKEN</span>
-              <input type="password" class="input mono" autocomplete="off" [(ngModel)]="tokenInput" />
+              <input
+                type="password"
+                class="input mono"
+                autocomplete="off"
+                [(ngModel)]="tokenInput"
+              />
             </label>
             <label class="field mt-3">
               <span>Ceremony ID</span>
               <input class="input mono" [(ngModel)]="ceremonyIdInput" placeholder="0x…" />
             </label>
-            <button class="btn btn--ghost w-full justify-center mt-3" [disabled]="busy()" (click)="loadCeremony()">
+            <button
+              class="btn btn--ghost w-full justify-center mt-3"
+              [disabled]="busy()"
+              (click)="loadCeremony()"
+            >
               {{ pendingAction() === 'load' ? 'Loading…' : 'Load ceremony' }}
             </button>
           </section>
@@ -117,10 +126,18 @@ type GenesisAction =
           <section class="panel">
             <div class="section-label">Administrator wallet</div>
             <div class="grid grid-cols-2 gap-2 mt-3">
-              <button class="btn btn--ghost justify-center" [disabled]="busy()" (click)="connectInjected()">
+              <button
+                class="btn btn--ghost justify-center"
+                [disabled]="busy()"
+                (click)="connectInjected()"
+              >
                 Browser wallet
               </button>
-              <button class="btn btn--ghost justify-center" [disabled]="busy()" (click)="connectWalletConnect()">
+              <button
+                class="btn btn--ghost justify-center"
+                [disabled]="busy()"
+                (click)="connectWalletConnect()"
+              >
                 WalletConnect
               </button>
             </div>
@@ -130,7 +147,9 @@ type GenesisAction =
             </label>
             <button
               class="btn btn--primary w-full justify-center mt-3"
-              [disabled]="busy() || !writesEnabled || !invitationTokenInput().trim() || !wallet.address()"
+              [disabled]="
+                busy() || !writesEnabled || !invitationTokenInput().trim() || !wallet.address()
+              "
               (click)="acceptInvitation()"
             >
               {{ pendingAction() === 'enroll' ? 'Signing enrollment…' : 'Enroll this admin slot' }}
@@ -140,11 +159,25 @@ type GenesisAction =
           <section class="panel">
             <div class="section-label">Safety gates</div>
             <div class="gate-list mt-3">
-              <div><span>Frozen source commits</span><b>{{ ceremony()?.source_shas ? 'yes' : 'no' }}</b></div>
-              <div><span>2-of-3 plan approval</span><b>{{ planSignatures() >= 2 ? 'yes' : 'no' }}</b></div>
-              <div><span>Independent audit approval</span><b>{{ preflight()?.ready ? 'verified' : 'pending' }}</b></div>
-              <div><span>Deterministic spend count</span><b>{{ preflight()?.spendCount || 'pending' }}</b></div>
-              <div><span>Post-chain artifact quorum</span><b>{{ artifactSignatures() >= 2 ? 'yes' : 'no' }}</b></div>
+              <div>
+                <span>Frozen source commits</span
+                ><b>{{ ceremony()?.source_shas ? 'yes' : 'no' }}</b>
+              </div>
+              <div>
+                <span>2-of-3 plan approval</span><b>{{ planSignatures() >= 2 ? 'yes' : 'no' }}</b>
+              </div>
+              <div>
+                <span>Internal testnet review</span
+                ><b>{{ preflight()?.ready ? 'verified' : 'pending' }}</b>
+              </div>
+              <div>
+                <span>Deterministic spend count</span
+                ><b>{{ preflight()?.spendCount || 'pending' }}</b>
+              </div>
+              <div>
+                <span>Post-chain artifact quorum</span
+                ><b>{{ artifactSignatures() >= 2 ? 'yes' : 'no' }}</b>
+              </div>
             </div>
           </section>
         </div>
@@ -156,7 +189,11 @@ type GenesisAction =
                 <div class="section-label">1 · Frozen release</div>
                 <h2 class="font-display text-xl mt-1">Create a clean ceremony draft</h2>
               </div>
-              <button class="btn btn--primary" [disabled]="busy() || !writesEnabled" (click)="createDraft()">
+              <button
+                class="btn btn--primary"
+                [disabled]="busy() || !writesEnabled"
+                (click)="createDraft()"
+              >
                 {{ pendingAction() === 'draft' ? 'Creating…' : 'Create draft' }}
               </button>
             </div>
@@ -173,7 +210,9 @@ type GenesisAction =
                 class="btn btn--primary"
                 [disabled]="busy() || !writesEnabled || enrolledAdmins() !== 3"
                 (click)="freezeRoster()"
-              >Freeze roster</button>
+              >
+                Freeze roster
+              </button>
             </div>
             <div class="grid gap-2 md:grid-cols-3 mt-4">
               @for (slot of [1, 2, 3]; track slot) {
@@ -186,7 +225,9 @@ type GenesisAction =
                     class="btn btn--ghost w-full justify-center mt-3"
                     [disabled]="busy() || !writesEnabled || slotEnrolled(slot)"
                     (click)="issueInvitation(slot)"
-                  >Issue invitation</button>
+                  >
+                    Issue invitation
+                  </button>
                   @if (invitationFragments()[slot]; as fragment) {
                     <input class="input mono mt-2" readonly [value]="fragment" />
                   }
@@ -199,27 +240,35 @@ type GenesisAction =
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div class="section-label">3 · Deterministic plan</div>
-                <h2 class="font-display text-xl mt-1">Coordinates, funding, validators, and trust anchors</h2>
+                <h2 class="font-display text-xl mt-1">
+                  Coordinates, funding, validators, and trust anchors
+                </h2>
               </div>
               <button
                 class="btn btn--primary"
                 [disabled]="busy() || !writesEnabled || ceremony()?.state !== 'roster_frozen'"
                 (click)="createPlan()"
-              >{{ pendingAction() === 'plan' ? 'Building…' : 'Build plan' }}</button>
+              >
+                {{ pendingAction() === 'plan' ? 'Building…' : 'Build plan' }}
+              </button>
             </div>
             <textarea class="code-input mt-4" rows="18" [(ngModel)]="planJson"></textarea>
             <div class="flex flex-wrap items-end gap-3 mt-3">
               <label class="field w-28">
                 <span>Admin slot</span>
                 <select class="input" [(ngModel)]="signerSlotInput">
-                  <option [ngValue]="1">1</option><option [ngValue]="2">2</option><option [ngValue]="3">3</option>
+                  <option [ngValue]="1">1</option>
+                  <option [ngValue]="2">2</option>
+                  <option [ngValue]="3">3</option>
                 </select>
               </label>
               <button
                 class="btn btn--ghost"
                 [disabled]="busy() || !writesEnabled || !ceremony()?.plan_hash || !wallet.address()"
                 (click)="signPlan()"
-              >{{ pendingAction() === 'plan-sign' ? 'Signing…' : 'Sign plan hash' }}</button>
+              >
+                {{ pendingAction() === 'plan-sign' ? 'Signing…' : 'Sign plan hash' }}
+              </button>
             </div>
           </section>
 
@@ -230,22 +279,39 @@ type GenesisAction =
                 class="btn btn--primary"
                 [disabled]="busy() || !writesEnabled || ceremony()?.state !== 'plan_approved'"
                 (click)="runPreflight()"
-              >{{ pendingAction() === 'preflight' ? 'Verifying…' : 'Run preflight' }}</button>
+              >
+                {{ pendingAction() === 'preflight' ? 'Verifying…' : 'Run preflight' }}
+              </button>
               <label class="check">
                 <input type="checkbox" [(ngModel)]="broadcastArmed" />
-                <span>Plan hash and audit approval reviewed</span>
+                <span>Plan hash and testnet evidence reviewed</span>
               </label>
               <button
                 class="btn btn--danger"
                 [disabled]="busy() || !writesEnabled || !preflight()?.ready || !broadcastArmed()"
                 (click)="broadcast()"
-              >{{ pendingAction() === 'broadcast' ? 'Broadcasting…' : 'Broadcast once' }}</button>
+              >
+                {{ pendingAction() === 'broadcast' ? 'Broadcasting…' : 'Broadcast once' }}
+              </button>
             </div>
             @if (preflight(); as result) {
               <dl class="result-grid mt-4">
-                <div><dt>Plan hash</dt><dd>{{ result.planHash }}</dd></div>
-                <div><dt>Bundle ID</dt><dd>{{ result.spendBundleId }}</dd></div>
-                <div><dt>Audit approval</dt><dd>{{ result.auditApprovalHash }}</dd></div>
+                <div>
+                  <dt>Plan hash</dt>
+                  <dd>{{ result.planHash }}</dd>
+                </div>
+                <div>
+                  <dt>Bundle ID</dt>
+                  <dd>{{ result.spendBundleId }}</dd>
+                </div>
+                <div>
+                  <dt>Review class</dt>
+                  <dd>{{ result.reviewClass }}</dd>
+                </div>
+                <div>
+                  <dt>Evidence hash</dt>
+                  <dd>{{ result.auditApprovalHash }}</dd>
+                </div>
               </dl>
             }
           </section>
@@ -253,16 +319,34 @@ type GenesisAction =
           <section class="panel">
             <div class="section-label">5 · Confirmation and signed artifact</div>
             <div class="action-row mt-3">
-              <button class="btn btn--ghost" [disabled]="busy() || !writesEnabled || ceremony()?.state !== 'broadcast'" (click)="confirm()">
+              <button
+                class="btn btn--ghost"
+                [disabled]="busy() || !writesEnabled || ceremony()?.state !== 'broadcast'"
+                (click)="confirm()"
+              >
                 Check three confirmations
               </button>
-              <button class="btn btn--ghost" [disabled]="busy() || !writesEnabled || ceremony()?.state !== 'confirmed'" (click)="createArtifact()">
+              <button
+                class="btn btn--ghost"
+                [disabled]="busy() || !writesEnabled || ceremony()?.state !== 'confirmed'"
+                (click)="createArtifact()"
+              >
                 Build artifact
               </button>
-              <button class="btn btn--ghost" [disabled]="busy() || !writesEnabled || !ceremony()?.artifact_hash || !wallet.address()" (click)="signArtifact()">
+              <button
+                class="btn btn--ghost"
+                [disabled]="
+                  busy() || !writesEnabled || !ceremony()?.artifact_hash || !wallet.address()
+                "
+                (click)="signArtifact()"
+              >
                 Sign artifact hash
               </button>
-              <button class="btn btn--primary" [disabled]="busy() || !writesEnabled || ceremony()?.state !== 'artifact_signed'" (click)="finalize()">
+              <button
+                class="btn btn--primary"
+                [disabled]="busy() || !writesEnabled || ceremony()?.state !== 'artifact_signed'"
+                (click)="finalize()"
+              >
                 Write lock last
               </button>
             </div>
@@ -271,8 +355,16 @@ type GenesisAction =
           <section class="panel border-red-500/30">
             <div class="section-label text-red-300">Abandonment</div>
             <div class="flex flex-col md:flex-row gap-3 mt-3">
-              <input class="input flex-1" [(ngModel)]="abandonReasonInput" placeholder="Recorded reason, minimum 8 characters" />
-              <button class="btn btn--danger" [disabled]="busy() || !writesEnabled || abandonReasonInput().trim().length < 8" (click)="abandon()">
+              <input
+                class="input flex-1"
+                [(ngModel)]="abandonReasonInput"
+                placeholder="Recorded reason, minimum 8 characters"
+              />
+              <button
+                class="btn btn--danger"
+                [disabled]="busy() || !writesEnabled || abandonReasonInput().trim().length < 8"
+                (click)="abandon()"
+              >
                 Abandon ceremony
               </button>
             </div>
@@ -282,27 +374,126 @@ type GenesisAction =
     </main>
   `,
   styles: `
-    .panel { border: 1px solid rgb(255 255 255 / 0.1); background: rgb(255 255 255 / 0.025); padding: 1rem; border-radius: 4px; }
-    .status-cell { background: rgb(5 18 21); padding: 0.8rem; min-width: 0; }
-    .status-cell span, .field span, .section-label { display: block; font: 600 0.66rem/1.25 monospace; text-transform: uppercase; letter-spacing: 0; color: var(--color-text-muted); }
-    .status-cell strong { display: block; margin-top: 0.3rem; overflow-wrap: anywhere; }
-    .field .input { width: 100%; margin-top: 0.35rem; }
-    .code-input { width: 100%; resize: vertical; border: 1px solid rgb(255 255 255 / 0.12); background: rgb(0 8 10 / 0.8); padding: 0.8rem; font: 0.72rem/1.55 monospace; color: inherit; border-radius: 3px; }
-    .notice { display: grid; grid-template-columns: 9rem 1fr; gap: 1rem; border: 1px solid rgb(77 255 178 / 0.3); background: rgb(77 255 178 / 0.07); padding: 0.8rem; font-size: 0.82rem; }
-    .notice--error { border-color: rgb(248 113 113 / 0.45); background: rgb(248 113 113 / 0.08); }
-    .gate { border: 1px solid rgb(248 113 113 / 0.45); padding: 0.45rem 0.6rem; font: 600 0.65rem/1 monospace; text-transform: uppercase; }
-    .gate--ready { border-color: rgb(77 255 178 / 0.45); color: rgb(134 239 172); }
-    .slot { border: 1px solid rgb(255 255 255 / 0.1); padding: 0.75rem; min-width: 0; }
-    .slot span { font: 0.65rem monospace; color: var(--color-text-muted); }
-    .gate-list { display: grid; gap: 0.65rem; font-size: 0.78rem; }
-    .gate-list div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid rgb(255 255 255 / 0.08); padding-bottom: 0.55rem; }
-    .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; }
-    .check { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.75rem; color: var(--color-text-muted); }
-    .result-grid { display: grid; gap: 0.5rem; }
-    .result-grid div { display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: 0.75rem; font-size: 0.72rem; }
-    .result-grid dt { color: var(--color-text-muted); }
-    .result-grid dd { font-family: monospace; overflow-wrap: anywhere; }
-    @media (max-width: 640px) { .notice, .result-grid div { grid-template-columns: 1fr; gap: 0.25rem; } }
+    .panel {
+      border: 1px solid rgb(255 255 255 / 0.1);
+      background: rgb(255 255 255 / 0.025);
+      padding: 1rem;
+      border-radius: 4px;
+    }
+    .status-cell {
+      background: rgb(5 18 21);
+      padding: 0.8rem;
+      min-width: 0;
+    }
+    .status-cell span,
+    .field span,
+    .section-label {
+      display: block;
+      font: 600 0.66rem/1.25 monospace;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      color: var(--color-text-muted);
+    }
+    .status-cell strong {
+      display: block;
+      margin-top: 0.3rem;
+      overflow-wrap: anywhere;
+    }
+    .field .input {
+      width: 100%;
+      margin-top: 0.35rem;
+    }
+    .code-input {
+      width: 100%;
+      resize: vertical;
+      border: 1px solid rgb(255 255 255 / 0.12);
+      background: rgb(0 8 10 / 0.8);
+      padding: 0.8rem;
+      font: 0.72rem/1.55 monospace;
+      color: inherit;
+      border-radius: 3px;
+    }
+    .notice {
+      display: grid;
+      grid-template-columns: 9rem 1fr;
+      gap: 1rem;
+      border: 1px solid rgb(77 255 178 / 0.3);
+      background: rgb(77 255 178 / 0.07);
+      padding: 0.8rem;
+      font-size: 0.82rem;
+    }
+    .notice--error {
+      border-color: rgb(248 113 113 / 0.45);
+      background: rgb(248 113 113 / 0.08);
+    }
+    .gate {
+      border: 1px solid rgb(248 113 113 / 0.45);
+      padding: 0.45rem 0.6rem;
+      font: 600 0.65rem/1 monospace;
+      text-transform: uppercase;
+    }
+    .gate--ready {
+      border-color: rgb(77 255 178 / 0.45);
+      color: rgb(134 239 172);
+    }
+    .slot {
+      border: 1px solid rgb(255 255 255 / 0.1);
+      padding: 0.75rem;
+      min-width: 0;
+    }
+    .slot span {
+      font: 0.65rem monospace;
+      color: var(--color-text-muted);
+    }
+    .gate-list {
+      display: grid;
+      gap: 0.65rem;
+      font-size: 0.78rem;
+    }
+    .gate-list div {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      border-bottom: 1px solid rgb(255 255 255 / 0.08);
+      padding-bottom: 0.55rem;
+    }
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+    }
+    .result-grid {
+      display: grid;
+      gap: 0.5rem;
+    }
+    .result-grid div {
+      display: grid;
+      grid-template-columns: 8rem minmax(0, 1fr);
+      gap: 0.75rem;
+      font-size: 0.72rem;
+    }
+    .result-grid dt {
+      color: var(--color-text-muted);
+    }
+    .result-grid dd {
+      font-family: monospace;
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 640px) {
+      .notice,
+      .result-grid div {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
+      }
+    }
   `,
 })
 export class GenesisComponent implements OnInit {
@@ -330,9 +521,7 @@ export class GenesisComponent implements OnInit {
     () => this.ceremony()?.invitations?.filter((slot) => !!slot.compressed_pubkey).length || 0,
   );
   readonly planSignatures = computed(() => this.ceremony()?.plan_signatures?.length || 0);
-  readonly artifactSignatures = computed(
-    () => this.ceremony()?.artifact_signatures?.length || 0,
-  );
+  readonly artifactSignatures = computed(() => this.ceremony()?.artifact_signatures?.length || 0);
   readonly shortWallet = computed(() => {
     const address = this.wallet.address();
     return address ? `${address.slice(0, 8)}…${address.slice(-6)}` : 'not connected';
@@ -346,21 +535,33 @@ export class GenesisComponent implements OnInit {
   }
 
   async connectInjected(): Promise<void> {
-    await this.perform('wallet', () => this.wallet.connectInjected(), () => {
-      this.message.set('Browser wallet connected for ceremony signatures.');
-    });
+    await this.perform(
+      'wallet',
+      () => this.wallet.connectInjected(),
+      () => {
+        this.message.set('Browser wallet connected for ceremony signatures.');
+      },
+    );
   }
 
   async connectWalletConnect(): Promise<void> {
-    await this.perform('wallet', () => this.wallet.connectWalletConnect({ resetSession: true }), () => {
-      this.message.set('WalletConnect session established for ceremony signatures.');
-    });
+    await this.perform(
+      'wallet',
+      () => this.wallet.connectWalletConnect({ resetSession: true }),
+      () => {
+        this.message.set('WalletConnect session established for ceremony signatures.');
+      },
+    );
   }
 
   async createDraft(): Promise<void> {
     await this.perform(
       'draft',
-      () => this.genesis.createDraft(this.tokenInput(), parseJson<GenesisSourceShas>(this.sourceShasJson())),
+      () =>
+        this.genesis.createDraft(
+          this.tokenInput(),
+          parseJson<GenesisSourceShas>(this.sourceShasJson()),
+        ),
       (result) => {
         this.setCeremony(result);
         this.message.set('Fresh ceremony draft created from five frozen commits.');
@@ -430,7 +631,9 @@ export class GenesisComponent implements OnInit {
         ),
       (result) => {
         this.setCeremony(result.ceremony);
-        this.message.set('Deterministic plan created. Two enrolled administrators must sign its hash.');
+        this.message.set(
+          'Deterministic plan created. Two enrolled administrators must sign its hash.',
+        );
       },
     );
   }
@@ -440,7 +643,10 @@ export class GenesisComponent implements OnInit {
       'plan-sign',
       async () => {
         const ceremonyId = this.requiredCeremonyId();
-        const prepared = await this.genesis.preparePlanSignature(ceremonyId, this.signerSlotInput());
+        const prepared = await this.genesis.preparePlanSignature(
+          ceremonyId,
+          this.signerSlotInput(),
+        );
         const signature = await this.wallet.signTypedData(prepared.typedData);
         return this.genesis.signPlan(ceremonyId, prepared.slot, signature);
       },
@@ -458,7 +664,9 @@ export class GenesisComponent implements OnInit {
       (result) => {
         this.preflight.set(result);
         this.broadcastArmed.set(false);
-        this.message.set('Pre-broadcast gate passed against live funding and audit approval.');
+        this.message.set(
+          'Pre-broadcast gate passed against live funding, Sepolia, and validator evidence.',
+        );
       },
     );
   }
@@ -537,7 +745,11 @@ export class GenesisComponent implements OnInit {
   }
 
   slotStatus(slot: number): string {
-    return this.slotEnrolled(slot) ? 'enrolled' : this.invitationFragments()[slot] ? 'invited' : 'open';
+    return this.slotEnrolled(slot)
+      ? 'enrolled'
+      : this.invitationFragments()[slot]
+        ? 'invited'
+        : 'open';
   }
 
   private async operatorMutation(
@@ -600,8 +812,15 @@ function defaultPlanJson(): string {
     {
       evmAddresses: { forwarder: '', verifierAdapter: '', attestationEmitter: '' },
       fundingCoinIds: {
-        sgt: '', pool: '', did: '', governance: '', navRegistry: '',
-        protocolConfig: '', adminAuthority: '', vaultVersionRegistry: '', bridgeBatch: '',
+        sgt: '',
+        pool: '',
+        did: '',
+        governance: '',
+        navRegistry: '',
+        protocolConfig: '',
+        adminAuthority: '',
+        vaultVersionRegistry: '',
+        bridgeBatch: '',
       },
       faucetPuzzleHash: '',
       governanceBlsPubkey: '',

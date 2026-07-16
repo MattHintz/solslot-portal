@@ -23,10 +23,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 
 import { ChiaWasmService } from '../chia-wasm.service';
-import {
-  MintProposalV2Service,
-  bytesToHex,
-} from './mint-proposal-v2.service';
+import { MintProposalV2Service, bytesToHex } from './mint-proposal-v2.service';
 import fixturesJson from './mint-proposal-v2.fixtures.json';
 
 // \u2500\u2500 Fixture shape \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -60,6 +57,11 @@ interface InnerPuzzleInput {
   owner_member_hash: string;
   gov_member_hash: string;
   proposal_data_hash: string;
+  governance_singleton_struct_hex: string;
+  governance_proposal_hash: string;
+  deed_launcher_id: string;
+  did_inner_puzzle_hash: string;
+  deed_full_puzzle_hash: string;
   proposal_state: number;
   state_version: number;
 }
@@ -96,17 +98,17 @@ describe('MintProposalV2Service', () => {
     const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
     const response = await fetch('/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm');
     if (!response.ok) {
-      throw new Error(
-        `WASM asset fetch failed: ${response.status} ${response.statusText}`,
-      );
+      throw new Error(`WASM asset fetch failed: ${response.status} ${response.statusText}`);
     }
     const bytes = await response.arrayBuffer();
     const result = await WebAssembly.instantiate(bytes, {
       './chia_wallet_sdk_wasm_bg.js': wasmExports as unknown as WebAssembly.ModuleImports,
     });
-    const setWasm = (wasmExports as unknown as {
-      __wbg_set_wasm?: (w: WebAssembly.Exports) => void;
-    }).__wbg_set_wasm;
+    const setWasm = (
+      wasmExports as unknown as {
+        __wbg_set_wasm?: (w: WebAssembly.Exports) => void;
+      }
+    ).__wbg_set_wasm;
     if (typeof setWasm !== 'function') {
       throw new Error('chia_wallet_sdk_wasm_bg.js missing __wbg_set_wasm');
     }
@@ -138,12 +140,8 @@ describe('MintProposalV2Service', () => {
     });
 
     it('transition case constants match the fixture', () => {
-      expect(MintProposalV2Service.TRANSITION_APPROVE).toBe(
-        fixtures.constants.transition_approve,
-      );
-      expect(MintProposalV2Service.TRANSITION_CANCEL).toBe(
-        fixtures.constants.transition_cancel,
-      );
+      expect(MintProposalV2Service.TRANSITION_APPROVE).toBe(fixtures.constants.transition_approve);
+      expect(MintProposalV2Service.TRANSITION_CANCEL).toBe(fixtures.constants.transition_cancel);
     });
 
     it('runtime modHash() matches MOD_HASH static (puzzle-hex \u2194 .clsp consistency)', () => {
@@ -233,6 +231,11 @@ describe('MintProposalV2Service', () => {
           ownerMemberHash: c.input.owner_member_hash,
           govMemberHash: c.input.gov_member_hash,
           proposalDataHash: c.input.proposal_data_hash,
+          governanceSingletonStructHex: c.input.governance_singleton_struct_hex,
+          governanceProposalHash: c.input.governance_proposal_hash,
+          deedLauncherId: c.input.deed_launcher_id,
+          didInnerPuzzleHash: c.input.did_inner_puzzle_hash,
+          deedFullPuzzleHash: c.input.deed_full_puzzle_hash,
           proposalState: c.input.proposal_state,
           stateVersion: c.input.state_version,
         });
