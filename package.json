@@ -7,6 +7,7 @@
     "start": "ng serve",
     "dev:stack": "node scripts/dev-stack.mjs",
     "build": "ng build",
+    "build:ceremony": "ng build --configuration ceremony",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "postinstall": "node scripts/copy-chia-wasm.mjs",

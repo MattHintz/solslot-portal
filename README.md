@@ -55,6 +55,12 @@ Edit `src/environments/environment.ts`:
 - `eip712ChainId` — must match `EIP712_DOMAIN_CHAIN_ID` in
   `solslot_protocol/solslot_puzzles/vault_driver.py`.
 
+The normal staging and production builds compile protocol writes off. For the
+one-shot testnet genesis window, `npm run build:ceremony` creates a same-origin
+build rooted at `/genesis-admin/`. It enables the ceremony controls only; the
+API remains the authority for write locks, the one-time operator token, and all
+2-of-3 administrator signature checks.
+
 ## What is live today
 
 ### User vault flow
@@ -204,32 +210,32 @@ the final Chia spend bundle.
 
 ## Routes
 
-| Route | Purpose |
-|-------|---------|
-| `/connect` | Connect EVM or Chia wallet. |
-| `/create-vault` | Discover an existing vault or call the faucet API to create one. |
-| `/vault` | Current vault view backed by chain discovery. |
-| `/admin/genesis` | Full genesis ceremony entry: base protocol deploy, temporary bootstrap-session start/status, first-admin authority handoff, and locked post-finalize permanent-admin handoff. |
-| `/admin/login` | Browser-only admin login. |
-| `/admin` | Operator dashboard for browser-local mint drafts. |
-| `/admin/launch-authority-v2` | Genesis-only first-admin authority step: build, wallet-sign, push the v2 authority launch bundle, and finalize public bootstrap artifacts in temporary bootstrap mode. |
-| `/admin/recovery` | Public Path A bootstrap recovery: discover marker anchors, review rejected candidates, hash-check pasted artifacts, and call the recovery verifier before permanent admin login. |
-| `/admin/trust-roots` | Read configured trust-root singleton state from coinset.org. |
-| `/admin/authority-v2/add-admin-slot` | Build and locally preflight an unsigned A.5 add-admin roster-update package; no signing or broadcast. |
-| `/admin/authority-v2/roster-spend-package-review` | Import pasted unsigned A.5 roster package JSON, rerun local preflight, and review signer-facing inputs; no signing or broadcast. |
-| `/admin/mint/new` | Create a local DRAFT mint proposal. |
-| `/admin/mint/:id` | Inspect or cancel a local DRAFT; publish/execute are disabled. |
-| `/committee` | Public committee page shell; chain-backed SGT-VOTE submission is not wired yet. |
+| Route                                             | Purpose                                                                                                                                                                          |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/connect`                                        | Connect EVM or Chia wallet.                                                                                                                                                      |
+| `/create-vault`                                   | Discover an existing vault or call the faucet API to create one.                                                                                                                 |
+| `/vault`                                          | Current vault view backed by chain discovery.                                                                                                                                    |
+| `/admin/genesis`                                  | Full genesis ceremony entry: base protocol deploy, temporary bootstrap-session start/status, first-admin authority handoff, and locked post-finalize permanent-admin handoff.    |
+| `/admin/login`                                    | Browser-only admin login.                                                                                                                                                        |
+| `/admin`                                          | Operator dashboard for browser-local mint drafts.                                                                                                                                |
+| `/admin/launch-authority-v2`                      | Genesis-only first-admin authority step: build, wallet-sign, push the v2 authority launch bundle, and finalize public bootstrap artifacts in temporary bootstrap mode.           |
+| `/admin/recovery`                                 | Public Path A bootstrap recovery: discover marker anchors, review rejected candidates, hash-check pasted artifacts, and call the recovery verifier before permanent admin login. |
+| `/admin/trust-roots`                              | Read configured trust-root singleton state from coinset.org.                                                                                                                     |
+| `/admin/authority-v2/add-admin-slot`              | Build and locally preflight an unsigned A.5 add-admin roster-update package; no signing or broadcast.                                                                            |
+| `/admin/authority-v2/roster-spend-package-review` | Import pasted unsigned A.5 roster package JSON, rerun local preflight, and review signer-facing inputs; no signing or broadcast.                                                 |
+| `/admin/mint/new`                                 | Create a local DRAFT mint proposal.                                                                                                                                              |
+| `/admin/mint/:id`                                 | Inspect or cancel a local DRAFT; publish/execute are disabled.                                                                                                                   |
+| `/committee`                                      | Public committee page shell; chain-backed SGT-VOTE submission is not wired yet.                                                                                                  |
 
 ## Cross-repo binding
 
 The portal's TypeScript ports are validated against JSON fixtures
 generated from the Solslot protocol checkout:
 
-| Service | Python source | Fixture |
-|---------|---------------|---------|
+| Service                   | Python source                                                   | Fixture                                                                |
+| ------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `AdminAuthorityV2Service` | `solslot_protocol/solslot_puzzles/admin_authority_v2_driver.py` | `src/app/services/admin-authority-v2/admin-authority-v2.fixtures.json` |
-| `MintProposalV2Service` | `solslot_protocol/solslot_puzzles/mint_proposal_v2_driver.py` | `src/app/services/mint-proposal-v2/mint-proposal-v2.fixtures.json` |
+| `MintProposalV2Service`   | `solslot_protocol/solslot_puzzles/mint_proposal_v2_driver.py`   | `src/app/services/mint-proposal-v2/mint-proposal-v2.fixtures.json`     |
 
 If the `.clsp` source changes, regenerate via:
 
