@@ -14,6 +14,12 @@ export const environment = {
   zkPassport: {
     ...base.zkPassport,
     verificationUrl: '',
+    evmRpcUrl: '',
+    attestationEmitterAddress: '',
+    attestationEmitterFromBlock: 0,
+    trustedForwarderAddress: '',
+    validatorPubkeys: [] as string[],
+    validatorThreshold: 0,
     devMode: false,
   },
 };
