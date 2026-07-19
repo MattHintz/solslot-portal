@@ -36,6 +36,12 @@ export const routes: Routes = [
       ),
     title: 'SmartDeed Offer · Solslot',
   },
+  {
+    path: 'properties/:id',
+    loadComponent: () =>
+      import('./pages/property/property.component').then((m) => m.PropertyComponent),
+    title: 'Property Dossier · Solslot',
+  },
 
   // ── Admin desk (wallet-signed JWT auth) ───────────────────────────────────
   {
@@ -61,10 +67,28 @@ export const routes: Routes = [
     // inject() inside the guard runs in a valid injection context.
     canActivate: [adminAuthGuard],
     loadComponent: () =>
-      import('./pages/admin/dashboard/admin-dashboard.component').then(
-        (m) => m.AdminDashboardComponent,
+      import('./pages/admin/collections/collections.component').then(
+        (m) => m.CollectionsComponent,
       ),
     title: 'Admin Desk · Solslot',
+  },
+  {
+    path: 'admin/collections',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/collections/collections.component').then(
+        (m) => m.CollectionsComponent,
+      ),
+    title: 'Collection Minting · Solslot',
+  },
+  {
+    path: 'admin/collections/:id',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/collection-editor/collection-editor.component').then(
+        (m) => m.CollectionEditorComponent,
+      ),
+    title: 'Collection Workspace · Solslot',
   },
   {
     path: 'admin/mint/new',

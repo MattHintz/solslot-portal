@@ -25,6 +25,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChiaWasmService } from '../chia-wasm.service';
 import { MintProposalV2Service, bytesToHex } from './mint-proposal-v2.service';
 import fixturesJson from './mint-proposal-v2.fixtures.json';
+import metadataFixture from '../property-metadata/property-metadata-v1.fixture.json';
 
 // \u2500\u2500 Fixture shape \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 interface FixtureCase<TInput> {
@@ -166,6 +167,22 @@ describe('MintProposalV2Service', () => {
         });
         expect(bytesToHex(got)).toBe(c.expected);
       });
+    });
+
+    it('matches the Python metadata-extended proposal hash fixture', () => {
+      const vector = metadataFixture.mintVector;
+      const input = vector.inputs;
+      const got = service.computeProposalDataHash({
+        propertyIdCanon: input.propertyIdCanon,
+        collectionIdCanon: input.collectionIdCanon,
+        sharePpm: input.sharePpm,
+        parValueMojos: BigInt(input.parValueMojos),
+        royaltyBps: input.royaltyBps,
+        quorumThreshold: input.quorumThreshold,
+        metadataRoot: metadataFixture.metadataRoot,
+        metadataAnchorId: input.metadataAnchorId,
+      });
+      expect(bytesToHex(got)).toBe(vector.expected.proposalDataHash);
     });
   });
 

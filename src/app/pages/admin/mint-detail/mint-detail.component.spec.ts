@@ -6,6 +6,7 @@ import { AdminSessionService } from '../../../services/admin-session.service';
 import { Eip712LeafHashService } from '../../../services/eip712-leaf-hash.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
+import { MintProposalApiService } from '../../../services/mint-proposal-api.service';
 import {
   MintProposalV2PublishRunnerService,
   PublishMintArgs,
@@ -26,6 +27,7 @@ describe('MintDetailComponent publish flow', () => {
   let fixture: ComponentFixture<MintDetailComponent>;
   let component: MintDetailComponent;
   let drafts: jasmine.SpyObj<Pick<MintDraftStorageService, 'get' | 'markPublished'>>;
+  let proposalApi: jasmine.SpyObj<Pick<MintProposalApiService, 'get' | 'cancel'>>;
   let registryMaterial: jasmine.SpyObj<Pick<PropertyRegistryRegistrationMaterialService, 'build'>>;
   let publishRunner: jasmine.SpyObj<Pick<MintProposalV2PublishRunnerService, 'publishMint'>>;
   let executeRunner: jasmine.SpyObj<Pick<MintProposalV2ExecuteRunnerService, 'executeMint'>>;
@@ -68,6 +70,7 @@ describe('MintDetailComponent publish flow', () => {
     });
 
     drafts = jasmine.createSpyObj('MintDraftStorageService', ['get', 'markPublished']);
+    proposalApi = jasmine.createSpyObj('MintProposalApiService', ['get', 'cancel']);
     registryMaterial = jasmine.createSpyObj('PropertyRegistryRegistrationMaterialService', [
       'build',
     ]);
@@ -77,6 +80,9 @@ describe('MintDetailComponent publish flow', () => {
 
     drafts.get.and.returnValue(draft());
     drafts.markPublished.and.returnValue(publishedDraft());
+    proposalApi.get.and.callFake(async () => {
+      throw new Error('shared record not found');
+    });
     registryMaterial.build.and.resolveTo({
       kind: 'ok',
       spend: registrySpend,
@@ -108,6 +114,7 @@ describe('MintDetailComponent publish flow', () => {
           },
         },
         { provide: MintDraftStorageService, useValue: drafts },
+        { provide: MintProposalApiService, useValue: proposalApi },
         {
           provide: PropertyRegistryRegistrationMaterialService,
           useValue: registryMaterial,
@@ -141,6 +148,7 @@ describe('MintDetailComponent publish flow', () => {
   }
 
   it('assembles registry-backed publish args, calls the runner, and persists submitted metadata', async () => {
+    proposalApi.get.and.resolveTo(publishedDraft());
     await component.publish();
 
     const propertyIdCanon = canonicalPropertyIdHash(draft().property_id);
@@ -194,6 +202,18 @@ describe('MintDetailComponent publish flow', () => {
     expect(component.publishResult()?.kind).toBe('submitted');
     expect(component.proposal()?.state).toBe('PROPOSED');
     expect(chainState.check.calls.mostRecent().args[0].state).toBe('PROPOSED');
+  });
+
+  it('loads a collection proposal from the shared API when no local draft exists', async () => {
+    drafts.get.and.returnValue(null);
+    proposalApi.get.and.resolveTo(publishedDraft());
+
+    await component.reload();
+
+    expect(component.loadError()).toBeNull();
+    expect(component.sharedRecord()).toBeTrue();
+    expect(component.proposal()?.id).toBe(proposalId);
+    expect(component.proposal()?.state).toBe('PROPOSED');
   });
 
   it('does not call the runner when the property-registry co-spend cannot be built', async () => {

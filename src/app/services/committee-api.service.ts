@@ -1,8 +1,9 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
+import { AdminSessionService } from './admin-session.service';
 
 /**
  * Thin HTTP client for ``solslot_api``'s committee-action forwarder
@@ -26,6 +27,7 @@ import { environment } from '../../environments/environment';
 @Injectable({ providedIn: 'root' })
 export class CommitteeApiService {
   private readonly http = inject(HttpClient);
+  private readonly session = inject(AdminSessionService);
   private readonly base = environment.faucetApi;
 
   /**
@@ -106,7 +108,9 @@ export class CommitteeApiService {
       proposal_metadata: proposalMetadata,
     };
     const res = await firstValueFrom(
-      this.http.post<CommitteeVoteApiResponseWire>(`${this.base}/admin/committee/propose`, body),
+      this.http.post<CommitteeVoteApiResponseWire>(`${this.base}/admin/committee/propose`, body, {
+        headers: this.adminHeaders(),
+      }),
     );
     return {
       pushed: res.pushed,
@@ -122,10 +126,14 @@ export class CommitteeApiService {
     proposalId: string,
   ): Promise<CommitteeVoteApiResponse> {
     const res = await firstValueFrom(
-      this.http.post<CommitteeVoteApiResponseWire>(`${this.base}/admin/committee/execute`, {
-        spend_bundle: spendBundle,
-        proposal_id: proposalId,
-      }),
+      this.http.post<CommitteeVoteApiResponseWire>(
+        `${this.base}/admin/committee/execute`,
+        {
+          spend_bundle: spendBundle,
+          proposal_id: proposalId,
+        },
+        { headers: this.adminHeaders() },
+      ),
     );
     return {
       pushed: res.pushed,
@@ -133,6 +141,10 @@ export class CommitteeApiService {
       spendBundleId: res.spend_bundle_id,
       proposalId: res.proposal_id ?? undefined,
     };
+  }
+
+  private adminHeaders(): HttpHeaders {
+    return new HttpHeaders({ Authorization: `Bearer ${this.session.requireJwt()}` });
   }
 }
 
@@ -181,6 +193,8 @@ export interface PublishProposalMetadataJson {
   owner_member_hash: string;
   gov_member_hash: string;
   voting_deadline: number;
+  metadata_root?: string;
+  metadata_anchor_id?: string;
 }
 
 interface CommitteeVoteApiResponseWire {

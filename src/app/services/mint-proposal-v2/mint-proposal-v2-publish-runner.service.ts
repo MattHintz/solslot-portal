@@ -21,6 +21,10 @@ import { environment } from '../../../environments/environment';
 import { MintProposalV2Service } from './mint-proposal-v2.service';
 import { MintPublishArtifacts, MintPublishService } from './mint-publish.service';
 import { MintPublishSpendBuilderService } from './mint-publish-spend-builder.service';
+import {
+  PropertyMetadataService,
+  buildMetadataReferenceMemo,
+} from '../property-metadata/property-metadata.service';
 
 /**
  * End-to-end orchestrator for the Mint V2 **Publish** flow (Phase 4
@@ -90,6 +94,7 @@ export class MintProposalV2PublishRunnerService {
   private readonly spendBuilder = inject(MintPublishSpendBuilderService);
   private readonly coinPicker = inject(WalletCoinPickerService);
   private readonly api = inject(CommitteeApiService);
+  private readonly propertyMetadata = inject(PropertyMetadataService);
 
   /**
    * Build, sign, and POST the publish bundle for a single MINT
@@ -212,10 +217,54 @@ export class MintProposalV2PublishRunnerService {
         p2PoolModHash: args.p2PoolModHash,
         p2VaultModHash: args.p2VaultModHash,
         propertyRegistryPuzzleHash: args.propertyRegistryPuzzleHash,
+        metadataRoot: args.metadataRoot,
+        metadataAnchorId: args.metadataAnchorId,
       });
     } catch (err) {
       return {
         kind: 'artifact-build-failed',
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    let deedLauncherMemos: Uint8Array[] | undefined;
+    try {
+      if (args.metadataRoot) {
+        if (args.metadataAnchorId) {
+          deedLauncherMemos = [
+            buildMetadataReferenceMemo({
+              metadataRoot: args.metadataRoot,
+              metadataAnchorId: args.metadataAnchorId,
+            }),
+          ];
+        } else {
+          if (!args.canonicalMetadataJson) {
+            return {
+              kind: 'metadata-invalid',
+              error: 'The first collection proposal requires canonical metadata bytes.',
+            };
+          }
+          const commitment = this.propertyMetadata.commit(
+            JSON.parse(args.canonicalMetadataJson) as unknown,
+          );
+          if (commitment.canonicalJson !== args.canonicalMetadataJson) {
+            return {
+              kind: 'metadata-invalid',
+              error: 'The supplied dossier is not RFC 8785 canonical JSON.',
+            };
+          }
+          if (commitment.metadataRoot.toLowerCase() !== args.metadataRoot.toLowerCase()) {
+            return {
+              kind: 'metadata-invalid',
+              error: 'The canonical dossier does not match the sealed metadata root.',
+            };
+          }
+          deedLauncherMemos = this.propertyMetadata.buildMemos(commitment);
+        }
+      }
+    } catch (err) {
+      return {
+        kind: 'metadata-invalid',
         error: err instanceof Error ? err.message : String(err),
       };
     }
@@ -324,6 +373,7 @@ export class MintProposalV2PublishRunnerService {
           args.protocolDidSingletonStructHex,
         ),
         parentConditionsHex: eveLaunch.parentConditionsHex,
+        deedLauncherMemos,
       });
     } catch (err) {
       return {
@@ -379,6 +429,12 @@ export class MintProposalV2PublishRunnerService {
       owner_member_hash: this.normalizeHex(args.ownerMemberHash),
       gov_member_hash: this.normalizeHex(args.govMemberHash),
       voting_deadline: Number(votingDeadline),
+      ...(artifacts.metadataRoot && artifacts.metadataAnchorId
+        ? {
+            metadata_root: artifacts.metadataRoot,
+            metadata_anchor_id: artifacts.metadataAnchorId,
+          }
+        : {}),
     };
     let apiResponse: CommitteeVoteApiResponse;
     try {
@@ -440,6 +496,7 @@ export class MintProposalV2PublishRunnerService {
     changePuzzleHash: Uint8Array;
     deedLauncherPuzhash: Uint8Array;
     parentConditionsHex: string[];
+    deedLauncherMemos?: Uint8Array[];
   }): UnsignedCoinSpend {
     const clvm = this.clvm();
     const sendAmount = MintPublishSpendBuilderService.SINGLETON_AMOUNT * 2n; // deed + Artifact A launchers
@@ -451,12 +508,15 @@ export class MintProposalV2PublishRunnerService {
     }
     const changeAmount = args.coinAmount - sendAmount;
 
+    const memoProgram = args.deedLauncherMemos?.length
+      ? clvm.list(args.deedLauncherMemos.map((memo) => clvm.atom(memo)))
+      : undefined;
     const conditions = [
       // Deed launcher pre-spawn.
       clvm.createCoin(
         args.deedLauncherPuzhash,
         MintPublishSpendBuilderService.SINGLETON_AMOUNT,
-        undefined,
+        memoProgram,
       ),
       // Artifact A launcher parent conditions (CREATE_COIN + ASSERT_COIN_ANNOUNCEMENT).
       ...args.parentConditionsHex.map((hex) => clvm.deserialize(hexToBytes(hex))),
@@ -542,6 +602,12 @@ export interface PublishMintArgs {
   p2PoolModHash: string;
   p2VaultModHash: string;
   propertyRegistryPuzzleHash: string;
+  /** Sealed SHA-256 commitment returned by the collection workspace API. */
+  metadataRoot?: string;
+  /** First deed launcher id. Omit only while publishing the first deed. */
+  metadataAnchorId?: string;
+  /** Required only for the first deed; must already be RFC 8785 canonical. */
+  canonicalMetadataJson?: string;
   /**
    * Full singleton CoinSpend for the current property-registry registration.
    * It must CREATE_PUZZLE_ANNOUNCEMENT(0x53 || propertyIdCanon) from the
@@ -584,6 +650,7 @@ export type PublishRunResult =
   | { kind: 'no-xch-coin'; error: string }
   | { kind: 'xch-coin-vanished'; coinId: string }
   | { kind: 'artifact-build-failed'; error: string }
+  | { kind: 'metadata-invalid'; error: string }
   | { kind: 'spend-builder-failed'; error: string }
   | { kind: 'xch-parent-build-failed'; error: string }
   | { kind: 'sign-failed'; error: string }
@@ -618,7 +685,13 @@ interface RunnerProgram {
   curry(args: RunnerProgram[]): RunnerProgram;
 }
 interface RunnerClvm {
-  createCoin(puzzleHash: Uint8Array, amount: bigint, memos: undefined): RunnerProgram;
+  atom(bytes: Uint8Array): RunnerProgram;
+  list(items: RunnerProgram[]): RunnerProgram;
+  createCoin(
+    puzzleHash: Uint8Array,
+    amount: bigint,
+    memos: RunnerProgram | undefined,
+  ): RunnerProgram;
   delegatedSpend(conditions: RunnerProgram[]): RunnerSpend;
   standardSpend(syntheticKey: unknown, spend: RunnerSpend): RunnerSpend;
   spendStandardCoin(coin: unknown, syntheticKey: unknown, spend: RunnerSpend): void;

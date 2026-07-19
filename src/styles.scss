@@ -302,3 +302,73 @@ wcm-modal .wcm-view-all {
   display: none !important;
 }
 
+/* Shared operational states used by the collection minting workspace. */
+.editor-shell .section-note,
+.editor-shell .locked-state {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+  border-left: 2px solid var(--accent-3);
+  background: rgba(44, 231, 255, 0.05);
+  font-size: 0.7rem;
+}
+
+.editor-shell .section-note span,
+.editor-shell .locked-state span,
+.editor-shell .conflict-bar span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.editor-shell .upload-strip {
+  display: grid;
+  grid-template-columns: 0.7fr 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.editor-shell .file-control input {
+  padding: 0.65rem;
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+}
+
+.editor-shell .inline-error {
+  margin: 0.75rem 0;
+  color: #ffaaa1;
+  font-size: 0.68rem;
+}
+
+.editor-shell .empty-row {
+  padding: 1rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.editor-shell .conflict-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 170, 161, 0.35);
+  background: rgba(255, 170, 161, 0.06);
+  font-size: 0.68rem;
+}
+
+.editor-shell .conflict-bar > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+@media (max-width: 760px) {
+  .editor-shell .upload-strip {
+    grid-template-columns: 1fr;
+  }
+}

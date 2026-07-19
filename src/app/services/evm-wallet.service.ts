@@ -303,14 +303,12 @@ export class EvmWalletService {
       chainId?: number | string;
     };
     const targetChainId = Number(domain.chainId);
-    if (
-      domain.name !== environment.eip712Name ||
-      domain.version !== environment.eip712Version ||
-      targetChainId !== environment.eip712ChainId
-    ) {
+    const acceptedDomain =
+      (domain.name === environment.eip712Name && domain.version === environment.eip712Version) ||
+      (domain.name === 'Solslot Property Metadata' && domain.version === '1');
+    if (!acceptedDomain || targetChainId !== environment.eip712ChainId) {
       throw new Error(
-        `Refusing EIP-712 data outside ${environment.eip712Name} v${environment.eip712Version} ` +
-          `on Sepolia (${environment.eip712ChainId}).`,
+        `Refusing unrecognized Solslot EIP-712 data on chain ${environment.eip712ChainId}.`,
       );
     }
     if (this.connectionKind() === 'walletconnect') {

@@ -589,7 +589,7 @@ export class GenesisComponent implements OnInit {
           ...current,
           [slot]: result.invitationFragment,
         }));
-        this.message.set(`Administrator ${slot} invitation issued; it expires in 30 minutes.`);
+        this.message.set(`Administrator ${slot} invitation issued; it expires in 48 hours.`);
       },
     );
   }

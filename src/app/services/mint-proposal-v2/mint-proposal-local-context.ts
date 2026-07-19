@@ -8,6 +8,8 @@ export interface MintPublishLocalContext {
   ownerMemberHash?: string;
   govMemberHash?: string;
   proposalDataHash?: string;
+  metadataRoot?: string;
+  metadataAnchorId?: string;
 }
 
 export function readMintPublishLocalContext(
@@ -19,12 +21,27 @@ export function readMintPublishLocalContext(
   if (!isRecord(ctx)) return null;
   const propertyRegistryPuzzleHash = ctx['property_registry_puzzle_hash'];
   if (!is32ByteHex(propertyRegistryPuzzleHash)) return null;
+  const metadataRoot = ctx['metadata_root'];
+  const metadataAnchorId = ctx['metadata_anchor_id'];
+  const hasMetadataCommitment = metadataRoot !== undefined || metadataAnchorId !== undefined;
+  if (
+    hasMetadataCommitment &&
+    (!is32ByteHex(metadataRoot) || !is32ByteHex(metadataAnchorId))
+  ) {
+    return null;
+  }
   return {
     propertyRegistryPuzzleHash: propertyRegistryPuzzleHash.toLowerCase(),
     ...optionalHex32(ctx, 'property_registry_coin_id', 'propertyRegistryCoinId'),
     ...optionalHex32(ctx, 'owner_member_hash', 'ownerMemberHash'),
     ...optionalHex32(ctx, 'gov_member_hash', 'govMemberHash'),
     ...optionalHex32(ctx, 'proposal_data_hash', 'proposalDataHash'),
+    ...(hasMetadataCommitment
+      ? {
+          metadataRoot: (metadataRoot as string).toLowerCase(),
+          metadataAnchorId: (metadataAnchorId as string).toLowerCase(),
+        }
+      : {}),
   };
 }
 
@@ -48,6 +65,12 @@ export function mergeMintPublishLocalContext(
       ...(context.govMemberHash ? { gov_member_hash: context.govMemberHash.toLowerCase() } : {}),
       ...(context.proposalDataHash
         ? { proposal_data_hash: context.proposalDataHash.toLowerCase() }
+        : {}),
+      ...(context.metadataRoot && context.metadataAnchorId
+        ? {
+            metadata_root: context.metadataRoot.toLowerCase(),
+            metadata_anchor_id: context.metadataAnchorId.toLowerCase(),
+          }
         : {}),
     },
   };

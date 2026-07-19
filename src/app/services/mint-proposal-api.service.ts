@@ -1,0 +1,38 @@
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+
+import { environment } from '../../environments/environment';
+import { MintProposalResponse } from './admin-api.service';
+import { AdminSessionService } from './admin-session.service';
+
+/** Shared API source for proposal lifecycle records created by a collection. */
+@Injectable({ providedIn: 'root' })
+export class MintProposalApiService {
+  private readonly http = inject(HttpClient);
+  private readonly session = inject(AdminSessionService);
+  private readonly base = environment.faucetApi;
+
+  get(proposalId: string): Promise<MintProposalResponse> {
+    return firstValueFrom(
+      this.http.get<MintProposalResponse>(
+        `${this.base}/admin/mint/${encodeURIComponent(proposalId)}`,
+        { headers: this.headers() },
+      ),
+    );
+  }
+
+  cancel(proposalId: string): Promise<MintProposalResponse> {
+    return firstValueFrom(
+      this.http.post<MintProposalResponse>(
+        `${this.base}/admin/mint/${encodeURIComponent(proposalId)}/cancel`,
+        {},
+        { headers: this.headers() },
+      ),
+    );
+  }
+
+  private headers(): HttpHeaders {
+    return new HttpHeaders({ Authorization: `Bearer ${this.session.requireJwt()}` });
+  }
+}

@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
-import { AdminWalletAuthService } from '../../../services/admin-wallet-auth.service';
+import { AdminBackendAuthService } from '../../../services/admin-backend-auth.service';
 import { formatError } from '../../../utils/format-error';
 
 /**
@@ -127,7 +127,7 @@ import { formatError } from '../../../utils/format-error';
 export class AdminLoginComponent {
   private readonly evm = inject(EvmWalletService);
   private readonly session = inject(AdminSessionService);
-  private readonly walletAuth = inject(AdminWalletAuthService);
+  private readonly backendAuth = inject(AdminBackendAuthService);
   private readonly router = inject(Router);
   private readonly activatedRoute = inject(ActivatedRoute);
 
@@ -190,23 +190,24 @@ export class AdminLoginComponent {
     this.error.set(null);
     this.busy.set(true);
     try {
-      this.status.set('Building login envelope…');
-      const expiresAt = this.walletAuth.defaultExpiresAt();
-      const nonce = this.walletAuth.newNonce();
-      const typedData = this.walletAuth.buildLoginTypedData(expiresAt, nonce);
+      this.status.set('Requesting a one-time API challenge…');
+      const challenge = await this.backendAuth.requestChallenge(address);
+      const typedData = challenge.typed_data;
 
       this.status.set('Awaiting wallet signature…');
       const signature = await this.evm.signTypedData(typedData);
       const pubkey = this.evm.recoverCompressedPubkey(typedData, signature);
 
-      this.status.set('Verifying admin membership…');
+      this.status.set('Verifying admin membership and opening the shared workspace…');
+      const apiSession = await this.backendAuth.login(address, challenge.nonce, signature);
       await this.session.loginWithWallet({
         address,
         pubkey,
-        expiresAt,
+        expiresAt: apiSession.expires_at,
         signatureKind: 'eip712',
         signature,
         typedData,
+        jwt: apiSession.jwt,
       });
 
       this.status.set('Signed in. Redirecting…');

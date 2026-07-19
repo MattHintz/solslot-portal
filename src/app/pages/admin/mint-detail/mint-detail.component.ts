@@ -6,6 +6,7 @@ import { AdminSessionService } from '../../../services/admin-session.service';
 import { Eip712LeafHashService } from '../../../services/eip712-leaf-hash.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
+import { MintProposalApiService } from '../../../services/mint-proposal-api.service';
 import {
   MintProposalV2PublishRunnerService,
   PublishRunResult,
@@ -634,6 +635,7 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
 })
 export class MintDetailComponent {
   private readonly drafts = inject(MintDraftStorageService);
+  private readonly proposalApi = inject(MintProposalApiService);
   private readonly session = inject(AdminSessionService);
   private readonly assembler = inject(PublishMintArgsAssemblerService);
   private readonly publishRunner = inject(MintProposalV2PublishRunnerService);
@@ -651,6 +653,7 @@ export class MintDetailComponent {
   readonly loadError = signal<string | null>(null);
   readonly actionError = signal<string | null>(null);
   readonly chainEvidence = signal<ChainEvidenceView | null>(null);
+  readonly sharedRecord = signal(false);
 
   readonly lifecycle = computed<MintProposalLifecycleView | null>(() => {
     const p = this.proposal();
@@ -723,13 +726,7 @@ export class MintDetailComponent {
     void this.reload();
   }
 
-  /**
-   * Load the proposal from browser localStorage.  ``async`` is kept
-   * for signature back-compat with template ``await``-callers; the
-   * underlying storage read is synchronous.  Chain confirmation is
-   * refreshed separately so a slow coinset response doesn't hide the
-   * local audit mirror.
-   */
+  /** Load the shared API record, with legacy localStorage as an offline fallback. */
   async reload(): Promise<void> {
     const id = this.proposalId();
     if (!id) {
@@ -743,12 +740,25 @@ export class MintDetailComponent {
     this.loadError.set(null);
     this.loading.set(true);
     try {
-      const p = this.drafts.get(id);
+      const local = this.drafts.get(id);
+      let p: MintProposalResponse | null = null;
+      let apiError: unknown = null;
+      try {
+        const shared = await this.proposalApi.get(id);
+        p =
+          !shared.off_chain_metadata && local?.off_chain_metadata
+            ? { ...shared, off_chain_metadata: local.off_chain_metadata }
+            : shared;
+        this.sharedRecord.set(true);
+      } catch (e) {
+        apiError = e;
+        p = local;
+        this.sharedRecord.set(false);
+      }
       if (!p) {
         this.loadError.set(
-          `Proposal ${id} not found in this browser's local drafts.  ` +
-            'Drafts are scoped per-browser; ask the admin who created ' +
-            'it for an export, or recreate it here.',
+          `Proposal ${id} was not found in the shared workspace or this browser. ` +
+            formatError(apiError),
         );
         return;
       }
@@ -768,7 +778,9 @@ export class MintDetailComponent {
     this.actionError.set(null);
     this.busy.set(true);
     try {
-      const updated = this.drafts.cancel(id);
+      const updated = this.sharedRecord()
+        ? await this.proposalApi.cancel(id)
+        : this.drafts.cancel(id);
       if (updated) this.proposal.set(updated);
     } catch (e) {
       this.actionError.set(formatError(e));
@@ -858,8 +870,8 @@ export class MintDetailComponent {
         });
         if (updated) {
           this.proposal.set(updated);
-          void this.refreshChainEvidence();
         }
+        await this.reload();
       }
     } catch (e) {
       this.actionError.set(formatError(e));
@@ -901,10 +913,8 @@ export class MintDetailComponent {
         const updated = this.drafts.markExecuted(this.proposalId(), {
           executedBundleId: result.apiResponse.spendBundleId,
         });
-        if (updated) {
-          this.proposal.set(updated);
-          void this.refreshChainEvidence();
-        }
+        if (updated) this.proposal.set(updated);
+        await this.reload();
       }
     } catch (e) {
       this.actionError.set(formatError(e));

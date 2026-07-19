@@ -271,7 +271,7 @@ describe('EvmWalletService', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('refuses typed data outside the frozen Solslot V2 Sepolia domain', async () => {
+  it('refuses typed data outside the allowed Solslot Sepolia domains', async () => {
     const service = create();
     const request = jasmine.createSpy('request');
     const testable = service as unknown as {
@@ -282,7 +282,7 @@ describe('EvmWalletService', () => {
     testable.eip1193 = { request };
 
     await expectAsync(service.signTypedData(adminLoginTypedData(1))).toBeRejectedWithError(
-      /Refusing EIP-712 data outside Solslot Protocol v2 on Sepolia/,
+      /Refusing unrecognized Solslot EIP-712 data on chain 11155111/,
     );
     expect(request).not.toHaveBeenCalled();
   });

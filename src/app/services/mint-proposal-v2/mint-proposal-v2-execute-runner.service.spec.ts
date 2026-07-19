@@ -147,6 +147,12 @@ describe('MintProposalV2ExecuteRunnerService', () => {
     const result = await service.executeMint(proposal());
 
     expect(result.kind).toBe('submitted');
+    expect(proposalV2.computeProposalDataHash).toHaveBeenCalledOnceWith(
+      jasmine.objectContaining({
+        metadataRoot: b32('73'),
+        metadataAnchorId: b32('74'),
+      }),
+    );
     expect(wallet.signSpendBundle).toHaveBeenCalledTimes(1);
     const spends = wallet.signSpendBundle.calls.mostRecent().args[0];
     expect(spends.map((item) => item.puzzleReveal)).toEqual([
@@ -236,6 +242,8 @@ describe('MintProposalV2ExecuteRunnerService', () => {
           owner_member_hash: b32('71'),
           gov_member_hash: b32('72'),
           proposal_data_hash: b32('70'),
+          metadata_root: b32('73'),
+          metadata_anchor_id: b32('74'),
         },
       },
     };

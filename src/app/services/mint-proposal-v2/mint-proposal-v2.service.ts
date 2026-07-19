@@ -104,16 +104,30 @@ export class MintProposalV2Service {
     parValueMojos: number | bigint;
     royaltyBps: number | bigint;
     quorumThreshold: number | bigint;
+    metadataRoot?: string;
+    metadataAnchorId?: string;
   }): Uint8Array {
     const clvm = this.clvm();
-    const list = clvm.list([
+    if (!!args.metadataRoot !== !!args.metadataAnchorId) {
+      throw new Error('metadataRoot and metadataAnchorId must be supplied together');
+    }
+    const fields = [
       clvm.atom(hexToBytes(args.propertyIdCanon)),
       clvm.atom(hexToBytes(args.collectionIdCanon)),
       clvm.int(BigInt(args.sharePpm)),
       clvm.int(BigInt(args.parValueMojos)),
       clvm.int(BigInt(args.royaltyBps)),
       clvm.int(BigInt(args.quorumThreshold)),
-    ]);
+    ];
+    if (args.metadataRoot && args.metadataAnchorId) {
+      const metadataRoot = hexToBytes(args.metadataRoot);
+      const metadataAnchorId = hexToBytes(args.metadataAnchorId);
+      if (metadataRoot.length !== 32 || metadataAnchorId.length !== 32) {
+        throw new Error('metadataRoot and metadataAnchorId must each be 32 bytes');
+      }
+      fields.push(clvm.atom(metadataRoot), clvm.atom(metadataAnchorId));
+    }
+    const list = clvm.list(fields);
     return list.treeHash();
   }
 

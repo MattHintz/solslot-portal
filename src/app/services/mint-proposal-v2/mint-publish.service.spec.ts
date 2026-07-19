@@ -32,6 +32,7 @@ import { bytesToHex } from '../../utils/chia-hash';
 import { MintPublishService, type MintPublishArtifacts } from './mint-publish.service';
 import { MintProposalV2Service } from './mint-proposal-v2.service';
 import fixturesJson from './mint-publish.fixtures.json';
+import metadataFixture from '../property-metadata/property-metadata-v1.fixture.json';
 
 // ── Fixture shape ──────────────────────────────────────────────────────────
 interface Constants {
@@ -269,6 +270,19 @@ describe('MintPublishService', () => {
       // Avoid unused-var lint:
       expect(v2).toBeTruthy();
     });
+  });
+
+  it('matches the Python metadata-extended MINT bill fixture', () => {
+    const vector = metadataFixture.mintVector;
+    const result = service.buildMintBillCommitment({
+      deedFullPuzhash: vector.inputs.deedFullPuzhash,
+      propertyIdCanon: vector.inputs.propertyIdCanon,
+      propertyRegistryPuzzleHash: vector.inputs.propertyRegistryPuzhash,
+      metadataRoot: metadataFixture.metadataRoot,
+      metadataAnchorId: vector.inputs.metadataAnchorId,
+    });
+    expect(result.programHex).toBe(vector.expected.billProgramHex);
+    expect(result.programHash).toBe(vector.expected.billProgramHash);
   });
 });
 

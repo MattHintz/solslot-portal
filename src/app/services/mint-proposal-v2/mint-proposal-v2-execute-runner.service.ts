@@ -68,9 +68,11 @@ export class MintProposalV2ExecuteRunnerService {
         collectionIdCanon: canonicalCollectionIdHash(proposal.collection_id),
         sharePpm: proposal.share_ppm,
         parValueMojos: proposal.par_value,
-        royaltyBps: proposal.royalty_bps,
-        quorumThreshold: proposal.quorum_required,
-      }),
+      royaltyBps: proposal.royalty_bps,
+      quorumThreshold: proposal.quorum_required,
+      metadataRoot: publishContext.metadataRoot,
+      metadataAnchorId: publishContext.metadataAnchorId,
+    }),
     );
     if (!sameHex(computedProposalDataHash, publishContext.proposalDataHash)) {
       return {

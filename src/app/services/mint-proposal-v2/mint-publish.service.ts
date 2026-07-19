@@ -108,6 +108,21 @@ export class MintPublishService {
     return launcherMod.curry([didStruct]).treeHash();
   }
 
+  /** Build the governance MINT bill, including optional metadata commitments. */
+  buildMintBillCommitment(args: {
+    deedFullPuzhash: string;
+    propertyIdCanon: string;
+    propertyRegistryPuzzleHash: string;
+    metadataRoot?: string;
+    metadataAnchorId?: string;
+  }): { programHex: string; programHash: string } {
+    const program = this.buildMintBillProgram(args);
+    return {
+      programHex: bytesToHex(program.serialize()),
+      programHash: bytesToHex(program.treeHash()),
+    };
+  }
+
   /**
    * Top-level builder: pin every artifact the publish bundle binds to.
    *
@@ -151,6 +166,10 @@ export class MintPublishService {
     p2PoolModHash: string;
     p2VaultModHash: string;
     propertyRegistryPuzzleHash: string;
+    /** SHA-256 of canonical PropertyDossierV1. Enables the extended MINT bill. */
+    metadataRoot?: string;
+    /** First deed launcher id. Omit on the first proposal to bind to this launcher. */
+    metadataAnchorId?: string;
   }): MintPublishArtifacts {
     const clvm = this.clvm();
 
@@ -215,13 +234,21 @@ export class MintPublishService {
     const deedFullPuzhash = deedFullPuzzle.treeHash();
 
     // ── Step 4: governance tracker proposal_hash + bill_op program ──
-    // bill_op = (BILL_MINT, deed_full_puzhash, property_id_canon, property_registry_puzzle_hash)
-    const billOpProgram = clvm.list([
-      clvm.int(BigInt(MintPublishService.BILL_MINT_TAG)),
-      clvm.atom(deedFullPuzhash),
-      clvm.atom(hexToBytes(args.propertyIdCanon)),
-      clvm.atom(hexToBytes(args.propertyRegistryPuzzleHash)),
-    ]);
+    if (!args.metadataRoot && args.metadataAnchorId) {
+      throw new Error('metadataAnchorId cannot be supplied without metadataRoot');
+    }
+    const resolvedMetadataAnchorId = args.metadataRoot
+      ? args.metadataAnchorId ?? deedLauncherId
+      : undefined;
+    // Extended bill appends metadata commitments. RC16 dispatch reads only
+    // the unchanged leading fields while sha256tree commits to the full list.
+    const billOpProgram = this.buildMintBillProgram({
+      deedFullPuzhash: bytesToHex(deedFullPuzhash),
+      propertyIdCanon: args.propertyIdCanon,
+      propertyRegistryPuzzleHash: args.propertyRegistryPuzzleHash,
+      metadataRoot: args.metadataRoot,
+      metadataAnchorId: resolvedMetadataAnchorId,
+    });
     const proposalHash = billOpProgram.treeHash();
 
     // ── Step 5: Artifact A DRAFT eve inner + proposal_data_hash ──
@@ -232,6 +259,8 @@ export class MintPublishService {
       parValueMojos: args.parValueMojos,
       royaltyBps: args.royaltyBps,
       quorumThreshold: args.quorumThreshold,
+      metadataRoot: args.metadataRoot,
+      metadataAnchorId: resolvedMetadataAnchorId,
     });
     const eveInnerPuzhash = this.v2.makeInnerPuzzleHash({
       ownerMemberHash: args.ownerMemberHash,
@@ -266,6 +295,8 @@ export class MintPublishService {
       proposalSingletonLauncherId,
       // Artifact A binding hash (audit log)
       proposalDataHash: bytesToHex(proposalDataHash),
+      metadataRoot: args.metadataRoot,
+      metadataAnchorId: resolvedMetadataAnchorId,
       // Auxiliary programs (hex + tree hash)
       billOpProgramHex: bytesToHex(billOpProgram.serialize()),
       billOpProgramHash: bytesToHex(billOpProgram.treeHash()),
@@ -291,6 +322,34 @@ export class MintPublishService {
       throw new Error('MintPublishService: singleton top-layer bytecode unavailable in WASM SDK');
     }
     return bytes;
+  }
+
+  private buildMintBillProgram(args: {
+    deedFullPuzhash: string;
+    propertyIdCanon: string;
+    propertyRegistryPuzzleHash: string;
+    metadataRoot?: string;
+    metadataAnchorId?: string;
+  }): ClvmProgramShape {
+    if (!!args.metadataRoot !== !!args.metadataAnchorId) {
+      throw new Error('metadataRoot and metadataAnchorId must be supplied together');
+    }
+    const clvm = this.clvm();
+    const billFields = [
+      clvm.int(BigInt(MintPublishService.BILL_MINT_TAG)),
+      clvm.atom(hexToBytes(args.deedFullPuzhash)),
+      clvm.atom(hexToBytes(args.propertyIdCanon)),
+      clvm.atom(hexToBytes(args.propertyRegistryPuzzleHash)),
+    ];
+    if (args.metadataRoot && args.metadataAnchorId) {
+      const metadataRoot = hexToBytes(args.metadataRoot);
+      const metadataAnchorId = hexToBytes(args.metadataAnchorId);
+      if (metadataRoot.length !== 32 || metadataAnchorId.length !== 32) {
+        throw new Error('metadataRoot and metadataAnchorId must each be 32 bytes');
+      }
+      billFields.push(clvm.atom(metadataRoot), clvm.atom(metadataAnchorId));
+    }
+    return clvm.list(billFields);
   }
 
   private clvm(): ClvmShape {
@@ -337,6 +396,8 @@ export interface MintPublishArtifacts {
   proposalSingletonLauncherId: string;
   // Artifact A binding hash (audit log)
   proposalDataHash: string;
+  metadataRoot?: string;
+  metadataAnchorId?: string;
   // Auxiliary CLVM programs
   billOpProgramHex: string;
   billOpProgramHash: string;

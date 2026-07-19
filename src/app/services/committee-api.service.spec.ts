@@ -8,6 +8,7 @@ import {
   SpendBundleJson,
 } from './committee-api.service';
 import { environment } from '../../environments/environment';
+import { AdminSessionService } from './admin-session.service';
 
 function fakeBundle(): SpendBundleJson {
   return {
@@ -54,7 +55,14 @@ describe('CommitteeApiService', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: AdminSessionService,
+          useValue: { requireJwt: () => 'test-admin-jwt' },
+        },
+      ],
     });
     service = TestBed.inject(CommitteeApiService);
     http = TestBed.inject(HttpTestingController);
@@ -67,6 +75,7 @@ describe('CommitteeApiService', () => {
     const pending = service.castVote(bundle);
     const req = http.expectOne(`${environment.faucetApi}/admin/committee/vote`);
     expect(req.request.method).toBe('POST');
+    expect(req.request.headers.has('Authorization')).toBeFalse();
     expect(req.request.body).toEqual({ spend_bundle: bundle });
     req.flush({
       pushed: true,
@@ -130,6 +139,7 @@ describe('CommitteeApiService', () => {
     const pending = service.publishProposal(bundle, 'draft-123', metadata);
     const req = http.expectOne(`${environment.faucetApi}/admin/committee/propose`);
     expect(req.request.method).toBe('POST');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer test-admin-jwt');
     expect(req.request.body).toEqual({
       spend_bundle: bundle,
       proposal_id: 'draft-123',
@@ -191,6 +201,7 @@ describe('CommitteeApiService', () => {
     const pending = service.executeProposal(bundle, 'draft-123');
     const req = http.expectOne(`${environment.faucetApi}/admin/committee/execute`);
     expect(req.request.method).toBe('POST');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer test-admin-jwt');
     expect(req.request.body).toEqual({
       spend_bundle: bundle,
       proposal_id: 'draft-123',
