@@ -41,7 +41,7 @@ describe('ACCEPT_OFFER_PROTOCOL_VECTOR', () => {
     expect(vector.inputs.attestationProof).toEqual({ bitpath: 0, siblings: [] });
     expect(vector.inputs.signatureData).toBeNull();
     expect(vector.expected.solutionTreeHash).toBe(
-      '0x8ab99e40a3787a000e6973027f9fead2d96b2e7e3b00e45c46aa4eee961f0657',
+      '0xf36a63fc4036701d9ffc8ea1db2da7e7e3ed525b5378cc16a03f6e22912c5866',
     );
   });
 

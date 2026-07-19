@@ -25,7 +25,10 @@ import {
   type PoolV2RequiredAnnouncement,
   type PoolV2WitnessReplaySummary,
   PoolEconomicsV2SpendBuilderService,
+  SINGLETON_LAUNCHER_HASH,
+  SINGLETON_MOD_HASH,
 } from './pool-economics-v2-spend-builder.service';
+import { VAULT_CURRENT_INNER_PUZZLE_HEX } from './vault-current-inner.puzzle-hex';
 
 export interface PoolV2ComposeDryRunArgs {
   state: PoolEconomicStateInput;
@@ -49,6 +52,7 @@ export interface PoolV2ComposeDryRunResult {
 }
 
 const DRY_RUN_IDS = {
+  poolLauncherId: b32('20'),
   deedLauncherId: b32('1f'),
   p2VaultPuzzleHash: b32('12'),
   collectionIdCanon: b32('13'),
@@ -59,8 +63,13 @@ const DRY_RUN_IDS = {
   governanceRewardsRoot: b32('1a'),
   propertyIdCanon: b32('1c'),
   sellerPuzhash: b32('1d'),
-  vaultLauncherId: b32('21'),
   launcherPuzzleHash: b32('22'),
+  ownerPubkey: hexRepeat('24', 48),
+  authType: 1n,
+  membersMerkleRoot: b32('25'),
+  identityAttestRoot: b32('26'),
+  bridgePolicyHash: b32('27'),
+  vaultLineageParent: b32('28'),
 };
 
 @Injectable({ providedIn: 'root' })
@@ -72,6 +81,7 @@ export class PoolEconomicsV2ComposeDryRunService {
   specificDeedSwap(args: PoolV2ComposeDryRunArgs): PoolV2ComposeDryRunResult {
     const seeds = this.witnessSeeds();
     const navEvidence = this.navEvidence(args, seeds.nav);
+    const buyerVault = this.buyerVaultSeed();
     const inner = this.builder.buildSpecificDeedSwapInnerSolution({
       ...this.innerContext(seeds.pool),
       state: args.state,
@@ -80,8 +90,14 @@ export class PoolEconomicsV2ComposeDryRunService {
       parValueMojos: args.collectionNavMojos,
       assetClass: 1n,
       propertyIdCanon: DRY_RUN_IDS.propertyIdCanon,
-      buyerVaultLauncherId: DRY_RUN_IDS.vaultLauncherId,
+      buyerVaultLauncherId: buyerVault.launcherId,
       launcherPuzzleHash: DRY_RUN_IDS.launcherPuzzleHash,
+      buyerVaultCoinId: buyerVault.coinId,
+      buyerOwnerPubkey: DRY_RUN_IDS.ownerPubkey,
+      buyerAuthType: DRY_RUN_IDS.authType,
+      buyerMembersMerkleRoot: DRY_RUN_IDS.membersMerkleRoot,
+      buyerIdentityAttestRoot: DRY_RUN_IDS.identityAttestRoot,
+      buyerBridgePolicyHash: DRY_RUN_IDS.bridgePolicyHash,
       collectionIdCanon: DRY_RUN_IDS.collectionIdCanon,
       sharePpm: args.sharePpm,
       navEvidence,
@@ -103,6 +119,7 @@ export class PoolEconomicsV2ComposeDryRunService {
         deedSpend: this.witnessSpend(seeds.deed, [
           condition(60, poolSpend.spec.deedMessage),
         ]),
+        vaultAcceptOfferSpend: this.vaultAcceptOfferSpend(buyerVault, poolSpend),
         tokenSettlementPuzzleHash: seeds.tokenSettlement.puzzleHash,
         tokenSettlementSpend: this.witnessSpend(seeds.tokenSettlement, [
           condition(62, tokenSettlementMessage),
@@ -121,6 +138,7 @@ export class PoolEconomicsV2ComposeDryRunService {
   trueRedemption(args: PoolV2ComposeDryRunArgs): PoolV2ComposeDryRunResult {
     const seeds = this.witnessSeeds();
     const navEvidence = this.navEvidence(args, seeds.nav);
+    const vaultLauncherId = this.syntheticVaultLauncherId();
     const inner = this.builder.buildTrueRedemptionInnerSolution({
       ...this.innerContext(seeds.pool),
       state: args.state,
@@ -129,7 +147,7 @@ export class PoolEconomicsV2ComposeDryRunService {
       parValueMojos: args.collectionNavMojos,
       assetClass: 1n,
       propertyIdCanon: DRY_RUN_IDS.propertyIdCanon,
-      vaultLauncherId: DRY_RUN_IDS.vaultLauncherId,
+      vaultLauncherId,
       launcherPuzzleHash: DRY_RUN_IDS.launcherPuzzleHash,
       collectionIdCanon: DRY_RUN_IDS.collectionIdCanon,
       sharePpm: args.sharePpm,
@@ -298,12 +316,117 @@ export class PoolEconomicsV2ComposeDryRunService {
     poolCoinId: string;
     poolInnerPuzzleHash: string;
     poolAmount: bigint;
+    poolLauncherId: string;
   } {
     return {
       poolCoinId: seed.coinId,
       poolInnerPuzzleHash: b32('31'),
       poolAmount: seed.amount,
+      poolLauncherId: DRY_RUN_IDS.poolLauncherId,
     };
+  }
+
+  private buyerVaultSeed(): VaultWitnessSeed {
+    const sdk = this.sdk();
+    const clvm = new sdk.Clvm();
+    const launcherId = this.syntheticVaultLauncherId();
+    const singletonStruct = this.singletonStruct(clvm, launcherId, DRY_RUN_IDS.launcherPuzzleHash);
+    const vaultMod = clvm.deserialize(hexToBytes(VAULT_CURRENT_INNER_PUZZLE_HEX));
+    const vaultInner = vaultMod.curry([
+      singletonStruct,
+      clvm.atom(hexToBytes(DRY_RUN_IDS.ownerPubkey)),
+      clvm.int(DRY_RUN_IDS.authType),
+      clvm.atom(hexToBytes(DRY_RUN_IDS.membersMerkleRoot)),
+      clvm.atom(hexToBytes(DRY_RUN_IDS.identityAttestRoot)),
+      clvm.atom(hexToBytes(DRY_RUN_IDS.bridgePolicyHash)),
+      clvm.atom(hexToBytes(SINGLETON_MOD_HASH)),
+      clvm.atom(hexToBytes(DRY_RUN_IDS.poolLauncherId)),
+      clvm.atom(hexToBytes(SINGLETON_LAUNCHER_HASH)),
+    ]);
+    const vaultFullPuzzle = this.singletonFullPuzzle(clvm, singletonStruct, vaultInner);
+    const puzzleHash = bytesToHex(vaultFullPuzzle.treeHash());
+    const amount = 1n;
+    const coin = new sdk.Coin(hexToBytes(launcherId), hexToBytes(puzzleHash), amount);
+    return {
+      launcherId,
+      parentCoinInfo: launcherId,
+      puzzleHash,
+      amount,
+      coinId: bytesToHex(coin.coinId()),
+      innerPuzzleHash: bytesToHex(vaultInner.treeHash()),
+      puzzleReveal: bytesToHex(vaultFullPuzzle.serialize()),
+    };
+  }
+
+  private syntheticVaultLauncherId(): string {
+    const sdk = this.sdk();
+    const launcherCoin = new sdk.Coin(
+      hexToBytes(DRY_RUN_IDS.vaultLineageParent),
+      hexToBytes(DRY_RUN_IDS.launcherPuzzleHash),
+      1n,
+    );
+    return bytesToHex(launcherCoin.coinId());
+  }
+
+  private vaultAcceptOfferSpend<Quote extends SpecificDeedSwapQuote>(
+    vault: VaultWitnessSeed,
+    poolSpend: PoolV2CoinSpendBuild<Quote>,
+  ): UnsignedCoinSpend {
+    const clvm = new (this.sdk().Clvm)();
+    const proof = clvm.pair(clvm.int(0n), clvm.list([]));
+    const innerSolution = clvm.list([
+      clvm.atom(hexToBytes(vault.coinId)),
+      clvm.atom(hexToBytes(vault.innerPuzzleHash)),
+      clvm.int(vault.amount),
+      clvm.int(0x61n),
+      clvm.list([
+        clvm.atom(hexToBytes(DRY_RUN_IDS.deedLauncherId)),
+        clvm.int(BigInt(poolSpend.spec.quote.principalTokens)),
+        clvm.atom(hexToBytes(poolSpend.poolInnerPuzzleHash)),
+        clvm.atom(hexToBytes(DRY_RUN_IDS.identityAttestRoot)),
+        proof,
+        clvm.int(1_735_689_600n),
+        clvm.atom(new Uint8Array(0)),
+      ]),
+    ]);
+    const lineageProof = clvm.list([
+      clvm.atom(hexToBytes(DRY_RUN_IDS.vaultLineageParent)),
+      clvm.int(vault.amount),
+    ]);
+    const fullSolution = clvm.list([
+      lineageProof,
+      clvm.int(vault.amount),
+      innerSolution,
+    ]);
+    return {
+      coin: {
+        parentCoinInfo: vault.parentCoinInfo,
+        puzzleHash: vault.puzzleHash,
+        amount: vault.amount,
+      },
+      puzzleReveal: vault.puzzleReveal,
+      solution: bytesToHex(fullSolution.serialize()),
+    };
+  }
+
+  private singletonStruct(clvm: ClvmFactoryShape, launcherId: string, launcherPuzzleHash: string): ProgramShape {
+    return clvm.pair(
+      clvm.atom(hexToBytes(SINGLETON_MOD_HASH)),
+      clvm.pair(clvm.atom(hexToBytes(launcherId)), clvm.atom(hexToBytes(launcherPuzzleHash))),
+    );
+  }
+
+  private singletonFullPuzzle(
+    clvm: ClvmFactoryShape,
+    singletonStruct: ProgramShape,
+    innerPuzzle: ProgramShape,
+  ): ProgramShape {
+    const constants = this.sdk().Constants;
+    const topLayer = constants?.singletonTopLayerV11?.() ?? constants?.singletonTopLayer?.();
+    if (!topLayer) {
+      throw new Error('pool-v2-dry-run: singleton top-layer bytecode unavailable in WASM SDK');
+    }
+    return clvm.deserialize(topLayer).curry([singletonStruct, innerPuzzle]);
   }
 
   private navEvidence(args: PoolV2ComposeDryRunArgs, nav: WitnessSeed): CollectionNavEvidenceInput {
@@ -390,6 +513,12 @@ interface WitnessSeed {
   coinId: string;
 }
 
+interface VaultWitnessSeed extends WitnessSeed {
+  launcherId: string;
+  innerPuzzleHash: string;
+  puzzleReveal: string;
+}
+
 interface WitnessCondition {
   opcode: number;
   message: string;
@@ -398,19 +527,28 @@ interface WitnessCondition {
 interface ProgramShape {
   treeHash(): Uint8Array;
   serialize(): Uint8Array;
+  curry(args: ProgramShape[]): ProgramShape;
+}
+
+interface ClvmFactoryShape {
+  deserialize(bytes: Uint8Array): ProgramShape;
+  int(value: bigint): ProgramShape;
+  atom(value: Uint8Array): ProgramShape;
+  list(values: ProgramShape[]): ProgramShape;
+  pair(first: ProgramShape, rest: ProgramShape): ProgramShape;
 }
 
 interface SdkShape {
-  Clvm: new () => {
-    int(value: bigint): ProgramShape;
-    atom(value: Uint8Array): ProgramShape;
-    list(values: ProgramShape[]): ProgramShape;
-  };
+  Clvm: new () => ClvmFactoryShape;
   Coin: new (
     parentCoinInfo: Uint8Array,
     puzzleHash: Uint8Array,
     amount: bigint,
   ) => { coinId(): Uint8Array };
+  Constants?: {
+    singletonTopLayer?: () => Uint8Array;
+    singletonTopLayerV11?: () => Uint8Array;
+  };
 }
 
 function condition(opcode: number, message: string): WitnessCondition {
@@ -433,5 +571,9 @@ function concatBytes(parts: Uint8Array[]): Uint8Array {
 }
 
 function b32(byte: string): string {
-  return `0x${byte.repeat(32)}`;
+  return hexRepeat(byte, 32);
+}
+
+function hexRepeat(byte: string, count: number): string {
+  return `0x${byte.repeat(count)}`;
 }

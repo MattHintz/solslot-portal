@@ -19,13 +19,14 @@ import {
 
 const vector = ACCEPT_OFFER_PROTOCOL_VECTOR.inputs;
 const expected = ACCEPT_OFFER_PROTOCOL_VECTOR.expected;
-const VAULT_FULL_PUZZLE_HASH = '0x6ee104b3af5f13601cdf0381136a18b491d9b3d8202891d8992c59a4a61897e0';
-const PACKAGE_VAULT_COIN_ID = '0x97de168b9ab8c6fa0568af743d6fae4b2f58a508c2ed47af945060e73ed7544c';
+const VAULT_FULL_PUZZLE_HASH = '0xa2bb2ea372753afd6ca14fa41b5ad7026734e592bc5e8767a78121d9294c0d15';
+const PACKAGE_VAULT_COIN_ID = '0xf9e8f5040908a65fca38bc57e44cdc38755fee161276e8b4875217a7d99614ac';
 const PACKAGE_INNER_SOLUTION =
-  '0xffa097de168b9ab8c6fa0568af743d6fae4b2f58a508c2ed47af945060e73ed7544cffa017fcdf15e47df2ee1ad4784d145dec2f56038e9ae66b4666c66eaaf21d7a1516ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080';
-const PACKAGE_INNER_TREE_HASH = '0x2af257df5de7fb051954c9406142b4ad787828e1335a722fbab777f09d4a33a2';
+  '0xffa0f9e8f5040908a65fca38bc57e44cdc38755fee161276e8b4875217a7d99614acffa0a4a914044fb51307a52a3abcbbecaaa1cf5679d044f066ea931a61669c5549ecff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080';
+const PACKAGE_INNER_TREE_HASH = '0x4861cc140d2bbdf773f2b7327e4617ee1ec0aa65335ae631a8180a007c0452da';
 const PACKAGE_FULL_SOLUTION =
-  '0xffffa02222222222222222222222222222222222222222222222222222222222222222ff0180ff01ffffa097de168b9ab8c6fa0568af743d6fae4b2f58a508c2ed47af945060e73ed7544cffa017fcdf15e47df2ee1ad4784d145dec2f56038e9ae66b4666c66eaaf21d7a1516ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff80808080';
+  '0xffffa02222222222222222222222222222222222222222222222222222222222222222ff0180ff01ffffa0f9e8f5040908a65fca38bc57e44cdc38755fee161276e8b4875217a7d99614acffa0a4a914044fb51307a52a3abcbbecaaa1cf5679d044f066ea931a61669c5549ecff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff80808080';
+const BRIDGE_POLICY_HASH = '0x' + '66'.repeat(32);
 
 const originalProtocol = { ...environment.solslotProtocol } as Record<string, unknown>;
 
@@ -64,7 +65,7 @@ describe('VaultAcceptOfferSpendService', () => {
     Object.assign(environment.solslotProtocol as Record<string, unknown>, {
       poolLauncherId: vector.poolLauncherId,
       poolInnerPuzzleHash: vector.poolInnerPuzzleHash,
-      bridgePolicyHash: '0x' + '00'.repeat(32),
+      bridgePolicyHash: BRIDGE_POLICY_HASH,
     });
     installProtocolCoordinates();
     TestBed.configureTestingModule({
@@ -173,6 +174,18 @@ describe('VaultAcceptOfferSpendService', () => {
     );
   });
 
+  it('rejects zero bridge policy hash before signing', () => {
+    installProtocolCoordinates({ bridgePolicyHash: '0x' + '00'.repeat(32) });
+
+    expect(() =>
+      service.buildResolved(
+        resolvedRequest({
+          bridgePolicyHash: '0x' + '00'.repeat(32),
+        }),
+      ),
+    ).toThrowError(/bridgePolicyHash must be pinned/);
+  });
+
   it('rejects a current vault coin that no longer matches the previewed coin id', async () => {
     const singletonMock = jasmine.createSpyObj<ChiaSingletonReaderService>(
       'ChiaSingletonReaderService',
@@ -208,7 +221,7 @@ function resolvedRequest(
     authType: vector.authType,
     membersMerkleRoot: vector.membersMerkleRoot,
     poolLauncherId: vector.poolLauncherId,
-    bridgePolicyHash: '0x' + '00'.repeat(32),
+    bridgePolicyHash: BRIDGE_POLICY_HASH,
     vaultCoin: {
       parentCoinInfo: vector.vaultLauncherId,
       puzzleHash: VAULT_FULL_PUZZLE_HASH,
@@ -323,7 +336,7 @@ function installProtocolCoordinates(
   installVerifiedProtocolCoordinates({
     poolLauncherId: vector.poolLauncherId,
     poolInnerPuzzleHash: vector.poolInnerPuzzleHash,
-    bridgePolicyHash: '0x' + '00'.repeat(32),
+    bridgePolicyHash: BRIDGE_POLICY_HASH,
     ...overrides,
   });
 }

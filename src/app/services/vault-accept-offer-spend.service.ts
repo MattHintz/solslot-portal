@@ -105,6 +105,9 @@ export class VaultAcceptOfferSpendService {
     if (bytesToHex(identityAttestRoot) === ZKPASSPORT_EMPTY_ATTEST_ROOT) {
       throw new Error('vault accept-offer spend: identityAttestRoot must be enrolled before accepting offers');
     }
+    if (bytesToHex(bridgePolicyHash) === ZERO_BYTES32) {
+      throw new Error('vault accept-offer spend: bridgePolicyHash must be pinned before accepting offers');
+    }
     if (bytesToHex(poolInnerPuzzleHash) === ZERO_BYTES32) {
       throw new Error('vault accept-offer spend: poolInnerPuzzleHash must not be zero');
     }

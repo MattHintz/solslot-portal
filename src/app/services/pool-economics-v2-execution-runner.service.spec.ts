@@ -39,6 +39,9 @@ interface FixtureEvidence {
 
 interface FixtureSection {
   inputs: Record<string, string | number>;
+  expected?: {
+    buyer_vault_accept_offer_coin_spend?: FixtureCoinSpend;
+  };
 }
 
 interface FixtureCoin {
@@ -68,6 +71,12 @@ interface FixtureFile {
     pool_inner_puzzle_hex: string;
     deed_launcher_id: string;
     buyer_vault_launcher_id: string;
+    buyer_vault_coin_id: string;
+    buyer_owner_pubkey: string;
+    buyer_auth_type: number;
+    buyer_members_merkle_root: string;
+    buyer_identity_attest_root: string;
+    buyer_bridge_policy_hash: string;
     launcher_puzzle_hash: string;
     p2_vault_puzzle_hash: string;
     property_id_canon: string;
@@ -133,7 +142,7 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
       ...DEED_METADATA,
-      buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
+      ...buyerVaultFromFixture(),
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: inputNumber(fixture.specific_deed_swap, 'share_ppm'),
@@ -145,6 +154,9 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
       witnesses: {
         navEvidenceSpend: coinSpendFromFixture(fixture.common.nav_evidence_coin_spend),
         deedSpend: witnessSpend(wasm, seeds.deed, [condition(60, spec.deedMessage)]),
+        vaultAcceptOfferSpend: coinSpendFromFixture(
+          requireCoinSpend(fixture.specific_deed_swap.expected?.buyer_vault_accept_offer_coin_spend),
+        ),
         tokenSettlementPuzzleHash: seeds.tokenSettlement.puzzleHash,
         tokenSettlementSpend: witnessSpend(wasm, seeds.tokenSettlement, [
           condition(
@@ -161,11 +173,12 @@ describe('PoolEconomicsV2ExecutionRunnerService', () => {
     expect(result.signaturelessSpendBundle.aggregatedSignature).toBe(
       POOL_V2_EMPTY_AGGREGATE_SIGNATURE,
     );
-    expect(result.signaturelessSpendBundle.coinSpends.length).toBe(4);
+    expect(result.signaturelessSpendBundle.coinSpends.length).toBe(5);
     expect(result.requiredAnnouncements.map((a) => a.role)).toEqual([
       'nav_evidence',
       'deed',
       'token_settlement',
+      'vault_accept_offer',
     ]);
     expect(coinset.pushTransaction).not.toHaveBeenCalled();
   });
@@ -326,6 +339,18 @@ function stateFromFixture(): PoolEconomicStateInput {
   };
 }
 
+function buyerVaultFromFixture() {
+  return {
+    buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
+    buyerVaultCoinId: fixture.common.buyer_vault_coin_id,
+    buyerOwnerPubkey: fixture.common.buyer_owner_pubkey,
+    buyerAuthType: fixture.common.buyer_auth_type,
+    buyerMembersMerkleRoot: fixture.common.buyer_members_merkle_root,
+    buyerIdentityAttestRoot: fixture.common.buyer_identity_attest_root,
+    buyerBridgePolicyHash: fixture.common.buyer_bridge_policy_hash,
+  };
+}
+
 function navEvidenceFromFixture(
   evidence: FixtureEvidence,
   _navSeed: WitnessSeed,
@@ -350,6 +375,13 @@ function coinSpendFromFixture(spend: FixtureCoinSpend): UnsignedCoinSpend {
     puzzleReveal: spend.puzzle_reveal,
     solution: spend.solution,
   };
+}
+
+function requireCoinSpend(spend: FixtureCoinSpend | undefined): FixtureCoinSpend {
+  if (!spend) {
+    throw new Error('fixture coin spend is missing');
+  }
+  return spend;
 }
 
 function inputString(section: FixtureSection, key: string): string {

@@ -26,22 +26,24 @@ describe('PoolEconomicsV2ComposeDryRunService', () => {
     service = TestBed.inject(PoolEconomicsV2ComposeDryRunService);
   });
 
-  it('composes a specific deed swap with placeholder NAV, deed, and token settlement witnesses', () => {
+  it('composes a specific deed swap with placeholder NAV, deed, buyer vault, and token settlement witnesses', () => {
     const result = service.specificDeedSwap(baseArgs());
 
     expect(result.spendCase).toBe(POOL_SPEND_V2_SPECIFIC_DEED_SWAP);
-    expect(result.coinSpendCount).toBe(4);
-    expect(result.witnessCoinSpendCount).toBe(3);
+    expect(result.coinSpendCount).toBe(5);
+    expect(result.witnessCoinSpendCount).toBe(4);
     expect(result.aggregatedSignature).toBeNull();
     expect(result.requiredAnnouncements.map((a) => a.role)).toEqual([
       'nav_evidence',
       'deed',
       'token_settlement',
+      'vault_accept_offer',
     ]);
     expect(result.witnessSummary.map((w) => w.role)).toEqual([
       'nav_evidence',
       'deed',
       'token_settlement',
+      'vault_accept_offer',
     ]);
   });
 

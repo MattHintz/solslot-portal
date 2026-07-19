@@ -81,7 +81,7 @@ describe('PoolEconomicsV2Component', () => {
       'trueRedemption',
       'reserveAcquisition',
     ]);
-    composeDryRun.specificDeedSwap.and.returnValue(dryRunResult('specific-deed-swap', 6, 4, 3));
+    composeDryRun.specificDeedSwap.and.returnValue(dryRunResult('specific-deed-swap', 6, 5, 4));
     composeDryRun.trueRedemption.and.returnValue(dryRunResult('true-redemption', 7, 4, 3));
     composeDryRun.reserveAcquisition.and.returnValue(dryRunResult('reserve-acquisition', 8, 5, 4));
     executionRunner = jasmine.createSpyObj('PoolEconomicsV2ExecutionRunnerService', [
@@ -90,7 +90,7 @@ describe('PoolEconomicsV2Component', () => {
       'composeReserveAcquisition',
       'submitSignaturelessBundle',
     ]);
-    executionRunner.composeSpecificDeedSwap.and.returnValue(executionBundle('specific-deed-swap', 6, 4, 3));
+    executionRunner.composeSpecificDeedSwap.and.returnValue(executionBundle('specific-deed-swap', 6, 5, 4));
     executionRunner.composeTrueRedemption.and.returnValue(executionBundle('true-redemption', 7, 4, 3));
     executionRunner.composeReserveAcquisition.and.returnValue(executionBundle('reserve-acquisition', 8, 5, 4));
     executionRunner.submitSignaturelessBundle.and.resolveTo({ success: true, status: 'SUCCESS' });
@@ -214,8 +214,8 @@ describe('PoolEconomicsV2Component', () => {
     const text = pageText();
 
     expect(executionRunner.composeSpecificDeedSwap).toHaveBeenCalledTimes(1);
-    expect(text).toContain('Execution preflight passed: 4 coin spends, 3 witnesses.');
-    expect(text).toContain('nav_evidence, deed, token_settlement');
+    expect(text).toContain('Execution preflight passed: 5 coin spends, 4 witnesses.');
+    expect(text).toContain('nav_evidence, deed, token_settlement, vault_accept_offer');
   });
 
   it('prefills an execution package from confirmed chain evidence', () => {
@@ -686,6 +686,12 @@ function tokenSettlementRequirements(): PoolV2RequiredAnnouncement[] {
       sourceId: b32('43'),
       message: b32('54'),
     },
+    {
+      role: 'vault_accept_offer',
+      kind: 'puzzle_create',
+      sourceId: b32('45'),
+      message: b32('55'),
+    },
   ];
 }
 
@@ -705,6 +711,9 @@ function poolSpendBuild(overrides: { tokenAuthorizations?: unknown[] } = {}): Re
     poolCoinId: b32('23'),
     poolInnerPuzzleHash: b32('25'),
     poolFullPuzzleHash: b32('22'),
+    buyerVaultFullPuzzleHash: b32('45'),
+    vaultAcceptOfferMessage: b32('55'),
+    vaultAcceptOfferAnnouncementId: b32('56'),
     poolPuzzleReveal: '0x01',
     poolFullSolutionHex: '0x80',
     coinSpend: coinSpend('23'),
@@ -723,11 +732,11 @@ function dryRunResult(
   witnessCoinSpendCount: number,
 ): PoolV2ComposeDryRunResult {
   const roles: PoolV2ComposeDryRunResult['requiredAnnouncements'][number]['role'][] =
-    witnessCoinSpendCount === 4
-      ? ['nav_evidence', 'deed', 'token_settlement', 'token_authorization']
+    spendCase === 6
+      ? ['nav_evidence', 'deed', 'token_settlement', 'vault_accept_offer']
       : spendCase === 7
         ? ['nav_evidence', 'deed', 'token_authorization']
-        : ['nav_evidence', 'deed', 'token_settlement'];
+        : ['nav_evidence', 'deed', 'token_settlement', 'token_authorization'];
   return {
     kind,
     label: kind,
@@ -760,11 +769,11 @@ function executionBundle(
   witnessCoinSpendCount: number,
 ): PoolV2ExecutionBundle<any> {
   const roles: PoolV2ExecutionBundle<any>['requiredAnnouncements'][number]['role'][] =
-    witnessCoinSpendCount === 4
-      ? ['nav_evidence', 'deed', 'token_settlement', 'token_authorization']
+    spendCase === 6
+      ? ['nav_evidence', 'deed', 'token_settlement', 'vault_accept_offer']
       : spendCase === 7
         ? ['nav_evidence', 'deed', 'token_authorization']
-        : ['nav_evidence', 'deed', 'token_settlement'];
+        : ['nav_evidence', 'deed', 'token_settlement', 'token_authorization'];
   const coinSpends = Array.from({ length: coinSpendCount }, (_, index) => coinSpend(`0${index}`.slice(-2)));
   return {
     kind,
@@ -830,6 +839,12 @@ function executionPackageJson(): string {
     },
     buyerVaultLauncherId: b32('35'),
     launcherPuzzleHash: b32('36'),
+    buyerVaultCoinId: b32('3b'),
+    buyerOwnerPubkey: `0x${'3c'.repeat(48)}`,
+    buyerAuthType: '1',
+    buyerMembersMerkleRoot: b32('3d'),
+    buyerIdentityAttestRoot: b32('3e'),
+    buyerBridgePolicyHash: b32('3f'),
     treasuryReservePuzhash: b32('37'),
     protocolTreasuryPuzhash: b32('38'),
     governanceRewardsPuzhash: b32('39'),
@@ -837,6 +852,7 @@ function executionPackageJson(): string {
     witnesses: {
       navEvidenceSpend: coinSpend('41'),
       deedSpend: coinSpend('42'),
+      vaultAcceptOfferSpend: coinSpend('45'),
       tokenSettlementPuzzleHash: b32('43'),
       tokenSettlementSpend: coinSpend('44'),
     },

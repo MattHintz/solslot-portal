@@ -4,6 +4,7 @@ import { sha256 } from 'ethers';
 import { bytesToHex, hexToBytes } from '../utils/chia-hash';
 import type { UnsignedCoinSpend } from './chia-wallet.service';
 import { P2_VAULT_CURRENT_PUZZLE_HEX } from './p2-vault-current.puzzle-hex';
+import { VAULT_CURRENT_INNER_PUZZLE_HEX } from './vault-current-inner.puzzle-hex';
 import {
   type CollectionNavEvidenceInput,
   type PoolEconomicStateInput,
@@ -30,11 +31,14 @@ export const SINGLETON_MOD_HASH =
   '0x7faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9f';
 export const SINGLETON_LAUNCHER_HASH =
   '0xeff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9';
+const PROTOCOL_PREFIX = '0x53';
+const VAULT_SPEND_ACCEPT_OFFER = 0x61;
 
 export interface PoolInnerSolutionContext {
   poolCoinId: string;
   poolInnerPuzzleHash: string;
   poolAmount: BigintLike;
+  poolLauncherId: string;
 }
 
 export interface PoolCoinInput {
@@ -65,6 +69,9 @@ export interface PoolV2InnerSolutionBuild<
   innerSolutionHex: string;
   spec: PoolV2ActionSpec<Quote>;
   p2VaultPuzzleHash?: string;
+  buyerVaultFullPuzzleHash?: string;
+  vaultAcceptOfferMessage?: string;
+  vaultAcceptOfferAnnouncementId?: string;
 }
 
 export interface PoolSingletonCoinSpendBuild {
@@ -93,6 +100,12 @@ export interface SpecificDeedSwapInnerSolutionArgs extends PoolInnerSolutionCont
   propertyIdCanon: string;
   buyerVaultLauncherId: string;
   launcherPuzzleHash?: string;
+  buyerVaultCoinId: string;
+  buyerOwnerPubkey: string;
+  buyerAuthType: BigintLike;
+  buyerMembersMerkleRoot: string;
+  buyerIdentityAttestRoot: string;
+  buyerBridgePolicyHash: string;
   collectionIdCanon: string;
   sharePpm: BigintLike;
   navEvidence: CollectionNavEvidenceInput;
@@ -142,6 +155,7 @@ export type ReserveAcquisitionCoinSpendArgs =
 export type PoolV2RequiredAnnouncementRole =
   | 'nav_evidence'
   | 'deed'
+  | 'vault_accept_offer'
   | 'token_settlement'
   | 'token_authorization';
 
@@ -161,6 +175,7 @@ export interface PoolV2RequiredAnnouncement {
 export interface PoolV2BundleWitnesses {
   navEvidenceSpend: UnsignedCoinSpend;
   deedSpend: UnsignedCoinSpend;
+  vaultAcceptOfferSpend?: UnsignedCoinSpend | null;
   tokenSettlementSpend?: UnsignedCoinSpend | null;
   /** Puzzle hash that must emit the CAT settlement payment announcement. */
   tokenSettlementPuzzleHash?: string | null;
@@ -315,6 +330,21 @@ export class PoolEconomicsV2SpendBuilderService {
       governanceRewardsPuzhash: args.governanceRewardsPuzhash,
       governanceRewardsRoot: args.governanceRewardsRoot,
     });
+    const buyerVaultFullPuzzleHash = this.buyerVaultFullPuzzleHash({
+      vaultLauncherId: args.buyerVaultLauncherId,
+      launcherPuzzleHash,
+      ownerPubkey: args.buyerOwnerPubkey,
+      authType: args.buyerAuthType,
+      membersMerkleRoot: args.buyerMembersMerkleRoot,
+      identityAttestRoot: args.buyerIdentityAttestRoot,
+      bridgePolicyHash: args.buyerBridgePolicyHash,
+      poolLauncherId: args.poolLauncherId,
+    });
+    const vaultAcceptOfferMessage = this.vaultAcceptOfferMessage(
+      args.deedLauncherId,
+      spec.quote.principalTokens,
+      args.buyerVaultCoinId,
+    );
     return {
       spendCase: POOL_SPEND_V2_SPECIFIC_DEED_SWAP,
       actionTag: POOL_V2_SPECIFIC_DEED_SWAP_TAG,
@@ -333,6 +363,12 @@ export class PoolEconomicsV2SpendBuilderService {
         atom32(args.navEvidence.registryPuzzleHash, 'registryPuzzleHash'),
         atom32(args.buyerVaultLauncherId, 'buyerVaultLauncherId'),
         atom32(launcherPuzzleHash, 'launcherPuzzleHash'),
+        atom32(args.buyerVaultCoinId, 'buyerVaultCoinId'),
+        atomHex(args.buyerOwnerPubkey, 'buyerOwnerPubkey'),
+        positiveBigint(args.buyerAuthType, 'buyerAuthType'),
+        atom32(args.buyerMembersMerkleRoot, 'buyerMembersMerkleRoot'),
+        atom32(args.buyerIdentityAttestRoot, 'buyerIdentityAttestRoot'),
+        atom32(args.buyerBridgePolicyHash, 'buyerBridgePolicyHash'),
         atom32(args.treasuryReservePuzhash, 'treasuryReservePuzhash'),
         atom32(args.protocolTreasuryPuzhash, 'protocolTreasuryPuzhash'),
         atom32(args.governanceRewardsPuzhash, 'governanceRewardsPuzhash'),
@@ -340,6 +376,12 @@ export class PoolEconomicsV2SpendBuilderService {
       ]),
       spec,
       p2VaultPuzzleHash,
+      buyerVaultFullPuzzleHash,
+      vaultAcceptOfferMessage,
+      vaultAcceptOfferAnnouncementId: announcementId(
+        buyerVaultFullPuzzleHash,
+        vaultAcceptOfferMessage,
+      ),
     };
   }
 
@@ -529,6 +571,20 @@ export class PoolEconomicsV2SpendBuilderService {
         message: this.economics.tokenSettlementPaymentMessage(pool.poolCoinId, pool.spec.tokenOutputs),
       });
     }
+    if (
+      pool.spendCase === POOL_SPEND_V2_SPECIFIC_DEED_SWAP &&
+      pool.buyerVaultFullPuzzleHash &&
+      pool.vaultAcceptOfferMessage &&
+      pool.vaultAcceptOfferAnnouncementId
+    ) {
+      required.push({
+        role: 'vault_accept_offer',
+        kind: 'puzzle_create',
+        sourceId: normalizeHex(pool.buyerVaultFullPuzzleHash),
+        message: normalizeHex(pool.vaultAcceptOfferMessage),
+        announcementId: normalizeHex(pool.vaultAcceptOfferAnnouncementId),
+      });
+    }
     for (const auth of pool.spec.tokenAuthorizations) {
       const message = normalizeHex(auth.announcementMessage);
       required.push({
@@ -559,6 +615,18 @@ export class PoolEconomicsV2SpendBuilderService {
       { role: 'nav_evidence', spend: witnesses.navEvidenceSpend },
       { role: 'deed', spend: witnesses.deedSpend },
     ];
+    if (pool.spendCase === POOL_SPEND_V2_SPECIFIC_DEED_SWAP) {
+      if (!witnesses.vaultAcceptOfferSpend) {
+        throw new Error(
+          'pool-v2-spend-builder: vaultAcceptOfferSpend is required for specific deed swaps',
+        );
+      }
+      spends.push({ role: 'vault_accept_offer', spend: witnesses.vaultAcceptOfferSpend });
+    } else if (witnesses.vaultAcceptOfferSpend) {
+      throw new Error(
+        'pool-v2-spend-builder: vaultAcceptOfferSpend supplied for action without buyer vault acquisition',
+      );
+    }
     if (pool.spec.tokenOutputs.length > 0) {
       if (!witnesses.tokenSettlementSpend) {
         throw new Error(
@@ -685,6 +753,7 @@ export class PoolEconomicsV2SpendBuilderService {
       poolCoinId: coin.coinId ?? coinIdFromFields(this.sdk(), coin),
       poolInnerPuzzleHash: bytesToHex(innerPuzzle.treeHash()),
       poolAmount: coin.amount,
+      poolLauncherId: args.poolLauncherId,
     };
   }
 
@@ -728,13 +797,67 @@ export class PoolEconomicsV2SpendBuilderService {
   }
 
   private singletonStruct(clvm: ClvmShape, launcherId: Uint8Array): ProgramShape {
+    return this.singletonStructWithLauncherHash(clvm, launcherId, atom32(SINGLETON_LAUNCHER_HASH, 'singletonLauncherHash'));
+  }
+
+  private singletonStructWithLauncherHash(
+    clvm: ClvmShape,
+    launcherId: Uint8Array,
+    launcherPuzzleHash: Uint8Array,
+  ): ProgramShape {
     return clvm.pair(
       clvm.atom(atom32(SINGLETON_MOD_HASH, 'singletonModHash')),
       clvm.pair(
         clvm.atom(launcherId),
-        clvm.atom(atom32(SINGLETON_LAUNCHER_HASH, 'singletonLauncherHash')),
+        clvm.atom(launcherPuzzleHash),
       ),
     );
+  }
+
+  private buyerVaultFullPuzzleHash(args: {
+    vaultLauncherId: string;
+    launcherPuzzleHash: string;
+    ownerPubkey: string;
+    authType: BigintLike;
+    membersMerkleRoot: string;
+    identityAttestRoot: string;
+    bridgePolicyHash: string;
+    poolLauncherId: string;
+  }): string {
+    const clvm = this.clvm();
+    const singletonStruct = this.singletonStructWithLauncherHash(
+      clvm,
+      atom32(args.vaultLauncherId, 'buyerVaultLauncherId'),
+      atom32(args.launcherPuzzleHash, 'launcherPuzzleHash'),
+    );
+    const vaultMod = clvm.deserialize(hexToBytes(normalizeHex(VAULT_CURRENT_INNER_PUZZLE_HEX)));
+    const vaultInner = vaultMod.curry([
+      singletonStruct,
+      clvm.atom(atomHex(args.ownerPubkey, 'buyerOwnerPubkey')),
+      clvm.int(positiveBigint(args.authType, 'buyerAuthType')),
+      clvm.atom(atom32(args.membersMerkleRoot, 'buyerMembersMerkleRoot')),
+      clvm.atom(atom32(args.identityAttestRoot, 'buyerIdentityAttestRoot')),
+      clvm.atom(atom32(args.bridgePolicyHash, 'buyerBridgePolicyHash')),
+      clvm.atom(atom32(SINGLETON_MOD_HASH, 'poolSingletonModHash')),
+      clvm.atom(atom32(args.poolLauncherId, 'poolLauncherId')),
+      clvm.atom(atom32(SINGLETON_LAUNCHER_HASH, 'poolLauncherPuzzleHash')),
+    ]);
+    return bytesToHex(this.singletonFullPuzzle(clvm, singletonStruct, vaultInner).treeHash());
+  }
+
+  private vaultAcceptOfferMessage(
+    deedLauncherId: string,
+    principalTokens: BigintLike,
+    vaultCoinId: string,
+  ): string {
+    const clvm = this.clvm();
+    const treeHash = clvm.list([
+      clvm.int(BigInt(VAULT_SPEND_ACCEPT_OFFER)),
+      clvm.atom(atom32(deedLauncherId, 'deedLauncherId')),
+      clvm.int(positiveBigint(principalTokens, 'principalTokens')),
+      clvm.atom(atom32(vaultCoinId, 'buyerVaultCoinId')),
+    ]).treeHash();
+    return normalizeHex(PROTOCOL_PREFIX + bytesToHex(treeHash).slice(2));
   }
 
   private singletonFullPuzzle(
@@ -789,11 +912,23 @@ export class PoolEconomicsV2SpendBuilderService {
 type PoolSolutionValue = Uint8Array | bigint | null;
 
 function atom32(hex: string, field: string): Uint8Array {
+  return atomHex(hex, field, 32);
+}
+
+function atomHex(hex: string, field: string, byteLength?: number): Uint8Array {
   const bytes = hexToBytes(normalizeHex(hex));
-  if (bytes.length !== 32) {
-    throw new Error(`${field} must be 32 bytes`);
+  if (byteLength !== undefined && bytes.length !== byteLength) {
+    throw new Error(`${field} must be ${byteLength} bytes`);
   }
   return bytes;
+}
+
+function positiveBigint(value: BigintLike, field: string): bigint {
+  const out = bigint(value);
+  if (out <= 0n) {
+    throw new Error(`${field} must be positive`);
+  }
+  return out;
 }
 
 function bigint(value: BigintLike): bigint {

@@ -39,6 +39,7 @@ interface FixtureExpected {
   inner_solution_hex: string;
   pool_full_solution_hex: string;
   pool_coin_spend: FixtureCoinSpend;
+  buyer_vault_accept_offer_coin_spend?: FixtureCoinSpend;
 }
 
 interface FixtureSection {
@@ -66,6 +67,13 @@ interface FixtureFile {
     deed_launcher_id: string;
     p2_vault_puzzle_hash: string;
     buyer_vault_launcher_id: string;
+    buyer_vault_coin_id: string;
+    buyer_vault_full_puzzle_hash: string;
+    buyer_owner_pubkey: string;
+    buyer_auth_type: number;
+    buyer_members_merkle_root: string;
+    buyer_identity_attest_root: string;
+    buyer_bridge_policy_hash: string;
     launcher_puzzle_hash: string;
     property_id_canon: string;
     collection_id_canon: string;
@@ -169,7 +177,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
       ...DEED_METADATA,
-      buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
+      ...buyerVaultFromFixture(),
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: inputNumber(fixture.specific_deed_swap, 'share_ppm'),
@@ -183,6 +191,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
     const expected = fixture.specific_deed_swap.expected;
     expect(build.spendCase).toBe(POOL_SPEND_V2_SPECIFIC_DEED_SWAP);
     expect(build.p2VaultPuzzleHash).toBe(fixture.common.p2_vault_puzzle_hash);
+    expect(build.buyerVaultFullPuzzleHash).toBe(fixture.common.buyer_vault_full_puzzle_hash);
     expect(build.spec.actionTag).toBe(expected.action_tag);
     expect(build.spec.poolActionMessage).toBe(expected.pool_action_message);
     expect(build.innerSolutionHex).toBe(expected.inner_solution_hex);
@@ -194,7 +203,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       state: stateFromFixture(),
       deedId: fixture.common.deed_id,
       ...DEED_METADATA,
-      buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
+      ...buyerVaultFromFixture(),
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: inputNumber(fixture.specific_deed_swap, 'share_ppm'),
@@ -318,7 +327,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
     ).toThrowError(/does not match coin puzzle hash/);
   });
 
-  it('composes a specific deed swap unsigned bundle with NAV, deed, and CAT settlement witnesses', () => {
+  it('composes a specific deed swap unsigned bundle with NAV, deed, enrolled vault, and CAT settlement witnesses', () => {
     const seeds = witnessSeeds(wasm);
     const navEvidence = navEvidenceFromFixture(fixture.common.nav_evidence);
     const poolBuild = service.buildSpecificDeedSwapCoinSpend({
@@ -326,7 +335,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
       ...DEED_METADATA,
-      buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
+      ...buyerVaultFromFixture(),
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: inputNumber(fixture.specific_deed_swap, 'share_ppm'),
@@ -351,6 +360,9 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
         deedSpend: witnessSpend(wasm, seeds.deed, [
           createCoinAnnouncement(wasm, poolBuild.spec.deedMessage),
         ]),
+        vaultAcceptOfferSpend: coinSpendFromFixture(
+          requireCoinSpend(fixture.specific_deed_swap.expected.buyer_vault_accept_offer_coin_spend),
+        ),
         tokenSettlementPuzzleHash: seeds.tokenSettlement.puzzleHash,
         tokenSettlementSpend: witnessSpend(wasm, seeds.tokenSettlement, [
           createPuzzleAnnouncement(wasm, tokenSettlementMessage),
@@ -359,17 +371,19 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
     });
 
     expect(result.unsignedSpendBundle.aggregatedSignature).toBeNull();
-    expect(result.coinSpends.length).toBe(4);
+    expect(result.coinSpends.length).toBe(5);
     expect(result.coinSpends[0]).toBe(poolBuild.coinSpend);
     expect(result.requiredAnnouncements.map((a) => a.role)).toEqual([
       'nav_evidence',
       'deed',
       'token_settlement',
+      'vault_accept_offer',
     ]);
     expect(result.witnessSummary.map((w) => w.role)).toEqual([
       'nav_evidence',
       'deed',
       'token_settlement',
+      'vault_accept_offer',
     ]);
   });
 
@@ -381,7 +395,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
       ...DEED_METADATA,
-      buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
+      ...buyerVaultFromFixture(),
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: inputNumber(fixture.specific_deed_swap, 'share_ppm'),
@@ -404,6 +418,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       'nav_evidence',
       'deed',
       'token_settlement',
+      'vault_accept_offer',
     ]);
     expect(requirements[2]).toEqual(
       jasmine.objectContaining({
@@ -415,6 +430,56 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
         ),
       }),
     );
+    expect(requirements[3]).toEqual(
+      jasmine.objectContaining({
+        kind: 'puzzle_create',
+        sourceId: fixture.common.buyer_vault_full_puzzle_hash,
+        message: poolBuild.vaultAcceptOfferMessage,
+      }),
+    );
+  });
+
+  it('rejects specific deed swaps that omit the enrolled buyer vault witness', () => {
+    const seeds = witnessSeeds(wasm);
+    const navEvidence = navEvidenceFromFixture(fixture.common.nav_evidence);
+    const poolBuild = service.buildSpecificDeedSwapCoinSpend({
+      ...spendContextFromFixture(),
+      state: stateFromFixture(),
+      deedId: seeds.deed.coinId,
+      ...DEED_METADATA,
+      ...buyerVaultFromFixture(),
+      launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
+      collectionIdCanon: fixture.common.collection_id_canon,
+      sharePpm: inputNumber(fixture.specific_deed_swap, 'share_ppm'),
+      navEvidence,
+      treasuryReservePuzhash: inputString(fixture.specific_deed_swap, 'treasury_reserve_puzhash'),
+      protocolTreasuryPuzhash: inputString(fixture.specific_deed_swap, 'protocol_treasury_puzhash'),
+      governanceRewardsPuzhash: inputString(fixture.specific_deed_swap, 'governance_rewards_puzhash'),
+      governanceRewardsRoot: inputString(fixture.specific_deed_swap, 'governance_rewards_root'),
+    });
+    const tokenSettlementMessage = economics.tokenSettlementPaymentMessage(
+      poolBuild.poolCoinId,
+      poolBuild.spec.tokenOutputs,
+    );
+
+    expect(() =>
+      service.composePoolV2UnsignedBundle({
+        poolSpend: poolBuild,
+        deedId: seeds.deed.coinId,
+        ...DEED_METADATA,
+        navEvidence,
+        witnesses: {
+          navEvidenceSpend: coinSpendFromFixture(fixture.common.nav_evidence_coin_spend),
+          deedSpend: witnessSpend(wasm, seeds.deed, [
+            createCoinAnnouncement(wasm, poolBuild.spec.deedMessage),
+          ]),
+          tokenSettlementPuzzleHash: seeds.tokenSettlement.puzzleHash,
+          tokenSettlementSpend: witnessSpend(wasm, seeds.tokenSettlement, [
+            createPuzzleAnnouncement(wasm, tokenSettlementMessage),
+          ]),
+        },
+      }),
+    ).toThrowError(/vaultAcceptOfferSpend is required/);
   });
 
   it('rejects specific deed swaps that omit the bounded CAT settlement witness', () => {
@@ -425,7 +490,7 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
       state: stateFromFixture(),
       deedId: seeds.deed.coinId,
       ...DEED_METADATA,
-      buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
+      ...buyerVaultFromFixture(),
       launcherPuzzleHash: fixture.common.launcher_puzzle_hash,
       collectionIdCanon: fixture.common.collection_id_canon,
       sharePpm: inputNumber(fixture.specific_deed_swap, 'share_ppm'),
@@ -447,6 +512,9 @@ describe('PoolEconomicsV2SpendBuilderService', () => {
           deedSpend: witnessSpend(wasm, seeds.deed, [
             createCoinAnnouncement(wasm, poolBuild.spec.deedMessage),
           ]),
+          vaultAcceptOfferSpend: coinSpendFromFixture(
+            requireCoinSpend(fixture.specific_deed_swap.expected.buyer_vault_accept_offer_coin_spend),
+          ),
           tokenSettlementPuzzleHash: seeds.tokenSettlement.puzzleHash,
         },
       }),
@@ -621,6 +689,7 @@ function contextFromFixture() {
     poolCoinId: fixture.common.pool_coin_id,
     poolInnerPuzzleHash: fixture.common.pool_inner_puzzle_hash,
     poolAmount: fixture.common.pool_amount,
+    poolLauncherId: fixture.common.pool_launcher_id,
   };
 }
 
@@ -638,6 +707,18 @@ function spendContextBase() {
       innerPuzzleHash: fixture.common.pool_lineage_proof.inner_puzzle_hash,
       amount: fixture.common.pool_lineage_proof.amount,
     },
+  };
+}
+
+function buyerVaultFromFixture() {
+  return {
+    buyerVaultLauncherId: fixture.common.buyer_vault_launcher_id,
+    buyerVaultCoinId: fixture.common.buyer_vault_coin_id,
+    buyerOwnerPubkey: fixture.common.buyer_owner_pubkey,
+    buyerAuthType: fixture.common.buyer_auth_type,
+    buyerMembersMerkleRoot: fixture.common.buyer_members_merkle_root,
+    buyerIdentityAttestRoot: fixture.common.buyer_identity_attest_root,
+    buyerBridgePolicyHash: fixture.common.buyer_bridge_policy_hash,
   };
 }
 
@@ -712,6 +793,13 @@ function coinSpendFromFixture(spend: FixtureCoinSpend): UnsignedCoinSpend {
     puzzleReveal: spend.puzzle_reveal,
     solution: spend.solution,
   };
+}
+
+function requireCoinSpend(spend: FixtureCoinSpend | undefined): FixtureCoinSpend {
+  if (!spend) {
+    throw new Error('fixture coin spend is missing');
+  }
+  return spend;
 }
 
 interface WitnessSeed {

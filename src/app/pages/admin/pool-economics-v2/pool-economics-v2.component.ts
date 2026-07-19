@@ -118,6 +118,12 @@ interface ParsedExecutionPackage {
   navEvidence: CollectionNavEvidenceInput;
   witnesses: PoolV2BundleWitnesses;
   buyerVaultLauncherId?: string;
+  buyerVaultCoinId?: string;
+  buyerOwnerPubkey?: string;
+  buyerAuthType?: bigint;
+  buyerMembersMerkleRoot?: string;
+  buyerIdentityAttestRoot?: string;
+  buyerBridgePolicyHash?: string;
   vaultLauncherId?: string;
   launcherPuzzleHash?: string;
   treasuryReservePuzhash?: string;
@@ -1754,6 +1760,12 @@ export class PoolEconomicsV2Component implements OnInit {
               assetClass: requiredParsedBigint(pkg.assetClass, 'assetClass'),
               buyerVaultLauncherId: requiredParsedString(pkg.buyerVaultLauncherId, 'buyerVaultLauncherId'),
               launcherPuzzleHash: pkg.launcherPuzzleHash,
+              buyerVaultCoinId: requiredParsedString(pkg.buyerVaultCoinId, 'buyerVaultCoinId'),
+              buyerOwnerPubkey: requiredParsedString(pkg.buyerOwnerPubkey, 'buyerOwnerPubkey'),
+              buyerAuthType: requiredParsedBigint(pkg.buyerAuthType, 'buyerAuthType'),
+              buyerMembersMerkleRoot: requiredParsedString(pkg.buyerMembersMerkleRoot, 'buyerMembersMerkleRoot'),
+              buyerIdentityAttestRoot: requiredParsedString(pkg.buyerIdentityAttestRoot, 'buyerIdentityAttestRoot'),
+              buyerBridgePolicyHash: requiredParsedString(pkg.buyerBridgePolicyHash, 'buyerBridgePolicyHash'),
               collectionIdCanon: pkg.collectionIdCanon,
               sharePpm: pkg.sharePpm,
               navEvidence: pkg.navEvidence,
@@ -2157,6 +2169,21 @@ export class PoolEconomicsV2Component implements OnInit {
         'buyerVaultLauncherId',
         'buyer_vault_launcher_id',
       ]),
+      buyerVaultCoinId: readOptionalStringFrom(records, ['buyerVaultCoinId', 'buyer_vault_coin_id']),
+      buyerOwnerPubkey: readOptionalStringFrom(records, ['buyerOwnerPubkey', 'buyer_owner_pubkey']),
+      buyerAuthType: readOptionalBigintFrom(records, ['buyerAuthType', 'buyer_auth_type']),
+      buyerMembersMerkleRoot: readOptionalStringFrom(records, [
+        'buyerMembersMerkleRoot',
+        'buyer_members_merkle_root',
+      ]),
+      buyerIdentityAttestRoot: readOptionalStringFrom(records, [
+        'buyerIdentityAttestRoot',
+        'buyer_identity_attest_root',
+      ]),
+      buyerBridgePolicyHash: readOptionalStringFrom(records, [
+        'buyerBridgePolicyHash',
+        'buyer_bridge_policy_hash',
+      ]),
       vaultLauncherId: readOptionalStringFrom(records, ['vaultLauncherId', 'vault_launcher_id']),
       launcherPuzzleHash: readOptionalStringFrom(records, ['launcherPuzzleHash', 'launcher_puzzle_hash']),
       treasuryReservePuzhash: readOptionalStringFrom(records, [
@@ -2210,6 +2237,12 @@ export class PoolEconomicsV2Component implements OnInit {
           assetClass: requiredParsedBigint(pkg.assetClass, 'assetClass'),
           buyerVaultLauncherId: requiredParsedString(pkg.buyerVaultLauncherId, 'buyerVaultLauncherId'),
           launcherPuzzleHash: pkg.launcherPuzzleHash,
+          buyerVaultCoinId: requiredParsedString(pkg.buyerVaultCoinId, 'buyerVaultCoinId'),
+          buyerOwnerPubkey: requiredParsedString(pkg.buyerOwnerPubkey, 'buyerOwnerPubkey'),
+          buyerAuthType: requiredParsedBigint(pkg.buyerAuthType, 'buyerAuthType'),
+          buyerMembersMerkleRoot: requiredParsedString(pkg.buyerMembersMerkleRoot, 'buyerMembersMerkleRoot'),
+          buyerIdentityAttestRoot: requiredParsedString(pkg.buyerIdentityAttestRoot, 'buyerIdentityAttestRoot'),
+          buyerBridgePolicyHash: requiredParsedString(pkg.buyerBridgePolicyHash, 'buyerBridgePolicyHash'),
           collectionIdCanon: pkg.collectionIdCanon,
           sharePpm: pkg.sharePpm,
           navEvidence: pkg.navEvidence,
@@ -2308,6 +2341,7 @@ export class PoolEconomicsV2Component implements OnInit {
       witnesses: {
         navEvidenceSpend: confirmedNav ? coinSpendJson(confirmedNav.navEvidenceSpend) : null,
         deedSpend: confirmedDeed ? coinSpendJson(confirmedDeed.deedSpend) : null,
+        vaultAcceptOfferSpend: null,
         tokenSettlementPuzzleHash: '',
         tokenSettlementSpend: null,
         tokenAuthorizationSpends: [],
@@ -2439,6 +2473,12 @@ function actionDraftFields(
       return {
         buyerVaultLauncherId: '',
         launcherPuzzleHash: '',
+        buyerVaultCoinId: '',
+        buyerOwnerPubkey: '',
+        buyerAuthType: '',
+        buyerMembersMerkleRoot: '',
+        buyerIdentityAttestRoot: '',
+        buyerBridgePolicyHash: '',
         treasuryReservePuzhash: '',
         protocolTreasuryPuzhash: '',
         governanceRewardsPuzhash: '',
@@ -2634,6 +2674,18 @@ function readWitnesses(record: Record<string, unknown>): PoolV2BundleWitnesses {
       readRecordFrom([record], ['navEvidenceSpend', 'nav_evidence_spend'], 'navEvidenceSpend'),
     ),
     deedSpend: readCoinSpend(readRecordFrom([record], ['deedSpend', 'deed_spend'], 'deedSpend')),
+    vaultAcceptOfferSpend: readOptionalRecordFrom(
+      [record],
+      ['vaultAcceptOfferSpend', 'vault_accept_offer_spend'],
+    )
+      ? readCoinSpend(
+          readRecordFrom(
+            [record],
+            ['vaultAcceptOfferSpend', 'vault_accept_offer_spend'],
+            'vaultAcceptOfferSpend',
+          ),
+        )
+      : null,
     tokenSettlementPuzzleHash: readOptionalStringFrom(
       [record],
       ['tokenSettlementPuzzleHash', 'token_settlement_puzzle_hash'],

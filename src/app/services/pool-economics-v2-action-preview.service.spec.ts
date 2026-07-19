@@ -28,11 +28,12 @@ describe('PoolEconomicsV2ActionPreviewService', () => {
       'nav_evidence',
       'deed',
       'token_settlement',
+      'vault_accept_offer',
     ]);
     expect(preview.tokenOutputCount).toBe(3);
     expect(preview.tokenAuthorizationCount).toBe(0);
     expect(preview.tokenSettlementPaymentMessage).toMatch(/^0x[0-9a-f]{64}$/);
-    expect(preview.requiredWitnessCoinSpends).toBe(3);
+    expect(preview.requiredWitnessCoinSpends).toBe(4);
     expect(preview.maxWitnessCoinSpends).toBe(POOL_V2_MAX_WITNESS_COIN_SPENDS);
     expect(preview.unsignedBundleCoinSpendLimit).toBe(
       POOL_V2_MAX_UNSIGNED_BUNDLE_COIN_SPENDS,

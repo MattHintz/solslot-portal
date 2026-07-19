@@ -33,6 +33,7 @@ export type PoolV2PreviewAnnouncementRole =
   | 'nav_evidence'
   | 'deed'
   | 'token_settlement'
+  | 'vault_accept_offer'
   | 'token_authorization';
 
 export type PoolV2PreviewAnnouncementKind =
@@ -199,6 +200,14 @@ export class PoolEconomicsV2ActionPreviewService {
         kind: 'puzzle_create',
         sourceId: PREVIEW_IDS.tokenSettlementPuzzleHash,
         message: tokenSettlementPaymentMessage,
+      });
+    }
+    if (args.spendCase === POOL_SPEND_V2_SPECIFIC_DEED_SWAP) {
+      requiredAnnouncements.push({
+        role: 'vault_accept_offer',
+        kind: 'puzzle_create',
+        sourceId: PREVIEW_IDS.p2VaultPuzzleHash,
+        message: args.spec.poolActionMessage,
       });
     }
     for (const authorization of args.spec.tokenAuthorizations) {

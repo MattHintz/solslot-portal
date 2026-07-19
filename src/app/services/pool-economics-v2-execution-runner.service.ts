@@ -43,6 +43,12 @@ interface PoolV2ExecutionBaseArgs {
 export interface SpecificDeedSwapExecutionArgs extends PoolV2ExecutionBaseArgs {
   buyerVaultLauncherId: string;
   launcherPuzzleHash?: string;
+  buyerVaultCoinId: string;
+  buyerOwnerPubkey: string;
+  buyerAuthType: BigintLike;
+  buyerMembersMerkleRoot: string;
+  buyerIdentityAttestRoot: string;
+  buyerBridgePolicyHash: string;
   treasuryReservePuzhash: string;
   protocolTreasuryPuzhash: string;
   governanceRewardsPuzhash: string;
@@ -103,6 +109,12 @@ export class PoolEconomicsV2ExecutionRunnerService {
       assetClass: args.assetClass,
       buyerVaultLauncherId: args.buyerVaultLauncherId,
       launcherPuzzleHash: args.launcherPuzzleHash,
+      buyerVaultCoinId: args.buyerVaultCoinId,
+      buyerOwnerPubkey: args.buyerOwnerPubkey,
+      buyerAuthType: args.buyerAuthType,
+      buyerMembersMerkleRoot: args.buyerMembersMerkleRoot,
+      buyerIdentityAttestRoot: args.buyerIdentityAttestRoot,
+      buyerBridgePolicyHash: args.buyerBridgePolicyHash,
       collectionIdCanon: args.collectionIdCanon,
       sharePpm: args.sharePpm,
       navEvidence: args.navEvidence,

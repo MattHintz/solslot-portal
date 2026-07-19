@@ -39,13 +39,13 @@ export interface AcceptOfferVectorFixture {
 export const ACCEPT_OFFER_PROTOCOL_VECTOR = normalizeAcceptOfferVectorFixture({
   protocolCommit: 'c3c032e',
   inputs: {
-    vaultLauncherId: '0x' + 'aa'.repeat(32),
+    vaultLauncherId: '0xe9fb9d0439f55099c232c41c179232c96a2fe58453ec0abc49caa723a384607f',
     ownerPubkey: '0x' + '00'.repeat(48),
     authType: 1,
     membersMerkleRoot: '0x' + 'ee'.repeat(32),
     poolLauncherId: '0x' + 'bb'.repeat(32),
     vaultCoinId: '0x' + '11'.repeat(32),
-    vaultInnerPuzzleHash: '0x17fcdf15e47df2ee1ad4784d145dec2f56038e9ae66b4666c66eaaf21d7a1516',
+    vaultInnerPuzzleHash: '0xa4a914044fb51307a52a3abcbbecaaa1cf5679d044f066ea931a61669c5549ec',
     vaultAmount: 1,
     spendCase: '0x61',
     deedLauncherId: '0x' + 'dd'.repeat(32),
@@ -59,10 +59,10 @@ export const ACCEPT_OFFER_PROTOCOL_VECTOR = normalizeAcceptOfferVectorFixture({
   },
   expected: {
     serializedSolution:
-      '0xffa01111111111111111111111111111111111111111111111111111111111111111ffa017fcdf15e47df2ee1ad4784d145dec2f56038e9ae66b4666c66eaaf21d7a1516ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080',
-    solutionTreeHash: '0x8ab99e40a3787a000e6973027f9fead2d96b2e7e3b00e45c46aa4eee961f0657',
-    aggSigMeMessage: '0x2d33d2424799d4a31f7225871d9a56239729293e44e574c47905587fa84d81db',
-    poolAnnouncementAssert: '0xedcf4c2a4cf369fc74cc94bda7effb4747c383acacd1f11aa0885a00c261ef89',
+      '0xffa01111111111111111111111111111111111111111111111111111111111111111ffa0a4a914044fb51307a52a3abcbbecaaa1cf5679d044f066ea931a61669c5549ecff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080',
+    solutionTreeHash: '0xf36a63fc4036701d9ffc8ea1db2da7e7e3ed525b5378cc16a03f6e22912c5866',
+    aggSigMeMessage: '0xd59c6fec26bc835512b78b7d2545606671601976711129830a909732545c660c',
+    poolAnnouncementAssert: '0x9aa9d6bf073dd575af41ac85dc855a174a82f7ae7ac12d04340673258ad87b39',
   },
 });
 
