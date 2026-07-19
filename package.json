@@ -8,6 +8,7 @@
     "dev:stack": "node scripts/dev-stack.mjs",
     "build": "ng build",
     "build:ceremony": "ng build --configuration ceremony",
+    "security:eip712-exports": "python3 scripts/check_eip712_wasm_exports.py",
     "security:headers": "python3 scripts/check_static_headers.py",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
