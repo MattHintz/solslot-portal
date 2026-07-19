@@ -10,6 +10,7 @@ import {
   PublishMintArgs,
   PublishRunResult,
 } from './mint-proposal-v2/mint-proposal-v2-publish-runner.service';
+import { MintPublishService } from './mint-proposal-v2/mint-publish.service';
 import { PublishMintArgsAssemblerService } from './mint-proposal-v2/publish-mint-args-assembler.service';
 import { PropertyRegistryRegistrationMaterialService } from './mint-proposal-v2/property-registry-registration-material.service';
 import { PropertyDossierV1 } from './property-metadata/property-dossier';
@@ -73,6 +74,8 @@ export class CollectionMintCoordinatorService {
         protocolDidPuzhash: environment.solslotProtocol.protocolDidPuzhash,
         protocolDidInnerPuzhash: environment.solslotProtocol.protocolDidInnerPuzhash,
         governanceSingletonStructHex: environment.solslotProtocol.governanceSingletonStructHex,
+        poolSingletonLauncherId: environment.solslotProtocol.poolLauncherId,
+        poolSingletonLauncherPuzzleHash: MintPublishService.SINGLETON_LAUNCHER_HASH,
         p2PoolModHash: environment.solslotProtocol.p2PoolModHash,
         p2VaultModHash: environment.solslotProtocol.p2VaultModHash,
         propertyRegistryPuzzleHash: environment.solslotProtocol.propertyRegistryCurrentPuzzleHash,
