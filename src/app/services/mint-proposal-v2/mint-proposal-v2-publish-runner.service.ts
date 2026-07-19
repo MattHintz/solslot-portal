@@ -68,10 +68,10 @@ import { MintPublishSpendBuilderService } from './mint-publish-spend-builder.ser
  * **Protocol context.**  Several curry inputs to
  * {@link MintPublishService.buildMintPublishArtifacts}
  * (``protocolDidSingletonStructHex``, ``protocolDidPuzhash``,
- * ``p2PoolModHash``, ``p2VaultModHash``, ``govMemberHash``) are not in
- * ``environment.solslotProtocol`` today, so the runner takes them as
- * explicit ``PublishMintArgs`` fields.  The 4f UI assembles them from
- * the protocol read + the operator's draft.
+ * ``poolSingletonLauncherId``, ``p2PoolModHash``, ``p2VaultModHash``,
+ * ``govMemberHash``) are threaded as explicit ``PublishMintArgs`` fields.
+ * The admin UI assembles them from the verified protocol context and the
+ * operator's draft.
  *
  * **Result.**  Discriminated-union {@link PublishRunResult} mirroring
  * Phase 3's ``VoteRunResult`` shape: every non-``'assembled'`` variant
@@ -207,6 +207,8 @@ export class MintProposalV2PublishRunnerService {
         protocolDidPuzhash: args.protocolDidPuzhash,
         protocolDidInnerPuzhash: args.protocolDidInnerPuzhash,
         governanceSingletonStructHex: args.governanceSingletonStructHex,
+        poolSingletonLauncherId: args.poolSingletonLauncherId,
+        poolSingletonLauncherPuzzleHash: args.poolSingletonLauncherPuzzleHash,
         p2PoolModHash: args.p2PoolModHash,
         p2VaultModHash: args.p2VaultModHash,
         propertyRegistryPuzzleHash: args.propertyRegistryPuzzleHash,
@@ -535,6 +537,8 @@ export interface PublishMintArgs {
   protocolDidPuzhash: string;
   protocolDidInnerPuzhash: string;
   governanceSingletonStructHex: string;
+  poolSingletonLauncherId: string;
+  poolSingletonLauncherPuzzleHash: string;
   p2PoolModHash: string;
   p2VaultModHash: string;
   propertyRegistryPuzzleHash: string;

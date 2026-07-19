@@ -10,6 +10,7 @@ import {
 import { environment } from '../../../environments/environment';
 
 import type { PublishMintArgs } from './mint-proposal-v2-publish-runner.service';
+import { MintPublishService } from './mint-publish.service';
 
 /**
  * Pure assembler that maps an operator's localStorage mint DRAFT plus
@@ -39,7 +40,7 @@ import type { PublishMintArgs } from './mint-proposal-v2-publish-runner.service'
  *   * ``jurisdictionHex`` — UTF-8 encoding of ``draft.jurisdiction``.
  *   * ``royaltyPuzhash`` / ``royaltyBps`` — straight off the draft.
  *   * ``quorumThreshold`` — ``draft.quorum_required``.
- *   * the four ``protocol*`` / ``p2*`` context fields — from
+ *   * the protocol, pool, and ``p2*`` context fields — from
  *     ``environment.solslotProtocol`` (added in 4f.1a, mirroring the
  *     API's ``SOLSLOT_*`` env vars).
  *   * ``propertyRegistryPuzzleHash`` — current A4 property-registry singleton
@@ -87,6 +88,12 @@ export class PublishMintArgsAssemblerService {
     }
     if (!isNonEmpty(ctx.governanceSingletonStructHex)) {
       missing.push('governanceSingletonStructHex');
+    }
+    if (!isNonEmpty(ctx.poolSingletonLauncherId)) {
+      missing.push('poolSingletonLauncherId');
+    }
+    if (!isNonEmpty(ctx.poolSingletonLauncherPuzzleHash)) {
+      missing.push('poolSingletonLauncherPuzzleHash');
     }
     if (!isNonEmpty(ctx.p2PoolModHash)) missing.push('p2PoolModHash');
     if (!isNonEmpty(ctx.p2VaultModHash)) missing.push('p2VaultModHash');
@@ -195,6 +202,8 @@ export class PublishMintArgsAssemblerService {
       protocolDidPuzhash: ctx.protocolDidPuzhash,
       protocolDidInnerPuzhash: ctx.protocolDidInnerPuzhash,
       governanceSingletonStructHex: ctx.governanceSingletonStructHex,
+      poolSingletonLauncherId: ctx.poolSingletonLauncherId,
+      poolSingletonLauncherPuzzleHash: ctx.poolSingletonLauncherPuzzleHash,
       p2PoolModHash: ctx.p2PoolModHash,
       p2VaultModHash: ctx.p2VaultModHash,
       propertyRegistryPuzzleHash: ctx.propertyRegistryPuzzleHash,
@@ -220,6 +229,8 @@ export interface MintPublishProtocolContext {
   protocolDidPuzhash: string;
   protocolDidInnerPuzhash: string;
   governanceSingletonStructHex: string;
+  poolSingletonLauncherId: string;
+  poolSingletonLauncherPuzzleHash: string;
   p2PoolModHash: string;
   p2VaultModHash: string;
   propertyRegistryPuzzleHash: string;
@@ -259,6 +270,8 @@ function defaultProtocolContext(): MintPublishProtocolContext {
     protocolDidPuzhash: p.protocolDidPuzhash,
     protocolDidInnerPuzhash: p.protocolDidInnerPuzhash,
     governanceSingletonStructHex: p.governanceSingletonStructHex,
+    poolSingletonLauncherId: p.poolLauncherId,
+    poolSingletonLauncherPuzzleHash: MintPublishService.SINGLETON_LAUNCHER_HASH,
     p2PoolModHash: p.p2PoolModHash,
     p2VaultModHash: p.p2VaultModHash,
     propertyRegistryPuzzleHash: p.propertyRegistryCurrentPuzzleHash,

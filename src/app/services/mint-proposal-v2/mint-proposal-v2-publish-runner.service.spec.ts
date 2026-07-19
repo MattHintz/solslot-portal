@@ -85,6 +85,8 @@ function defaultArgs(overrides: Partial<PublishMintArgs> = {}): PublishMintArgs 
     protocolDidPuzhash: '0x' + '05'.repeat(32),
     protocolDidInnerPuzhash: '0x' + '0a'.repeat(32),
     governanceSingletonStructHex: '0xff80',
+    poolSingletonLauncherId: '0x' + '0b'.repeat(32),
+    poolSingletonLauncherPuzzleHash: MintPublishService.SINGLETON_LAUNCHER_HASH,
     p2PoolModHash: '0x' + '06'.repeat(32),
     p2VaultModHash: '0x' + '07'.repeat(32),
     propertyRegistryPuzzleHash: '0x' + '08'.repeat(32),

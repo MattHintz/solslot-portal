@@ -146,6 +146,8 @@ export class MintPublishService {
     protocolDidPuzhash: string;
     protocolDidInnerPuzhash: string;
     governanceSingletonStructHex: string;
+    poolSingletonLauncherId: string;
+    poolSingletonLauncherPuzzleHash: string;
     p2PoolModHash: string;
     p2VaultModHash: string;
     propertyRegistryPuzzleHash: string;
@@ -186,6 +188,8 @@ export class MintPublishService {
       clvm.atom(hexToBytes(args.royaltyPuzhash)),
       clvm.int(BigInt(args.royaltyBps)),
       clvm.atom(hexToBytes(MintPublishService.SINGLETON_MOD_HASH)),
+      clvm.atom(hexToBytes(args.poolSingletonLauncherId)),
+      clvm.atom(hexToBytes(args.poolSingletonLauncherPuzzleHash)),
       clvm.atom(hexToBytes(args.p2PoolModHash)),
       clvm.atom(hexToBytes(args.p2VaultModHash)),
     ]);

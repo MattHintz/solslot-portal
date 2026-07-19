@@ -61,6 +61,8 @@ interface Inputs {
   protocol_did_puzhash: string;
   protocol_did_inner_puzhash: string;
   governance_singleton_struct_hex: string;
+  pool_singleton_launcher_id: string;
+  pool_singleton_launcher_puzzle_hash: string;
   p2_pool_mod_hash: string;
   p2_vault_mod_hash: string;
   property_registry_puzzle_hash: string;
@@ -296,6 +298,8 @@ function builderArgsFromFixture(f: FixtureFile) {
     protocolDidPuzhash: f.inputs.protocol_did_puzhash,
     protocolDidInnerPuzhash: f.inputs.protocol_did_inner_puzhash,
     governanceSingletonStructHex: f.inputs.governance_singleton_struct_hex,
+    poolSingletonLauncherId: f.inputs.pool_singleton_launcher_id,
+    poolSingletonLauncherPuzzleHash: f.inputs.pool_singleton_launcher_puzzle_hash,
     p2PoolModHash: f.inputs.p2_pool_mod_hash,
     p2VaultModHash: f.inputs.p2_vault_mod_hash,
     propertyRegistryPuzzleHash: f.inputs.property_registry_puzzle_hash,

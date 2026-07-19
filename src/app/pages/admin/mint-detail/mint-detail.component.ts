@@ -26,6 +26,7 @@ import {
   AssemblePublishArgsResult,
   PublishMintArgsAssemblerService,
 } from '../../../services/mint-proposal-v2/publish-mint-args-assembler.service';
+import { MintPublishService } from '../../../services/mint-proposal-v2/mint-publish.service';
 import { PropertyRegistryRegistrationMaterialService } from '../../../services/mint-proposal-v2/property-registry-registration-material.service';
 import { environment } from '../../../../environments/environment';
 import { formatError } from '../../../utils/format-error';
@@ -1242,6 +1243,8 @@ export class MintDetailComponent {
         protocolDidPuzhash: environment.solslotProtocol.protocolDidPuzhash,
         protocolDidInnerPuzhash: environment.solslotProtocol.protocolDidInnerPuzhash,
         governanceSingletonStructHex: environment.solslotProtocol.governanceSingletonStructHex,
+        poolSingletonLauncherId: environment.solslotProtocol.poolLauncherId,
+        poolSingletonLauncherPuzzleHash: MintPublishService.SINGLETON_LAUNCHER_HASH,
         p2PoolModHash: environment.solslotProtocol.p2PoolModHash,
         p2VaultModHash: environment.solslotProtocol.p2VaultModHash,
         propertyRegistryPuzzleHash: this.preflightPropertyRegistryPuzzleHash(),

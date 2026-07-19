@@ -13,6 +13,7 @@ import {
   MintPublishProtocolContext,
   PublishMintArgsAssemblerService,
 } from './publish-mint-args-assembler.service';
+import { MintPublishService } from './mint-publish.service';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,8 @@ const VALID_CTX: MintPublishProtocolContext = {
   protocolDidPuzhash: '0x' + 'a3'.repeat(32),
   protocolDidInnerPuzhash: '0x' + 'a8'.repeat(32),
   governanceSingletonStructHex: '0xffbb',
+  poolSingletonLauncherId: '0x' + 'a9'.repeat(32),
+  poolSingletonLauncherPuzzleHash: MintPublishService.SINGLETON_LAUNCHER_HASH,
   p2PoolModHash: '0x' + 'a4'.repeat(32),
   p2VaultModHash: '0x' + 'a5'.repeat(32),
   propertyRegistryPuzzleHash: '0x' + 'a7'.repeat(32),
@@ -120,6 +123,10 @@ describe('PublishMintArgsAssemblerService', () => {
     expect(args.protocolDidPuzhash).toBe(VALID_CTX.protocolDidPuzhash);
     expect(args.protocolDidInnerPuzhash).toBe(VALID_CTX.protocolDidInnerPuzhash);
     expect(args.governanceSingletonStructHex).toBe(VALID_CTX.governanceSingletonStructHex);
+    expect(args.poolSingletonLauncherId).toBe(VALID_CTX.poolSingletonLauncherId);
+    expect(args.poolSingletonLauncherPuzzleHash).toBe(
+      VALID_CTX.poolSingletonLauncherPuzzleHash,
+    );
     expect(args.p2PoolModHash).toBe(VALID_CTX.p2PoolModHash);
     expect(args.p2VaultModHash).toBe(VALID_CTX.p2VaultModHash);
     expect(args.propertyRegistryPuzzleHash).toBe(VALID_CTX.propertyRegistryPuzzleHash);
@@ -185,6 +192,8 @@ describe('PublishMintArgsAssemblerService', () => {
             protocolDidPuzhash: '   ',
             protocolDidInnerPuzhash: '',
             governanceSingletonStructHex: '',
+            poolSingletonLauncherId: '',
+            poolSingletonLauncherPuzzleHash: '',
             p2PoolModHash: '',
             p2VaultModHash: VALID_CTX.p2VaultModHash,
             propertyRegistryPuzzleHash: '',
@@ -198,6 +207,8 @@ describe('PublishMintArgsAssemblerService', () => {
         'protocolDidPuzhash',
         'protocolDidInnerPuzhash',
         'governanceSingletonStructHex',
+        'poolSingletonLauncherId',
+        'poolSingletonLauncherPuzzleHash',
         'p2PoolModHash',
         'propertyRegistryPuzzleHash',
       ]);
