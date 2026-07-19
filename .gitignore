@@ -41,10 +41,10 @@ testem.log
 /typings
 __screenshots__/
 
-# Chia WASM binary — auto-copied from node_modules/chia-wallet-sdk-wasm
-# by scripts/copy-chia-wasm.mjs (postinstall).  5.4MB, no value in
-# tracking in git since `npm install` regenerates it identically.
+# Keep unrelated generated WASM ignored, but commit the release-critical Chia
+# Wallet SDK binary so clean CI and production builds are reproducible.
 /src/assets/chia_wasm/*.wasm
+!/src/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm
 
 # System files
 .DS_Store

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -11,6 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 JS_PATH = ROOT / "src" / "assets" / "chia_wasm" / "chia_wallet_sdk_wasm_bg.js"
 DTS_PATH = ROOT / "src" / "assets" / "chia_wasm" / "chia_wallet_sdk_wasm.d.ts"
+WASM_PATH = ROOT / "src" / "assets" / "chia_wasm" / "chia_wallet_sdk_wasm_bg.wasm"
+WASM_SHA256 = "89ed323a034df2f074f637314d1b1c727113dc6100568d94d722fcdce45cdf48"
 
 REQUIRED_EXPORTS = (
     "eip712TypeHash",
@@ -41,6 +44,10 @@ def main() -> int:
         failures.append(f"{JS_PATH}: missing {', '.join(js_missing)}")
     if dts_missing:
         failures.append(f"{DTS_PATH}: missing {', '.join(dts_missing)}")
+    if not WASM_PATH.exists():
+        failures.append(f"{WASM_PATH}: missing")
+    elif hashlib.sha256(WASM_PATH.read_bytes()).hexdigest() != WASM_SHA256:
+        failures.append(f"{WASM_PATH}: SHA-256 mismatch")
 
     if failures:
         for failure in failures:
