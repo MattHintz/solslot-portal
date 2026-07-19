@@ -78,6 +78,19 @@
               "baseHref": "/genesis-admin/",
               "outputHashing": "all"
             },
+            "ceremony-locked": {
+              "optimization": {
+                "fonts": false
+              },
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.ceremony-locked.ts"
+                }
+              ],
+              "baseHref": "/genesis-admin/",
+              "outputHashing": "all"
+            },
             "development": {
               "optimization": false,
               "extractLicenses": false,

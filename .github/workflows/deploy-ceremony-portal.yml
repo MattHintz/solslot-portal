@@ -1,0 +1,211 @@
+name: Ceremony Portal Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deployment environment."
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      release_sha:
+        description: "Exact 40-character admin-portal commit SHA."
+        required: true
+        type: string
+      rollback_release:
+        description: "Previously verified 40-character release SHA to reactivate."
+        required: false
+        type: string
+
+concurrency:
+  group: ceremony-portal-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ inputs.rollback_release == '' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+
+      - name: Verify exact source
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.release_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "${{ inputs.release_sha }}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install and validate
+        run: |
+          set -euo pipefail
+          npm ci
+          python3 scripts/check_namespace.py
+          npm run security:headers
+          npm run security:eip712-exports
+          npm audit --omit=dev --audit-level=high
+          npm test -- --watch=false --browsers=ChromeHeadless
+
+      - name: Build ceremony portal
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.target }}" = "production" ]; then
+            npm run build:ceremony-locked
+          else
+            npm run build:ceremony
+          fi
+          out="dist/solslot-portal/browser"
+          test -f "$out/index.html"
+          node - "$out/release.json" <<'NODE'
+          const fs = require("fs");
+          const output = process.argv[2];
+          fs.writeFileSync(output, JSON.stringify({
+            schemaVersion: 1,
+            release: "solslot-v2-alpha-rc17-20260719",
+            repository: process.env.GITHUB_REPOSITORY,
+            commit: "${{ inputs.release_sha }}",
+            environment: "${{ inputs.target }}",
+            baseHref: "/genesis-admin/",
+            testOnly: true,
+            auditStatus: "pending-external-review",
+            serverWritesExpectedLocked: true,
+            mintingExpectedLocked: true,
+            ceremonyModeExpectedLocked: true
+          }, null, 2) + "\n");
+          NODE
+          cat > "$out/.htaccess" <<'EOF'
+          Options -Indexes
+          RewriteEngine On
+          RewriteBase /genesis-admin/
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteRule ^ index.html [L]
+          Header always set X-Content-Type-Options "nosniff"
+          Header always set Referrer-Policy "no-referrer"
+          Header always set X-Frame-Options "DENY"
+          Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+          Header always set Content-Security-Policy "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+          EOF
+          tar --sort=name --mtime="@$(git show -s --format=%ct HEAD)" \
+            --owner=0 --group=0 --numeric-owner -czf \
+            "solslot-admin-${{ inputs.release_sha }}.tgz" -C "$out" .
+          sha256sum "solslot-admin-${{ inputs.release_sha }}.tgz" \
+            > "solslot-admin-${{ inputs.release_sha }}.tgz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solslot-admin-${{ inputs.release_sha }}
+          path: |
+            solslot-admin-${{ inputs.release_sha }}.tgz
+            solslot-admin-${{ inputs.release_sha }}.tgz.sha256
+          retention-days: 30
+
+      - name: Upload release
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          source: "solslot-admin-${{ inputs.release_sha }}.tgz,solslot-admin-${{ inputs.release_sha }}.tgz.sha256"
+          target: /tmp
+
+  deploy:
+    if: ${{ inputs.rollback_release == '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    steps:
+      - name: Activate ceremony portal
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          script: |
+            set -euo pipefail
+            sha="${{ inputs.release_sha }}"
+            root="${{ vars.SOLSLOT_ADMIN_RELEASE_ROOT }}"
+            public_url="${{ vars.SOLSLOT_ADMIN_PUBLIC_URL }}"
+            expected_host="${{ vars.SOLSLOT_ADMIN_EXPECTED_HOSTNAME }}"
+            archive="/tmp/solslot-admin-$sha.tgz"
+            release_dir="$root/releases/$sha"
+            test -n "$root"
+            test -n "$public_url"
+            test -n "$expected_host"
+            test "$(hostname)" = "$expected_host"
+            cd /tmp
+            sha256sum -c "$(basename "$archive").sha256"
+            sudo mkdir -p "$root/releases"
+            if [ ! -f "$release_dir/.release-ready" ]; then
+              sudo rm -rf "$release_dir"
+              sudo mkdir -p "$release_dir"
+              sudo tar -xzf "$archive" -C "$release_dir"
+              python3 - "$release_dir/release.json" "$sha" <<'PY'
+            import json, sys
+            release = json.load(open(sys.argv[1], encoding="utf-8"))
+            assert release["commit"] == sys.argv[2]
+            assert release["serverWritesExpectedLocked"] is True
+            assert release["mintingExpectedLocked"] is True
+            assert release["ceremonyModeExpectedLocked"] is True
+            PY
+              sudo touch "$release_dir/.release-ready"
+            fi
+            previous="$(readlink -f "$root/current" || true)"
+            sudo ln -sfn "$release_dir" "$root/current.next"
+            sudo mv -Tf "$root/current.next" "$root/current"
+            sudo systemctl reload apache2
+            if ! curl -fsS "$public_url/release.json" \
+              | python3 -c 'import json,sys; assert json.load(sys.stdin)["commit"] == "${{ inputs.release_sha }}"'; then
+              if [ -n "$previous" ] && [ -f "$previous/.release-verified" ]; then
+                sudo ln -sfn "$previous" "$root/current.next"
+                sudo mv -Tf "$root/current.next" "$root/current"
+                sudo systemctl reload apache2
+              fi
+              exit 1
+            fi
+            sudo touch "$release_dir/.release-verified"
+            current="$(readlink -f "$root/current")"
+            mapfile -t old < <(find "$root/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | awk 'NR>5 {print $2}')
+            for candidate in "${old[@]}"; do
+              [ "$candidate" = "$current" ] || sudo rm -rf "$candidate"
+            done
+
+  rollback:
+    if: ${{ inputs.rollback_release != '' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    steps:
+      - name: Reactivate verified ceremony portal
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          script: |
+            set -euo pipefail
+            sha="${{ inputs.rollback_release }}"
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+            root="${{ vars.SOLSLOT_ADMIN_RELEASE_ROOT }}"
+            release_dir="$root/releases/$sha"
+            test -f "$release_dir/.release-ready"
+            test -f "$release_dir/.release-verified"
+            sudo ln -sfn "$release_dir" "$root/current.next"
+            sudo mv -Tf "$root/current.next" "$root/current"
+            sudo systemctl reload apache2
+            curl -fsS "${{ vars.SOLSLOT_ADMIN_PUBLIC_URL }}/release.json" \
+              | python3 -c 'import json,sys; assert json.load(sys.stdin)["commit"] == "${{ inputs.rollback_release }}"'
