@@ -8,6 +8,7 @@
     "dev:stack": "node scripts/dev-stack.mjs",
     "build": "ng build",
     "build:ceremony": "ng build --configuration ceremony",
+    "security:headers": "python3 scripts/check_static_headers.py",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "postinstall": "node scripts/copy-chia-wasm.mjs",
