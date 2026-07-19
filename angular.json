@@ -32,7 +32,7 @@
               {
                 "glob": "**/*.wasm",
                 "input": "src/assets/chia_wasm",
-                "output": "/assets/chia_wasm"
+                "output": "assets/chia_wasm"
               }
             ],
             "styles": ["src/styles.scss"]
@@ -131,7 +131,7 @@
               {
                 "glob": "**/*.wasm",
                 "input": "src/assets/chia_wasm",
-                "output": "/assets/chia_wasm"
+                "output": "assets/chia_wasm"
               }
             ],
             "styles": ["src/styles.scss"]
