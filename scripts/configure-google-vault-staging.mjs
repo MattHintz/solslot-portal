@@ -27,7 +27,7 @@ if (run('git', ['status', '--porcelain']).trim()) {
 const repository = run('gh', ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']).trim();
 run('gh', ['api', `repos/${repository}/commits/${args['release-sha']}`]);
 const workflowRef = currentPushedBranch(repository, args['release-sha']);
-run('gh', ['workflow', 'view', 'deploy-ceremony-portal.yml', '--ref', workflowRef]);
+run('gh', ['workflow', 'view', 'deploy-ceremony-portal.yml', '--ref', workflowRef, '--yaml']);
 
 // This enables only the Drive API. Browser OAuth-client origins, consent mode,
 // authorized domain, and test users are deliberately console-managed prerequisites.
