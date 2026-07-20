@@ -515,18 +515,28 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
               </button>
             }
             @if (canExecute()) {
-              <button
-                class="btn btn--primary"
-                type="button"
-                (click)="execute()"
-                [disabled]="executeBusy()"
-              >
-                @if (executeBusy()) {
-                  Executing&hellip;
-                } @else {
-                  Execute
-                }
-              </button>
+              <div class="w-full rounded-card border border-cyan-400/30 bg-cyan-400/10 p-3 text-xs text-cyan-100">
+                <div class="font-display text-sm mb-1">Artifact-bound MINT co-signature</div>
+                <p>
+                  Your wallet signs the canonical five-spend execution bundle. The coordinator can
+                  attach one additional signature only for this verified governance MINT condition;
+                  it cannot sign a transfer, vote, or any other protocol action.
+                </p>
+                <div class="mt-3 flex justify-end">
+                  <button
+                    class="btn btn--primary"
+                    type="button"
+                    (click)="execute()"
+                    [disabled]="executeBusy()"
+                  >
+                    @if (executeBusy()) {
+                      Executing&hellip;
+                    } @else {
+                      Execute
+                    }
+                  </button>
+                </div>
+              </div>
             }
           </section>
 
@@ -929,6 +939,9 @@ export class MintDetailComponent {
         ? 'Execute submitted.'
         : 'Execute returned a chain rejection.';
     }
+    if (result.kind === 'kos-signer-unavailable') {
+      return 'MINT co-signer unavailable. The bundle was not submitted.';
+    }
     return `Execute stopped: ${result.kind}.`;
   }
 
@@ -937,6 +950,9 @@ export class MintDetailComponent {
       return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200';
     }
     if (result.kind === 'submitted') {
+      return 'border-amber-500/40 bg-amber-500/10 text-amber-200';
+    }
+    if (result.kind === 'kos-signer-unavailable') {
       return 'border-amber-500/40 bg-amber-500/10 text-amber-200';
     }
     return 'border-red-500/40 bg-red-500/10 text-red-300';

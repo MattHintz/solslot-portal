@@ -187,6 +187,7 @@ function artifact(): SolslotPublicArtifact {
       treeHash: hex(14),
       launcherId: launchers.governance,
       serialized: '0xff80',
+      mintExecuteCosignerPubkey: `0x${'2b'.repeat(48)}`,
     },
     protocolDid: {
       launcherId: launchers.did,

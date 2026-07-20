@@ -184,6 +184,7 @@ async function verifyArtifact(
     artifact.governanceStruct?.launcherId?.toLowerCase() !==
       artifact.launcherIds.governance.toLowerCase() ||
     !HEX_PROGRAM.test(artifact.governanceStruct?.serialized || '') ||
+    !HEX_48.test(artifact.governanceStruct?.mintExecuteCosignerPubkey || '') ||
     artifact.propertyRegistry?.launcherId?.toLowerCase() !==
       artifact.launcherIds.propertyRegistry.toLowerCase() ||
     artifact.propertyRegistry?.currentPuzzleHash?.toLowerCase() !==

@@ -68,6 +68,7 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
       treeHash: HASH('29'),
       launcherId: HASH('13'),
       serialized: '0xff80',
+      mintExecuteCosignerPubkey: `0x${'2b'.repeat(48)}`,
     },
     protocolDid: {
       launcherId: HASH('12'),

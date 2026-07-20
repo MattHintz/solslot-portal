@@ -403,6 +403,7 @@ export interface SolslotPublicArtifact {
     treeHash: string;
     launcherId: string;
     serialized: string;
+    mintExecuteCosignerPubkey: string;
   };
   protocolDid: {
     launcherId: string;

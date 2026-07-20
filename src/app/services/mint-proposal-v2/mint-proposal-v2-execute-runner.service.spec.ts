@@ -197,6 +197,19 @@ describe('MintProposalV2ExecuteRunnerService', () => {
     expect(wallet.signSpendBundle).not.toHaveBeenCalled();
   });
 
+  it('labels an unavailable artifact-bound MINT co-signer without retrying the bundle', async () => {
+    api.executeProposal.and.rejectWith({
+      status: 503,
+      error: { detail: 'MINT execution co-signer is unavailable; no bundle was submitted.' },
+    });
+
+    const result = await service.executeMint(proposal());
+
+    expect(result.kind).toBe('kos-signer-unavailable');
+    expect(api.executeProposal).toHaveBeenCalledTimes(1);
+    expect(wallet.signSpendBundle).toHaveBeenCalledTimes(1);
+  });
+
   function proposal() {
     return {
       id: 'mint-draft-1',

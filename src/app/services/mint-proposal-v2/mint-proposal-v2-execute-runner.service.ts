@@ -196,6 +196,13 @@ export class MintProposalV2ExecuteRunnerService {
       try {
         apiResponse = await this.api.executeProposal(spendBundle, proposal.id);
       } catch (e) {
+        if (isKosMintExecuteSignerUnavailable(e)) {
+          return {
+            kind: 'kos-signer-unavailable',
+            error: formatError(e),
+            signedBundle,
+          };
+        }
         return {
           kind: 'submit-failed',
           error: formatError(e),
@@ -296,6 +303,7 @@ export type ExecuteMintResult =
   | { kind: 'property-registry-unavailable'; error: string }
   | { kind: 'spend-builder-failed'; error: string }
   | { kind: 'sign-failed'; error: string }
+  | { kind: 'kos-signer-unavailable'; error: string; signedBundle: SignedSpendBundle }
   | { kind: 'submit-failed'; error: string; signedBundle: SignedSpendBundle }
   | {
       kind: 'submitted';
@@ -452,6 +460,20 @@ function is48(value: string): boolean {
 
 function formatError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function isKosMintExecuteSignerUnavailable(e: unknown): boolean {
+  if (!e || typeof e !== 'object' || !('status' in e)) return false;
+  const response = e as { status?: unknown; error?: unknown };
+  if (response.status !== 503) return false;
+  const body = response.error;
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    'detail' in body &&
+    typeof (body as { detail?: unknown }).detail === 'string' &&
+    (body as { detail: string }).detail.includes('co-signer')
+  );
 }
 
 interface ProgramShape {
