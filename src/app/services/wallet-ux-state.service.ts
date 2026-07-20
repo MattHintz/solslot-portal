@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 
-export type LastWalletKind = 'evm' | 'chia';
+export type LastWalletKind = 'evm' | 'chia' | 'google';
 
 interface StoredWalletUxState {
   version: 2;
@@ -49,5 +49,5 @@ export class WalletUxStateService {
 }
 
 function isLastWalletKind(value: unknown): value is LastWalletKind {
-  return value === 'evm' || value === 'chia';
+  return value === 'evm' || value === 'chia' || value === 'google';
 }

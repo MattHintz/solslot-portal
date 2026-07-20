@@ -52,12 +52,14 @@ export class HeaderComponent {
   }
 
   async disconnect(): Promise<void> {
-    const [{ EvmWalletService }, { ChiaWalletService }] = await Promise.all([
+    const [{ EvmWalletService }, { ChiaWalletService }, { GoogleDriveVaultService }] = await Promise.all([
       import('../../services/evm-wallet.service'),
       import('../../services/chia-wallet.service'),
+      import('../../services/google-drive-vault.service'),
     ]);
     await this.injector.get(EvmWalletService).disconnect();
     this.injector.get(ChiaWalletService).disconnect();
+    await this.injector.get(GoogleDriveVaultService).disconnect();
     this.session.clear();
   }
 }

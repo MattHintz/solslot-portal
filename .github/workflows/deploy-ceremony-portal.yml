@@ -28,6 +28,9 @@ jobs:
     if: ${{ inputs.rollback_release == '' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.target }}
+    env:
+      SOLSLOT_GOOGLE_VAULT_ENABLED: ${{ vars.SOLSLOT_GOOGLE_VAULT_ENABLED || 'false' }}
+      SOLSLOT_GOOGLE_OAUTH_CLIENT_ID: ${{ vars.SOLSLOT_GOOGLE_OAUTH_CLIENT_ID || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,6 +58,7 @@ jobs:
           python3 scripts/check_namespace.py
           npm run security:headers
           npm run security:eip712-exports
+          npm run security:google-bls
           npm audit --omit=dev --audit-level=high
           npm test -- --watch=false --browsers=ChromeHeadless
 
@@ -68,7 +72,8 @@ jobs:
           fi
           out="dist/solslot-portal/browser"
           test -f "$out/index.html"
-          node - "$out/release.json" <<'NODE'
+          runtime_config_sha256="$(sha256sum src/environments/google-vault-runtime.ts | awk '{print $1}')"
+          RUNTIME_CONFIG_SHA256="$runtime_config_sha256" node - "$out/release.json" <<'NODE'
           const fs = require("fs");
           const output = process.argv[2];
           fs.writeFileSync(output, JSON.stringify({
@@ -82,22 +87,12 @@ jobs:
             auditStatus: "pending-external-review",
             serverWritesExpectedLocked: true,
             mintingExpectedLocked: true,
-            ceremonyModeExpectedLocked: true
+            ceremonyModeExpectedLocked: true,
+            googleVaultEnabled: process.env.SOLSLOT_GOOGLE_VAULT_ENABLED === "true",
+            googleVaultRuntimeConfigSha256: process.env.RUNTIME_CONFIG_SHA256
           }, null, 2) + "\n");
           NODE
-          cat > "$out/.htaccess" <<'EOF'
-          Options -Indexes
-          RewriteEngine On
-          RewriteBase /genesis-admin/
-          RewriteCond %{REQUEST_FILENAME} !-f
-          RewriteCond %{REQUEST_FILENAME} !-d
-          RewriteRule ^ index.html [L]
-          Header always set X-Content-Type-Options "nosniff"
-          Header always set Referrer-Policy "no-referrer"
-          Header always set X-Frame-Options "DENY"
-          Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
-          Header always set Content-Security-Policy "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
-          EOF
+          node scripts/render-apache-headers.mjs --output "$out/.htaccess" --base-href /genesis-admin/
           tar --sort=name --mtime="@$(git show -s --format=%ct HEAD)" \
             --owner=0 --group=0 --numeric-owner -czf \
             "solslot-admin-${{ inputs.release_sha }}.tgz" -C "$out" .

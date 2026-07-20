@@ -2,6 +2,7 @@ import { Injectable, signal, computed, inject } from '@angular/core';
 import SignClient from '@walletconnect/sign-client';
 
 import { ChiaWasmService } from './chia-wasm.service';
+import { GoogleBlsWalletService } from './google-bls-wallet.service';
 import { environment } from '../../environments/environment';
 import { mojoAmountToSafeNumber } from '../utils/mojo-amount';
 
@@ -40,6 +41,7 @@ const SAGE_WALLETCONNECT_SIGN_COIN_METHODS = [
 @Injectable({ providedIn: 'root' })
 export class ChiaWalletService {
   private readonly chiaWasm = inject(ChiaWasmService);
+  private readonly googleWallet = inject(GoogleBlsWalletService);
   private readonly _state = signal<ChiaState>({ kind: 'disconnected' });
   private readonly _sageWalletConnectUri = signal<string | null>(null);
   private readonly _restoringSageWalletConnect = signal(false);
@@ -73,6 +75,13 @@ export class ChiaWalletService {
 
   hasSageWalletConnect(): boolean {
     return true;
+  }
+
+  connectGoogle(mnemonic: string, expectedPublicKey?: string): string {
+    this.cancelPendingConnection();
+    const pubkey = this.googleWallet.unlock(mnemonic, expectedPublicKey);
+    this._state.set({ kind: 'connected', pubkey, connection: 'google' });
+    return pubkey;
   }
 
   /** Connect to Goby (browser extension). */
@@ -245,6 +254,10 @@ export class ChiaWalletService {
     const state = this._state();
     if (state.kind !== 'connected') throw new Error('Not connected');
 
+    if (state.connection === 'google') {
+      return this.googleWallet.signChip0002Message(message);
+    }
+
     if (state.connection === 'goby') {
       const goby = (window as WindowWithChia).chia;
       if (!goby) throw new Error('Goby no longer available');
@@ -309,6 +322,16 @@ export class ChiaWalletService {
     // Wallet wire format: snake_case fields, hex-encoded values.  Both
     // Goby and Sage's CHIP-0002 implementations use this exact shape;
     // see https://chialisp.com/chips/chip-0002 for the canonical spec.
+    if (state.connection === 'google') {
+      if (!environment.googleVaultEnabled || environment.chiaNetwork !== 'testnet11') {
+        throw new Error('Google Vault signing is available only in the enabled Testnet11 deployment.');
+      }
+      if (!reviewGoogleVaultSpend(coinSpends)) {
+        throw new Error('Google Vault signing was cancelled during transaction review.');
+      }
+      return this.googleWallet.signSpendBundle(coinSpends);
+    }
+
     const wireSpends = coinSpends.map((cs) => ({
       coin: {
         parent_coin_info: normalizeHex(cs.coin.parentCoinInfo),
@@ -858,6 +881,7 @@ export class ChiaWalletService {
   }
 
   disconnect(): void {
+    this.googleWallet.lock();
     this._state.set({ kind: 'disconnected' });
     this.sageWcSession = null;
     this.sageWcBridge = null;
@@ -865,12 +889,24 @@ export class ChiaWalletService {
   }
 }
 
+function reviewGoogleVaultSpend(coinSpends: ReadonlyArray<UnsignedCoinSpend>): boolean {
+  const coins = coinSpends
+    .map((spend) => `${normalizeHex(spend.coin.parentCoinInfo).slice(0, 18)}... (${spend.coin.amount} mojos)`)
+    .join('\n');
+  return window.confirm(
+    'Google Vault Testnet11 signing review\n\n' +
+      `You are approving ${coinSpends.length} coin spend(s):\n${coins}\n\n` +
+      'This browser wallet holds its BLS key in page memory while unlocked. A compromised page or browser extension can request signatures. Review the transaction outside this dialog when possible.\n\n' +
+      'Approve this testnet-only signature?',
+  );
+}
+
 export type ChiaState =
   | { kind: 'disconnected' }
   | {
       kind: 'connected';
       pubkey: string;
-      connection: 'goby' | 'sage' | 'sage-walletconnect';
+      connection: 'goby' | 'sage' | 'sage-walletconnect' | 'google';
     };
 
 interface ChiaInjected {

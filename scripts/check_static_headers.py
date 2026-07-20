@@ -45,6 +45,14 @@ def main() -> int:
     csp = headers.get("content-security-policy", "")
     if "frame-ancestors 'none'" not in csp:
         failures.append("Content-Security-Policy must include frame-ancestors 'none'")
+    required_google_origins = (
+        "https://accounts.google.com",
+        "https://oauth2.googleapis.com",
+        "https://www.googleapis.com",
+    )
+    for origin in required_google_origins:
+        if origin not in csp:
+            failures.append(f"Content-Security-Policy must include {origin} for Google Vault")
     if headers.get("x-frame-options", "").upper() != "DENY":
         failures.append("X-Frame-Options must be DENY")
     if headers.get("x-content-type-options", "").lower() != "nosniff":

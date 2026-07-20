@@ -64,6 +64,9 @@ export class SessionService {
         !parsed.authType ||
         !parsed.address ||
         !parsed.vaultLauncherId ||
+        (parsed.walletSource !== undefined &&
+          parsed.walletSource !== 'chia' &&
+          parsed.walletSource !== 'google') ||
         typeof parsed.createdAt !== 'number'
       ) {
         localStorage.removeItem(STORAGE_KEY);
@@ -90,7 +93,11 @@ export class SessionService {
     });
   }
 
-  setChiaSession(pubkey: string, vaultLauncherId: string): void {
+  setChiaSession(
+    pubkey: string,
+    vaultLauncherId: string,
+    walletSource: 'chia' | 'google' = 'chia',
+  ): void {
     this.session.set({
       schemaVersion: 2,
       protocolVersion: environment.protocolVersion,
@@ -100,6 +107,7 @@ export class SessionService {
       address: pubkey,
       vaultLauncherId,
       compressedPubkey: pubkey,  // BLS: address IS the pubkey
+      walletSource,
       createdAt: Date.now(),
     });
   }
@@ -216,5 +224,6 @@ export interface PersistedSession {
    * Optional because not every supported wallet exposes a compressed key.
    */
   compressedPubkey?: string;
+  walletSource?: 'chia' | 'google';
   createdAt: number;
 }

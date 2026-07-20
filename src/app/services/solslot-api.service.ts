@@ -240,6 +240,8 @@ export interface ChallengeResponse {
    * signTypedData_v4.  Only used for `auth_type === 'evm'`.
    */
   typed_data?: Eip712TypedData;
+  /** 32-byte registration payload a Chia wallet signs using CHIP-0002. */
+  message_hex?: string;
 }
 
 export interface Eip712TypedData {

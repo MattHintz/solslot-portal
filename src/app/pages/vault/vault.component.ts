@@ -2,6 +2,8 @@ import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
+import { ChiaWalletService } from '../../services/chia-wallet.service';
+import { GoogleDriveVaultService } from '../../services/google-drive-vault.service';
 import { SessionService } from '../../services/session.service';
 import {
   type VaultCredentialReceipt,
@@ -63,10 +65,29 @@ type CredentialState =
           <button class="btn" type="button" (click)="manualRefresh()" [disabled]="refreshing()">
             @if (refreshing()) { Refreshing... } @else { Refresh chain and receipt }
           </button>
+          <button class="btn btn--ghost" type="button" (click)="lockVault()">Sign out</button>
+          @if (session.session()!.walletSource === 'google') {
+            <button class="btn btn--ghost" type="button" (click)="revokeGoogleAccess()">
+              Revoke Google access
+            </button>
+          }
           <span class="mono text-xs text-text-muted">
             Polling every {{ pollCadenceSeconds() }}s
           </span>
         </div>
+
+        @if (googleLocked()) {
+          <div class="card mt-7 border-amber-400/30 bg-amber-400/5">
+            <div class="eyebrow">Google vault locked</div>
+            <p class="mt-2 text-sm text-text-muted">
+              Public vault data remains readable, but signing is disabled after a reload.
+              Sign in with Google and enter your recovery password to authorize owner actions.
+            </p>
+            <a class="btn btn--primary mt-4 inline-block" [routerLink]="['/connect']" [queryParams]="{ returnTo: '/vault' }">
+              Unlock Google vault
+            </a>
+          </div>
+        }
 
         @if (session.vault(); as vault) {
           <div class="card mt-7 grid gap-4 md:grid-cols-2">
@@ -188,6 +209,8 @@ type CredentialState =
 })
 export class VaultComponent implements OnDestroy {
   readonly session = inject(SessionService);
+  private readonly chia = inject(ChiaWalletService);
+  private readonly googleDrive = inject(GoogleDriveVaultService);
   private readonly route = inject(ActivatedRoute);
   private readonly receipts = inject(VaultCredentialReceiptService);
 
@@ -198,6 +221,11 @@ export class VaultComponent implements OnDestroy {
   readonly credentialError = signal<string | null>(null);
   readonly returnTo = signal<string | null>(
     safeReturnTo(this.route.snapshot.queryParamMap.get('returnTo')),
+  );
+  readonly googleLocked = computed(
+    () =>
+      this.session.session()?.walletSource === 'google' &&
+      this.chia.connectionKind() !== 'google',
   );
   readonly pending = computed(() => {
     const vault = this.session.vault();
@@ -239,6 +267,18 @@ export class VaultComponent implements OnDestroy {
   async manualRefresh(): Promise<void> {
     await this.refresh();
     this.reschedulePoll();
+  }
+
+  async lockVault(): Promise<void> {
+    this.chia.disconnect();
+    await this.googleDrive.disconnect();
+    this.session.clear();
+  }
+
+  async revokeGoogleAccess(): Promise<void> {
+    await this.googleDrive.revokeGoogleAccess();
+    this.chia.disconnect();
+    this.session.clear();
   }
 
   private async refresh(): Promise<void> {

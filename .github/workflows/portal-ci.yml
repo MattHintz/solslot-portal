@@ -27,6 +27,8 @@ jobs:
 
       - run: npm run security:eip712-exports
 
+      - run: npm run security:google-bls
+
       - run: npm audit --omit=dev --audit-level=high
 
       - run: npm run build -- --configuration staging

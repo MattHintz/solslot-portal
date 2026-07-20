@@ -112,13 +112,17 @@ export class CreateVaultComponent {
 
   readonly networkLabel = 'testnet11';
 
-  readonly via = computed<'evm' | 'chia'>(() => {
+  readonly via = computed<'evm' | 'chia' | 'google'>(() => {
     const q = this.route.snapshot.queryParamMap.get('via');
-    return q === 'chia' ? 'chia' : 'evm';
+    if (q === 'chia' || q === 'google') return q;
+    return 'evm';
   });
 
   viaLabel(): string {
-    return this.via() === 'evm' ? 'EVM wallet (EIP-712 signature)' : 'Chia wallet (BLS signature)';
+    if (this.via() === 'evm') return 'EVM wallet (EIP-712 signature)';
+    return this.via() === 'google'
+      ? 'Google vault (password-encrypted BLS wallet)'
+      : 'Chia wallet (BLS signature)';
   }
 
   signerAddress(): string | null {
@@ -218,7 +222,11 @@ export class CreateVaultComponent {
     if (existing) {
       this.phase.set('logging_in');
       this.launcherId.set(existing.vaultLauncherId);
-      this.session.setChiaSession(pk, existing.vaultLauncherId);
+      this.session.setChiaSession(
+        pk,
+        existing.vaultLauncherId,
+        this.via() === 'google' ? 'google' : 'chia',
+      );
       await this.session.refreshVault();
       await this.navigateAfterVaultLoaded();
       return;
@@ -226,9 +234,12 @@ export class CreateVaultComponent {
 
     this.phase.set('requesting_challenge');
     const challenge = await this.api.requestChallenge(pk, 'chia_bls');
+    if (!challenge.message_hex) {
+      throw new Error('Backend did not return a CHIP-0002 BLS registration message');
+    }
 
     this.phase.set('awaiting_signature');
-    const signature = await this.chia.signMessage(challenge.nonce);
+    const signature = await this.chia.signMessage(challenge.message_hex);
 
     this.phase.set('building_launcher');
     const res = await this.api.registerChiaVault({
@@ -239,7 +250,11 @@ export class CreateVaultComponent {
 
     this.phase.set('broadcasting');
     this.launcherId.set(res.vault_launcher_id);
-    this.session.setChiaSession(pk, res.vault_launcher_id);
+    this.session.setChiaSession(
+      pk,
+      res.vault_launcher_id,
+      this.via() === 'google' ? 'google' : 'chia',
+    );
 
     this.phase.set('waiting_confirmation');
     await this.session.refreshVault();
