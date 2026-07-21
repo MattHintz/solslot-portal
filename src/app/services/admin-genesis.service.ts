@@ -173,6 +173,7 @@ export interface GenesisSourceShas {
   protocol: string;
   evm: string;
   api: string;
+  legacyBackend: string;
   customerWeb: string;
   adminPortal: string;
 }

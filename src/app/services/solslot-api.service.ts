@@ -366,6 +366,7 @@ export interface SolslotPublicArtifact {
     protocol: string;
     evm: string;
     api: string;
+    legacyBackend: string;
     customerWeb: string;
     adminPortal: string;
   };

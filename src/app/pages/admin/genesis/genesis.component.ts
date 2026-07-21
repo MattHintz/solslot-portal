@@ -801,7 +801,14 @@ function parseJson<T>(value: string): T {
 
 function defaultSourceShasJson(): string {
   return JSON.stringify(
-    { protocol: '', evm: '', api: '', customerWeb: '', adminPortal: '' },
+    {
+      protocol: '',
+      evm: '',
+      api: '',
+      legacyBackend: '',
+      customerWeb: '',
+      adminPortal: '',
+    },
     null,
     2,
   );

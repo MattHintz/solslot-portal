@@ -32,7 +32,8 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
       protocol: '1'.repeat(40),
       evm: '2'.repeat(40),
       api: '3'.repeat(40),
-      customerWeb: '4'.repeat(40),
+      legacyBackend: '4'.repeat(40),
+      customerWeb: '5'.repeat(40),
       adminPortal: SOURCE_SHA,
     },
     ceremony: {

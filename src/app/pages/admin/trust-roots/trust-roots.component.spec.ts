@@ -162,8 +162,9 @@ function artifact(): SolslotPublicArtifact {
       protocol: '1'.repeat(40),
       evm: '2'.repeat(40),
       api: '3'.repeat(40),
-      customerWeb: '4'.repeat(40),
-      adminPortal: '5'.repeat(40),
+      legacyBackend: '4'.repeat(40),
+      customerWeb: '5'.repeat(40),
+      adminPortal: '6'.repeat(40),
     },
     ceremony: {
       ceremonyId: 'ceremony-1',
