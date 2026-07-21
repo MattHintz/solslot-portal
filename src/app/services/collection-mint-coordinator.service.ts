@@ -15,6 +15,7 @@ import { PublishMintArgsAssemblerService } from './mint-proposal-v2/publish-mint
 import { PropertyRegistryRegistrationMaterialService } from './mint-proposal-v2/property-registry-registration-material.service';
 import { PropertyDossierV1 } from './property-metadata/property-dossier';
 import { PropertyMetadataService } from './property-metadata/property-metadata.service';
+import { SolslotProtocolArtifactService } from './solslot-protocol-artifact.service';
 
 export interface CollectionMintPreview {
   proposalId: string;
@@ -37,6 +38,7 @@ export class CollectionMintCoordinatorService {
   private readonly metadata = inject(PropertyMetadataService);
   private readonly evmWallet = inject(EvmWalletService);
   private readonly eip712Leaf = inject(Eip712LeafHashService);
+  private readonly protocolArtifact = inject(SolslotProtocolArtifactService);
 
   async deriveOwnerMemberHash(): Promise<{ hash: string; address: string; pubkey: string }> {
     const { pubkey, address } = await this.evmWallet.recoverFirstAdminPubkey();
@@ -65,6 +67,32 @@ export class CollectionMintCoordinatorService {
     }
     const offering = dossier.offering;
     if (!offering) throw new Error('The sealed offering terms are missing.');
+    if (offering.currency !== 'USD') {
+      throw new Error('Primary SmartDeed pricing requires USD-denominated offering terms.');
+    }
+    const targetRaiseMinor = unsignedInteger(offering.targetRaiseMinor, 'target raise');
+    const purchaseNumerator = targetRaiseMinor * BigInt(deed.sharePpm);
+    if (purchaseNumerator % 1_000_000n !== 0n) {
+      throw new Error(`${deed.deedId} allocation does not resolve to a whole USD minor unit.`);
+    }
+    const primaryPurchaseUsdAmountMinor = purchaseNumerator / 1_000_000n;
+    if (
+      primaryPurchaseUsdAmountMinor <= 0n ||
+      primaryPurchaseUsdAmountMinor > BigInt(Number.MAX_SAFE_INTEGER)
+    ) {
+      throw new Error(
+        `${deed.deedId} primary purchase amount cannot be serialized exactly for publication.`,
+      );
+    }
+    const validatorSet = this.protocolArtifact.artifact?.validatorSet;
+    if (validatorSet?.threshold !== 2 || validatorSet.pubkeys.length !== 3) {
+      throw new Error('The signed protocol artifact does not contain the required 2-of-3 validator set.');
+    }
+    const protocolTreasuryPuzhash =
+      this.protocolArtifact.artifact?.puzzleHashes.protocolTreasuryPuzzleHash;
+    if (!/^0x[0-9a-f]{64}$/i.test(protocolTreasuryPuzhash || '')) {
+      throw new Error('The signed protocol artifact does not contain the protocol treasury puzzle hash.');
+    }
     const draft = proposalDraft(workspace, deed, dossier);
     const assembled = this.assembler.assemble({
       draft,
@@ -101,6 +129,10 @@ export class CollectionMintCoordinatorService {
       propertyRegistryPuzzleHash: registration.propertyRegistryPuzzleHash,
       propertyRegistryCoinSpend: registration.spend,
       metadataRoot: workspace.metadataRoot,
+      primaryPurchaseUsdAmountMinor,
+      primaryPurchaseValidatorPubkeys: [...validatorSet.pubkeys],
+      primaryPurchaseNetwork: environment.chiaNetwork,
+      primaryPurchaseProtocolTreasuryPuzhash: protocolTreasuryPuzhash,
       ...(workspace.metadataAnchorId
         ? { metadataAnchorId: workspace.metadataAnchorId }
         : { canonicalMetadataJson: commitment.canonicalJson }),
@@ -178,4 +210,11 @@ function safeInteger(value: string, label: string, allowZero = false): number {
     throw new Error(`${label} must be ${allowZero ? 'a non-negative' : 'a positive'} JavaScript-safe integer.`);
   }
   return parsed;
+}
+
+function unsignedInteger(value: string, label: string): bigint {
+  if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+    throw new Error(`${label} must be an unsigned decimal integer.`);
+  }
+  return BigInt(value);
 }

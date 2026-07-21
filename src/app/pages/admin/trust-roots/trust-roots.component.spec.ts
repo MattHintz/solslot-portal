@@ -177,6 +177,7 @@ function artifact(): SolslotPublicArtifact {
       poolInnerPuzzleHash: hex(11),
       didInnerPuzzleHash: hex(21),
       didFullPuzzleHash: hex(22),
+      protocolTreasuryPuzzleHash: hex(26),
       propertyRegistryFullPuzzleHash: hex(23),
       p2PoolModHash: hex(24),
       p2VaultModHash: hex(25),

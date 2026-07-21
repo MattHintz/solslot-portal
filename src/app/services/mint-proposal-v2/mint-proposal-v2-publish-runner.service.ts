@@ -219,6 +219,11 @@ export class MintProposalV2PublishRunnerService {
         propertyRegistryPuzzleHash: args.propertyRegistryPuzzleHash,
         metadataRoot: args.metadataRoot,
         metadataAnchorId: args.metadataAnchorId,
+        primaryPurchaseUsdAmountMinor: args.primaryPurchaseUsdAmountMinor,
+        primaryPurchaseValidatorPubkeys: args.primaryPurchaseValidatorPubkeys,
+        primaryPurchaseNetwork: args.primaryPurchaseNetwork,
+        primaryPurchaseProtocolTreasuryPuzhash:
+          args.primaryPurchaseProtocolTreasuryPuzhash,
       });
     } catch (err) {
       return {
@@ -433,6 +438,13 @@ export class MintProposalV2PublishRunnerService {
         ? {
             metadata_root: artifacts.metadataRoot,
             metadata_anchor_id: artifacts.metadataAnchorId,
+            ...(args.primaryPurchaseUsdAmountMinor !== undefined
+              ? {
+                  primary_purchase_usd_amount_minor: Number(
+                    args.primaryPurchaseUsdAmountMinor,
+                  ),
+                }
+              : {}),
           }
         : {}),
     };
@@ -608,6 +620,11 @@ export interface PublishMintArgs {
   metadataAnchorId?: string;
   /** Required only for the first deed; must already be RFC 8785 canonical. */
   canonicalMetadataJson?: string;
+  /** Exact governed USD-minor price used by the H-system quote artifact. */
+  primaryPurchaseUsdAmountMinor?: number | bigint;
+  primaryPurchaseValidatorPubkeys?: string[];
+  primaryPurchaseNetwork?: string;
+  primaryPurchaseProtocolTreasuryPuzhash?: string;
   /**
    * Full singleton CoinSpend for the current property-registry registration.
    * It must CREATE_PUZZLE_ANNOUNCEMENT(0x53 || propertyIdCanon) from the

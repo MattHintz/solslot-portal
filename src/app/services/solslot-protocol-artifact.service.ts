@@ -123,6 +123,9 @@ async function verifyArtifact(
   ) {
     throw new Error('The public artifact does not describe Solslot V2 testnet11.');
   }
+  if (!HEX_32.test(artifact.puzzleHashes.protocolTreasuryPuzzleHash || '')) {
+    throw new Error('The public artifact has no protocol treasury puzzle hash.');
+  }
   const reviewIsValid =
     (artifact.reviewClass === 'internal-engineering-testnet' &&
       artifact.testOnly === true &&

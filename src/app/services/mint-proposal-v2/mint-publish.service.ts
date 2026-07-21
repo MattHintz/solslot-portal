@@ -5,6 +5,7 @@ import { bytesToHex, coinId, hexToBytes } from '../../utils/chia-hash';
 
 import { MintProposalV2Service } from './mint-proposal-v2.service';
 import { MINT_OFFER_DELEGATE_PUZZLE_HEX } from './mint-offer-delegate.puzzle-hex';
+import { MINT_OFFER_DELEGATE_V2_PUZZLE_HEX } from './mint-offer-delegate-v2.puzzle-hex';
 import { PURCHASE_PAYMENT_PUZZLE_HEX } from './purchase-payment.puzzle-hex';
 import { SINGLETON_LAUNCHER_WITH_DID_PUZZLE_HEX } from './singleton-launcher-with-did.puzzle-hex';
 import { SMART_DEED_INNER_PUZZLE_HEX } from './smart-deed-inner.puzzle-hex';
@@ -84,6 +85,15 @@ export class MintPublishService {
    */
   static readonly SINGLETON_LAUNCHER_HASH =
     '0xeff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9';
+
+  static readonly PAYMENT_ESCROW_V1_MOD_HASH =
+    '0xfcb83cc6661e18d958acbb1de9bc5cc25022a1d2db7a6d5698199549402a3fe3';
+  static readonly CAT_MOD_HASH =
+    '0x37bef360ee858133b69d595a906dc45d01af50379dad515eb9518abb7c1d2a7a';
+  static readonly OFFER_MOD_HASH =
+    '0xcfbfdeed5c4ca2de3d0bf520b9cb4bb7743a359bd2e6a188d19ce7dffc21d3e7';
+  static readonly PRIMARY_PURCHASE_PROVIDER_ID =
+    '0x15807082c20217563e0ae963a629d073d512e19d56a935b129df947525278963';
 
   /**
    * Compute the DID-curried deed-launcher puzzle hash.
@@ -170,6 +180,11 @@ export class MintPublishService {
     metadataRoot?: string;
     /** First deed launcher id. Omit on the first proposal to bind to this launcher. */
     metadataAnchorId?: string;
+    /** Enables the H-system-priced, vault-bound primary purchase path. */
+    primaryPurchaseUsdAmountMinor?: number | bigint;
+    primaryPurchaseValidatorPubkeys?: string[];
+    primaryPurchaseNetwork?: string;
+    primaryPurchaseProtocolTreasuryPuzhash?: string;
   }): MintPublishArtifacts {
     const clvm = this.clvm();
 
@@ -214,17 +229,77 @@ export class MintPublishService {
     ]);
     const smartDeedInnerPuzhash = smartDeedInner.treeHash();
 
+    if (!args.metadataRoot && args.metadataAnchorId) {
+      throw new Error('metadataAnchorId cannot be supplied without metadataRoot');
+    }
+    const resolvedMetadataAnchorId = args.metadataRoot
+      ? args.metadataAnchorId ?? deedLauncherId
+      : undefined;
+
     // ── Step 3: mint-offer eve inner + deed_full_puzhash ──
     const purchasePaymentMod = clvm.deserialize(hexToBytes(PURCHASE_PAYMENT_PUZZLE_HEX));
     const purchasePaymentModHash = purchasePaymentMod.treeHash();
-
-    const mintOfferMod = clvm.deserialize(hexToBytes(MINT_OFFER_DELEGATE_PUZZLE_HEX));
-    const eveMintOfferInner = mintOfferMod.curry([
-      clvm.atom(smartDeedInnerPuzhash),
-      clvm.atom(purchasePaymentModHash),
-      clvm.int(BigInt(args.parValueMojos)),
-      clvm.atom(hexToBytes(args.protocolDidPuzhash)),
-    ]);
+    let eveMintOfferInner: ClvmProgramShape;
+    if (args.primaryPurchaseUsdAmountMinor === undefined) {
+      const mintOfferMod = clvm.deserialize(hexToBytes(MINT_OFFER_DELEGATE_PUZZLE_HEX));
+      eveMintOfferInner = mintOfferMod.curry([
+        clvm.atom(smartDeedInnerPuzhash),
+        clvm.atom(purchasePaymentModHash),
+        clvm.int(BigInt(args.parValueMojos)),
+        clvm.atom(hexToBytes(args.protocolDidPuzhash)),
+      ]);
+    } else {
+      if (!args.metadataRoot || !resolvedMetadataAnchorId) {
+        throw new Error('Primary purchase mints require metadataRoot and metadataAnchorId');
+      }
+      const usdAmountMinor = BigInt(args.primaryPurchaseUsdAmountMinor);
+      if (usdAmountMinor <= 0n || usdAmountMinor > 0xffff_ffff_ffff_ffffn) {
+        throw new Error('primaryPurchaseUsdAmountMinor must be a positive uint64');
+      }
+      const networkBytes = new TextEncoder().encode(args.primaryPurchaseNetwork ?? '');
+      if (networkBytes.length === 0 || networkBytes.length > 32) {
+        throw new Error('primaryPurchaseNetwork must be 1-32 UTF-8 bytes');
+      }
+      const validatorPubkeys = args.primaryPurchaseValidatorPubkeys ?? [];
+      if (
+        validatorPubkeys.length !== 3 ||
+        new Set(validatorPubkeys.map((value) => value.toLowerCase())).size !== 3
+      ) {
+        throw new Error('Primary purchase mints require three unique validator public keys');
+      }
+      const validatorAtoms = validatorPubkeys.map((value) => {
+        const pubkey = hexToBytes(value);
+        if (pubkey.length !== 48) {
+          throw new Error('Each primary purchase validator public key must be 48 bytes');
+        }
+        return clvm.atom(pubkey);
+      });
+      const mintOfferV2Mod = clvm.deserialize(hexToBytes(MINT_OFFER_DELEGATE_V2_PUZZLE_HEX));
+      const treasuryPuzhash = hexToBytes(args.primaryPurchaseProtocolTreasuryPuzhash ?? '');
+      if (treasuryPuzhash.length !== 32) {
+        throw new Error('Primary purchase mints require the signed protocol treasury puzzle hash');
+      }
+      eveMintOfferInner = mintOfferV2Mod.curry([
+        clvm.atom(smartDeedInnerPuzhash),
+        clvm.atom(hexToBytes(MintPublishService.PAYMENT_ESCROW_V1_MOD_HASH)),
+        clvm.atom(hexToBytes(args.p2VaultModHash)),
+        clvm.atom(hexToBytes(MintPublishService.SINGLETON_MOD_HASH)),
+        clvm.atom(hexToBytes(MintPublishService.SINGLETON_LAUNCHER_HASH)),
+        clvm.atom(hexToBytes(MintPublishService.CAT_MOD_HASH)),
+        clvm.atom(hexToBytes(MintPublishService.OFFER_MOD_HASH)),
+        clvm.atom(networkBytes),
+        clvm.atom(hexToBytes(deedLauncherId)),
+        clvm.atom(hexToBytes(args.collectionIdCanon)),
+        clvm.atom(hexToBytes(args.metadataRoot)),
+        clvm.atom(hexToBytes(resolvedMetadataAnchorId)),
+        clvm.int(BigInt(args.sharePpm)),
+        clvm.int(usdAmountMinor),
+        clvm.atom(treasuryPuzhash),
+        clvm.list(validatorAtoms),
+        clvm.int(2n),
+        clvm.atom(hexToBytes(MintPublishService.PRIMARY_PURCHASE_PROVIDER_ID)),
+      ]);
+    }
 
     // Deed full puzzle hash = singleton_top_layer.curry(struct, eve_inner).treeHash()
     const topLayerBytes = this.singletonTopLayerBytes();
@@ -234,12 +309,6 @@ export class MintPublishService {
     const deedFullPuzhash = deedFullPuzzle.treeHash();
 
     // ── Step 4: governance tracker proposal_hash + bill_op program ──
-    if (!args.metadataRoot && args.metadataAnchorId) {
-      throw new Error('metadataAnchorId cannot be supplied without metadataRoot');
-    }
-    const resolvedMetadataAnchorId = args.metadataRoot
-      ? args.metadataAnchorId ?? deedLauncherId
-      : undefined;
     // Extended bill appends metadata commitments. RC16 dispatch reads only
     // the unchanged leading fields while sha256tree commits to the full list.
     const billOpProgram = this.buildMintBillProgram({

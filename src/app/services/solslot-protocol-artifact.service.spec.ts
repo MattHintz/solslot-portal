@@ -59,6 +59,7 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
       sgtTailHash: HASH('23'),
       didInnerPuzzleHash: HASH('25'),
       didFullPuzzleHash: HASH('26'),
+      protocolTreasuryPuzzleHash: HASH('2a'),
       propertyRegistryInnerModHash: HASH('27'),
       propertyRegistryFullPuzzleHash: HASH('28'),
     },

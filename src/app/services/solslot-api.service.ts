@@ -393,6 +393,7 @@ export interface SolslotPublicArtifact {
     sgtTailHash?: string;
     didInnerPuzzleHash?: string;
     didFullPuzzleHash?: string;
+    protocolTreasuryPuzzleHash: string;
     propertyRegistryInnerModHash?: string;
     propertyRegistryFullPuzzleHash?: string;
     [key: string]: string | undefined;

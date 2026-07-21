@@ -252,6 +252,31 @@ describe('MintPublishService', () => {
       expect(a).toEqual(b);
     });
 
+    it('binds primary-purchase proceeds to the signed treasury puzzle hash', () => {
+      const base = {
+        ...builderArgsFromFixture(fixture),
+        metadataRoot: metadataFixture.metadataRoot,
+        primaryPurchaseUsdAmountMinor: 125_000,
+        primaryPurchaseValidatorPubkeys: ['11', '22', '33'].map(
+          (byte) => `0x${byte.repeat(48)}`,
+        ),
+        primaryPurchaseNetwork: 'testnet11',
+      };
+      const treasuryA = service.buildMintPublishArtifacts({
+        ...base,
+        primaryPurchaseProtocolTreasuryPuzhash: `0x${'d4'.repeat(32)}`,
+      });
+      const treasuryB = service.buildMintPublishArtifacts({
+        ...base,
+        primaryPurchaseProtocolTreasuryPuzhash: `0x${'d5'.repeat(32)}`,
+      });
+
+      expect(treasuryA.deedFullPuzhash).not.toBe(treasuryB.deedFullPuzhash);
+      expect(() => service.buildMintPublishArtifacts(base)).toThrowError(
+        /protocol treasury puzzle hash/,
+      );
+    });
+
     it('cross-binding: proposalHash = sha256tree(expanded MINT bill)', () => {
       // Reproduce the proposal hash computation outside the service via
       // the V2 service's CLVM accessor, as a sanity-cross-check that

@@ -195,6 +195,7 @@ export interface PublishProposalMetadataJson {
   voting_deadline: number;
   metadata_root?: string;
   metadata_anchor_id?: string;
+  primary_purchase_usd_amount_minor?: number;
 }
 
 interface CommitteeVoteApiResponseWire {
