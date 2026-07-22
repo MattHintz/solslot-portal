@@ -117,6 +117,7 @@ async function verifyArtifact(
 ): Promise<void> {
   if (
     artifact.schemaVersion !== 2 ||
+    artifact.sourceManifestVersion !== 3 ||
     artifact.protocolVersion !== 'solslot-v2' ||
     artifact.network !== 'testnet11' ||
     artifact.evmChainId !== 11155111
@@ -143,8 +144,20 @@ async function verifyArtifact(
     throw new Error('The public artifact hash does not match this admin release.');
   }
   const sourceShas = artifact.sourceShas;
+  const requiredSources = [
+    'protocol',
+    'evm',
+    'omnichain',
+    'api',
+    'legacyBackend',
+    'keyOfSolomon',
+    'samuel',
+    'customerWeb',
+    'adminPortal',
+  ];
   if (
     !sourceShas ||
+    Object.keys(sourceShas).sort().join(',') !== requiredSources.sort().join(',') ||
     Object.values(sourceShas).some((value) => !GIT_SHA.test(value)) ||
     sourceShas.adminPortal.toLowerCase() !== expectedSourceSha
   ) {

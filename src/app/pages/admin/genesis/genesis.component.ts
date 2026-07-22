@@ -804,8 +804,11 @@ function defaultSourceShasJson(): string {
     {
       protocol: '',
       evm: '',
+      omnichain: '',
       api: '',
       legacyBackend: '',
+      keyOfSolomon: '',
+      samuel: '',
       customerWeb: '',
       adminPortal: '',
     },

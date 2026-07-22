@@ -354,6 +354,7 @@ export interface ZkPassportEnrollmentRecord {
 
 export interface SolslotPublicArtifact {
   schemaVersion: 2;
+  sourceManifestVersion: 3;
   protocolVersion: 'solslot-v2';
   network: 'testnet11';
   evmChainId: 11155111;
@@ -365,8 +366,11 @@ export interface SolslotPublicArtifact {
   sourceShas: {
     protocol: string;
     evm: string;
+    omnichain: string;
     api: string;
     legacyBackend: string;
+    keyOfSolomon: string;
+    samuel: string;
     customerWeb: string;
     adminPortal: string;
   };

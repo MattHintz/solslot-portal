@@ -20,6 +20,7 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
   const wallets = ['01', '02', '03'].map((byte) => new Wallet(`0x${byte.repeat(32)}`));
   const artifact = {
     schemaVersion: 2,
+    sourceManifestVersion: 3,
     protocolVersion: 'solslot-v2',
     network: 'testnet11',
     evmChainId: 11155111,
@@ -31,9 +32,12 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
     sourceShas: {
       protocol: '1'.repeat(40),
       evm: '2'.repeat(40),
-      api: '3'.repeat(40),
-      legacyBackend: '4'.repeat(40),
-      customerWeb: '5'.repeat(40),
+      omnichain: '3'.repeat(40),
+      api: '4'.repeat(40),
+      legacyBackend: '5'.repeat(40),
+      keyOfSolomon: '6'.repeat(40),
+      samuel: '7'.repeat(40),
+      customerWeb: '8'.repeat(40),
       adminPortal: SOURCE_SHA,
     },
     ceremony: {
@@ -217,6 +221,25 @@ describe('SolslotProtocolArtifactService', () => {
     expect(service.isReady).toBeFalse();
     expect(api.getSignedProtocolArtifact).not.toHaveBeenCalled();
     expect(protocolCoordinateFromEnvironment('poolLauncherId')).toBeUndefined();
+  });
+
+  it('rejects an artifact using the retired source-manifest version', async () => {
+    const artifact = await signedArtifact();
+    Object.assign(environment.solslotProtocol, {
+      artifactHash: artifact.artifactHash,
+      adminPortalSourceSha: SOURCE_SHA,
+    });
+    (artifact as { sourceManifestVersion: number }).sourceManifestVersion = 2;
+    const api = jasmine.createSpyObj<SolslotApiService>('SolslotApiService', [
+      'getSignedProtocolArtifact',
+    ]);
+    api.getSignedProtocolArtifact.and.resolveTo(artifact);
+    const service = new SolslotProtocolArtifactService(api);
+
+    await service.initialize();
+
+    expect(service.isReady).toBeFalse();
+    expect(service.failure).toContain('does not describe Solslot V2 testnet11');
   });
 
   it('clears runtime authority when administrator quorum is invalid', async () => {

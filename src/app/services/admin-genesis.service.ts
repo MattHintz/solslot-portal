@@ -172,8 +172,11 @@ export class AdminGenesisService {
 export interface GenesisSourceShas {
   protocol: string;
   evm: string;
+  omnichain: string;
   api: string;
   legacyBackend: string;
+  keyOfSolomon: string;
+  samuel: string;
   customerWeb: string;
   adminPortal: string;
 }

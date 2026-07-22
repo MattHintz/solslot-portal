@@ -10,10 +10,13 @@ describe('AdminGenesisService', () => {
   const sourceShas: GenesisSourceShas = {
     protocol: '1'.repeat(40),
     evm: '2'.repeat(40),
-    api: '3'.repeat(40),
-    legacyBackend: '4'.repeat(40),
-    customerWeb: '5'.repeat(40),
-    adminPortal: '6'.repeat(40),
+    omnichain: '3'.repeat(40),
+    api: '4'.repeat(40),
+    legacyBackend: '5'.repeat(40),
+    keyOfSolomon: '6'.repeat(40),
+    samuel: '7'.repeat(40),
+    customerWeb: '8'.repeat(40),
+    adminPortal: '9'.repeat(40),
   };
   let service: AdminGenesisService;
   let http: HttpTestingController;
