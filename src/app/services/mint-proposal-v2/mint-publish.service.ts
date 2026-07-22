@@ -86,8 +86,6 @@ export class MintPublishService {
   static readonly SINGLETON_LAUNCHER_HASH =
     '0xeff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9';
 
-  static readonly PAYMENT_ESCROW_V1_MOD_HASH =
-    '0xfcb83cc6661e18d958acbb1de9bc5cc25022a1d2db7a6d5698199549402a3fe3';
   static readonly CAT_MOD_HASH =
     '0x37bef360ee858133b69d595a906dc45d01af50379dad515eb9518abb7c1d2a7a';
   static readonly OFFER_MOD_HASH =
@@ -281,7 +279,6 @@ export class MintPublishService {
       }
       eveMintOfferInner = mintOfferV2Mod.curry([
         clvm.atom(smartDeedInnerPuzhash),
-        clvm.atom(hexToBytes(MintPublishService.PAYMENT_ESCROW_V1_MOD_HASH)),
         clvm.atom(hexToBytes(args.p2VaultModHash)),
         clvm.atom(hexToBytes(MintPublishService.SINGLETON_MOD_HASH)),
         clvm.atom(hexToBytes(MintPublishService.SINGLETON_LAUNCHER_HASH)),
@@ -296,7 +293,6 @@ export class MintPublishService {
         clvm.int(usdAmountMinor),
         clvm.atom(treasuryPuzhash),
         clvm.list(validatorAtoms),
-        clvm.int(2n),
         clvm.atom(hexToBytes(MintPublishService.PRIMARY_PURCHASE_PROVIDER_ID)),
       ]);
     }
