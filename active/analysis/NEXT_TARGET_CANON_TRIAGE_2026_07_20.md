@@ -4,7 +4,7 @@
 The first triage relied on `solslot_migration_artifacts/legacy_v1_evidence_20260712/GLOBAL_AUDIT_COVERAGE_20260711.txt`, which is a snapshot from 2026-07-11. Since then the active branches have moved on:
 - `solslot-portal` latest commit: `d35c0ee 2026-07-20 07:00` — `fix: validate branch workflow before staging config` on `feature/google-vault-staging`.
 - `solslot` latest commit: `2382d63 2026-07-19 14:15` — release/testnet-alpha-rc17 security fixes.
-- `populis_protocol` latest commit: `b50b7eb 2026-07-02 00:43` — pool-economic-v2; the POP-CANON-041/042 surface is still present but is a known, tracked issue, not the latest work.
+- The legacy protocol repository's latest commit was `b50b7eb 2026-07-02 00:43` — pool-economic-v2; the POP-CANON-041/042 surface is still present but is a known, tracked issue, not the latest work.
 
 The next audit target must therefore be the **most recent feature work**: the Google Vault staging integration in the operator portal.
 
@@ -17,7 +17,7 @@ The next audit target must therefore be the **most recent feature work**: the Go
 
 ## Canon / felt context
 - Internal pre-mainnet audit; no external program.
-- Prior server hardening audit (2026-07-12) found no Critical/High code issues in `populis_api`.
+- Prior server hardening audit (2026-07-12) found no Critical/High code issues in the legacy API repository.
 - POP-CANON-041/042 remain open in the pool contract but are not part of this feature.
 
 ## Scope preflight
