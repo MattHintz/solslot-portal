@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AdminSessionService } from '../../../services/admin-session.service';
-import { MintDraftStorageService } from '../../../services/mint-draft-storage.service';
+import { MintProposalApiService } from '../../../services/mint-proposal-api.service';
 import {
   ProposeMintRequest,
   SmartDeedFilingStatus,
@@ -375,7 +375,7 @@ import { formatError } from '../../../utils/format-error';
   ],
 })
 export class MintNewComponent {
-  private readonly drafts = inject(MintDraftStorageService);
+  private readonly api = inject(MintProposalApiService);
   private readonly session = inject(AdminSessionService);
   private readonly router = inject(Router);
 
@@ -445,8 +445,8 @@ export class MintNewComponent {
       // has expired between route activation and form submission.
       // The admin guard already gates the page, so this is purely a
       // belt-and-suspenders check for stale tabs.
-      const sess = this.session.requireSession();
-      const proposal = this.drafts.create(body, sess.address);
+      this.session.requireSession();
+      const proposal = await this.api.propose(body);
       await this.router.navigate(['/admin/mint', proposal.id]);
     } catch (e) {
       this.error.set(formatError(e));

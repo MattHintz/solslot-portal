@@ -40,6 +40,7 @@ import { ChiaWasmService } from '../../services/chia-wasm.service';
         </p>
         <div class="mt-12 flex flex-wrap gap-4">
           <a routerLink="/connect" class="btn btn--primary">Vault Connect</a>
+          <a routerLink="/offers" class="btn btn--ghost">Browse SmartDeed Offers</a>
           <a href="/" class="btn btn--ghost">Solslot Market</a>
           <a href="/dashboard/asset-overview" class="btn btn--ghost">Legacy Vault Login</a>
         </div>

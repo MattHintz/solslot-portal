@@ -186,12 +186,24 @@ import { AUTH_TYPE_BLS, AUTH_TYPE_SECP256K1, AUTH_TYPE_SECP256R1 } from '../../u
                 }
               </div>
             }
+
+            @if (acceptStatus() === 'confirmed') {
+              <div class="grid gap-2">
+                <a routerLink="/vault" class="btn btn--primary w-full text-center inline-block">
+                  View deed in vault
+                </a>
+                <a routerLink="/offers" class="btn btn--ghost w-full text-center inline-block">
+                  Back to offers
+                </a>
+              </div>
+            }
           </aside>
         </div>
       } @else {
         <div class="card">
           <h1 class="font-display text-3xl">Offer unavailable</h1>
           <p class="text-sm text-text-muted mt-2">No matching offer was found.</p>
+          <a routerLink="/offers" class="btn btn--ghost mt-4 inline-block">Back to offers</a>
         </div>
       }
     </section>

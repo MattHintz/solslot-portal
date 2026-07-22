@@ -29,6 +29,14 @@ export const routes: Routes = [
     title: 'My Vault · Solslot',
   },
   {
+    path: 'offers',
+    loadComponent: () =>
+      import('./pages/offers/offer-list.component').then(
+        (m) => m.OfferListComponent,
+      ),
+    title: 'SmartDeed Offers · Solslot',
+  },
+  {
     path: 'offers/:id',
     loadComponent: () =>
       import('./pages/offers/offer-detail.component').then(
@@ -91,6 +99,15 @@ export const routes: Routes = [
     title: 'Collection Workspace · Solslot',
   },
   {
+    path: 'admin/mint',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/mint-list/mint-list.component').then(
+        (m) => m.MintListComponent,
+      ),
+    title: 'Mint Proposals · Solslot',
+  },
+  {
     path: 'admin/mint/new',
     canActivate: [adminAuthGuard],
     loadComponent: () =>
@@ -137,6 +154,60 @@ export const routes: Routes = [
         (m) => m.MintDetailComponent,
       ),
     title: 'Mint Proposal · Solslot',
+  },
+  {
+    path: 'admin/authority',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/admin-authority/admin-authority.component').then(
+        (m) => m.AdminAuthorityComponent,
+      ),
+    title: 'Current Authority · Solslot',
+  },
+  {
+    path: 'admin/authority-v2/add-admin-slot',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/add-admin-slot/add-admin-slot.component').then(
+        (m) => m.AddAdminSlotComponent,
+      ),
+    title: 'Add Admin Slot · Solslot',
+  },
+  {
+    path: 'admin/authority-v2/roster-spend-package-review',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/roster-spend-package-review/roster-spend-package-review.component').then(
+        (m) => m.RosterSpendPackageReviewComponent,
+      ),
+    title: 'Roster Spend Review · Solslot',
+  },
+  {
+    path: 'admin/recovery',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/recovery/recovery.component').then(
+        (m) => m.RecoveryComponent,
+      ),
+    title: 'Recovery · Solslot',
+  },
+  {
+    path: 'admin/launch-authority-v2',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/launch-authority-v2/launch-authority-v2.component').then(
+        (m) => m.LaunchAuthorityV2Component,
+      ),
+    title: 'Launch Authority V2 · Solslot',
+  },
+  {
+    path: 'admin/launch-protocol-config',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import('./pages/admin/launch-protocol-config/launch-protocol-config.component').then(
+        (m) => m.LaunchProtocolConfigComponent,
+      ),
+    title: 'Launch Protocol Config · Solslot',
   },
   {
     // Public: no guard.  Per POP-CANON-013 the committee endpoints are

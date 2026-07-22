@@ -1,4 +1,5 @@
 import { Component, EnvironmentInjector, inject } from '@angular/core';
+import { AlphaObservabilityService } from '../../services/alpha-observability.service';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { SessionService } from '../../services/session.service';
@@ -23,12 +24,14 @@ import { SessionService } from '../../services/session.service';
         </a>
         <nav class="hidden lg:flex items-center gap-5 text-sm text-text-muted">
           <a routerLink="/" routerLinkActive="text-text" [routerLinkActiveOptions]="{ exact: true }" class="hover:text-text transition">Status</a>
+          <a routerLink="/offers" routerLinkActive="text-text" class="hover:text-text transition">Offers</a>
           <a routerLink="/committee" routerLinkActive="text-text" class="hover:text-text transition">Committee</a>
           <a routerLink="/vault" routerLinkActive="text-text" class="hover:text-text transition" *ngIf="session.session()">My Vault</a>
           <a href="/" class="hover:text-text transition">Market</a>
           <a href="/dashboard/asset-overview" class="hover:text-text transition">Legacy Vault Login</a>
         </nav>
         <div class="flex items-center gap-3">
+          <button class="btn btn--ghost hidden sm:inline-flex" (click)="reportBug()" type="button">Report bug</button>
           <ng-container *ngIf="session.session() as s; else connectBtn">
             <span class="mono text-xs text-text-muted hidden sm:inline">{{ shortAddr(s.address) }}</span>
             <button class="btn btn--ghost" (click)="disconnect()" type="button">Disconnect</button>
@@ -44,11 +47,29 @@ import { SessionService } from '../../services/session.service';
 export class HeaderComponent {
   readonly session = inject(SessionService);
   private readonly injector = inject(EnvironmentInjector);
+  private readonly alphaObservability = inject(AlphaObservabilityService);
 
   shortAddr(addr: string): string {
     if (!addr) return '';
     if (addr.length <= 12) return addr;
     return addr.slice(0, 6) + '…' + addr.slice(-4);
+  }
+
+  async reportBug(): Promise<void> {
+    const summary = window.prompt('Briefly describe the issue.');
+    if (!summary?.trim()) return;
+    const description = window.prompt('Add any steps to reproduce the issue.') || summary;
+    try {
+      const id = await this.alphaObservability.reportBug({
+        category: 'UI',
+        summary: summary.trim(),
+        description: description.trim(),
+        diagnosticsOptIn: false,
+      });
+      window.alert(`Thank you. Your Alpha bug report is ${id}.`);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Bug reporting failed.');
+    }
   }
 
   async disconnect(): Promise<void> {
