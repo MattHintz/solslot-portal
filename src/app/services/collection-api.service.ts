@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { AdminSessionService } from './admin-session.service';
+import { AdminOperationApprovalService } from './admin-operation-approval.service';
 import {
   PropertyAmendmentV1,
   PropertyDossierDraftV1,
@@ -14,6 +15,7 @@ import {
 export class CollectionApiService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(AdminSessionService);
+  private readonly approvals = inject(AdminOperationApprovalService);
   private readonly base = environment.faucetApi;
 
   featureStatus(): Promise<CollectionFeatureStatus> {
@@ -74,13 +76,17 @@ export class CollectionApiService {
   }
 
   seal(collectionId: string, revision: number): Promise<CollectionWorkspace> {
-    return firstValueFrom(
-      this.http.post<CollectionWorkspace>(
-        `${this.base}/admin/collections/${encodeURIComponent(collectionId)}/seal`,
-        {},
-        { headers: this.headers(revision) },
-      ),
-    );
+    return this.approvals.prepareSignAndRequireSecond({
+      operation: 'collection.seal',
+      revision,
+      binding: {
+        method: 'POST',
+        path: `/admin/collections/${encodeURIComponent(collectionId)}/seal`,
+        query: [],
+        body: {},
+        ifMatch: `"${revision}"`,
+      },
+    });
   }
 
   addComment(collectionId: string, section: string, body: string): Promise<ReviewComment> {
@@ -119,13 +125,17 @@ export class CollectionApiService {
     dossier: PropertyDossierV1,
     amendment: PropertyAmendmentV1,
   ): Promise<CollectionWorkspace> {
-    return firstValueFrom(
-      this.http.post<CollectionWorkspace>(
-        `${this.base}/admin/collections/${encodeURIComponent(collectionId)}/amendments`,
-        { dossier, amendment },
-        { headers: this.headers(revision) },
-      ),
-    );
+    return this.approvals.prepareSignAndRequireSecond({
+      operation: 'collection.amend',
+      revision,
+      binding: {
+        method: 'POST',
+        path: `/admin/collections/${encodeURIComponent(collectionId)}/amendments`,
+        query: [],
+        body: { dossier, amendment },
+        ifMatch: `"${revision}"`,
+      },
+    });
   }
 
   async uploadAsset(

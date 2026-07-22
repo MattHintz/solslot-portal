@@ -165,49 +165,13 @@ export const routes: Routes = [
     title: 'Current Authority · Solslot',
   },
   {
-    path: 'admin/authority-v2/add-admin-slot',
+    path: 'admin/approvals',
     canActivate: [adminAuthGuard],
     loadComponent: () =>
-      import('./pages/admin/add-admin-slot/add-admin-slot.component').then(
-        (m) => m.AddAdminSlotComponent,
+      import('./pages/admin/approvals/admin-approvals.component').then(
+        (m) => m.AdminApprovalsComponent,
       ),
-    title: 'Add Admin Slot · Solslot',
-  },
-  {
-    path: 'admin/authority-v2/roster-spend-package-review',
-    canActivate: [adminAuthGuard],
-    loadComponent: () =>
-      import('./pages/admin/roster-spend-package-review/roster-spend-package-review.component').then(
-        (m) => m.RosterSpendPackageReviewComponent,
-      ),
-    title: 'Roster Spend Review · Solslot',
-  },
-  {
-    path: 'admin/recovery',
-    canActivate: [adminAuthGuard],
-    loadComponent: () =>
-      import('./pages/admin/recovery/recovery.component').then(
-        (m) => m.RecoveryComponent,
-      ),
-    title: 'Recovery · Solslot',
-  },
-  {
-    path: 'admin/launch-authority-v2',
-    canActivate: [adminAuthGuard],
-    loadComponent: () =>
-      import('./pages/admin/launch-authority-v2/launch-authority-v2.component').then(
-        (m) => m.LaunchAuthorityV2Component,
-      ),
-    title: 'Launch Authority V2 · Solslot',
-  },
-  {
-    path: 'admin/launch-protocol-config',
-    canActivate: [adminAuthGuard],
-    loadComponent: () =>
-      import('./pages/admin/launch-protocol-config/launch-protocol-config.component').then(
-        (m) => m.LaunchProtocolConfigComponent,
-      ),
-    title: 'Launch Protocol Config · Solslot',
+    title: 'Admin Approvals · Solslot',
   },
   {
     // Public: no guard.  Per POP-CANON-013 the committee endpoints are

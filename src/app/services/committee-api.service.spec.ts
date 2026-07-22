@@ -8,7 +8,7 @@ import {
   SpendBundleJson,
 } from './committee-api.service';
 import { environment } from '../../environments/environment';
-import { AdminSessionService } from './admin-session.service';
+import { AdminOperationApprovalService } from './admin-operation-approval.service';
 
 function fakeBundle(): SpendBundleJson {
   return {
@@ -52,16 +52,19 @@ function fakeMetadata(): PublishProposalMetadataJson {
 describe('CommitteeApiService', () => {
   let service: CommitteeApiService;
   let http: HttpTestingController;
+  let approvals: jasmine.SpyObj<AdminOperationApprovalService>;
 
   beforeEach(() => {
+    approvals = jasmine.createSpyObj<AdminOperationApprovalService>(
+      'AdminOperationApprovalService',
+      ['prepareSignAndRequireSecond'],
+    );
+    approvals.prepareSignAndRequireSecond.and.rejectWith(new Error('approval pending'));
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        {
-          provide: AdminSessionService,
-          useValue: { requireJwt: () => 'test-admin-jwt' },
-        },
+        { provide: AdminOperationApprovalService, useValue: approvals },
       ],
     });
     service = TestBed.inject(CommitteeApiService);
@@ -133,87 +136,43 @@ describe('CommitteeApiService', () => {
 
   // ── publishProposal (mint PROPOSE forwarder) ──────────────────────────
 
-  it('POSTs the authenticated canonical publish request', async () => {
+  it('binds the complete canonical publish request for owner-plus-one approval', async () => {
     const bundle = fakeBundle();
     const metadata = fakeMetadata();
     const pending = service.publishProposal(bundle, 'draft-123', metadata);
-    const req = http.expectOne(`${environment.faucetApi}/admin/committee/propose`);
-    expect(req.request.method).toBe('POST');
-    expect(req.request.headers.get('Authorization')).toBe('Bearer test-admin-jwt');
-    expect(req.request.body).toEqual({
-      spend_bundle: bundle,
-      proposal_id: 'draft-123',
-      proposal_metadata: metadata,
+    expect(approvals.prepareSignAndRequireSecond).toHaveBeenCalledOnceWith({
+      operation: 'mint.publish',
+      revision: 0,
+      binding: {
+        method: 'POST',
+        path: '/admin/committee/propose',
+        query: [],
+        body: {
+          spend_bundle: bundle,
+          proposal_id: 'draft-123',
+          proposal_metadata: metadata,
+        },
+      },
     });
-    req.flush({
-      pushed: true,
-      status: 'SUCCESS',
-      spend_bundle_id: '0x' + 'ab'.repeat(32),
-    });
-    const result = await pending;
-    expect(result.pushed).toBe(true);
-    expect(result.spendBundleId).toBe('0x' + 'ab'.repeat(32));
-    expect(result.proposalId).toBeUndefined();
+    await expectAsync(pending).toBeRejectedWithError('approval pending');
   });
 
-  it('includes proposal_metadata in the propose request body when provided', async () => {
-    const bundle = fakeBundle();
-    const metadata = fakeMetadata();
-    const pending = service.publishProposal(bundle, 'draft-123', metadata);
-    const req = http.expectOne(`${environment.faucetApi}/admin/committee/propose`);
-    expect(req.request.body).toEqual({
-      spend_bundle: bundle,
-      proposal_id: 'draft-123',
-      proposal_metadata: metadata,
-    });
-    req.flush({
-      pushed: true,
-      status: 'SUCCESS',
-      spend_bundle_id: '0x' + 'ab'.repeat(32),
-      proposal_id: 'draft-123',
-    });
-    const result = await pending;
-    expect(result.pushed).toBe(true);
-  });
-
-  it('surfaces propose mempool rejection (pushed=false) with status', async () => {
-    const pending = service.publishProposal(fakeBundle(), 'draft-123', fakeMetadata());
-    const req = http.expectOne(`${environment.faucetApi}/admin/committee/propose`);
-    req.flush({
-      pushed: false,
-      status: 'ASSERT_ANNOUNCE_CONSUMED_FAILED',
-      spend_bundle_id: '0x' + 'ab'.repeat(32),
-    });
-    const result = await pending;
-    expect(result.pushed).toBe(false);
-    expect(result.status).toBe('ASSERT_ANNOUNCE_CONSUMED_FAILED');
-  });
-
-  it('rejects on propose HTTP errors', async () => {
-    const pending = service.publishProposal(fakeBundle(), 'draft-123', fakeMetadata());
-    const req = http.expectOne(`${environment.faucetApi}/admin/committee/propose`);
-    req.flush('coinset offline', { status: 502, statusText: 'Bad Gateway' });
-    await expectAsync(pending).toBeRejected();
-  });
-
-  it('POSTs canonical execution bundles to /admin/committee/execute', async () => {
+  it('binds canonical execution bundles for owner-plus-one approval', async () => {
     const bundle = fakeBundle();
     const pending = service.executeProposal(bundle, 'draft-123');
-    const req = http.expectOne(`${environment.faucetApi}/admin/committee/execute`);
-    expect(req.request.method).toBe('POST');
-    expect(req.request.headers.get('Authorization')).toBe('Bearer test-admin-jwt');
-    expect(req.request.body).toEqual({
-      spend_bundle: bundle,
-      proposal_id: 'draft-123',
+    expect(approvals.prepareSignAndRequireSecond).toHaveBeenCalledOnceWith({
+      operation: 'mint.execute',
+      revision: 0,
+      binding: {
+        method: 'POST',
+        path: '/admin/committee/execute',
+        query: [],
+        body: {
+          spend_bundle: bundle,
+          proposal_id: 'draft-123',
+        },
+      },
     });
-    req.flush({
-      pushed: true,
-      status: 'SUCCESS',
-      spend_bundle_id: '0x' + 'ab'.repeat(32),
-      proposal_id: 'draft-123',
-    });
-    const result = await pending;
-    expect(result.pushed).toBe(true);
-    expect(result.proposalId).toBe('draft-123');
+    await expectAsync(pending).toBeRejectedWithError('approval pending');
   });
 });

@@ -239,16 +239,24 @@ async function verifyArtifact(
     artifact.validatorSet?.pubkeys?.length !== 3 ||
     artifact.validatorSet.pubkeys.some((value) => !HEX_48.test(value)) ||
     artifact.adminAuthority?.threshold !== 2 ||
+    artifact.adminAuthority?.policy !== 'owner-plus-one' ||
+    artifact.adminAuthority?.ownerIndex !== 0 ||
+    JSON.stringify(artifact.adminAuthority?.coadminIndices) !== '[1,2]' ||
+    artifact.adminAuthority?.coadminThreshold !== 1 ||
     artifact.adminAuthority?.compressedPubkeys?.length !== 3 ||
     artifact.adminAuthority.compressedPubkeys.some((value) => !HEX_33.test(value)) ||
     !HEX_32.test(artifact.adminAuthority.rosterHash || '') ||
     !HEX_32.test(artifact.adminAuthority.mipsRootHash || '') ||
     artifact.signaturePolicy?.type !== 'SolslotGenesisArtifact' ||
     artifact.signaturePolicy?.threshold !== 2 ||
+    artifact.signaturePolicy?.policy !== 'owner-plus-one' ||
+    artifact.signaturePolicy?.ownerIndex !== 0 ||
+    JSON.stringify(artifact.signaturePolicy?.coadminIndices) !== '[1,2]' ||
+    artifact.signaturePolicy?.coadminThreshold !== 1 ||
     artifact.signaturePolicy?.rosterHash?.toLowerCase() !==
       artifact.adminAuthority.rosterHash.toLowerCase()
   ) {
-    throw new Error('The public artifact does not carry the required 2-of-3 quorums.');
+    throw new Error('The public artifact does not carry owner-plus-one admin authority.');
   }
   const addresses = artifact.evmAddresses;
   if (
@@ -304,8 +312,8 @@ async function verifyArtifact(
       // Invalid signatures count as absent.
     }
   }
-  if (valid < 2) {
-    throw new Error('The public artifact does not have two valid administrator signatures.');
+  if (valid < 2 || !seen.has(0) || (!seen.has(1) && !seen.has(2))) {
+    throw new Error('The public artifact requires slot 0 and one valid coadmin signature.');
   }
 }
 

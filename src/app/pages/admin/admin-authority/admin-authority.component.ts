@@ -125,13 +125,9 @@ import { formatError } from '../../../utils/format-error';
 
         <div class="mt-8 flex flex-wrap gap-3">
           <a routerLink="/admin/trust-roots" class="btn btn--ghost">Trust roots</a>
-          <a routerLink="/admin/authority-v2/add-admin-slot" class="btn btn--ghost">
-            Add admin slot
+          <a routerLink="/admin/approvals" class="btn btn--ghost">
+            Admin approvals
           </a>
-          <a routerLink="/admin/authority-v2/roster-spend-package-review" class="btn btn--ghost">
-            Review roster spend
-          </a>
-          <a routerLink="/admin/recovery" class="btn btn--ghost">Recovery</a>
         </div>
       }
     </section>

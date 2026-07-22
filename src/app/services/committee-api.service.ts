@@ -1,9 +1,9 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
-import { AdminSessionService } from './admin-session.service';
+import { AdminOperationApprovalService } from './admin-operation-approval.service';
 
 /**
  * Thin HTTP client for ``solslot_api``'s committee-action forwarder
@@ -27,7 +27,7 @@ import { AdminSessionService } from './admin-session.service';
 @Injectable({ providedIn: 'root' })
 export class CommitteeApiService {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(AdminSessionService);
+  private readonly approvals = inject(AdminOperationApprovalService);
   private readonly base = environment.faucetApi;
 
   /**
@@ -107,17 +107,16 @@ export class CommitteeApiService {
       proposal_id: proposalId,
       proposal_metadata: proposalMetadata,
     };
-    const res = await firstValueFrom(
-      this.http.post<CommitteeVoteApiResponseWire>(`${this.base}/admin/committee/propose`, body, {
-        headers: this.adminHeaders(),
-      }),
-    );
-    return {
-      pushed: res.pushed,
-      status: res.status,
-      spendBundleId: res.spend_bundle_id,
-      proposalId: res.proposal_id ?? undefined,
-    };
+    return this.approvals.prepareSignAndRequireSecond({
+      operation: 'mint.publish',
+      revision: 0,
+      binding: {
+        method: 'POST',
+        path: '/admin/committee/propose',
+        query: [],
+        body,
+      },
+    });
   }
 
   /** Submit the canonical five-spend MINT execution bundle. */
@@ -125,26 +124,19 @@ export class CommitteeApiService {
     spendBundle: SpendBundleJson,
     proposalId: string,
   ): Promise<CommitteeVoteApiResponse> {
-    const res = await firstValueFrom(
-      this.http.post<CommitteeVoteApiResponseWire>(
-        `${this.base}/admin/committee/execute`,
-        {
+    return this.approvals.prepareSignAndRequireSecond({
+      operation: 'mint.execute',
+      revision: 0,
+      binding: {
+        method: 'POST',
+        path: '/admin/committee/execute',
+        query: [],
+        body: {
           spend_bundle: spendBundle,
           proposal_id: proposalId,
         },
-        { headers: this.adminHeaders() },
-      ),
-    );
-    return {
-      pushed: res.pushed,
-      status: res.status,
-      spendBundleId: res.spend_bundle_id,
-      proposalId: res.proposal_id ?? undefined,
-    };
-  }
-
-  private adminHeaders(): HttpHeaders {
-    return new HttpHeaders({ Authorization: `Bearer ${this.session.requireJwt()}` });
+      },
+    });
   }
 }
 

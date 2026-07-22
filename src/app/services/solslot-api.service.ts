@@ -440,6 +440,10 @@ export interface SolslotPublicArtifact {
   };
   adminAuthority: {
     threshold: number;
+    policy: 'owner-plus-one';
+    ownerIndex: 0;
+    coadminIndices: [1, 2];
+    coadminThreshold: 1;
     rosterHash: string;
     mipsRootHash: string;
     compressedPubkeys: string[];
@@ -460,7 +464,15 @@ export interface SolslotPublicArtifact {
     attestationEmitter: string;
     [key: string]: string;
   };
-  signaturePolicy: { type: string; threshold: number; rosterHash: string };
+  signaturePolicy: {
+    type: string;
+    threshold: number;
+    policy: 'owner-plus-one';
+    ownerIndex: 0;
+    coadminIndices: [1, 2];
+    coadminThreshold: 1;
+    rosterHash: string;
+  };
   retiredCoordinates: string[];
   signatures: Array<{
     adminIndex: number;

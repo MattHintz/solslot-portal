@@ -16,7 +16,7 @@ const ADDRESS = (byte: string) => `0x${byte.repeat(20)}`;
 const originalProtocol = { ...environment.solslotProtocol };
 const originalZkPassport = { ...environment.zkPassport };
 
-async function signedArtifact(): Promise<SolslotPublicArtifact> {
+async function signedArtifact(slots: number[] = [0, 2]): Promise<SolslotPublicArtifact> {
   const wallets = ['01', '02', '03'].map((byte) => new Wallet(`0x${byte.repeat(32)}`));
   const artifact = {
     schemaVersion: 2,
@@ -104,6 +104,10 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
     },
     adminAuthority: {
       threshold: 2,
+      policy: 'owner-plus-one',
+      ownerIndex: 0,
+      coadminIndices: [1, 2],
+      coadminThreshold: 1,
       rosterHash: HASH('26'),
       mipsRootHash: HASH('27'),
       compressedPubkeys: wallets.map((wallet) =>
@@ -135,6 +139,10 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
     signaturePolicy: {
       type: 'SolslotGenesisArtifact',
       threshold: 2,
+      policy: 'owner-plus-one',
+      ownerIndex: 0,
+      coadminIndices: [1, 2],
+      coadminThreshold: 1,
       rosterHash: HASH('26'),
     },
     retiredCoordinates: [HASH('ff')],
@@ -148,7 +156,7 @@ async function signedArtifact(): Promise<SolslotPublicArtifact> {
     network: artifact.network,
   };
   artifact.signatures = await Promise.all(
-    [0, 2].map(async (index) => ({
+    slots.map(async (index) => ({
       adminIndex: index,
       compressedPubkey: artifact.adminAuthority.compressedPubkeys[index],
       signature: await wallets[index].signTypedData(
@@ -175,7 +183,7 @@ describe('SolslotProtocolArtifactService', () => {
     clearVerifiedProtocolCoordinates();
   });
 
-  it('accepts a source-pinned 2-of-3 artifact and installs runtime authority', async () => {
+  it('accepts a source-pinned owner-plus-one artifact and installs runtime authority', async () => {
     const artifact = await signedArtifact();
     Object.assign(environment.solslotProtocol, {
       artifactHash: artifact.artifactHash,
@@ -258,7 +266,25 @@ describe('SolslotProtocolArtifactService', () => {
     await service.initialize();
 
     expect(service.isReady).toBeFalse();
-    expect(service.failure).toContain('two valid administrator signatures');
+    expect(service.failure).toContain('slot 0 and one valid coadmin');
     expect(protocolCoordinateFromEnvironment('poolLauncherId')).toBeUndefined();
+  });
+
+  it('rejects signatures from both coadmins when slot 0 did not sign', async () => {
+    const artifact = await signedArtifact([1, 2]);
+    Object.assign(environment.solslotProtocol, {
+      artifactHash: artifact.artifactHash,
+      adminPortalSourceSha: SOURCE_SHA,
+    });
+    const api = jasmine.createSpyObj<SolslotApiService>('SolslotApiService', [
+      'getSignedProtocolArtifact',
+    ]);
+    api.getSignedProtocolArtifact.and.resolveTo(artifact);
+    const service = new SolslotProtocolArtifactService(api);
+
+    await service.initialize();
+
+    expect(service.isReady).toBeFalse();
+    expect(service.failure).toContain('slot 0 and one valid coadmin');
   });
 });

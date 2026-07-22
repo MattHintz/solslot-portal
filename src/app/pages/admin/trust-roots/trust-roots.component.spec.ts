@@ -223,6 +223,10 @@ function artifact(): SolslotPublicArtifact {
     },
     adminAuthority: {
       threshold: 2,
+      policy: 'owner-plus-one',
+      ownerIndex: 0,
+      coadminIndices: [1, 2],
+      coadminThreshold: 1,
       rosterHash: hex(15),
       mipsRootHash: hex(16),
       compressedPubkeys: [compressed(1), compressed(2), compressed(3)],
@@ -245,7 +249,10 @@ function artifact(): SolslotPublicArtifact {
       verifierAdapter: address(2),
       attestationEmitter: address(3),
     },
-    signaturePolicy: { type: 'eip712', threshold: 2, rosterHash: hex(15) },
+    signaturePolicy: {
+      type: 'eip712', threshold: 2, policy: 'owner-plus-one', ownerIndex: 0,
+      coadminIndices: [1, 2], coadminThreshold: 1, rosterHash: hex(15),
+    },
     retiredCoordinates: [hex(19)],
     signatures: [],
   };
