@@ -219,7 +219,7 @@ export class CollectionApiService {
   getPresale(identifier: string): Promise<PresaleSeries> {
     return firstValueFrom(
       this.http.get<PresaleSeries>(
-        `${this.base}/presales/${encodeURIComponent(identifier)}`,
+        `${this.base}/presales/admin/${encodeURIComponent(identifier)}`,
       ),
     );
   }

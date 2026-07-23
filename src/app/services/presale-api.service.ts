@@ -55,11 +55,15 @@ export class PresaleApiService {
   private readonly base = environment.faucetApi;
 
   list(): Promise<PresaleSeries[]> {
-    return firstValueFrom(this.http.get<PresaleSeries[]>(`${this.base}/presales`));
+    return firstValueFrom(this.http.get<PresaleSeries[]>(`${this.base}/presales/admin`));
   }
 
   get(termsHash: string): Promise<PresaleSeries> {
-    return firstValueFrom(this.http.get<PresaleSeries>(`${this.base}/presales/${termsHash}`));
+    return firstValueFrom(
+      this.http.get<PresaleSeries>(
+        `${this.base}/presales/admin/${encodeURIComponent(termsHash)}`,
+      ),
+    );
   }
 
   purchase(termsHash: string, request: VoucherPurchaseRequest): Promise<VoucherRecord> {
