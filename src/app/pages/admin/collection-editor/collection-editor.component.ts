@@ -11,7 +11,9 @@ import {
   CollectionAsset,
   CollectionDeed,
   CollectionFeatureStatus,
+  CollectionProfiles,
   CollectionWorkspace,
+  PresaleSeries,
 } from '../../../services/collection-api.service';
 import {
   CollectionMintCoordinatorService,
@@ -27,8 +29,10 @@ import {
 import { formatError } from '../../../utils/format-error';
 
 type EditorSection =
+  | 'classification'
   | 'overview'
   | 'property'
+  | 'project'
   | 'media'
   | 'economics'
   | 'operations'
@@ -37,7 +41,10 @@ type EditorSection =
   | 'documents'
   | 'allocation'
   | 'review'
-  | 'governance';
+  | 'governance'
+  | 'presale'
+  | 'sales'
+  | 'updates';
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
 
@@ -100,6 +107,39 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
 
             <section class="editor-main">
               @switch (activeSection()) {
+                @case ('classification') {
+                  <div class="section-head"><span>Issuance profile</span><h2>Classification</h2></div>
+                  <fieldset [disabled]="!canEdit()">
+                    <label class="span-2">Real-estate class
+                      <select [(ngModel)]="draft.classification!.assetClass" (ngModelChange)="classificationChanged()">
+                        <option value="">Select a class</option>
+                        @for (profile of profiles()?.assetClasses || []; track profile.id) {
+                          <option [value]="profile.id">{{ profile.code }} · {{ assetClassLabel(profile.id) }}</option>
+                        }
+                      </select>
+                    </label>
+                    <label>Detailed property type
+                      <select [(ngModel)]="draft.classification!.propertySubtype" (ngModelChange)="classificationChanged()" [disabled]="!draft.classification?.assetClass">
+                        <option value="">Select a type</option>
+                        @for (subtype of availableSubtypes(); track subtype) { <option [value]="subtype">{{ humanize(subtype) }}</option> }
+                      </select>
+                    </label>
+                    <label>Project stage
+                      <select [(ngModel)]="draft.classification!.projectStage" (ngModelChange)="classificationChanged()">
+                        <option value="">Select a stage</option>
+                        @for (stage of profiles()?.projectStages || []; track stage) { <option [value]="stage">{{ humanize(stage) }}</option> }
+                      </select>
+                    </label>
+                    <div class="span-2 option-group">
+                      <span>Program overlays</span>
+                      @for (overlay of profiles()?.programOverlays || []; track overlay) {
+                        <label class="check-row"><input type="checkbox" [checked]="hasOverlay(overlay)" (change)="toggleOverlay(overlay, $event)" />{{ humanize(overlay) }}</label>
+                      }
+                    </div>
+                  </fieldset>
+                  <aside class="section-note"><strong>Investor right</strong><span>Governed share of future sale or refinance proceeds.</span></aside>
+                }
+
                 @case ('overview') {
                   <div class="section-head"><span>Collection</span><h2>Overview</h2></div>
                   <fieldset [disabled]="!canEdit()">
@@ -129,11 +169,32 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                   </fieldset>
                 }
 
+                @case ('project') {
+                  <div class="section-head"><span>Class and stage requirements</span><h2>Project diligence</h2></div>
+                  @if (!draft.classification?.assetClass || !draft.classification?.projectStage) {
+                    <section class="locked-state"><strong>Classification required</strong><span>Choose the property class and project stage first.</span></section>
+                  } @else {
+                    <fieldset class="stacked" [disabled]="!canEdit()">
+                      @for (key of requiredDiligenceKeys(); track key) {
+                        <article class="repeat-row diligence-row">
+                          <div class="field-grid">
+                            <label class="span-2">{{ humanize(key) }}
+                              <textarea rows="3" [ngModel]="diligenceValue(key)" (ngModelChange)="setDiligenceValue(key, $event)"></textarea>
+                            </label>
+                            <label>As-of date<input type="date" [ngModel]="diligenceDate(key)" (ngModelChange)="setDiligenceDate(key, $event)" /></label>
+                            <label>Unit / basis<input type="text" [ngModel]="diligenceUnit(key)" (ngModelChange)="setDiligenceUnit(key, $event)" /></label>
+                          </div>
+                        </article>
+                      }
+                    </fieldset>
+                  }
+                }
+
                 @case ('media') {
                   <div class="section-head"><span>Verified assets</span><h2>Property media</h2></div>
                   @if (canEdit()) {
                     <div class="upload-strip">
-                      <label>Role<select [(ngModel)]="mediaRole"><option value="hero">Hero</option><option value="gallery">Gallery</option><option value="floorplan">Floor plan</option><option value="other">Other</option></select></label>
+                      <label>Role<select [(ngModel)]="mediaRole"><option value="hero">Hero</option><option value="gallery">Gallery</option><option value="site">Site</option><option value="rendering">Rendering</option><option value="plan">Plan</option><option value="floorplan">Floor plan</option><option value="other">Other</option></select></label>
                       <label class="span-2">Alt text<input type="text" [(ngModel)]="mediaAlt" /></label>
                       <label class="file-control">Image<input type="file" accept="image/*" (change)="uploadMedia($event)" [disabled]="mediaUploading()" /></label>
                     </div>
@@ -147,6 +208,20 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                         @if (canEdit()) { <button type="button" (click)="removeMedia($index)">Remove</button> }
                       </article>
                     } @empty { <p class="empty-row">No media uploaded.</p> }
+                  </div>
+                  <div class="section-head section-head--small private-head"><span>Restricted originals</span><h2>Administrator-only documents</h2></div>
+                  @if (canEdit()) {
+                    <div class="upload-strip">
+                      <label class="span-2">Private document title<input type="text" [(ngModel)]="privateDocumentTitle" /></label>
+                      <label>Category<input type="text" [(ngModel)]="privateDocumentCategory" /></label>
+                      <label class="file-control">File<input type="file" accept="application/pdf,image/*" (change)="uploadPrivateDocument($event)" [disabled]="privateDocumentUploading()" /></label>
+                    </div>
+                  }
+                  @if (privateDocumentError()) { <p class="inline-error">{{ privateDocumentError() }}</p> }
+                  <div class="asset-table">
+                    @for (asset of draft.privateDocuments; track asset.assetId) {
+                      <article><div><strong>{{ asset.title }}</strong><span>{{ asset.category }} · private original</span></div><span class="asset-state" [attr.data-state]="assetStatus(asset.assetId)?.state">{{ assetStatus(asset.assetId)?.state || 'DRAFT' }}</span><button type="button" (click)="openPrivateDocument(asset.assetId)">Open</button>@if (canEdit()) { <button type="button" (click)="removePrivateDocument($index)">Remove</button> }</article>
+                    } @empty { <p class="empty-row">No restricted originals uploaded.</p> }
                   </div>
                 }
 
@@ -166,10 +241,10 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                     <label>Minimum investment, minor units<input type="text" inputmode="numeric" [(ngModel)]="draft.offering!.minimumInvestmentMinor" (ngModelChange)="changed()" /></label>
                     <label>Projected return, bps<input type="text" inputmode="numeric" [(ngModel)]="draft.offering!.projectedReturnBps" (ngModelChange)="changed()" /></label>
                     <label>Term, months<input type="text" inputmode="numeric" [(ngModel)]="draft.offering!.termMonths" (ngModelChange)="changed()" /></label>
-                    <label>Asset class<input type="text" [(ngModel)]="draft.offering!.assetClass" (ngModelChange)="changed()" placeholder="RWA-RE-RES" /></label>
+                    <label>Asset class<input type="text" [value]="draft.offering!.assetClass || 'Choose in Classification'" readonly /></label>
                     <label>Jurisdiction<input type="text" [(ngModel)]="draft.offering!.jurisdiction" (ngModelChange)="changed()" placeholder="US-TX" /></label>
-                    <label class="span-2">Royalty puzzle hash<input class="mono" type="text" [(ngModel)]="draft.offering!.royaltyPuzhash" (ngModelChange)="changed()" placeholder="0x…" /></label>
-                    <label>Royalty, bps<input type="text" inputmode="numeric" [(ngModel)]="draft.offering!.royaltyBps" (ngModelChange)="changed()" /></label>
+                    <label class="span-2">Protocol treasury<input class="mono" type="text" [value]="draft.offering!.royaltyPuzhash || 'Signed ceremony treasury unavailable'" readonly /></label>
+                    <label>Technology fee, bps<input type="number" min="0" max="1000" [(ngModel)]="draft.offering!.royaltyBps" (ngModelChange)="changed()" /></label>
                     <label>Governance quorum, SGT mojos<input type="text" inputmode="numeric" [(ngModel)]="draft.offering!.governanceQuorum" (ngModelChange)="changed()" /></label>
                     <h3>Capital</h3>
                     <label>Debt balance, minor units<input type="text" inputmode="numeric" [(ngModel)]="draft.capital!.debtBalanceMinor" (ngModelChange)="changed()" /></label>
@@ -286,18 +361,116 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                     <div class="issue-list">@for (issue of collection.readiness.issues; track $index) { <button type="button" (click)="openIssue(issue.path)"><strong>{{ issue.message }}</strong><span class="mono">{{ issue.path }}</span></button> }</div>
                   }
                   <div class="review-actions">
-                    @if (canEdit()) { <button class="btn btn--ghost" type="button" (click)="submitForReview()">Submit for review</button> }
+                    @if (isOwner() && canEdit()) { <button class="btn btn--ghost" type="button" (click)="submitForReview()">Submit current revision</button> }
+                    @if (!isOwner() && collection.state === 'REVIEW') {
+                      <button class="btn btn--ghost" type="button" (click)="submitReview('CHANGES_REQUESTED')" [disabled]="reviewBusy()">Request changes</button>
+                      <button class="btn btn--primary" type="button" (click)="submitReview('APPROVED')" [disabled]="reviewBusy()">Approve revision {{ collection.revision }}</button>
+                    }
                     @if (isOwner() && (collection.state === 'DRAFT' || collection.state === 'REVIEW')) { <button class="btn btn--primary" type="button" (click)="seal()" [disabled]="!collection.readiness.ready || sealing()">{{ sealing() ? 'Sealing…' : 'Seal immutable dossier' }}</button> }
                     @if (sealError()) { <span class="inline-error">{{ sealError() }}</span> }
                   </div>
+                  @if (!isOwner() && collection.state === 'REVIEW') {
+                    <label class="full">Review note<textarea rows="3" [(ngModel)]="reviewNote"></textarea></label>
+                  }
+                  @if (collection.reviews.length) {
+                    <div class="asset-table review-history">
+                      @for (review of collection.reviews; track review.id) {
+                        <article><div><strong>{{ review.decision }}</strong><span class="mono">revision {{ review.collectionRevision }} · {{ review.reviewerSubject }}</span><span>{{ review.note || 'No note' }}</span></div></article>
+                      }
+                    </div>
+                  }
                   <section class="comments">
                     <div class="section-head section-head--small"><span>Team review</span><h2>Comments</h2></div>
                     @for (comment of collection.comments; track comment.id) {
-                      <article [class.is-resolved]="comment.resolved"><div><strong>{{ comment.section }}</strong><span class="mono">{{ comment.actorSubject }}</span></div><p>{{ comment.body }}</p>@if (!comment.resolved) { <button type="button" (click)="resolveComment(comment.id)">Resolve</button> }</article>
+                      <article [class.is-resolved]="comment.resolved"><div><strong>{{ comment.blocking ? 'Blocking · ' : 'Advisory · ' }}{{ comment.section }}</strong><span class="mono">{{ comment.actorSubject }}</span></div><p>{{ comment.body }}</p>@if (!comment.resolved) { <button type="button" (click)="resolveComment(comment.id)">Resolve</button> }</article>
                     }
-                    <div class="comment-form"><textarea rows="3" [(ngModel)]="commentBody" placeholder="Add a review comment"></textarea><button type="button" (click)="addComment()" [disabled]="!commentBody.trim()">Comment</button></div>
+                    <div class="comment-form"><textarea rows="3" [(ngModel)]="commentBody" placeholder="Add a review comment"></textarea><label class="check-row"><input type="checkbox" [(ngModel)]="commentBlocking" />Blocks sealing</label><button type="button" (click)="addComment()" [disabled]="!commentBody.trim()">Comment</button></div>
                   </section>
                   <div class="preview-band"><pp-property-dossier [workspace]="previewWorkspace()" /></div>
+                }
+
+                @case ('presale') {
+                  <div class="section-head"><span>Refundable reservation receipts</span><h2>Voucher presale</h2></div>
+                  @if (presale(); as campaign) {
+                    <div class="review-actions">
+                      <button type="button" class="btn btn--ghost" (click)="refreshPresale()" [disabled]="presaleBusy()">Refresh chain status</button>
+                      @if (isOwner() && campaign.state === 'PRESALE' && campaign.phaseTransition.status === 'NOT_SUBMITTED') {
+                        <button type="button" class="btn btn--primary" (click)="launchPresale()" [disabled]="presaleBusy() || !canLaunchPresale(campaign)">Launch governed sales</button>
+                      }
+                    </div>
+                    <dl class="commitment-grid">
+                      <div><dt>Campaign</dt><dd>{{ campaign.state }}</dd></div>
+                      <div><dt>Series singleton</dt><dd class="mono">{{ campaign.seriesSingletonId }}</dd></div>
+                      <div><dt>Terms hash</dt><dd class="mono">{{ campaign.termsHash }}</dd></div>
+                      <div><dt>Launch transaction</dt><dd class="mono">{{ campaign.singletonLaunch.spendBundleId || 'Not submitted' }}</dd></div>
+                      <div><dt>Phase transaction</dt><dd class="mono">{{ campaign.phaseTransition.spendBundleId || 'Not submitted' }}</dd></div>
+                      <div><dt>Phase confirmation</dt><dd>{{ campaign.phaseTransition.status }}@if (campaign.phaseTransition.confirmedHeight) { · height {{ campaign.phaseTransition.confirmedHeight }} }</dd></div>
+                      <div><dt>Inventory</dt><dd>{{ campaign.terms.inventoryCap }} vouchers</dd></div>
+                      <div><dt>Paid / awaiting issue</dt><dd>{{ voucherCount('PENDING_ISSUANCE') }}</dd></div>
+                      <div><dt>Confirming on Chia</dt><dd>{{ voucherCount('ISSUANCE_SUBMITTED') }}</dd></div>
+                      <div><dt>Escrowed</dt><dd>{{ voucherCount('ESCROWED') }}</dd></div>
+                      <div><dt>Refunding / refunded</dt><dd>{{ voucherCount('REFUNDING') }} / {{ voucherCount('REFUNDED') }}</dd></div>
+                      <div><dt>Redeeming / redeemed</dt><dd>{{ voucherCount('REDEEMING') }} / {{ voucherCount('REDEEMED') }}</dd></div>
+                      <div><dt>Sale window</dt><dd>{{ campaign.terms.saleOpen * 1000 | date:'medium' }} – {{ campaign.terms.saleClose * 1000 | date:'medium' }}</dd></div>
+                      <div><dt>Refund deadline</dt><dd>{{ campaign.terms.refundDeadline * 1000 | date:'medium' }}</dd></div>
+                    </dl>
+                    <div class="proposal-list">
+                      @for (deed of campaign.terms.deeds; track deed.deedId) {
+                        <article>
+                          <div><strong class="mono">{{ deed.deedId }}</strong><span>{{ deed.basePriceMinor }} base + {{ deed.technologyFeeMinor }} fee</span></div>
+                          <span>{{ deed.grossPriceMinor }} USD minor</span>
+                        </article>
+                      }
+                    </div>
+                    @if (campaign.vouchers.length) {
+                      <div class="asset-table">
+                        @for (voucher of campaign.vouchers; track voucher.serial) {
+                          <article><div><strong>Voucher {{ voucher.serial + 1 }} · {{ voucher.state }}</strong><span class="mono">{{ voucher.commitmentHash }}</span><span>{{ voucher.paymentRail }} · vault {{ voucher.vaultLauncherId }}</span></div></article>
+                        }
+                      </div>
+                    }
+                    @if (isOwner() && campaign.state === 'PRESALE' && campaign.phaseTransition.status === 'NOT_SUBMITTED') {
+                      <div class="field-grid">
+                        <label class="full">Cancellation reason<input type="text" [(ngModel)]="presaleCancelReason" /></label>
+                      </div>
+                      <div class="review-actions"><button type="button" class="btn btn--danger" (click)="cancelPresale()" [disabled]="presaleBusy() || presaleCancelReason.trim().length < 8">Cancel governed presale</button></div>
+                    }
+                  } @else {
+                    <dl class="commitment-grid">
+                      <div><dt>Campaign</dt><dd>{{ collection.state === 'PUBLISHED' ? 'Ready to schedule' : 'Waiting for governed issuance' }}</dd></div>
+                      <div><dt>Inventory</dt><dd>{{ collection.deeds.length }} planned vouchers</dd></div>
+                      <div><dt>Eligibility</dt><dd>zkPassport-approved vaults only</dd></div>
+                      <div><dt>Delivery deadline</dt><dd>48 hours after mint</dd></div>
+                    </dl>
+                    @if (isOwner() && collection.state === 'PUBLISHED') {
+                      <fieldset class="field-grid">
+                        <label>Sale opens<input type="datetime-local" [(ngModel)]="presaleForm.saleOpen" /></label>
+                        <label>Sale closes<input type="datetime-local" [(ngModel)]="presaleForm.saleClose" /></label>
+                        <label>Refund deadline<input type="datetime-local" [(ngModel)]="presaleForm.refundDeadline" /></label>
+                        <label>Launch deadline<input type="datetime-local" [(ngModel)]="presaleForm.launchDeadline" /></label>
+                      </fieldset>
+                      <div class="review-actions"><button type="button" class="btn btn--primary" (click)="createPresale()" [disabled]="presaleBusy()">{{ presaleBusy() ? 'Preparing…' : 'Create governed presale' }}</button></div>
+                    }
+                  }
+                  @if (presaleError()) { <span class="inline-error">{{ presaleError() }}</span> }
+                }
+
+                @case ('sales') {
+                  <div class="section-head"><span>System-derived primary terms</span><h2>Sales</h2></div>
+                  <div class="proposal-list">
+                    @for (deed of collection.deeds; track deed.deedId) {
+                      <article><div><strong class="mono">{{ deed.deedId }}</strong><span>{{ deed.sharePpm | number }} ppm</span></div><span>{{ purchasePrice(deed) }}</span></article>
+                    }
+                  </div>
+                }
+
+                @case ('updates') {
+                  <div class="section-head"><span>Append-only record</span><h2>Updates</h2></div>
+                  <div class="asset-table">
+                    @for (version of collection.metadataVersions; track version.id) {
+                      <article><div><strong>{{ version.kind }}</strong><span class="mono">{{ version.metadataRoot }}</span><span>{{ version.effectiveDate || 'Issuance snapshot' }}</span></div></article>
+                    } @empty { <p class="empty-row">No sealed metadata versions.</p> }
+                  </div>
                 }
 
                 @case ('governance') {
@@ -408,6 +581,8 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
       .asset-table span,.proposal-list span { color:var(--muted); font-size:.62rem; }
       .asset-state { color:#ffd071 !important; font:600 .58rem var(--font-mono); }
       .asset-state[data-state='PINNED'] { color:var(--accent) !important; }
+      .asset-state[data-state='VERIFIED'] { color:var(--accent) !important; }
+      .private-head { margin-top:2rem; }
       .repeat-row { display:grid; grid-template-columns:1fr auto; align-items:end; gap:1rem; padding:1rem; border:1px solid var(--border); border-radius:6px; }
       .inline-row { display:grid; grid-template-columns:1fr auto; align-items:start; gap:.75rem; }
       .allocation-total,.readiness { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1rem; padding:.85rem 1rem; border:1px solid rgba(255,170,161,.35); border-radius:6px; background:rgba(255,170,161,.05); font-size:.7rem; }
@@ -449,8 +624,10 @@ export class CollectionEditorComponent implements OnDestroy {
   private readonly amendments = inject(PropertyAmendmentService);
 
   readonly sections: Array<{ id: EditorSection; label: string }> = [
+    { id: 'classification', label: 'Classification' },
     { id: 'overview', label: 'Overview' },
     { id: 'property', label: 'Property' },
+    { id: 'project', label: 'Project' },
     { id: 'media', label: 'Media' },
     { id: 'economics', label: 'Economics' },
     { id: 'operations', label: 'Operations' },
@@ -460,10 +637,14 @@ export class CollectionEditorComponent implements OnDestroy {
     { id: 'allocation', label: 'Deed allocation' },
     { id: 'review', label: 'Review' },
     { id: 'governance', label: 'Governance' },
+    { id: 'presale', label: 'Presale' },
+    { id: 'sales', label: 'Sales' },
+    { id: 'updates', label: 'Updates' },
   ];
   readonly workspace = signal<CollectionWorkspace | null>(null);
   readonly feature = signal<CollectionFeatureStatus | null>(null);
-  readonly activeSection = signal<EditorSection>('overview');
+  readonly profiles = signal<CollectionProfiles | null>(null);
+  readonly activeSection = signal<EditorSection>('classification');
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
   readonly saveState = signal<SaveState>('idle');
@@ -474,6 +655,8 @@ export class CollectionEditorComponent implements OnDestroy {
   readonly mediaError = signal<string | null>(null);
   readonly documentUploading = signal(false);
   readonly documentError = signal<string | null>(null);
+  readonly privateDocumentUploading = signal(false);
+  readonly privateDocumentError = signal<string | null>(null);
   readonly ownerMemberHash = signal('');
   readonly ownerHashBusy = signal(false);
   readonly governanceError = signal<string | null>(null);
@@ -484,14 +667,24 @@ export class CollectionEditorComponent implements OnDestroy {
   readonly amendmentOpen = signal(false);
   readonly amendmentBusy = signal(false);
   readonly amendmentError = signal<string | null>(null);
+  readonly reviewBusy = signal(false);
+  readonly presale = signal<PresaleSeries | null>(null);
+  readonly presaleBusy = signal(false);
+  readonly presaleError = signal<string | null>(null);
 
   draftModel: PropertyDossierDraftV1 | null = null;
-  mediaRole: 'hero' | 'gallery' | 'floorplan' | 'other' = 'hero';
+  mediaRole: 'hero' | 'gallery' | 'site' | 'rendering' | 'plan' | 'floorplan' | 'other' = 'hero';
   mediaAlt = '';
   documentTitle = '';
   documentCategory = 'legal';
+  privateDocumentTitle = '';
+  privateDocumentCategory = 'unredacted-original';
   commentBody = '';
+  commentBlocking = true;
+  reviewNote = '';
   amendmentForm: OperationalUpdateForm = emptyOperationalUpdate();
+  presaleForm: PresaleScheduleForm = defaultPresaleSchedule();
+  presaleCancelReason = '';
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private editGeneration = 0;
@@ -516,9 +709,16 @@ export class CollectionEditorComponent implements OnDestroy {
     this.loading.set(true);
     this.loadError.set(null);
     try {
-      const [feature, collection] = await Promise.all([this.api.featureStatus(), this.api.get(id)]);
+      const [feature, profiles, collection, presale] = await Promise.all([
+        this.api.featureStatus(),
+        this.api.profiles(),
+        this.api.get(id),
+        this.loadPresale(id),
+      ]);
       this.feature.set(feature);
+      this.profiles.set(profiles);
       this.applyWorkspace(collection);
+      this.presale.set(presale);
     } catch (error) {
       this.loadError.set(formatError(error));
     } finally {
@@ -529,6 +729,99 @@ export class CollectionEditorComponent implements OnDestroy {
   canEdit(): boolean {
     const state = this.workspace()?.state;
     return state === 'DRAFT' || state === 'REVIEW';
+  }
+
+  assetClassLabel(assetClass: string): string {
+    const labels: Record<string, string> = {
+      'RWA-RE-RES': 'Residential',
+      'RWA-RE-MFR': 'Multifamily',
+      'RWA-RE-COM': 'Commercial',
+      'RWA-RE-IND': 'Industrial',
+      'RWA-RE-HOS': 'Hospitality',
+      'RWA-RE-LAND': 'Land',
+      'RWA-RE-MIX': 'Mixed-use',
+    };
+    return labels[assetClass] || assetClass;
+  }
+
+  humanize(value: string): string {
+    return value.split('-').map((part) => part ? part[0].toUpperCase() + part.slice(1) : part).join(' ');
+  }
+
+  availableSubtypes(): string[] {
+    const selected = this.draftModel?.classification?.assetClass;
+    return this.profiles()?.assetClasses.find((item) => item.id === selected)?.subtypes || [];
+  }
+
+  classificationChanged(): void {
+    const draft = this.draftModel;
+    const classification = draft?.classification;
+    if (!draft || !classification) return;
+    const subtypes = this.availableSubtypes();
+    if (classification.propertySubtype && !subtypes.includes(classification.propertySubtype)) {
+      classification.propertySubtype = undefined;
+    }
+    draft.offering ||= {};
+    draft.offering.assetClass = classification.assetClass;
+    if (classification.propertySubtype) {
+      draft.property ||= { address: {} };
+      draft.property.propertyType = classification.propertySubtype;
+    }
+    this.syncTrustedTreasury();
+    this.changed();
+  }
+
+  hasOverlay(overlay: string): boolean {
+    return this.draftModel?.classification?.programOverlays.includes(
+      overlay as 'affordable-housing' | 'senior-housing',
+    ) || false;
+  }
+
+  toggleOverlay(overlay: string, event: Event): void {
+    const selected = (event.target as HTMLInputElement).checked;
+    const overlays = this.draftModel?.classification?.programOverlays;
+    if (!overlays) return;
+    const typed = overlay as 'affordable-housing' | 'senior-housing';
+    if (selected && !overlays.includes(typed)) overlays.push(typed);
+    if (!selected) this.draftModel!.classification!.programOverlays = overlays.filter((item) => item !== typed);
+    this.changed();
+  }
+
+  requiredDiligenceKeys(): string[] {
+    const profile = this.profiles();
+    const classification = this.draftModel?.classification;
+    if (!profile || !classification?.assetClass || !classification.projectStage) return [];
+    const keys = new Set(profile.diligence.common);
+    for (const key of profile.diligence.byAssetClass[classification.assetClass] || []) keys.add(key);
+    for (const key of profile.diligence.byProjectStage[classification.projectStage] || []) keys.add(key);
+    for (const overlay of classification.programOverlays) {
+      for (const key of profile.diligence.byProgramOverlay[overlay] || []) keys.add(key);
+    }
+    return [...keys].sort();
+  }
+
+  diligenceValue(key: string): string { return this.diligenceItem(key).value || ''; }
+  diligenceDate(key: string): string { return this.diligenceItem(key).asOfDate || ''; }
+  diligenceUnit(key: string): string { return this.diligenceItem(key).unit || ''; }
+
+  setDiligenceValue(key: string, value: string): void { this.diligenceItem(key).value = value; this.changed(); }
+  setDiligenceDate(key: string, value: string): void { this.diligenceItem(key).asOfDate = value || undefined; this.changed(); }
+  setDiligenceUnit(key: string, value: string): void { this.diligenceItem(key).unit = value || undefined; this.changed(); }
+
+  private diligenceItem(key: string): PropertyDossierDraftV1['diligence'][number] {
+    const draft = this.draftModel;
+    if (!draft) return { key, evidenceAssetIds: [] };
+    let item = draft.diligence.find((candidate) => candidate.key === key);
+    if (!item) {
+      item = { key, evidenceAssetIds: [] };
+      draft.diligence.push(item);
+    }
+    return item;
+  }
+
+  private syncTrustedTreasury(): void {
+    const treasury = this.mint.trustedProtocolTreasuryPuzzleHash();
+    if (treasury && this.draftModel?.offering) this.draftModel.offering.royaltyPuzhash = treasury;
   }
 
   isOwner(): boolean {
@@ -687,8 +980,61 @@ export class CollectionEditorComponent implements OnDestroy {
     }
   }
 
+  async uploadPrivateDocument(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    const collection = this.workspace();
+    if (!file || !collection || !this.draftModel) return;
+    if (!this.privateDocumentTitle.trim() || !this.privateDocumentCategory.trim()) {
+      this.privateDocumentError.set('Private document title and category are required.');
+      input.value = '';
+      return;
+    }
+    this.privateDocumentUploading.set(true);
+    this.privateDocumentError.set(null);
+    try {
+      const assetId = uniqueAssetId(file.name, 'private-document');
+      const asset = await this.api.uploadAsset(collection.id, file, {
+        assetId,
+        kind: 'DOCUMENT',
+        title: this.privateDocumentTitle.trim(),
+        category: this.privateDocumentCategory.trim(),
+        visibility: 'PRIVATE',
+      });
+      this.draftModel.privateDocuments.push({
+        assetId,
+        title: this.privateDocumentTitle.trim(),
+        category: this.privateDocumentCategory.trim(),
+        sha256: asset.actualSha256 || undefined,
+        mimeType: asset.actualMimeType || undefined,
+        byteSize: asset.actualByteSize || undefined,
+      });
+      this.privateDocumentTitle = '';
+      this.changed();
+      await this.saveNow(false, true);
+    } catch (error) {
+      this.privateDocumentError.set(formatError(error));
+    } finally {
+      this.privateDocumentUploading.set(false);
+      input.value = '';
+    }
+  }
+
+  async openPrivateDocument(assetId: string): Promise<void> {
+    const collection = this.workspace();
+    if (!collection) return;
+    this.privateDocumentError.set(null);
+    try {
+      const access = await this.api.privateDownload(collection.id, assetId);
+      window.open(access.downloadUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      this.privateDocumentError.set(formatError(error));
+    }
+  }
+
   removeMedia(index: number): void { this.draftModel?.media.splice(index, 1); this.changed(); }
   removeDocument(index: number): void { this.draftModel?.documents.splice(index, 1); this.changed(); }
+  removePrivateDocument(index: number): void { this.draftModel?.privateDocuments.splice(index, 1); this.changed(); }
   addRisk(): void { this.draftModel?.risks.push({ severity: 'medium' }); this.changed(); }
   removeRisk(index: number): void { this.draftModel?.risks.splice(index, 1); this.changed(); }
   addPlannedUse(): void { this.draftModel?.capital?.plannedUses.push({}); this.changed(); }
@@ -711,7 +1057,7 @@ export class CollectionEditorComponent implements OnDestroy {
   }
 
   pinnedAssetCount(): number {
-    return this.workspace()?.assets.filter((asset) => asset.state === 'PINNED').length || 0;
+    return this.workspace()?.assets.filter((asset) => asset.state === 'PINNED' || (asset.visibility === 'PRIVATE' && asset.state === 'VERIFIED')).length || 0;
   }
 
   openCommentCount(): number {
@@ -731,12 +1077,127 @@ export class CollectionEditorComponent implements OnDestroy {
     const collection = this.workspace();
     if (!collection || !this.commentBody.trim()) return;
     try {
-      await this.api.addComment(collection.id, this.activeSection(), this.commentBody.trim());
+      await this.api.addComment(
+        collection.id,
+        this.activeSection(),
+        this.commentBody.trim(),
+        this.commentBlocking,
+      );
       this.commentBody = '';
       this.applyWorkspace(await this.api.get(collection.id));
     } catch (error) {
       this.saveError.set(formatError(error));
     }
+  }
+
+  async submitReview(decision: 'APPROVED' | 'CHANGES_REQUESTED'): Promise<void> {
+    const collection = this.workspace();
+    if (!collection || this.isOwner()) return;
+    this.reviewBusy.set(true);
+    this.sealError.set(null);
+    try {
+      this.applyWorkspace(await this.api.review(collection.id, decision, this.reviewNote));
+      this.reviewNote = '';
+    } catch (error) {
+      this.sealError.set(formatError(error));
+    } finally {
+      this.reviewBusy.set(false);
+    }
+  }
+
+  purchasePrice(deed: CollectionDeed): string {
+    const target = this.draftModel?.offering?.targetRaiseMinor;
+    const fee = this.draftModel?.offering?.royaltyBps;
+    if (!target || !/^\d+$/.test(target) || !fee || !/^\d+$/.test(fee)) return 'Price incomplete';
+    const numerator = BigInt(target) * BigInt(deed.sharePpm);
+    if (numerator % 1_000_000n) return 'Allocation does not resolve to minor units';
+    const base = numerator / 1_000_000n;
+    const feeMinor = (base * BigInt(fee) + 9_999n) / 10_000n;
+    return `${base.toString()} base + ${feeMinor.toString()} fee = ${(base + feeMinor).toString()} USD minor units`;
+  }
+
+  async createPresale(): Promise<void> {
+    const collection = this.workspace();
+    if (!collection || !this.isOwner() || this.presale()) return;
+    this.presaleBusy.set(true);
+    this.presaleError.set(null);
+    try {
+      const schedule = {
+        saleOpen: localDateTimeToEpoch(this.presaleForm.saleOpen),
+        saleClose: localDateTimeToEpoch(this.presaleForm.saleClose),
+        refundDeadline: localDateTimeToEpoch(this.presaleForm.refundDeadline),
+        launchDeadline: localDateTimeToEpoch(this.presaleForm.launchDeadline),
+      };
+      if (!(schedule.saleOpen < schedule.saleClose
+        && schedule.saleClose <= schedule.refundDeadline
+        && schedule.refundDeadline <= schedule.launchDeadline)) {
+        throw new Error('Schedule must satisfy open < close <= refund deadline <= launch deadline.');
+      }
+      await this.api.createPresale(collection, schedule);
+    } catch (error) {
+      this.presaleError.set(formatError(error));
+    } finally {
+      this.presaleBusy.set(false);
+    }
+  }
+
+  async refreshPresale(): Promise<void> {
+    const collection = this.workspace();
+    if (!collection) return;
+    this.presaleBusy.set(true);
+    this.presaleError.set(null);
+    try {
+      this.presale.set(await this.loadPresale(collection.id));
+    } catch (error) {
+      this.presaleError.set(formatError(error));
+    } finally {
+      this.presaleBusy.set(false);
+    }
+  }
+
+  canLaunchPresale(campaign: PresaleSeries): boolean {
+    const collection = this.workspace();
+    const now = Math.floor(Date.now() / 1000);
+    return !!collection
+      && now >= campaign.terms.saleClose
+      && now <= campaign.terms.launchDeadline
+      && collection.deeds.length > 0
+      && collection.deeds.every((deed) => deed.proposalState === 'EXECUTED');
+  }
+
+  async launchPresale(): Promise<void> {
+    const collection = this.workspace();
+    const campaign = this.presale();
+    if (!collection || !campaign || !this.isOwner() || !this.canLaunchPresale(campaign)) return;
+    this.presaleBusy.set(true);
+    this.presaleError.set(null);
+    try {
+      await this.api.launchPresale(collection, campaign);
+    } catch (error) {
+      this.presaleError.set(formatError(error));
+    } finally {
+      this.presaleBusy.set(false);
+    }
+  }
+
+  async cancelPresale(): Promise<void> {
+    const collection = this.workspace();
+    const campaign = this.presale();
+    const reason = this.presaleCancelReason.trim();
+    if (!collection || !campaign || !this.isOwner() || reason.length < 8) return;
+    this.presaleBusy.set(true);
+    this.presaleError.set(null);
+    try {
+      await this.api.cancelPresale(collection, campaign, reason);
+    } catch (error) {
+      this.presaleError.set(formatError(error));
+    } finally {
+      this.presaleBusy.set(false);
+    }
+  }
+
+  voucherCount(state: PresaleSeries['vouchers'][number]['state']): number {
+    return this.presale()?.vouchers.filter((voucher) => voucher.state === state).length || 0;
   }
 
   async resolveComment(commentId: string): Promise<void> {
@@ -938,9 +1399,19 @@ export class CollectionEditorComponent implements OnDestroy {
   private applyWorkspace(collection: CollectionWorkspace): void {
     this.workspace.set(collection);
     this.draftModel = normalizeDraft(collection.dossier);
+    this.syncTrustedTreasury();
     this.conflictServer.set(null);
     this.saveQueued = false;
     this.saveState.set('saved');
+  }
+
+  private async loadPresale(collectionId: string): Promise<PresaleSeries | null> {
+    try {
+      return await this.api.getPresale(collectionId);
+    } catch (error) {
+      if (error instanceof HttpErrorResponse && error.status === 404) return null;
+      throw error;
+    }
   }
 }
 
@@ -954,6 +1425,10 @@ function normalizeDraft(value: PropertyDossierDraftV1): PropertyDossierDraftV1 {
   draft.disclosures ||= [];
   draft.dataSources ||= [];
   draft.deedAllocation ||= [];
+  draft.privateDocuments ||= [];
+  draft.diligence ||= [];
+  draft.classification ||= { programOverlays: [] };
+  draft.classification.programOverlays ||= [];
   draft.property ||= { address: {} };
   draft.property.address ||= {};
   draft.valuation ||= {};
@@ -976,6 +1451,8 @@ function cleanDraft(value: PropertyDossierDraftV1, revision: number): PropertyDo
   cleaned.disclosures ||= [];
   cleaned.dataSources ||= [];
   cleaned.deedAllocation ||= [];
+  cleaned.privateDocuments ||= [];
+  cleaned.diligence ||= [];
   return cleaned;
 }
 
@@ -1003,7 +1480,7 @@ function verifiedUris(asset: CollectionAsset): string[] {
 
 function issuePrefix(section: EditorSection): string {
   const map: Partial<Record<EditorSection, string>> = {
-    overview: '/summary', property: '/property', media: '/media', economics: '/valuation',
+    classification: '/classification', overview: '/summary', property: '/property', project: '/diligence', media: '/media', economics: '/valuation',
     operations: '/operations', legal: '/legal', risks: '/risks', documents: '/documents',
     allocation: '/deedAllocation',
   };
@@ -1011,6 +1488,8 @@ function issuePrefix(section: EditorSection): string {
 }
 
 function sectionForPath(path: string): EditorSection {
+  if (path.startsWith('/classification')) return 'classification';
+  if (path.startsWith('/diligence')) return 'project';
   if (path.startsWith('/property')) return 'property';
   if (path.startsWith('/media') || path.startsWith('/assets')) return 'media';
   if (path.startsWith('/valuation') || path.startsWith('/offering') || path.startsWith('/capital')) return 'economics';
@@ -1043,6 +1522,41 @@ function emptyOperationalUpdate(): OperationalUpdateForm {
     valuationSource: '', occupancyStatus: '', monthlyGrossRentMinor: '',
     annualOperatingExpenseMinor: '', manager: '', leaseSummary: '', effectiveDate: '', reason: '',
   };
+}
+
+interface PresaleScheduleForm {
+  saleOpen: string;
+  saleClose: string;
+  refundDeadline: string;
+  launchDeadline: string;
+}
+
+function defaultPresaleSchedule(): PresaleScheduleForm {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + 30, 0, 0);
+  const close = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const refund = new Date(close.getTime() + 2 * 24 * 60 * 60 * 1000);
+  const launch = new Date(refund.getTime() + 5 * 24 * 60 * 60 * 1000);
+  return {
+    saleOpen: localDateTimeValue(now),
+    saleClose: localDateTimeValue(close),
+    refundDeadline: localDateTimeValue(refund),
+    launchDeadline: localDateTimeValue(launch),
+  };
+}
+
+function localDateTimeValue(value: Date): string {
+  const offset = value.getTimezoneOffset() * 60_000;
+  return new Date(value.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function localDateTimeToEpoch(value: string): number {
+  const parsed = new Date(value);
+  const seconds = Math.floor(parsed.getTime() / 1000);
+  if (!value || !Number.isSafeInteger(seconds) || seconds <= 0) {
+    throw new Error('Every presale schedule field is required.');
+  }
+  return seconds;
 }
 
 function assignChanged<T extends object, K extends keyof T>(

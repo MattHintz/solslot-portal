@@ -4,6 +4,27 @@ export const PROPERTY_AMENDMENT_SCHEMA = 'solslot.property-amendment.v1' as cons
 export const MAX_CANONICAL_METADATA_BYTES = 24 * 1024;
 export const TARGET_ALLOCATION_PPM = 1_000_000;
 
+export const REAL_ESTATE_PROFILES = [
+  { id: 'RWA-RE-RES', code: 1, label: 'Residential', subtypes: ['single-family', 'duplex', 'two-to-four-unit', 'condominium', 'townhouse', 'manufactured-housing', 'residential-portfolio'] },
+  { id: 'RWA-RE-MFR', code: 2, label: 'Multifamily', subtypes: ['garden', 'mid-rise', 'high-rise', 'student', 'senior', 'multifamily-portfolio'] },
+  { id: 'RWA-RE-COM', code: 3, label: 'Commercial', subtypes: ['office', 'retail', 'medical-office', 'self-storage', 'service', 'commercial-portfolio'] },
+  { id: 'RWA-RE-IND', code: 4, label: 'Industrial', subtypes: ['warehouse', 'logistics', 'manufacturing', 'flex', 'data-center', 'industrial-portfolio'] },
+  { id: 'RWA-RE-HOS', code: 5, label: 'Hospitality', subtypes: ['hotel', 'motel', 'resort', 'short-term-rental-portfolio'] },
+  { id: 'RWA-RE-LAND', code: 6, label: 'Land', subtypes: ['residential-land', 'commercial-land', 'industrial-land', 'agricultural-land', 'entitled-land'] },
+  { id: 'RWA-RE-MIX', code: 7, label: 'Mixed-use', subtypes: ['residential-retail', 'residential-office', 'multi-component'] },
+] as const;
+
+export const PROJECT_STAGES = [
+  { id: 'stabilized', label: 'Stabilized / occupied' },
+  { id: 'vacant', label: 'Vacant' },
+  { id: 'renovation', label: 'Renovation' },
+  { id: 'ground-up', label: 'Ground-up development' },
+  { id: 'construction-in-progress', label: 'Construction in progress' },
+] as const;
+
+export type RealEstateAssetClass = (typeof REAL_ESTATE_PROFILES)[number]['id'];
+export type ProjectStage = (typeof PROJECT_STAGES)[number]['id'];
+
 export interface AssetDescriptorV1 {
   assetId: string;
   uris: string[];
@@ -14,7 +35,7 @@ export interface AssetDescriptorV1 {
 }
 
 export interface MediaAssetV1 extends AssetDescriptorV1 {
-  role: 'hero' | 'gallery' | 'floorplan' | 'other';
+  role: 'hero' | 'gallery' | 'site' | 'rendering' | 'plan' | 'floorplan' | 'other';
   alt: string;
 }
 
@@ -37,6 +58,12 @@ export interface PropertyDossierV1 {
   revision: number;
   title: string;
   summary: string;
+  classification?: {
+    assetClass: RealEstateAssetClass;
+    propertySubtype: string;
+    projectStage: ProjectStage;
+    programOverlays: Array<'affordable-housing' | 'senior-housing'>;
+  };
   property: {
     address: {
       line1: string;
@@ -111,6 +138,13 @@ export interface PropertyDossierV1 {
   history: Array<{ date: string; title: string; detail: string }>;
   disclosures: string[];
   dataSources: Array<{ name: string; asOfDate: string; url: string }>;
+  diligence: Array<{
+    key: string;
+    value: string;
+    unit?: string;
+    asOfDate?: string;
+    evidenceAssetIds: string[];
+  }>;
   deedAllocation: DeedAllocationV1[];
 }
 
@@ -198,6 +232,12 @@ export interface PropertyDossierDraftV1 {
   revision: number;
   title: string;
   summary?: string;
+  classification?: {
+    assetClass?: RealEstateAssetClass;
+    propertySubtype?: string;
+    projectStage?: ProjectStage;
+    programOverlays: Array<'affordable-housing' | 'senior-housing'>;
+  };
   property?: DraftPropertyIdentityV1;
   media: DraftMediaAssetV1[];
   valuation?: DraftValuationV1;
@@ -207,9 +247,17 @@ export interface PropertyDossierDraftV1 {
   legal?: DraftLegalV1;
   risks: DraftRiskV1[];
   documents: DraftDocumentAssetV1[];
+  privateDocuments: DraftDocumentAssetV1[];
   history: DraftHistoryEventV1[];
   disclosures: string[];
   dataSources: DraftDataSourceV1[];
+  diligence: Array<{
+    key: string;
+    value?: string;
+    unit?: string;
+    asOfDate?: string;
+    evidenceAssetIds: string[];
+  }>;
   deedAllocation: DraftDeedAllocationV1[];
 }
 
@@ -249,6 +297,7 @@ export interface PropertyAmendmentV1 {
 
 export const PROTECTED_AMENDMENT_PATHS = Object.freeze([
   '/deedAllocation',
+  '/classification',
   '/offering/parValueMojos',
   '/offering/assetClass',
   '/offering/jurisdiction',

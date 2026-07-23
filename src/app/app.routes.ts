@@ -109,12 +109,8 @@ export const routes: Routes = [
   },
   {
     path: 'admin/mint/new',
-    canActivate: [adminAuthGuard],
-    loadComponent: () =>
-      import('./pages/admin/mint-new/mint-new.component').then(
-        (m) => m.MintNewComponent,
-      ),
-    title: 'New Mint Proposal · Solslot',
+    redirectTo: 'admin/collections',
+    pathMatch: 'full',
   },
   {
     path: 'admin/pool-economics-v2',

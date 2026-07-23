@@ -28,7 +28,18 @@ describe('mint property id helpers', () => {
     );
   });
 
-  it('maps alpha asset class strings to protocol integer codes', () => {
+  it('maps every RC20 real-estate class to its frozen protocol code', () => {
+    expect(
+      [
+        'RWA-RE-RES',
+        'RWA-RE-MFR',
+        'RWA-RE-COM',
+        'RWA-RE-IND',
+        'RWA-RE-HOS',
+        'RWA-RE-LAND',
+        'RWA-RE-MIX',
+      ].map(assetClassToCode),
+    ).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(assetClassToCode(' rwa-re-res ')).toBe(1);
   });
 

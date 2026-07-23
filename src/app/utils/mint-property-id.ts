@@ -33,6 +33,12 @@ export function canonicalPropertyIdHash(raw: string): string {
 
 const ALPHA_ASSET_CLASS_CODES: Readonly<Record<string, number>> = {
   'RWA-RE-RES': 1,
+  'RWA-RE-MFR': 2,
+  'RWA-RE-COM': 3,
+  'RWA-RE-IND': 4,
+  'RWA-RE-HOS': 5,
+  'RWA-RE-LAND': 6,
+  'RWA-RE-MIX': 7,
 };
 
 /**

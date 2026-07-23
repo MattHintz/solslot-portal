@@ -29,7 +29,7 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
  *
  * Shows the full mint-proposal queue with state and owner filters,
  * paged at 50 rows per fetch.  The CTA "+ New mint proposal" routes to
- * `/admin/mint/new`; clicking a row routes to `/admin/mint/{id}`.
+ * `/admin/collections`; clicking a row routes to `/admin/mint/{id}`.
  *
  * The state-filter chips map directly to the backend's `?state=` query
  * param.  The owner toggle ("All / Mine") maps to `?owner=<jwt-sub>`.
@@ -76,8 +76,8 @@ const STATE_OPTIONS: ReadonlyArray<{ value: StateFilter; label: string }> = [
           <a routerLink="/admin/legacy-recall" class="btn btn--ghost">
             Legacy recall
           </a>
-          <a routerLink="/admin/mint/new" class="btn btn--primary">
-            + New mint proposal
+          <a routerLink="/admin/collections" class="btn btn--primary">
+            Collections
           </a>
         </div>
       </header>

@@ -25,7 +25,7 @@ import { formatError } from '../../../utils/format-error';
         </div>
         <div class="flex flex-wrap gap-3">
           <a routerLink="/admin" class="btn btn--ghost">&larr; Dashboard</a>
-          <a routerLink="/admin/mint/new" class="btn btn--primary">New proposal</a>
+          <a routerLink="/admin/collections" class="btn btn--primary">Collection desk</a>
         </div>
       </header>
 

@@ -40,6 +40,10 @@ export class CollectionMintCoordinatorService {
   private readonly eip712Leaf = inject(Eip712LeafHashService);
   private readonly protocolArtifact = inject(SolslotProtocolArtifactService);
 
+  trustedProtocolTreasuryPuzzleHash(): string | null {
+    return this.protocolArtifact.artifact?.puzzleHashes.protocolTreasuryPuzzleHash || null;
+  }
+
   async deriveOwnerMemberHash(): Promise<{ hash: string; address: string; pubkey: string }> {
     const { pubkey, address } = await this.evmWallet.recoverFirstAdminPubkey();
     return {
@@ -75,7 +79,15 @@ export class CollectionMintCoordinatorService {
     if (purchaseNumerator % 1_000_000n !== 0n) {
       throw new Error(`${deed.deedId} allocation does not resolve to a whole USD minor unit.`);
     }
-    const primaryPurchaseUsdAmountMinor = purchaseNumerator / 1_000_000n;
+    const basePurchaseUsdAmountMinor = purchaseNumerator / 1_000_000n;
+    const technologyFeeBps = unsignedInteger(offering.royaltyBps, 'technology fee basis points');
+    if (technologyFeeBps > 1_000n) {
+      throw new Error('The primary technology fee cannot exceed 1000 basis points.');
+    }
+    const technologyFeeUsdAmountMinor =
+      (basePurchaseUsdAmountMinor * technologyFeeBps + 9_999n) / 10_000n;
+    const primaryPurchaseUsdAmountMinor =
+      basePurchaseUsdAmountMinor + technologyFeeUsdAmountMinor;
     if (
       primaryPurchaseUsdAmountMinor <= 0n ||
       primaryPurchaseUsdAmountMinor > BigInt(Number.MAX_SAFE_INTEGER)
@@ -92,6 +104,9 @@ export class CollectionMintCoordinatorService {
       this.protocolArtifact.artifact?.puzzleHashes.protocolTreasuryPuzzleHash;
     if (!/^0x[0-9a-f]{64}$/i.test(protocolTreasuryPuzhash || '')) {
       throw new Error('The signed protocol artifact does not contain the protocol treasury puzzle hash.');
+    }
+    if (offering.royaltyPuzhash.toLowerCase() !== protocolTreasuryPuzhash!.toLowerCase()) {
+      throw new Error('The technology fee destination must be the trusted protocol treasury.');
     }
     const draft = proposalDraft(workspace, deed, dossier);
     const assembled = this.assembler.assemble({
