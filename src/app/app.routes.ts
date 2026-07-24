@@ -99,6 +99,15 @@ export const routes: Routes = [
     title: 'Collection Workspace · Solslot',
   },
   {
+    path: 'admin/omnichain-activation',
+    canActivate: [adminAuthGuard],
+    loadComponent: () =>
+      import(
+        './pages/admin/omnichain-ownership-activation/omnichain-ownership-activation.component'
+      ).then((m) => m.OmnichainOwnershipActivationComponent),
+    title: 'Base Sepolia Ownership · Solslot',
+  },
+  {
     path: 'admin/mint',
     canActivate: [adminAuthGuard],
     loadComponent: () =>

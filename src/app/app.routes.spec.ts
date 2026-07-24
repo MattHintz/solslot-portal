@@ -5,6 +5,12 @@ describe('admin portal route boundary', () => {
     expect(routes.some((route) => route.path === 'admin/genesis')).toBeTrue();
   });
 
+  it('exposes the guarded Base Sepolia ownership handoff surface', () => {
+    const route = routes.find((candidate) => candidate.path === 'admin/omnichain-activation');
+    expect(route).toBeDefined();
+    expect(route?.canActivate?.length).toBe(1);
+  });
+
   it('does not expose retired one-off bootstrap or authority launch screens', () => {
     const active = new Set(routes.map((route) => route.path));
     for (const path of [

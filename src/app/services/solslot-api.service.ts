@@ -246,9 +246,10 @@ export interface ChallengeResponse {
 
 export interface Eip712TypedData {
   domain: {
-    name: string;
-    version: string;
-    chainId: number;
+    name?: string;
+    version?: string;
+    chainId: number | string;
+    verifyingContract?: string;
   };
   types: Record<string, Array<{ name: string; type: string }>>;
   primaryType: string;

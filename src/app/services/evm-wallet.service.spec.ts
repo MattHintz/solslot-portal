@@ -54,6 +54,24 @@ describe('EvmWalletService', () => {
     };
   }
 
+  function safeMessageTypedData(
+    safe = '0x73a282e829dF5b7E12824a53F54c2FB6f07D13a5',
+  ) {
+    return {
+      domain: {
+        chainId: 84532,
+        verifyingContract: safe,
+      },
+      types: {
+        SafeMessage: [{ name: 'message', type: 'bytes' }],
+      },
+      primaryType: 'SafeMessage',
+      message: {
+        message: '0x1901' + '11'.repeat(64),
+      },
+    };
+  }
+
   it('retries WalletConnect relay failures after clearing stale session state', async () => {
     localStorage.setItem('wc@2:client:0.3//pairing', 'stale');
     localStorage.setItem('@walletconnect/core:topic', 'stale');
@@ -84,9 +102,10 @@ describe('EvmWalletService', () => {
       rpcMap: Record<number, string>;
     };
     expect(initArgs.chains).toEqual([environment.eip712ChainId]);
-    expect(initArgs.optionalChains).toEqual([]);
+    expect(initArgs.optionalChains).toEqual([84532]);
     expect(initArgs.methods).toEqual(['eth_signTypedData', 'eth_signTypedData_v4']);
     expect(initArgs.rpcMap[environment.eip712ChainId]).toBeTruthy();
+    expect(initArgs.rpcMap[84532]).toBe('https://sepolia.base.org');
     expect(first.disconnect).toHaveBeenCalled();
     expect(connected.toLowerCase()).toBe(walletAddress.toLowerCase());
     expect(service.isConnected()).toBeTrue();
@@ -160,12 +179,13 @@ describe('EvmWalletService', () => {
     });
   });
 
-  it('keeps both WalletConnect proposal modes on the one frozen V2 chain', () => {
+  it('adds only Base Sepolia as the Solslot optional WalletConnect chain', () => {
     expect(_internal.evmWalletConnectRequiredChainId()).toBe(environment.eip712ChainId);
-    expect(_internal.evmWalletConnectOptionalChainIds('solslot')).toEqual([]);
+    expect(_internal.evmWalletConnectOptionalChainIds('solslot')).toEqual([84532]);
     expect(_internal.evmWalletConnectOptionalChainIds('none')).toEqual([]);
     expect(_internal.evmWalletConnectRpcMap()).toEqual({
       [environment.eip712ChainId]: 'https://ethereum-sepolia-rpc.publicnode.com',
+      84532: 'https://sepolia.base.org',
     });
   });
 
@@ -269,6 +289,117 @@ describe('EvmWalletService', () => {
       /has not approved Sepolia/,
     );
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it('signs only the exact Base Sepolia SafeMessage through its approved namespace', async () => {
+    const service = create();
+    const signature = '0x' + '11'.repeat(64) + '1b';
+    const request = jasmine.createSpy('request').and.resolveTo(signature);
+    const typedData = safeMessageTypedData();
+    const chain = 'eip155:84532';
+    const testable = service as unknown as {
+      _state: { set: (state: unknown) => void };
+      eip1193: { request: typeof request };
+      wcProvider: unknown;
+    };
+    testable._state.set({ kind: 'connected', address: walletAddress, connection: 'walletconnect' });
+    testable.eip1193 = { request };
+    testable.wcProvider = {
+      signer: {
+        request,
+        session: {
+          namespaces: {
+            eip155: {
+              chains: [chain],
+              methods: ['eth_signTypedData_v4'],
+              accounts: [`${chain}:${walletAddress}`],
+            },
+          },
+        },
+      },
+    };
+
+    expect(await service.signSafeMessage(typedData, typedData.domain.verifyingContract)).toBe(
+      signature,
+    );
+    expect(request).toHaveBeenCalledOnceWith(
+      {
+        method: 'eth_signTypedData_v4',
+        params: [walletAddress, JSON.stringify(typedData)],
+      },
+      chain,
+      _internal.walletConnectMethodTimeoutSeconds(),
+    );
+
+    const altered = {
+      ...typedData,
+      message: { message: typedData.message.message, target: walletAddress },
+    };
+    await expectAsync(
+      service.signSafeMessage(altered, typedData.domain.verifyingContract),
+    ).toBeRejectedWithError(/Refusing altered Base Sepolia SafeMessage/);
+  });
+
+  it('broadcasts only a byte-exact zero-value Base Sepolia transaction', async () => {
+    const service = create();
+    const transactionHash = '0x' + '99'.repeat(32);
+    const request = jasmine.createSpy('request').and.resolveTo(transactionHash);
+    const chain = 'eip155:84532';
+    const to = '0xb7e02C216A2B3aF0cC4Ad8808fA169f2F0B19724';
+    const testable = service as unknown as {
+      _state: { set: (state: unknown) => void };
+      eip1193: { request: typeof request };
+      wcProvider: unknown;
+    };
+    testable._state.set({ kind: 'connected', address: walletAddress, connection: 'walletconnect' });
+    testable.eip1193 = { request };
+    testable.wcProvider = {
+      signer: {
+        request,
+        session: {
+          namespaces: {
+            eip155: {
+              chains: [chain],
+              methods: ['eth_sendTransaction'],
+              accounts: [`${chain}:${walletAddress}`],
+            },
+          },
+        },
+      },
+    };
+
+    expect(
+      await service.sendBaseSepoliaTransaction({
+        chainId: 84532,
+        to,
+        value: '0x0',
+        data: '0x6a761202',
+      }),
+    ).toBe(transactionHash);
+    expect(request).toHaveBeenCalledOnceWith(
+      {
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: walletAddress,
+            to,
+            value: '0x0',
+            data: '0x6a761202',
+          },
+        ],
+      },
+      chain,
+      _internal.walletConnectMethodTimeoutSeconds(),
+    );
+
+    await expectAsync(
+      service.sendBaseSepoliaTransaction({
+        chainId: 84532,
+        to,
+        value: '0x1',
+        data: '0x6a761202',
+      }),
+    ).toBeRejectedWithError(/Refusing altered Base Sepolia Root Safe transaction/);
   });
 
   it('refuses typed data outside the allowed Solslot Sepolia domains', async () => {

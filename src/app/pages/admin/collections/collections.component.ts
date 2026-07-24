@@ -27,6 +27,7 @@ type StateFilter = 'ALL' | CollectionState;
           <p>Prepare investor dossiers, verify every asset, and govern SmartDeed issuance.</p>
         </div>
         <div class="desk-actions">
+          <a routerLink="/admin/omnichain-activation" class="btn btn--ghost">Rail handoff</a>
           <a routerLink="/admin/trust-roots" class="btn btn--ghost">Trust roots</a>
           <button type="button" class="btn btn--primary" (click)="createOpen.set(true)">
             New collection
