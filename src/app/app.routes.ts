@@ -100,7 +100,6 @@ export const routes: Routes = [
   },
   {
     path: 'admin/omnichain-activation',
-    canActivate: [adminAuthGuard],
     loadComponent: () =>
       import(
         './pages/admin/omnichain-ownership-activation/omnichain-ownership-activation.component'

@@ -3,7 +3,6 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 
 import { environment } from '../../environments/environment';
-import { AdminSessionService } from './admin-session.service';
 import {
   OmnichainOwnershipActivationService,
   OwnershipActivationStatus,
@@ -36,7 +35,6 @@ describe('OmnichainOwnershipActivationService', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: AdminSessionService, useValue: { requireJwt: () => 'admin-jwt' } },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -45,13 +43,13 @@ describe('OmnichainOwnershipActivationService', () => {
 
   afterEach(() => http.verify());
 
-  it('loads the authenticated immutable activation status', async () => {
+  it('loads the immutable activation status', async () => {
     const result = service.get();
     const request = http.expectOne(
       `${environment.faucetApi}/admin/omnichain/ownership-activation`,
     );
     expect(request.request.method).toBe('GET');
-    expect(request.request.headers.get('Authorization')).toBe('Bearer admin-jwt');
+    expect(request.request.headers.has('Authorization')).toBeFalse();
     request.flush(status);
     expect(await result).toEqual(status);
   });

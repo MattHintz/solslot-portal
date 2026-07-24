@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
-import { AdminSessionService } from '../../../services/admin-session.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import {
   OmnichainOwnershipActivationService,
@@ -99,10 +98,6 @@ import { formatError } from '../../../utils/format-error';
 
             <div class="wallet-box">
               <div>
-                <span>Authenticated administrator</span>
-                <strong class="mono">{{ short(subject() || '', 22) }}</strong>
-              </div>
-              <div>
                 <span>Connected EVM wallet</span>
                 <strong class="mono">{{ wallet.address() ? short(wallet.address()!, 22) : 'Not connected' }}</strong>
               </div>
@@ -124,12 +119,12 @@ import { formatError } from '../../../utils/format-error';
                   type="button"
                   class="btn btn--primary action-button"
                   (click)="sign(approval)"
-                  [disabled]="busy() || !walletMatchesSession()"
+                  [disabled]="busy() || !walletHasApproval()"
                 >
                   {{ busy() ? 'Waiting for wallet…' : 'Review and sign ' + roleLabel(approval.role) }}
                 </button>
-                @if (wallet.isConnected() && !walletMatchesSession()) {
-                  <p class="inline-error">The connected wallet does not match this admin session.</p>
+                @if (wallet.isConnected() && !walletHasApproval()) {
+                  <p class="inline-error">The connected wallet is not an allowed signer for this Safe operation.</p>
                 }
               } @else {
                 <p class="complete-note">Your required Safe approval is sealed.</p>
@@ -165,7 +160,7 @@ import { formatError } from '../../../utils/format-error';
                 type="button"
                 class="btn btn--primary action-button"
                 (click)="broadcast(operation)"
-                [disabled]="busy() || !walletMatchesSession()"
+                [disabled]="busy() || !wallet.isConnected()"
               >
                 {{ busy() ? 'Waiting for confirmation…' : 'Schedule 24-hour handoff' }}
               </button>
@@ -266,7 +261,6 @@ import { formatError } from '../../../utils/format-error';
 })
 export class OmnichainOwnershipActivationComponent {
   private readonly api = inject(OmnichainOwnershipActivationService);
-  private readonly session = inject(AdminSessionService);
   readonly wallet = inject(EvmWalletService);
 
   readonly status = signal<OwnershipActivationStatus | null>(null);
@@ -275,11 +269,14 @@ export class OmnichainOwnershipActivationComponent {
   readonly error = signal<string | null>(null);
   readonly actionError = signal<string | null>(null);
   readonly pendingTransactionHash = signal<string | null>(null);
-  readonly subject = this.session.subject;
-  readonly walletMatchesSession = computed(() => {
+  readonly walletHasApproval = computed(() => {
     const wallet = this.wallet.address();
-    const subject = this.subject();
-    return !!wallet && !!subject && wallet.toLowerCase() === subject.toLowerCase();
+    const operation = this.status();
+    return !!wallet && !!operation && operation.approvals.some((approval) =>
+      approval.allowedSigners.some(
+        (address) => address.toLowerCase() === wallet.toLowerCase(),
+      ),
+    );
   });
 
   constructor() {
@@ -315,7 +312,7 @@ export class OmnichainOwnershipActivationComponent {
 
   async sign(approval: OwnershipSafeApproval): Promise<void> {
     await this.run(async () => {
-      this.requireMatchingWallet();
+      this.requireAllowedWallet();
       const signature = await this.wallet.signSafeMessage(
         approval.typedData,
         approval.safe,
@@ -326,7 +323,7 @@ export class OmnichainOwnershipActivationComponent {
 
   async broadcast(operation: OwnershipActivationStatus): Promise<void> {
     await this.run(async () => {
-      this.requireMatchingWallet();
+      this.requireConnectedWallet();
       if (!operation.broadcastTransaction) {
         throw new Error('The sealed Root Safe transaction is not ready.');
       }
@@ -348,12 +345,12 @@ export class OmnichainOwnershipActivationComponent {
   }
 
   currentApproval(operation: OwnershipActivationStatus): OwnershipSafeApproval | null {
-    const subject = this.subject();
-    if (!subject) return null;
+    const wallet = this.wallet.address();
+    if (!wallet) return null;
     return (
       operation.approvals.find((approval) =>
         approval.allowedSigners.some(
-          (address) => address.toLowerCase() === subject.toLowerCase(),
+          (address) => address.toLowerCase() === wallet.toLowerCase(),
         ),
       ) ?? null
     );
@@ -383,9 +380,15 @@ export class OmnichainOwnershipActivationComponent {
     return `${value.slice(0, half)}…${value.slice(-half)}`;
   }
 
-  private requireMatchingWallet(): void {
-    if (!this.walletMatchesSession()) {
-      throw new Error('Connect the same EVM wallet used for this administrator session.');
+  private requireAllowedWallet(): void {
+    if (!this.walletHasApproval()) {
+      throw new Error('Connect an EVM wallet authorized by the sealed Safe operation.');
+    }
+  }
+
+  private requireConnectedWallet(): void {
+    if (!this.wallet.isConnected()) {
+      throw new Error('Connect an EVM wallet to submit the fixed Root Safe transaction.');
     }
   }
 

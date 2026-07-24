@@ -1,23 +1,20 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
-import { AdminSessionService } from './admin-session.service';
 import { BaseSepoliaTransaction } from './evm-wallet.service';
 import { Eip712TypedData } from './solslot-api.service';
 
 @Injectable({ providedIn: 'root' })
 export class OmnichainOwnershipActivationService {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(AdminSessionService);
   private readonly base = environment.faucetApi;
 
   get(): Promise<OwnershipActivationStatus> {
     return firstValueFrom(
       this.http.get<OwnershipActivationStatus>(
         `${this.base}/admin/omnichain/ownership-activation`,
-        { headers: this.headers() },
       ),
     );
   }
@@ -27,7 +24,6 @@ export class OmnichainOwnershipActivationService {
       this.http.post<OwnershipActivationStatus>(
         `${this.base}/admin/omnichain/ownership-activation/sign`,
         { signature },
-        { headers: this.headers() },
       ),
     );
   }
@@ -37,15 +33,8 @@ export class OmnichainOwnershipActivationService {
       this.http.post<OwnershipActivationStatus>(
         `${this.base}/admin/omnichain/ownership-activation/broadcast`,
         { transactionHash },
-        { headers: this.headers() },
       ),
     );
-  }
-
-  private headers(): HttpHeaders {
-    return new HttpHeaders({
-      Authorization: `Bearer ${this.session.requireJwt()}`,
-    });
   }
 }
 
