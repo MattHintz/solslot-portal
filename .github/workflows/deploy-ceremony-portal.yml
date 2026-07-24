@@ -78,7 +78,7 @@ jobs:
           const output = process.argv[2];
           fs.writeFileSync(output, JSON.stringify({
             schemaVersion: 1,
-            release: "solslot-v2-alpha-rc17-20260719",
+            release: "solslot-v2-alpha-rc20-20260722",
             repository: process.env.GITHUB_REPOSITORY,
             commit: "${{ inputs.release_sha }}",
             environment: "${{ inputs.target }}",
