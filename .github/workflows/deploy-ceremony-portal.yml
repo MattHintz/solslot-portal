@@ -138,6 +138,7 @@ jobs:
             expected_host="${{ vars.SOLSLOT_ADMIN_EXPECTED_HOSTNAME }}"
             archive="/tmp/solslot-admin-$sha.tgz"
             release_dir="$root/releases/$sha"
+            browser_dir="$release_dir/browser"
             test -n "$root"
             test -n "$public_url"
             test -n "$expected_host"
@@ -147,9 +148,9 @@ jobs:
             sudo mkdir -p "$root/releases"
             if [ ! -f "$release_dir/.release-ready" ]; then
               sudo rm -rf "$release_dir"
-              sudo mkdir -p "$release_dir"
-              sudo tar -xzf "$archive" -C "$release_dir"
-              python3 - "$release_dir/release.json" "$sha" <<'PY'
+              sudo mkdir -p "$browser_dir"
+              sudo tar -xzf "$archive" -C "$browser_dir"
+              python3 - "$browser_dir/release.json" "$sha" <<'PY'
             import json, sys
             release = json.load(open(sys.argv[1], encoding="utf-8"))
             assert release["commit"] == sys.argv[2]
@@ -163,12 +164,10 @@ jobs:
             sudo ln -sfn "$release_dir" "$root/current.next"
             sudo mv -Tf "$root/current.next" "$root/current"
             sudo systemctl reload apache2
-            verify_url="$public_url/release.json"
-            curl_args=()
-            if [ "${{ inputs.target }}" = "production" ]; then
-              verify_url="https://solslot.com/genesis-admin/release.json"
-              curl_args=(--resolve solslot.com:443:127.0.0.1)
-            fi
+            verify_host="${public_url#https://}"
+            verify_host="${verify_host%%/*}"
+            verify_url="https://$verify_host/genesis-admin/release.json"
+            curl_args=(--resolve "$verify_host:443:127.0.0.1")
             if ! curl -fsS "${curl_args[@]}" "$verify_url" \
               | python3 -c 'import json,sys; assert json.load(sys.stdin)["commit"] == "${{ inputs.release_sha }}"'; then
               if [ -n "$previous" ] && [ -f "$previous/.release-verified" ]; then
@@ -208,11 +207,10 @@ jobs:
             sudo ln -sfn "$release_dir" "$root/current.next"
             sudo mv -Tf "$root/current.next" "$root/current"
             sudo systemctl reload apache2
-            verify_url="${{ vars.SOLSLOT_ADMIN_PUBLIC_URL }}/release.json"
-            curl_args=()
-            if [ "${{ inputs.target }}" = "production" ]; then
-              verify_url="https://solslot.com/genesis-admin/release.json"
-              curl_args=(--resolve solslot.com:443:127.0.0.1)
-            fi
+            public_url="${{ vars.SOLSLOT_ADMIN_PUBLIC_URL }}"
+            verify_host="${public_url#https://}"
+            verify_host="${verify_host%%/*}"
+            verify_url="https://$verify_host/genesis-admin/release.json"
+            curl_args=(--resolve "$verify_host:443:127.0.0.1")
             curl -fsS "${curl_args[@]}" "$verify_url" \
               | python3 -c 'import json,sys; assert json.load(sys.stdin)["commit"] == "${{ inputs.rollback_release }}"'
