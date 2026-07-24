@@ -74,6 +74,9 @@
     "typescript": "~5.9.2"
   },
   "overrides": {
-    "ethers": "$ethers"
+    "ethers": "$ethers",
+    "@coinbase/cdp-sdk": {
+      "axios": "1.18.1"
+    }
   }
 }
