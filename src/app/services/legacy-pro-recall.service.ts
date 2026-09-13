@@ -16,10 +16,11 @@ export class LegacyProRecallService {
     if (trimmed.length < 3) {
       throw new Error('Enter at least 3 characters.');
     }
-    const subject = this.session.subject();
-    const headers = subject
-      ? new HttpHeaders({ 'X-Solslot-Admin-Subject': subject })
-      : undefined;
+    const jwt = this.session.jwt();
+    if (!jwt) {
+      throw new Error('Sign in with a current administrator session to search legacy records.');
+    }
+    const headers = new HttpHeaders({ Authorization: `Bearer ${jwt}` });
     const params = new HttpParams().set('q', trimmed);
     return firstValueFrom(
       this.http.get<LegacyProRecallResponse>(

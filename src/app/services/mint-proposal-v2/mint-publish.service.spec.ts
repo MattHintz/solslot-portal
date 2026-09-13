@@ -32,6 +32,7 @@ import { bytesToHex } from '../../utils/chia-hash';
 import { MintPublishService, type MintPublishArtifacts } from './mint-publish.service';
 import { MintProposalV2Service } from './mint-proposal-v2.service';
 import fixturesJson from './mint-publish.fixtures.json';
+import inventoryFixture from './inventory-mint.fixtures.json';
 import metadataFixture from '../property-metadata/property-metadata-v1.fixture.json';
 
 // ── Fixture shape ──────────────────────────────────────────────────────────
@@ -134,6 +135,30 @@ describe('MintPublishService', () => {
   });
 
   // ── Constants ──
+  for (const entry of inventoryFixture.cases) {
+    it(`matches Python inventory V${entry.version} commitments for base ${entry.base}`, () => {
+      const result = service.buildMintPublishArtifacts({
+        ...builderArgsFromFixture(fixture), royaltyBps: 100, royaltyPuzhash: inventoryFixture.treasury,
+        metadataRoot: inventoryFixture.metadataRoot, primaryPurchaseUsdAmountMinor: entry.base,
+        inventoryPuzzleVersion: entry.version as 1 | 2,
+        primaryPurchaseValidatorPubkeys: inventoryFixture.validators,
+        primaryPurchaseNetwork: 'testnet11', primaryPurchaseProtocolTreasuryPuzhash: inventoryFixture.treasury,
+      });
+      const actual = result as unknown as Record<string, unknown>;
+      for (const [key, expected] of Object.entries(entry.expected)) {
+        const camel = key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+        expect(actual[camel]).withContext(key).toBe(expected);
+      }
+    });
+  }
+
+  it('rejects unsupported explicit inventory versions before computing a commitment', () => {
+    expect(() => service.buildMintPublishArtifacts({
+      ...builderArgsFromFixture(fixture), inventoryPuzzleVersion: 3 as 2,
+      primaryPurchaseUsdAmountMinor: 101,
+    })).toThrowError(/supported version/);
+  });
+
   describe('constants', () => {
     it('BILL_MINT_TAG matches the fixture (0x4d = "M")', () => {
       expect(MintPublishService.BILL_MINT_TAG).toBe(fixture.constants.bill_mint_tag);

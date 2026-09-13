@@ -9,7 +9,10 @@ import { environment } from '../../environments/environment';
 const SINGLETON_MOD_HASH = '7faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9f';
 const SINGLETON_LAUNCHER_HASH = 'eff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9';
 
-const STORAGE_KEY = 'solslot_session_v2';
+// Origin separates hosts; app/experience/network separate co-hosted bindings.
+// Do not silently import or delete the old unscoped key: require reconnect.
+export const ADMIN_VAULT_SESSION_STORAGE_KEY = 'solslot:admin:testnet-alpha:testnet11:session:v2';
+const STORAGE_KEY = ADMIN_VAULT_SESSION_STORAGE_KEY;
 
 /**
  * Persists the user's last-known vault binding across page reloads.
@@ -34,14 +37,16 @@ export class SessionService {
   private readonly discovery = inject(VaultDiscoveryService);
   private readonly wasm = inject(ChiaWasmService);
 
-  readonly session = signal<PersistedSession | null>(this.load());
+  private refreshGeneration = 0;
+  private readonly sessionState = signal<PersistedSession | null>(this.load());
+  readonly session = this.sessionState.asReadonly();
   readonly vault = signal<VaultState | null>(null);
 
   constructor() {
     // Persist any updates to localStorage.
     effect(() => {
       const s = this.session();
-      if (typeof window === 'undefined') return;
+      if (typeof window === 'undefined' || !this.isTestnetAlphaRuntime()) return;
       if (s) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
       } else {
@@ -51,7 +56,8 @@ export class SessionService {
   }
 
   private load(): PersistedSession | null {
-    if (typeof window === 'undefined') return null;
+    // A beta/mainnet build must not restore or delete this alpha binding.
+    if (typeof window === 'undefined' || !this.isTestnetAlphaRuntime()) return null;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     try {
@@ -80,7 +86,7 @@ export class SessionService {
   }
 
   setEvmSession(address: string, vaultLauncherId: string, compressedPubkey?: string): void {
-    this.session.set({
+    this.replaceSession({
       schemaVersion: 2,
       protocolVersion: environment.protocolVersion,
       experienceMode: 'testnet-alpha',
@@ -98,7 +104,7 @@ export class SessionService {
     vaultLauncherId: string,
     walletSource: 'chia' | 'google' = 'chia',
   ): void {
-    this.session.set({
+    this.replaceSession({
       schemaVersion: 2,
       protocolVersion: environment.protocolVersion,
       experienceMode: 'testnet-alpha',
@@ -113,8 +119,7 @@ export class SessionService {
   }
 
   clear(): void {
-    this.session.set(null);
-    this.vault.set(null);
+    this.replaceSession(null);
   }
 
   /**
@@ -129,7 +134,18 @@ export class SessionService {
     if (!current) {
       return;
     }
-    this.session.set({ ...current, vaultLauncherId });
+    this.replaceSession({ ...current, vaultLauncherId });
+  }
+
+  private replaceSession(session: PersistedSession | null): void {
+    if (session && !this.isTestnetAlphaRuntime()) {
+      ++this.refreshGeneration;
+      this.sessionState.set(null);
+      this.vault.set(null);
+      throw new Error('Vault sessions are available only in the Testnet Alpha / Testnet11 runtime.');
+    }
+    ++this.refreshGeneration;
+    this.sessionState.set(session);
     this.vault.set(null);
   }
 
@@ -176,10 +192,23 @@ export class SessionService {
   }
 
   async refreshVault(): Promise<VaultState | null> {
-    const s = this.session();
-    if (!s?.vaultLauncherId) return null;
+    const generation = ++this.refreshGeneration;
+    if (!this.isTestnetAlphaRuntime()) {
+      this.replaceSession(null);
+      return null;
+    }
+    const current = this.session();
+    if (!current?.vaultLauncherId) return null;
+    const s = { ...current };
 
-    const onChain = await this.discovery.refreshFromLauncherId(s.vaultLauncherId);
+    // Retained chain state is no longer fresh once a new lookup begins.
+    // Callers already render a null vault as waiting for chain confirmation.
+    this.vault.set(null);
+    const onChain = await this.discovery.refreshFromLauncherId(s.vaultLauncherId, {
+      authType: s.authType === 'evm' ? 3 : s.authType === 'passkey' ? 2 : 1,
+      publicKey: s.compressedPubkey || s.address,
+    });
+    if (!this.isCurrentRefresh(s, generation)) return null;
     if (!onChain) {
       // Launcher not on chain (registration mempool-only, or wrong id).
       return null;
@@ -201,8 +230,27 @@ export class SessionService {
       // enrichment via coinset queries (see class-level docstring).
       balance: { xch_mojos: 0, deeds: [] },
     };
+    if (!this.isCurrentRefresh(s, generation)) return null;
     this.vault.set(synthesized);
     return synthesized;
+  }
+
+  private isCurrentRefresh(session: PersistedSession, generation: number): boolean {
+    if (!this.isTestnetAlphaRuntime()) {
+      this.replaceSession(null);
+      return false;
+    }
+    const current = this.session();
+    return this.refreshGeneration === generation && !!current &&
+      ['authType', 'address', 'vaultLauncherId', 'compressedPubkey', 'walletSource',
+        'experienceMode', 'network', 'createdAt', 'schemaVersion', 'protocolVersion'].every((key) =>
+        current[key as keyof PersistedSession] === session[key as keyof PersistedSession],
+      );
+  }
+
+  private isTestnetAlphaRuntime(): boolean {
+    return String(environment.experienceMode) === 'testnet-alpha' &&
+      environment.chiaNetwork === 'testnet11';
   }
 }
 

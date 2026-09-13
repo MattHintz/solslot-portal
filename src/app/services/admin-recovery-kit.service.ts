@@ -17,6 +17,7 @@ import {
   RecoveryDrillChallenge,
 } from './admin-security.service';
 import { Eip712TypedData } from './solslot-api.service';
+import { createAdminLostRecoveryPackage, validateRecoveryDrill } from './admin-recovery-handoff';
 
 export const ADMIN_RECOVERY_BLS_PATH = [12381, 8444, 2, 0] as const;
 export const ADMIN_RECOVERY_BLS_PATH_LABEL = 'm/12381/8444/2/0-unhardened';
@@ -108,17 +109,22 @@ export class AdminRecoveryKitService {
     evmSignature: string;
     blsSignature: string;
   }> {
+    const snapshot = structuredClone(challenge);
     const guardian = this.requireGuardian();
     const key = this.requireBlsKey();
-    validateDrillTypedData(challenge, guardian.address, this.requireBlsPublicKey());
-    const digest = requireHexBytes(challenge.blsSigningDigest, 32, 'BLS drill digest');
+    validateDrillTypedData(snapshot, guardian.address, this.requireBlsPublicKey());
+    const localDigest = validateRecoveryDrill(snapshot, this.requireBlsPublicKey());
+    if (snapshot.expiresAt <= Math.floor(Date.now() / 1000)) {
+      throw new Error('This recovery test has expired. Prepare a new one.');
+    }
+    const digest = requireHexBytes(localDigest, 32, 'BLS drill digest');
     const signature = key.sign(digest);
     try {
-      const { EIP712Domain: _domain, ...types } = challenge.evmTypedData.types;
+      const { EIP712Domain: _domain, ...types } = snapshot.evmTypedData.types;
       const evmSignature = await guardian.signTypedData(
-        challenge.evmTypedData.domain,
+        snapshot.evmTypedData.domain,
         types,
-        challenge.evmTypedData.message,
+        snapshot.evmTypedData.message,
       );
       return {
         evmSignature,
@@ -137,24 +143,25 @@ export class AdminRecoveryKitService {
     guardianTypedData: Eip712TypedData;
     recoveryBlsDigest: string;
   }): Promise<{ guardianSignature: string; recoveryBlsSignature: string }> {
+    const verified = createAdminLostRecoveryPackage(structuredClone(args));
     const guardian = this.requireGuardian();
     validateLostKeyTypedData(
-      args.guardianTypedData,
-      args.intent,
-      args.intentHash,
-      args.coordinator,
+      verified.guardianTypedData,
+      verified.intent,
+      verified.intentHash,
+      verified.coordinator,
       guardian.address,
       this.requireBlsPublicKey(),
     );
-    const { EIP712Domain: _domain, ...types } = args.guardianTypedData.types;
+    const { EIP712Domain: _domain, ...types } = verified.guardianTypedData.types;
     const guardianSignature = await guardian.signTypedData(
-      args.guardianTypedData.domain,
+      verified.guardianTypedData.domain,
       types,
-      args.guardianTypedData.message,
+      verified.guardianTypedData.message,
     );
     return {
       guardianSignature,
-      recoveryBlsSignature: this.signDigest(args.recoveryBlsDigest),
+      recoveryBlsSignature: this.signDigest(verified.recoveryBlsDigest),
     };
   }
 
@@ -182,7 +189,7 @@ export class AdminRecoveryKitService {
     );
   }
 
-  signDigest(digestHex: string): string {
+  private signDigest(digestHex: string): string {
     const digest = requireHexBytes(digestHex, 32, 'recovery intent digest');
     const signature = this.requireBlsKey().sign(digest);
     try {
@@ -193,37 +200,8 @@ export class AdminRecoveryKitService {
     }
   }
 
-  signBlsAction(action: ChiaSigningAction): string {
-    if (action.signerKind !== 'BLS_RECOVERY' || action.blsPairs.length === 0) {
-      throw new Error('This is not an offline recovery-key signing action.');
-    }
-    const expectedPublicKey = this.requireBlsPublicKey();
-    const sdk = this.requireSdk();
-    const signatures: WasmSignature[] = [];
-    const messages: Uint8Array[] = [];
-    try {
-      for (const pair of action.blsPairs) {
-        if (normalizeHex(pair.publicKey) !== expectedPublicKey) {
-          throw new Error('The recovery action requests an unknown BLS key.');
-        }
-        const message = requireHexBytes(pair.message, undefined, 'BLS recovery message');
-        if (message.byteLength === 0 || message.byteLength > 1024) {
-          message.fill(0);
-          throw new Error('The recovery action contains an invalid BLS message.');
-        }
-        messages.push(message);
-        signatures.push(this.requireBlsKey().sign(message));
-      }
-      const aggregate = sdk.Signature.aggregate(signatures);
-      try {
-        return bytesToHex(aggregate.toBytes()).toLowerCase();
-      } finally {
-        aggregate.free();
-      }
-    } finally {
-      messages.forEach((message) => message.fill(0));
-      signatures.forEach((signature) => signature.free());
-    }
+  signBlsAction(_action: ChiaSigningAction): string {
+    throw new Error('Chia recovery signing is unavailable until this page can verify the complete recovery transaction.');
   }
 
   private requireBlsPublicKey(): string {

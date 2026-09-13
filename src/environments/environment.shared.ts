@@ -3,6 +3,7 @@ import { googleVaultRuntime } from './google-vault-runtime';
 /** Solslot V2 development defaults. Ceremony coordinates are intentionally empty. */
 export const environment = {
   production: false,
+  runtimeEnvironment: 'development' as string,
   schemaVersion: 2 as const,
   protocolVersion: 'solslot-v2' as const,
   experienceMode: 'testnet-alpha' as const,

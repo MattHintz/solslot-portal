@@ -1,198 +1,193 @@
-import { Injectable, inject } from '@angular/core';
-import { CoinsetService, CoinRecord } from './coinset.service';
-import { coinId, vaultDiscoveryHint, hexToBytes, AUTH_TYPE_SECP256K1, AUTH_TYPE_BLS } from '../utils/chia-hash';
+import { Injectable } from '@angular/core';
+import { CoinRecord, CoinsetService } from './coinset.service';
+import { SolslotProtocolArtifactService } from './solslot-protocol-artifact.service';
+import { coinId, hexToBytes, vaultDiscoveryHint } from '../utils/chia-hash';
+import {
+  canonicalOwnedVaultHash, EMPTY_VAULT_IDENTITY_ROOT,
+  VAULT_SINGLETON_LAUNCHER_HASH, VaultOwnerBinding, VaultOwnerCoordinates,
+  vaultRootCandidates,
+} from '../utils/vault-owner-proof';
 
-/**
- * Pure on-chain vault discovery.
- *
- * Given a user's pubkey + auth type, walks chain to find their existing
- * vault singleton without consulting the backend at all.  This is the core
- * of Solslot's "create-once, never-touch-the-backend-again" login flow.
- *
- * Algorithm:
- *
- *   1. Compute hint = sha256("solslot-vault-discovery-v2" || authType || pubkey)
- *      Same formula the faucet used at registration time
- *      (see solslot_puzzles/vault_driver.py:vault_discovery_hint).
- *
- *   2. Query coinset.org `get_coin_records_by_hint(hint, includeSpent=true)`.
- *      Returns the launcher coin (always spent — its spend created the eve
- *      singleton).
- *
- *   3. From the launcher, find its child via `get_coin_records_by_parent_ids`.
- *      The child is the eve singleton.
- *
- *   4. Walk forward: for each coin, find its (single) child until we hit
- *      an unspent coin — that's the current vault state.
- *
- * If step 2 returns nothing, the user has no vault yet and the caller
- * should route to /create-vault.
- */
+class UnrelatedVaultCandidate extends Error {}
+
+function normalizeHex(value: string): string {
+  return '0x' + value.replace(/^0x/i, '').toLowerCase();
+}
+
 @Injectable({ providedIn: 'root' })
 export class VaultDiscoveryService {
-  private readonly coinset = inject(CoinsetService);
+  constructor(
+    private readonly coinset: CoinsetService,
+    private readonly protocol: SolslotProtocolArtifactService,
+  ) {}
 
-  /**
-   * Look up an EVM-vault by the user's compressed secp256k1 pubkey.
-   *
-   * Returns the discovered vault state, or `null` if no launcher exists
-   * for this pubkey on chain.
-   */
-  async discoverEvmVault(compressedPubkey: string): Promise<DiscoveredVault | null> {
-    return this.discover(AUTH_TYPE_SECP256K1, compressedPubkey);
+  async discoverEvmVault(publicKey: string): Promise<DiscoveredVault | null> {
+    return this.discover({ authType: 3, publicKey });
   }
 
-  /**
-   * Look up a BLS-vault by the user's 48-byte G1 pubkey.
-   */
-  async discoverChiaVault(blsPubkey: string): Promise<DiscoveredVault | null> {
-    return this.discover(AUTH_TYPE_BLS, blsPubkey);
+  async discoverChiaVault(publicKey: string): Promise<DiscoveredVault | null> {
+    return this.discover({ authType: 1, publicKey });
   }
 
-  private async discover(
-    authType: number,
-    pubkeyHex: string
+  async refreshFromLauncherId(
+    launcherId: string,
+    owner: VaultOwnerBinding,
   ): Promise<DiscoveredVault | null> {
-    const pubkeyBytes = hexToBytes(pubkeyHex);
-    const hint = vaultDiscoveryHint(authType, pubkeyBytes);
-
-    // Step 1: find the launcher by its hint.
-    const candidates = await this.coinset.getCoinRecordsByHint(hint, /* includeSpent */ true);
-    if (candidates.length === 0) {
-      return null;
+    const context = this.ownerContext(owner);
+    const expectedLauncher = normalizeHex(launcherId);
+    const launcher = await this.coinset.getCoinRecordByName(expectedLauncher);
+    if (!launcher) return null;
+    if (this.recordId(launcher) !== expectedLauncher) {
+      throw new Error('Vault provider returned a different launcher.');
     }
+    return this.walkSingletonChain(launcher, context.owner, context.coordinates);
+  }
 
-    // Filter to only launcher coins (puzzle hash = SINGLETON_LAUNCHER_HASH).
-    // The CHIP-22 hint is sha256-collision-resistant, so in practice this
-    // returns either 0 or 1 launcher.  If a user re-registered, multiple
-    // launchers could share the same hint — pick the most recent that has
-    // a confirmed vault descendant.
-    const SINGLETON_LAUNCHER_HASH = '0xeff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9';
-    const launchers = candidates.filter(
-      (c) => normalizeHex(c.coin.puzzle_hash) === SINGLETON_LAUNCHER_HASH
-    );
-    if (launchers.length === 0) {
-      return null;
+  private ownerContext(owner: VaultOwnerBinding): {
+    owner: VaultOwnerBinding; coordinates: VaultOwnerCoordinates;
+  } {
+    const coordinates = this.protocol.coordinates;
+    if (!this.protocol.isReady || !coordinates ||
+        !/^0x[0-9a-f]{64}$/i.test(coordinates.poolLauncherId) ||
+        !/^0x[0-9a-f]{64}$/i.test(coordinates.bridgePolicyHash) ||
+        /^0x0{64}$/i.test(coordinates.poolLauncherId) ||
+        /^0x0{64}$/i.test(coordinates.bridgePolicyHash)) {
+      throw new Error('Vault ownership verification needs the verified release coordinates.');
     }
+    if (typeof owner?.publicKey !== 'string') {
+      throw new Error('Reconnect the wallet to verify its vault owner key.');
+    }
+    const snapshot = { authType: owner.authType, publicKey: normalizeHex(owner.publicKey) };
+    const pinned = {
+      poolLauncherId: coordinates.poolLauncherId,
+      bridgePolicyHash: coordinates.bridgePolicyHash,
+    };
+    // Validate the owner before reading any provider-selected candidate.
+    canonicalOwnedVaultHash('0x' + '01'.repeat(32), snapshot, pinned, EMPTY_VAULT_IDENTITY_ROOT);
+    return { owner: snapshot, coordinates: pinned };
+  }
 
-    // Pick the most recent launcher (highest confirmed_block_index).
-    launchers.sort((a, b) => b.confirmed_block_index - a.confirmed_block_index);
+  private async discover(owner: VaultOwnerBinding): Promise<DiscoveredVault | null> {
+    const context = this.ownerContext(owner);
+    const hint = vaultDiscoveryHint(context.owner.authType, hexToBytes(context.owner.publicKey));
+    const candidates = await this.coinset.getCoinRecordsByHint(hint, true);
+    const launchers = candidates.filter((record) =>
+      normalizeHex(record.coin.puzzle_hash) === VAULT_SINGLETON_LAUNCHER_HASH,
+    ).sort((a, b) => b.confirmed_block_index - a.confirmed_block_index);
 
-    // Try each launcher in order until we find one whose chain walks to an
-    // unspent coin (the live vault).  Older launchers may have been
-    // superseded if the user registered multiple times.
     for (const launcher of launchers) {
-      const vault = await this.walkSingletonChain(launcher);
-      if (vault) {
-        return vault;
+      try {
+        const vault = await this.walkSingletonChain(launcher, context.owner, context.coordinates);
+        if (vault) return vault;
+      } catch (error) {
+        // Public hints can name unrelated objects. A provider outage is distinct:
+        // propagate it instead of reporting that no existing vault exists.
+        if (!(error instanceof UnrelatedVaultCandidate)) throw error;
       }
     }
     return null;
   }
 
-  /**
-   * Walk forward from a known launcher id to find its current state coin.
-   *
-   * Used by SessionService.refreshVault() to refresh vault state without
-   * needing the pubkey or backend — given just the launcher id, we can
-   * always re-derive the live coin from chain.
-   */
-  async refreshFromLauncherId(launcherId: string): Promise<DiscoveredVault | null> {
-    const launcher = await this.coinset.getCoinRecordByName(launcherId);
-    if (!launcher) {
-      return null;
+  private recordId(record: CoinRecord): string {
+    if (!/^0x[0-9a-f]{64}$/i.test(record.coin.parent_coin_info) ||
+        !/^0x[0-9a-f]{64}$/i.test(record.coin.puzzle_hash) ||
+        !Number.isSafeInteger(record.coin.amount) || record.coin.amount !== 1) {
+      throw new UnrelatedVaultCandidate('Vault candidate has invalid coin fields.');
     }
-    return this.walkSingletonChain(launcher);
+    return normalizeHex(coinId(record.coin.parent_coin_info, record.coin.puzzle_hash, record.coin.amount));
   }
 
-  /**
-   * Walk a singleton chain from launcher → eve → state₁ → … → currentState.
-   *
-   * Each singleton spend creates exactly one child (singletons conserve),
-   * so this is a deterministic linear walk: at each level, query
-   * get_coin_records_by_parent_ids and recurse on the (single) child.
-   *
-   * Returns null if the launcher has no child yet (registration is still
-   * in mempool, not confirmed) — the caller should treat this as "vault
-   * not yet ready" rather than "vault doesn't exist".
-   */
-  private async walkSingletonChain(launcher: CoinRecord): Promise<DiscoveredVault | null> {
-    const launcherCoinId = coinId(
-      launcher.coin.parent_coin_info,
-      launcher.coin.puzzle_hash,
-      launcher.coin.amount
-    );
-
+  private async walkSingletonChain(
+    launcher: CoinRecord, owner: VaultOwnerBinding, coordinates: VaultOwnerCoordinates,
+  ): Promise<DiscoveredVault | null> {
+    if (normalizeHex(launcher.coin.puzzle_hash) !== VAULT_SINGLETON_LAUNCHER_HASH ||
+        launcher.coin.amount !== 1 ||
+        !Number.isSafeInteger(launcher.confirmed_block_index) ||
+        launcher.confirmed_block_index <= 0) {
+      throw new UnrelatedVaultCandidate('Vault discovery refused an invalid singleton launcher coin.');
+    }
+    const launcherId = this.recordId(launcher);
     let current = launcher;
-    let currentId = launcherCoinId;
-    let depth = 0;
-    const MAX_DEPTH = 10000; // safety bound; vaults shouldn't have this many spends
-
-    while (depth < MAX_DEPTH) {
-      const children = await this.coinset.getCoinRecordsByParentIds(
-        [currentId],
-        /* includeSpent */ true
-      );
-      if (children.length === 0) {
-        // Unspent leaf reached — but the launcher itself can't be the leaf
-        // (it must be spent for any vault to exist).  If depth=0 here, the
-        // launcher hasn't been spent yet.
-        if (depth === 0) {
-          return null;
-        }
-        // Otherwise current is the live vault.
-        return this.toDiscoveredVault(current, currentId, launcher, launcherCoinId);
+    let currentId = launcherId;
+    const seen = new Set([launcherId]);
+    for (let depth = 0; depth < 10000; depth++) {
+      const children = await this.coinset.getCoinRecordsByParentIds([currentId], true);
+      if (!children.length) {
+        if (depth === 0 && current.spent_block_index === 0) return null;
+        throw new UnrelatedVaultCandidate('Vault singleton chain ended without its confirmed continuation.');
       }
-
-      const child = children[0];
-      const childId = coinId(
-        child.coin.parent_coin_info,
-        child.coin.puzzle_hash,
-        child.coin.amount
+      const odd = children.filter((record) =>
+        normalizeHex(record.coin.parent_coin_info) === currentId &&
+        Number.isSafeInteger(record.coin.amount) && record.coin.amount > 0 &&
+        record.coin.amount % 2 === 1,
       );
-      if (child.spent_block_index === 0 || child.spent_block_index === null) {
-        // Child is unspent — this is the current state coin.
-        return this.toDiscoveredVault(child, childId, launcher, launcherCoinId);
+      if (odd.length !== 1) {
+        throw new UnrelatedVaultCandidate('Vault singleton continuation must contain exactly one direct odd-valued child.');
+      }
+      const child = odd[0];
+      const childId = this.recordId(child);
+      if (!Number.isSafeInteger(current.spent_block_index) || current.spent_block_index <= 0 ||
+          !Number.isSafeInteger(child.confirmed_block_index) ||
+          child.confirmed_block_index !== current.spent_block_index ||
+          child.confirmed_block_index < current.confirmed_block_index ||
+          !Number.isSafeInteger(child.spent_block_index) || child.spent_block_index < 0 ||
+          (child.spent_block_index > 0 && child.spent_block_index < child.confirmed_block_index)) {
+        throw new UnrelatedVaultCandidate('Vault continuation lacks an atomic confirmed parent spend.');
+      }
+      if (seen.has(childId)) throw new UnrelatedVaultCandidate('Vault singleton chain contains a cycle.');
+      seen.add(childId);
+      if (child.spent_block_index === 0) {
+        await this.verifyOwner(launcherId, child, current, owner, coordinates);
+        return {
+          vaultLauncherId: launcherId,
+          vaultFullPuzhash: normalizeHex(child.coin.puzzle_hash),
+          currentCoinId: childId,
+          confirmed: true,
+          confirmedBlockIndex: child.confirmed_block_index,
+          launcherConfirmedBlockIndex: launcher.confirmed_block_index,
+        };
       }
       current = child;
       currentId = childId;
-      depth++;
     }
-    throw new Error(`Singleton chain walk exceeded MAX_DEPTH (${MAX_DEPTH})`);
+    throw new Error('Vault singleton chain exceeded 10000 spends.');
   }
 
-  private toDiscoveredVault(
-    coin: CoinRecord,
-    coinIdHex: string,
-    launcher: CoinRecord,
-    launcherIdHex: string
-  ): DiscoveredVault {
-    return {
-      vaultLauncherId: launcherIdHex,
-      vaultFullPuzhash: normalizeHex(coin.coin.puzzle_hash),
-      currentCoinId: coinIdHex,
-      confirmed: true,
-      confirmedBlockIndex: coin.confirmed_block_index,
-      launcherConfirmedBlockIndex: launcher.confirmed_block_index,
-    };
+  private async verifyOwner(
+    launcherId: string, current: CoinRecord, parent: CoinRecord,
+    owner: VaultOwnerBinding, coordinates: VaultOwnerCoordinates,
+  ): Promise<void> {
+    const matches = (root: string) =>
+      canonicalOwnedVaultHash(launcherId, owner, coordinates, root) === normalizeHex(current.coin.puzzle_hash);
+    if (matches(EMPTY_VAULT_IDENTITY_ROOT)) return;
+    const parentId = this.recordId(parent);
+    const spend = await this.coinset.getPuzzleAndSolution(parentId, parent.spent_block_index);
+    if (!spend) {
+      throw new UnrelatedVaultCandidate('Vault owner proof is unavailable for this candidate.');
+    }
+    if (this.recordId({ ...parent, coin: spend.coin }) !== parentId) {
+      throw new UnrelatedVaultCandidate('Vault owner proof names a different parent.');
+    }
+    let roots: string[];
+    try {
+      roots = [...new Set([
+        ...vaultRootCandidates(spend.puzzleReveal),
+        ...vaultRootCandidates(spend.solution),
+      ])];
+    } catch {
+      throw new UnrelatedVaultCandidate('Vault owner proof is malformed or exceeds its bounds.');
+    }
+    if (!roots.some(matches)) {
+      throw new UnrelatedVaultCandidate('This singleton does not match the connected owner and canonical vault puzzle.');
+    }
   }
 }
 
 export interface DiscoveredVault {
-  /** The vault's permanent on-chain identity (launcher coin id). */
   vaultLauncherId: string;
-  /** The current state coin's puzzle hash (changes after each vault spend). */
   vaultFullPuzhash: string;
-  /** The current unspent state coin id — what subsequent spends consume. */
   currentCoinId: string;
-  /** True iff a confirmed unspent state coin was found. */
   confirmed: boolean;
-  /** Block index at which the current state was confirmed. */
   confirmedBlockIndex: number;
-  /** Block index at which the launcher itself was confirmed. */
   launcherConfirmedBlockIndex: number;
-}
-
-function normalizeHex(s: string): string {
-  return s.startsWith('0x') ? s.toLowerCase() : '0x' + s.toLowerCase();
 }

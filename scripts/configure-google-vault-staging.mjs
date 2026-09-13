@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 
 const args = parseArgs(process.argv.slice(2));
-const required = ['gcp-project', 'oauth-client-id', 'release-sha'];
+const required = ['gcp-project', 'oauth-client-id', 'release-sha', 'release-tag'];
 for (const key of required) {
   if (!args[key]) fail(`Missing required --${key}.`);
 }
@@ -17,6 +17,9 @@ if (!/^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(args['oauth-client
   fail('Invalid public Google Web OAuth client ID.');
 }
 if (!/^[0-9a-f]{40}$/.test(args['release-sha'])) fail('--release-sha must be a lowercase 40-character commit SHA.');
+if (!/^solslot-v2-alpha-rc[0-9]+(\.[0-9]+)?-[0-9]{8}$/.test(args['release-tag'])) {
+  fail('--release-tag must be a coordinated Solslot alpha release tag.');
+}
 
 requireCommand('gcloud');
 requireCommand('gh');
@@ -26,8 +29,24 @@ if (run('git', ['status', '--porcelain']).trim()) {
 
 const repository = run('gh', ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']).trim();
 run('gh', ['api', `repos/${repository}/commits/${args['release-sha']}`]);
+const tagSha = run('gh', [
+  'api',
+  `repos/${repository}/commits/tags/${encodeURIComponent(args['release-tag'])}`,
+  '--jq',
+  '.sha',
+]).trim();
+if (tagSha !== args['release-sha']) {
+  fail('The remote coordinated release tag must resolve to --release-sha.');
+}
 const workflowRef = currentPushedBranch(repository, args['release-sha']);
 run('gh', ['workflow', 'view', 'deploy-ceremony-portal.yml', '--ref', workflowRef, '--yaml']);
+
+const requiredSecrets = new Set(['SERVER_IP', 'SSH_USER', 'SSH_PRIVATE_KEY', 'SSH_PASSPHRASE']);
+const secrets = JSON.parse(run('gh', ['secret', 'list', '--env', 'staging', '--json', 'name']));
+const missingSecrets = [...requiredSecrets].filter((name) => !secrets.some((item) => item.name === name));
+if (missingSecrets.length) {
+  fail(`The staging environment is missing deployment secret names: ${missingSecrets.join(', ')}.`);
+}
 
 // This enables only the Drive API. Browser OAuth-client origins, consent mode,
 // authorized domain, and test users are deliberately console-managed prerequisites.
@@ -44,13 +63,6 @@ run('gh', [
   args['oauth-client-id'],
 ]);
 
-const requiredSecrets = new Set(['SERVER_IP', 'SSH_USER', 'SSH_PRIVATE_KEY', 'SSH_PASSPHRASE']);
-const secrets = JSON.parse(run('gh', ['secret', 'list', '--env', 'staging', '--json', 'name']));
-const missingSecrets = [...requiredSecrets].filter((name) => !secrets.some((item) => item.name === name));
-if (missingSecrets.length) {
-  fail(`The staging environment is missing deployment secret names: ${missingSecrets.join(', ')}.`);
-}
-
 console.log('Manual prerequisites recorded: dedicated staging Web OAuth client, testing-mode test users, and Cloudflare Access administrators.');
 const dispatchStartedAt = new Date();
 run('gh', [
@@ -63,12 +75,14 @@ run('gh', [
   'target=staging',
   '-f',
   `release_sha=${args['release-sha']}`,
+  '-f',
+  `release_tag=${args['release-tag']}`,
 ]);
 
 const runId = await findWorkflowRun(workflowRef, dispatchStartedAt);
 run('gh', ['run', 'watch', runId, '--exit-status']);
-await verifyDeployment(args['release-sha']);
-console.log(`Google Vault staging deployment verified for ${args['release-sha']}.`);
+await verifyDeployment(args['release-sha'], args['release-tag']);
+console.log(`Google Vault staging deployment verified for ${args['release-sha']} (${args['release-tag']}).`);
 
 function parseArgs(values) {
   const parsed = {};
@@ -141,13 +155,21 @@ function currentPushedBranch(repository, releaseSha) {
   return branch;
 }
 
-async function verifyDeployment(releaseSha) {
+async function verifyDeployment(releaseSha, releaseTag) {
   const base = 'https://staging.solslot.com/genesis-admin';
   const release = await fetch(`${base}/release.json`, { cache: 'no-store' });
   if (!release.ok) fail(`Staging release manifest failed: HTTP ${release.status}.`);
   const manifest = await release.json();
-  if (manifest.commit !== releaseSha || manifest.googleVaultEnabled !== true || !manifest.googleVaultRuntimeConfigSha256) {
-    fail('Staging release manifest does not prove the requested Google Vault-enabled SHA.');
+  if (
+    manifest.commit !== releaseSha ||
+    manifest.release !== releaseTag ||
+    manifest.environment !== 'staging' ||
+    manifest.baseHref !== '/genesis-admin/' ||
+    manifest.testOnly !== true ||
+    manifest.googleVaultEnabled !== true ||
+    !manifest.googleVaultRuntimeConfigSha256
+  ) {
+    fail('Staging release manifest does not prove the requested Google Vault-enabled SHA, tag and environment.');
   }
   const headers = await fetch(`${base}/`, { method: 'HEAD', cache: 'no-store' });
   const csp = headers.headers.get('content-security-policy') || '';

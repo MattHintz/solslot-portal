@@ -549,7 +549,62 @@ export class EvmWalletService {
    * shown so a compromised launch view cannot turn this into an arbitrary
    * typed-data signing surface.
    */
-  async signLaunchAction(typedData: Eip712TypedData): Promise<string> {
+  /** Sign only the server-selected, reviewed ceremony envelope. Generic
+   * payment/protocol signing keeps its existing configured-chain allowlist. */
+  async signLaunchCeremony(typedData: Eip712TypedData, binding: LaunchCeremonyBinding): Promise<string> {
+    this.assertLaunchBinding(typedData, binding);
+    const shapes: Record<string, { name: string; type: string }[]> = {
+      SolslotGenesisAdminEnrollment: [
+        {name:'ceremonyId',type:'bytes32'},{name:'slot',type:'uint8'},{name:'wallet',type:'address'},
+        {name:'nonce',type:'bytes32'},{name:'expiresAt',type:'uint64'},{name:'network',type:'string'}],
+      SolslotGenesisPlan: [
+        {name:'ceremonyId',type:'bytes32'},{name:'rosterHash',type:'bytes32'},{name:'planHash',type:'bytes32'},
+        {name:'network',type:'string'},{name:'expiresAt',type:'uint64'}],
+      SolslotGenesisArtifact: [
+        {name:'artifactHash',type:'bytes32'},{name:'ceremonyId',type:'bytes32'},
+        {name:'planHash',type:'bytes32'},{name:'network',type:'string'}],
+    };
+    const fields = shapes[typedData.primaryType];
+    const domain = typedData.domain;
+    const versions = typedData.primaryType === 'SolslotGenesisArtifact'
+      ? (binding.evmChainId === 84532 ? ['4'] : ['2','3','4']) : ['2'];
+    if (!fields || domain.name !== 'Solslot Protocol' || !versions.includes(String(domain.version)) ||
+        JSON.stringify(Object.keys(domain).sort()) !== JSON.stringify(['chainId','name','version']) ||
+        JSON.stringify(Object.keys(typedData.types).sort()) !== JSON.stringify(['EIP712Domain',typedData.primaryType].sort()) ||
+        JSON.stringify(typedData.types['EIP712Domain']) !== JSON.stringify([
+          {name:'name',type:'string'},{name:'version',type:'string'},{name:'chainId',type:'uint256'}]) ||
+        JSON.stringify(typedData.types[typedData.primaryType]) !== JSON.stringify(fields) ||
+        JSON.stringify(Object.keys(typedData.message).sort()) !== JSON.stringify(fields.map(f=>f.name).sort()) ||
+        typedData.message['network'] !== 'testnet11') throw new Error('Refusing altered ceremony signing data.');
+    for (const field of fields) {
+      const value = typedData.message[field.name];
+      if (field.type === 'bytes32' && (!isHexString(String(value),32) || /^0x0+$/.test(String(value))))
+        throw new Error('Ceremony commitment is incomplete.');
+    }
+    if ('expiresAt' in typedData.message && (!Number.isSafeInteger(typedData.message['expiresAt']) ||
+        Number(typedData.message['expiresAt']) <= Math.floor(Date.now()/1000))) throw new Error('Ceremony approval expired.');
+    if (typedData.primaryType === 'SolslotGenesisAdminEnrollment' &&
+        (![1,2,3].includes(Number(typedData.message['slot'])) ||
+        getAddress(String(typedData.message['wallet'])) !== getAddress(this.address() || '')))
+      throw new Error('Ceremony invitation belongs to another administrator.');
+    if (binding.planHash && typedData.message['planHash'] !== binding.planHash)
+      throw new Error('The launch plan changed after review.');
+    if (binding.artifactHash && typedData.primaryType === 'SolslotGenesisArtifact' && typedData.message['artifactHash'] !== binding.artifactHash)
+      throw new Error('The launch artifact changed after review.');
+    return this.signTypedDataOnChain(typedData,binding.evmChainId);
+  }
+
+  private assertLaunchBinding(typedData: Eip712TypedData, binding: LaunchCeremonyBinding): void {
+    if (!binding || ![11155111,84532].includes(binding.evmChainId) ||
+        Number(typedData.domain.chainId) !== binding.evmChainId ||
+        !isHexString(binding.ceremonyId,32) || /^0x0+$/.test(binding.ceremonyId) ||
+        typedData.message['ceremonyId'] !== binding.ceremonyId)
+      throw new Error('Signing data differs from the server-selected ceremony.');
+  }
+
+  async signLaunchAction(typedData: Eip712TypedData, binding?: LaunchCeremonyBinding): Promise<string> {
+    if (binding) this.assertLaunchBinding(typedData, binding);
+    const launchChain = binding?.evmChainId ?? environment.eip712ChainId;
     const address = this.address();
     if (!this.eip1193 || !address) throw new Error('Connect the administrator wallet first.');
 
@@ -590,7 +645,7 @@ export class EvmWalletService {
       !expectedFields ||
       domain.name !== 'Solslot Alpha Launch' ||
       domain.version !== '21' ||
-      Number(domain.chainId) !== environment.eip712ChainId ||
+      Number(domain.chainId) !== launchChain ||
       JSON.stringify(Object.keys(domain).sort()) !==
         JSON.stringify(['chainId', 'name', 'version']) ||
       JSON.stringify(typeKeys) !== JSON.stringify(['EIP712Domain', primaryType].sort()) ||
@@ -623,7 +678,7 @@ export class EvmWalletService {
       throw new Error('Refusing an incomplete RC21 launch action.');
     }
 
-    return this.signTypedDataOnChain(typedData, environment.eip712ChainId);
+    return this.signTypedDataOnChain(typedData, launchChain);
   }
 
   /**
@@ -1450,3 +1505,5 @@ export const _internal = {
   walletConnectMethodTimeoutSeconds,
   withWalletPromptTimeout,
 };
+
+export interface LaunchCeremonyBinding { ceremonyId: string; evmChainId: number; planHash?: string | null; artifactHash?: string | null; }

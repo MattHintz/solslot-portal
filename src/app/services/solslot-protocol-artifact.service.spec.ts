@@ -3,6 +3,7 @@ import { environment } from '../../environments/environment';
 import { SolslotApiService, SolslotPublicArtifact } from './solslot-api.service';
 import {
   canonicalArtifactHash,
+  verifyInventoryActivation,
   SolslotProtocolArtifactService,
 } from './solslot-protocol-artifact.service';
 import {
@@ -15,6 +16,36 @@ const HASH = (byte: string) => `0x${byte.repeat(32)}`;
 const ADDRESS = (byte: string) => `0x${byte.repeat(20)}`;
 const originalProtocol = { ...environment.solslotProtocol };
 const originalZkPassport = { ...environment.zkPassport };
+
+describe('signed inventory activation content', () => {
+  it('keeps historical artifacts readable and requires activation for new mints', async () => {
+    const artifact = await signedArtifact();
+    expect(() => verifyInventoryActivation(artifact, false)).not.toThrow();
+    expect(() => verifyInventoryActivation(artifact)).toThrowError(/activation/);
+  });
+
+  it('binds exact deployment, source, environment and puzzle versions', async () => {
+    const { INVENTORY_V2_HASH, RESERVED_V5_HASH } = await import('./mint-proposal-v2/inventory-puzzles');
+    const artifact = await signedArtifact();
+    const runtime = environment.runtimeEnvironment;
+    environment.runtimeEnvironment = 'staging';
+    try {
+      artifact.inventoryActivation = {
+        schema: 'solslot.inventory-activation.v1', network: 'testnet11', environment: 'staging-alpha',
+        deploymentId: artifact.ceremony.ceremonyId, inventoryVersion: 2, adapterVersion: 1,
+        availableModuleHash: INVENTORY_V2_HASH, reservedModuleHash: RESERVED_V5_HASH,
+        sourceShas: { ...artifact.sourceShas }, reviewEvidenceSha256: 'ab'.repeat(32),
+      };
+      expect(() => verifyInventoryActivation(artifact)).not.toThrow();
+      const original = structuredClone(artifact.inventoryActivation);
+      for (const [key, value] of Object.entries({environment: 'production-alpha', inventoryVersion: 1,
+        availableModuleHash: HASH('00'), deploymentId: HASH('00'), sourceShas: {}, reviewEvidenceSha256: '00'.repeat(32)})) {
+        artifact.inventoryActivation = { ...original, [key]: value };
+        expect(() => verifyInventoryActivation(artifact)).withContext(key).toThrowError(/does not match/);
+      }
+    } finally { environment.runtimeEnvironment = runtime; }
+  });
+});
 
 async function signedArtifact(slots: number[] = [0, 2]): Promise<SolslotPublicArtifact> {
   const wallets = ['01', '02', '03'].map((byte) => new Wallet(`0x${byte.repeat(32)}`));

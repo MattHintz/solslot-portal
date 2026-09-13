@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, computed, inject } from '@angular/core';
 
 import { ChiaWalletService } from './chia-wallet.service';
 import { EvmWalletService } from './evm-wallet.service';
@@ -9,7 +9,7 @@ import {
 import { SessionService } from './session.service';
 import { VaultOwnerSessionService } from './vault-owner-session.service';
 
-/** Signs the API's exact vote package with the already-connected vault wallet. */
+/** External wallets review vote packages; Google voting remains unavailable. */
 @Injectable({ providedIn: 'root' })
 export class GovernanceVaultVoteService {
   private readonly api = inject(GovernanceQueueService);
@@ -18,17 +18,33 @@ export class GovernanceVaultVoteService {
   private readonly chia = inject(ChiaWalletService);
   private readonly evm = inject(EvmWalletService);
 
+  readonly googleVotingUnavailable = computed(() => {
+    const current = this.session.session();
+    return current?.authType === 'chia_bls' &&
+      (current.walletSource === 'google' || this.chia.connectionKind() === 'google');
+  });
+
+  private requireVotingWallet(): void {
+    if (this.googleVotingUnavailable()) {
+      throw new Error('Voting with Google Vault is not available in this alpha. You can still view your holdings.');
+    }
+  }
+
   async vote(proposalId: string, voteAmount: string): Promise<GovernanceVaultVoteResult> {
+    this.requireVotingWallet();
     const current = this.session.session();
     if (!current?.vaultLauncherId) {
       throw new Error('Connect a protocol vault before voting.');
     }
     await this.ownerSession.ensure(current.vaultLauncherId);
+    this.requireVotingWallet();
     const prepared = await this.api.prepareVaultVote(
       proposalId,
       current.vaultLauncherId,
       voteAmount,
     );
+
+    this.requireVotingWallet();
 
     if (prepared.vaultAuthType !== current.authType) {
       throw new Error('The prepared vote does not match the connected vault.');

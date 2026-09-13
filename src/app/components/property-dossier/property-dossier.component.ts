@@ -8,13 +8,14 @@ import {
   PropertyDossierDraftV1,
 } from '../../services/property-metadata/property-dossier';
 import { VerifiedMediaComponent } from './verified-media.component';
+import { VerifiedDocumentComponent } from './verified-document.component';
 
 type DossierTab = 'overview' | 'economics' | 'legal' | 'documents' | 'updates' | 'evidence';
 
 @Component({
   selector: 'pp-property-dossier',
   standalone: true,
-  imports: [CommonModule, VerifiedMediaComponent],
+  imports: [CommonModule, VerifiedMediaComponent, VerifiedDocumentComponent],
   template: `
     <article class="dossier">
       <header class="dossier-header">
@@ -159,13 +160,10 @@ type DossierTab = 'overview' | 'economics' | 'legal' | 'documents' | 'updates' |
 
         @case ('documents') {
           <section class="dossier-section">
-            <div class="section-heading"><span class="section-label">Verified files</span><h2>Documents</h2></div>
+            <div class="section-heading"><span class="section-label">Property files</span><h2>Documents</h2></div>
             <div class="document-list">
               @for (document of documents(); track document.assetId) {
-                <a [href]="preferredUri(document)" target="_blank" rel="noopener">
-                  <span><strong>{{ document.title }}</strong><small>{{ document.category }} · {{ fileSize(document.byteSize) }}</small></span>
-                  <span class="mono">{{ shortHash(document.sha256) }}</span>
-                </a>
+                <pp-verified-document [asset]="document" [rootVerified]="verified()" />
               } @empty {
                 <p class="empty-copy">Verified documents pending.</p>
               }
@@ -360,9 +358,6 @@ export class PropertyDossierComponent {
     return bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} KB`;
   }
 
-  preferredUri(document: DocumentAssetV1): string {
-    return document.uris.find((uri) => uri.startsWith('https://')) ?? document.uris[0];
-  }
 }
 
 function isCompleteMedia(value: PropertyDossierDraftV1['media'][number]): value is MediaAssetV1 {

@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { INVENTORY_V1_HEX, INVENTORY_V2_HEX, RESERVED_V5_HASH, INVENTORY_PROVIDER_ID, INVENTORY_P2_VAULT_HASH } from './inventory-puzzles';
 
 import { ChiaWasmService } from '../chia-wasm.service';
 import { bytesToHex, coinId, hexToBytes } from '../../utils/chia-hash';
@@ -180,11 +181,19 @@ export class MintPublishService {
     metadataAnchorId?: string;
     /** Enables the H-system-priced, vault-bound primary purchase path. */
     primaryPurchaseUsdAmountMinor?: number | bigint;
+    /** Explicit inventory path; omitted only for historical delegate fixtures. Price is base. */
+    inventoryPuzzleVersion?: 1 | 2;
     primaryPurchaseValidatorPubkeys?: string[];
     primaryPurchaseNetwork?: string;
     primaryPurchaseProtocolTreasuryPuzhash?: string;
   }): MintPublishArtifacts {
     const clvm = this.clvm();
+
+    if (args.inventoryPuzzleVersion !== undefined &&
+        (args.inventoryPuzzleVersion !== 1 && args.inventoryPuzzleVersion !== 2 ||
+         args.primaryPurchaseUsdAmountMinor === undefined)) {
+      throw new Error('Inventory mints require an explicit supported version and base price');
+    }
 
     // ── Step 1: Pre-spawned launcher coins → ids ──
     const deedLauncherPuzhash = this.deedLauncherPuzzleHash(args.protocolDidSingletonStructHex);
@@ -277,7 +286,31 @@ export class MintPublishService {
       if (treasuryPuzhash.length !== 32) {
         throw new Error('Primary purchase mints require the signed protocol treasury puzzle hash');
       }
-      eveMintOfferInner = mintOfferV2Mod.curry([
+      if (args.inventoryPuzzleVersion !== undefined) {
+        if (!/^[\x00-\x7f]+$/.test(args.primaryPurchaseNetwork ?? '') || BigInt(args.royaltyBps) !== 100n) {
+          throw new Error('Inventory alpha mints require an ASCII network and 100 basis point fee');
+        }
+        const fee = (usdAmountMinor * 100n + 9_999n) / 10_000n;
+        if (usdAmountMinor + fee > 0xffff_ffff_ffff_ffffn) {
+          throw new Error('Inventory subtotal exceeds uint64');
+        }
+        const available = clvm.deserialize(hexToBytes(args.inventoryPuzzleVersion === 2 ? INVENTORY_V2_HEX : INVENTORY_V1_HEX));
+        eveMintOfferInner = available.curry([
+          clvm.atom(available.treeHash()), clvm.atom(hexToBytes(RESERVED_V5_HASH)),
+          clvm.atom(smartDeedInnerPuzhash), clvm.atom(hexToBytes(INVENTORY_P2_VAULT_HASH)),
+          clvm.atom(hexToBytes(MintPublishService.SINGLETON_MOD_HASH)),
+          clvm.atom(hexToBytes(MintPublishService.SINGLETON_LAUNCHER_HASH)),
+          clvm.atom(deedLauncherPuzhash), clvm.atom(hexToBytes(MintPublishService.CAT_MOD_HASH)),
+          clvm.atom(hexToBytes(MintPublishService.OFFER_MOD_HASH)), clvm.atom(networkBytes),
+          clvm.atom(hexToBytes(deedLauncherId)), clvm.atom(hexToBytes(args.collectionIdCanon)),
+          clvm.atom(hexToBytes(args.metadataRoot)), clvm.atom(hexToBytes(resolvedMetadataAnchorId)),
+          clvm.int(BigInt(args.sharePpm)), clvm.int(usdAmountMinor), clvm.int(100n),
+          clvm.int(fee), clvm.int(usdAmountMinor + fee), clvm.atom(treasuryPuzhash),
+          clvm.atom(treasuryPuzhash), clvm.list(validatorAtoms),
+          clvm.atom(hexToBytes(args.inventoryPuzzleVersion === 2 ? INVENTORY_PROVIDER_ID : MintPublishService.PRIMARY_PURCHASE_PROVIDER_ID)),
+        ]);
+      } else {
+        eveMintOfferInner = mintOfferV2Mod.curry([
         clvm.atom(smartDeedInnerPuzhash),
         clvm.atom(hexToBytes(args.p2VaultModHash)),
         clvm.atom(hexToBytes(MintPublishService.SINGLETON_MOD_HASH)),
@@ -295,6 +328,7 @@ export class MintPublishService {
         clvm.list(validatorAtoms),
         clvm.atom(hexToBytes(MintPublishService.PRIMARY_PURCHASE_PROVIDER_ID)),
       ]);
+      }
     }
 
     // Deed full puzzle hash = singleton_top_layer.curry(struct, eve_inner).treeHash()

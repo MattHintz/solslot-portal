@@ -187,44 +187,14 @@ import { formatError } from '../../../utils/format-error';
               <code>{{ guardianPackage.checksum }}</code>
             </details>
           </section>
-        } @else if (reviewedChiaPackage(); as chiaPackage) {
-          <section class="receipt receipt--recovery" aria-labelledby="receipt-title">
-            <div>
-              <span class="step">Verified Testnet11 request</span>
-              <h2 id="receipt-title">Authorize the exact Chia recovery transition</h2>
-            </div>
-            <dl>
-              <div><dt>Purpose</dt><dd>Recover one lost administrator wallet</dd></div>
-              <div><dt>Funds moved</dt><dd>None</dd></div>
-              <div>
-                <dt>Administrator slot</dt>
-                <dd>{{ chiaPackage.intent.slot + 1 }}</dd>
-              </div>
-              <div><dt>Network</dt><dd>Testnet11</dd></div>
-              <div>
-                <dt>Replacement wallet</dt>
-                <dd>{{ chiaPackage.intent.newDailyEvmKey }}</dd>
-              </div>
-              <div>
-                <dt>Restricted messages</dt>
-                <dd>{{ chiaPackage.action.blsPairs.length }}</dd>
-              </div>
-            </dl>
-            <p>
-              The page reconstructed the lost-wallet intent and each restricted Chia
-              signing message. This recovery key cannot approve ordinary administrator
-              actions or move funds.
-            </p>
-            <details>
-              <summary>Advanced evidence</summary>
-              <code>{{ chiaPackage.intentHash }}</code>
-              <code>{{ chiaPackage.action.actionId }}</code>
-              <code>{{ chiaPackage.checksum }}</code>
-            </details>
+        } @else if (reviewedChiaPackage()) {
+          <section class="receipt receipt--recovery" role="status">
+            <h2>Chia recovery signing is unavailable</h2>
+            <p>This page needs the complete recovery transaction before it can verify and sign it. Do not enter your recovery phrase for this request.</p>
           </section>
         }
 
-        @if (!resultText()) {
+        @if (!resultText() && !reviewedChiaPackage()) {
           <section class="work-panel" aria-labelledby="phrase-title">
             <span class="step">Step 2 of 3</span>
             <h2 id="phrase-title">Restore from your offline copy</h2>
@@ -271,7 +241,7 @@ import { formatError } from '../../../utils/format-error';
               </button>
             </div>
           </section>
-        } @else {
+        } @else if (resultText()) {
           <section class="work-panel result-panel" aria-labelledby="result-title">
             <span class="step">Step 3 of 3</span>
             <h2 id="result-title">Return the signed result</h2>
@@ -367,6 +337,13 @@ export class AdminRecoveryAccessComponent implements OnDestroy {
   }
 
   reviewPackage(): void {
+    this.clearSecrets();
+    this.resultText.set('');
+    this.reviewedPackage.set(null);
+    this.reviewedLostPackage.set(null);
+    this.reviewedGuardianPackage.set(null);
+    this.reviewedChiaPackage.set(null);
+    this.trustedDeviceConfirmed = false;
     this.error.set(null);
     this.message.set(null);
     try {
@@ -415,7 +392,7 @@ export class AdminRecoveryAccessComponent implements OnDestroy {
       }
       this.packageText = '';
       this.message.set(
-        'The package and its cryptographic commitments are valid. Review the receipt before signing.',
+        'The package fields were checked. Review the receipt; your recovery key will be checked before signing.',
       );
     } catch (error) {
       this.error.set(formatError(error));
@@ -628,37 +605,10 @@ export class AdminRecoveryAccessComponent implements OnDestroy {
   }
 
   private async signChiaRecovery(
-    chiaPackage: AdminChiaRecoveryActionPackage,
+    _chiaPackage: AdminChiaRecoveryActionPackage,
   ): Promise<void> {
-    if (this.busy()) return;
-    this.busy.set(true);
-    this.error.set(null);
-    this.message.set(null);
-    try {
-      if (!this.trustedDeviceConfirmed) {
-        throw new Error('Confirm that this is a trusted second device.');
-      }
-      if (chiaPackage.intent.expiresAt <= Math.floor(Date.now() / 1000)) {
-        throw new Error('This Testnet11 recovery action has expired. Prepare a new one.');
-      }
-      this.recoveryKit.unlock(this.phrase, {
-        evmGuardian: getAddress(chiaPackage.intent.oldRecoveryGuardian),
-        recoveryBlsPubkey: chiaPackage.action.signerPublicKey,
-      });
-      const signature = this.recoveryKit.signBlsAction(chiaPackage.action);
-      this.resultText.set(
-        JSON.stringify(
-          createAdminChiaRecoveryActionResult(chiaPackage, signature),
-        ),
-      );
-      this.message.set(
-        'The exact Testnet11 recovery action was signed locally. Your phrase and keys were cleared.',
-      );
-    } catch (error) {
-      this.error.set(formatError(error));
-    } finally {
-      this.clearSecrets();
-      this.busy.set(false);
-    }
+    this.clearSecrets();
+    this.resultText.set('');
+    this.error.set('Chia recovery signing is unavailable until this page can verify the complete recovery transaction.');
   }
 }

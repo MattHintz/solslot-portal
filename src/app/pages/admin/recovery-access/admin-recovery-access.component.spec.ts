@@ -1,3 +1,4 @@
+import { RECOVERY_DRILL_API_FIXTURES } from '../../../services/recovery-drill-api.fixture';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
@@ -67,6 +68,30 @@ describe('AdminRecoveryAccessComponent', () => {
     expect(recoveryKit.clear).toHaveBeenCalled();
   });
 
+  it('clears an earlier review before rejecting another package', () => {
+    component.packageText = JSON.stringify(createAdminRecoveryDrillPackage(challenge()));
+    component.reviewPackage();
+    component.trustedDeviceConfirmed = true;
+    component.phrase = 'test phrase';
+    component.packageText = '{}';
+    component.reviewPackage();
+    expect(component.reviewedPackage()).toBeNull();
+    expect(component.trustedDeviceConfirmed).toBeFalse();
+    expect(component.phrase).toBe('');
+    expect(component.resultText()).toBe('');
+    expect(recoveryKit.signDrill).not.toHaveBeenCalled();
+  });
+
+  it('never asks for or unlocks the phrase for unsupported Chia recovery', async () => {
+    component.reviewedChiaPackage.set({} as any);
+    fixture.detectChanges();
+    expect(pageText()).toContain('Chia recovery signing is unavailable');
+    expect((fixture.nativeElement as HTMLElement).querySelector('textarea[placeholder="Enter all 24 words in order"]')).toBeNull();
+    await component.signReviewed();
+    expect(recoveryKit.unlock).not.toHaveBeenCalled();
+    expect(component.resultText()).toBe('');
+  });
+
   function pageText(): string {
     fixture.detectChanges();
     return (fixture.nativeElement as HTMLElement).textContent?.replace(/\s+/g, ' ').trim() ?? '';
@@ -74,26 +99,5 @@ describe('AdminRecoveryAccessComponent', () => {
 });
 
 function challenge(): RecoveryDrillChallenge {
-  return {
-    challengeId: `0x${'11'.repeat(32)}`,
-    challengeHash: `0x${'22'.repeat(32)}`,
-    expiresAt: Math.floor(Date.now() / 1000) + 900,
-    revision: 1,
-    evmTypedData: {
-      types: {
-        EIP712Domain: [],
-        SolslotAdminRecoveryDrill: [],
-      },
-      primaryType: 'SolslotAdminRecoveryDrill',
-      domain: { name: 'Solslot Admin Recovery', version: '1', chainId: 84532 },
-      message: {
-        slot: 0,
-        dailyWallet: '0x1111111111111111111111111111111111111111',
-        evmGuardian: '0x2222222222222222222222222222222222222222',
-      },
-    },
-    blsSigningDigest: `0x${'33'.repeat(32)}`,
-    recoveryBlsPath: 'm/12381/8444/2/0-unhardened',
-    recoveryEvmPath: "m/44'/60'/0'/0/0",
-  };
+  return structuredClone(RECOVERY_DRILL_API_FIXTURES[0].challenge);
 }

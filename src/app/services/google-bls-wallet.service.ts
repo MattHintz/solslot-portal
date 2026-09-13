@@ -8,8 +8,6 @@ import { ChiaWasmService } from './chia-wasm.service';
 import type { SignedSpendBundle, UnsignedCoinSpend } from './chia-wallet.service';
 import { GOOGLE_VAULT_DERIVATION } from './vault-backup-crypto.service';
 
-const MAX_BLOCK_COST_CLVM = 11_000_000_000n;
-
 @Injectable({ providedIn: 'root' })
 export class GoogleBlsWalletService {
   private readonly wasm = inject(ChiaWasmService);
@@ -95,94 +93,11 @@ export class GoogleBlsWalletService {
     }
   }
 
-  signSpendBundle(coinSpends: ReadonlyArray<UnsignedCoinSpend>): SignedSpendBundle {
-    if (coinSpends.length === 0) throw new Error('signSpendBundle: empty coinSpends array');
-    const sdk = this.sdk();
-    const signatures: WasmSignature[] = [];
-    try {
-      for (const spend of coinSpends) {
-        signatures.push(...this.signCoinSpend(spend, sdk));
-      }
-      if (signatures.length === 0) {
-        throw new Error('Google wallet refused a spend bundle with no owner signature conditions.');
-      }
-      const aggregate = sdk.Signature.aggregate(signatures);
-      try {
-        return {
-          coinSpends: [...coinSpends],
-          aggregatedSignature: bytesToHex(aggregate.toBytes()),
-        };
-      } finally {
-        aggregate.free();
-      }
-    } finally {
-      signatures.forEach((signature) => signature.free());
-    }
-  }
-
-  private signCoinSpend(spend: UnsignedCoinSpend, sdk: GoogleBlsSdk): WasmSignature[] {
-    const parent = requireLength(hexToBytes(spend.coin.parentCoinInfo), 32, 'parent coin id');
-    const puzzleHash = requireLength(hexToBytes(spend.coin.puzzleHash), 32, 'puzzle hash');
-    const puzzleReveal = hexToBytes(spend.puzzleReveal);
-    const solution = hexToBytes(spend.solution);
-    const coin = new sdk.Coin(parent, puzzleHash, BigInt(spend.coin.amount));
-    const clvm = new sdk.Clvm();
-    const signatures: WasmSignature[] = [];
-    try {
-      const puzzle = clvm.deserialize(puzzleReveal);
-      const solutionProgram = clvm.deserialize(solution);
-      let output: WasmOutput;
-      try {
-        output = puzzle.run(solutionProgram, MAX_BLOCK_COST_CLVM, false);
-      } finally {
-        puzzle.free();
-        solutionProgram.free();
-      }
-      try {
-        const outputValue = output.value;
-        try {
-          const conditions = outputValue.toList();
-          if (!conditions) throw new Error('Google wallet could not parse spend conditions.');
-          for (const condition of conditions) {
-            try {
-              const request = parseAggSigCondition(condition);
-              if (!request) continue;
-              try {
-                const key = this.keyForPublicKey(request.publicKey);
-                const finalMessage = buildAggSigMessage(
-                  request.kind,
-                  request.message,
-                  coin,
-                  parent,
-                  puzzleHash,
-                  sdk,
-                );
-                try {
-                  signatures.push(key.sign(finalMessage));
-                } finally {
-                  finalMessage.fill(0);
-                }
-              } finally {
-                request.publicKey.free();
-              }
-            } finally {
-              condition.free();
-            }
-          }
-        } finally {
-          outputValue.free();
-        }
-      } finally {
-        output.free();
-      }
-      return signatures;
-    } catch (error) {
-      signatures.forEach((signature) => signature.free());
-      throw error;
-    } finally {
-      coin.free();
-      clvm.free();
-    }
+  signSpendBundle(_coinSpends: ReadonlyArray<UnsignedCoinSpend>): SignedSpendBundle {
+    ensureGoogleVaultTestnet();
+    // No caller-supplied flag or review dialog can authorize generic CLVM.
+    // A complete local transaction policy is required before re-enabling this entry point.
+    throw new Error('Google Vault transactions are not available in this alpha. You can still sign in and view your holdings.');
   }
 
   private keyForPublicKey(publicKey: WasmPublicKey): WasmSecretKey {
@@ -233,31 +148,6 @@ type AggSigKind =
   | 'unsafe'
   | 'me';
 
-function parseAggSigCondition(condition: WasmProgram): {
-  kind: AggSigKind;
-  publicKey: WasmPublicKey;
-  message: Uint8Array;
-} | null {
-  const parsers: Array<[AggSigKind, () => WasmAggSig | undefined]> = [
-    ['parent', () => condition.parseAggSigParent()],
-    ['puzzle', () => condition.parseAggSigPuzzle()],
-    ['amount', () => condition.parseAggSigAmount()],
-    ['puzzle_amount', () => condition.parseAggSigPuzzleAmount()],
-    ['parent_amount', () => condition.parseAggSigParentAmount()],
-    ['parent_puzzle', () => condition.parseAggSigParentPuzzle()],
-    ['unsafe', () => condition.parseAggSigUnsafe()],
-    ['me', () => condition.parseAggSigMe()],
-  ];
-  for (const [kind, parser] of parsers) {
-    const parsed = parser();
-    if (!parsed) continue;
-    const result = { kind, publicKey: parsed.publicKey, message: parsed.message };
-    parsed.free();
-    return result;
-  }
-  return null;
-}
-
 export function buildAggSigMessage(
   kind: AggSigKind,
   message: Uint8Array,
@@ -266,7 +156,7 @@ export function buildAggSigMessage(
   puzzleHash: Uint8Array,
   sdk: GoogleBlsSdk,
 ): Uint8Array {
-  if (kind === 'unsafe') return new Uint8Array(message);
+  if (kind === 'unsafe') throw new Error('Google wallet refuses AGG_SIG_UNSAFE conditions.');
   const base = requireLength(
     hexToBytes(environment.chiaAggSigMeAdditionalData),
     32,

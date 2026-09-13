@@ -194,6 +194,9 @@ export class MintProposalV2PublishRunnerService {
     // ── 5. Build the pinned artifacts (same parent for both launchers) ──
     let artifacts: MintPublishArtifacts;
     try {
+      if (args.primaryPurchaseUsdAmountMinor !== undefined && args.inventoryPuzzleVersion !== 2) {
+        throw new Error('New purchase publication requires governed inventory V2. Refresh the governed preview.');
+      }
       artifacts = this.publish.buildMintPublishArtifacts({
         propertyIdCanon: args.propertyIdCanon,
         collectionIdCanon: args.collectionIdCanon,
@@ -220,6 +223,7 @@ export class MintProposalV2PublishRunnerService {
         metadataRoot: args.metadataRoot,
         metadataAnchorId: args.metadataAnchorId,
         primaryPurchaseUsdAmountMinor: args.primaryPurchaseUsdAmountMinor,
+        inventoryPuzzleVersion: args.inventoryPuzzleVersion,
         primaryPurchaseValidatorPubkeys: args.primaryPurchaseValidatorPubkeys,
         primaryPurchaseNetwork: args.primaryPurchaseNetwork,
         primaryPurchaseProtocolTreasuryPuzhash:
@@ -447,6 +451,7 @@ export class MintProposalV2PublishRunnerService {
               : {}),
           }
         : {}),
+      inventory_puzzle_version: args.inventoryPuzzleVersion ?? 1,
     };
     let apiResponse: CommitteeVoteApiResponse;
     try {
@@ -622,6 +627,7 @@ export interface PublishMintArgs {
   canonicalMetadataJson?: string;
   /** Exact governed USD-minor price used by the H-system quote artifact. */
   primaryPurchaseUsdAmountMinor?: number | bigint;
+  inventoryPuzzleVersion?: 1 | 2;
   primaryPurchaseValidatorPubkeys?: string[];
   primaryPurchaseNetwork?: string;
   primaryPurchaseProtocolTreasuryPuzhash?: string;

@@ -383,9 +383,11 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
                     @if (action.signed) {
                       <span class="done-mark">Signed</span>
                     } @else if (action.signerKind === 'BLS_RECOVERY') {
-                      <button type="button" (click)="prepareOfflineChia(action)">
-                        Use recovery kit
-                      </button>
+                      <span class="waiting-copy">
+                        Chia recovery signing is unavailable while transaction
+                        verification is completed. Keep your recovery phrase offline.
+                        This case cannot finish until this step is supported.
+                      </span>
                     } @else if (canSignChiaAction(action)) {
                       <div class="compact-buttons">
                         <button type="button" (click)="signChiaAction(action, 'injected')">
@@ -936,6 +938,9 @@ export class AdminRecoveryCaseActionsComponent {
   }
 
   prepareOfflineChia(action: ChiaSigningAction): void {
+    this.offlineChiaPackage.set(null);
+    this.offlineChiaResultText = '';
+    this.message.set(null);
     try {
       this.offlineChiaPackage.set(
         createAdminChiaRecoveryActionPackage(this.recovery, action),

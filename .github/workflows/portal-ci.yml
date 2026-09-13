@@ -19,6 +19,8 @@ jobs:
         with:
           python-version: "3.12"
 
+      - run: node --test scripts/configure-google-vault-staging.test.mjs
+
       - run: npm ci
 
       - run: >-
