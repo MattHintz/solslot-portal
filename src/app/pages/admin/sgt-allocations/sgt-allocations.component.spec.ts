@@ -14,6 +14,8 @@ describe('SgtAllocationsComponent', () => {
   let api: jasmine.SpyObj<GovernanceQueueService>;
   let wallet: jasmine.SpyObj<EvmWalletService>;
   let vote: jasmine.SpyObj<GovernanceVaultVoteService>;
+  const googleUnavailable = signal(false);
+  const vaultSession = signal<any>(null);
 
   beforeEach(async () => {
     api = jasmine.createSpyObj<GovernanceQueueService>('GovernanceQueueService', [
@@ -35,7 +37,9 @@ describe('SgtAllocationsComponent', () => {
       isConnected: signal(false),
       address: signal<string | null>(null),
     });
-    vote = jasmine.createSpyObj<GovernanceVaultVoteService>('GovernanceVaultVoteService', ['vote']);
+    googleUnavailable.set(false);
+    vaultSession.set(null);
+    vote = jasmine.createSpyObj<GovernanceVaultVoteService>('GovernanceVaultVoteService', ['vote'], { googleVotingUnavailable: googleUnavailable });
     api.list.and.resolveTo([]);
     api.allocationOptions.and.resolveTo([
       { id: 'XCH', label: 'XCH', decimals: 12 },
@@ -50,7 +54,7 @@ describe('SgtAllocationsComponent', () => {
         { provide: GovernanceQueueService, useValue: api },
         { provide: EvmWalletService, useValue: wallet },
         { provide: GovernanceVaultVoteService, useValue: vote },
-        { provide: SessionService, useValue: { session: signal(null) } },
+        { provide: SessionService, useValue: { session: vaultSession } },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(SgtAllocationsComponent);
@@ -266,4 +270,24 @@ describe('SgtAllocationsComponent', () => {
     expect(text).toContain('Connect a protocol vault to vote');
     expect(text).not.toContain('Open committee vote');
   });
+  it('shows the Google voting limitation and disables the primary vote control', () => {
+    googleUnavailable.set(true);
+    vaultSession.set({ vaultLauncherId: '0x' + '11'.repeat(32), walletSource: 'google' });
+    const proposal = { id: 'GOV-VOTE', kind: 'SGT_GRANT', state: 'ACTIVE', title: 'Allocation',
+      bill: { sgtAmount: '10000' }, revision: 3, queuePosition: 1,
+      executionBundleId: null, expectedOutputCoinIds: [] } as any;
+    component.proposals.set([proposal]);
+    component.setVoteAmount(proposal, '10000');
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('Voting with Google Vault is not available in this alpha.');
+    const button = [...root.querySelectorAll('button')].find(item => item.textContent?.trim() === 'Review and vote')!;
+    expect(button.disabled).toBeTrue();
+    button.click();
+    expect(vote.vote).not.toHaveBeenCalled();
+    googleUnavailable.set(false);
+    fixture.detectChanges();
+    expect(button.disabled).toBeFalse();
+  });
+
 });

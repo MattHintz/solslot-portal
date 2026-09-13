@@ -207,7 +207,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
     await this.perform('signin', async () => {
       const wallet = await this.connect(kind);
       const challenge = await this.launch.resumeChallenge(wallet);
-      const signature = await this.wallet.signLaunchAction(challenge.typedData);
+      const signature = await this.wallet.signLaunchAction(challenge.typedData, challenge.ceremonyBinding);
       await this.launch.resumeLogin(wallet, challenge.nonce, signature);
       await this.reloadWorkspace();
       this.message.set('Administrator wallet verified. Your launch tasks are ready.');
@@ -425,18 +425,29 @@ export class GenesisComponent implements OnInit, OnDestroy {
     }[name];
   }
 
+  private launchBinding() {
+    const launch = this.workspace()?.launch;
+    if (!launch) throw new Error('Reload the server-selected launch before signing.');
+    return {ceremonyId: launch.ceremonyId, evmChainId: launch.evmChainId ?? 11155111,
+      planHash: launch.planHash, artifactHash: launch.artifactHash};
+  }
+
+  enrollmentCommitmentEntries(): [string, string | number][] {
+    return Object.entries(this.decisionReceipt()?.enrollmentCommitments ?? {});
+  }
+
   async confirmDecision(): Promise<void> {
     const decision = this.pendingDecision();
     if (!decision) return;
     await this.perform('sign-decision', async () => {
       if (decision.kind === 'action') {
-        const signature = await this.wallet.signLaunchAction(decision.prepared.typedData);
+        const signature = await this.wallet.signLaunchAction(decision.prepared.typedData, this.launchBinding());
         await this.launch.approveAction(decision.prepared, decision.actionType, signature);
       } else if (decision.kind === 'plan') {
-        const signature = await this.wallet.signTypedData(decision.prepared.typedData);
+        const signature = await this.wallet.signLaunchCeremony(decision.prepared.typedData, this.launchBinding());
         await this.launch.signPlan(signature);
       } else if (decision.kind === 'artifact') {
-        const signature = await this.wallet.signTypedData(decision.prepared.typedData);
+        const signature = await this.wallet.signLaunchCeremony(decision.prepared.typedData, this.launchBinding());
         await this.launch.signArtifact(signature);
       } else if (decision.kind === 'rail-sign') {
         const signature = await this.wallet.signSafeMessage(
@@ -558,11 +569,11 @@ export class GenesisComponent implements OnInit, OnDestroy {
     if (!token) throw new Error('The private administrator invitation is missing.');
     const wallet = await this.connect(kind);
     const prepared = await this.launch.prepareInvitation(token, wallet);
-    const signature = await this.wallet.signTypedData(prepared.typedData);
+    const signature = await this.wallet.signLaunchCeremony(prepared.typedData, prepared.ceremonyBinding ?? this.launchBinding());
     await this.launch.acceptInvitation(token, wallet, signature);
     this.enrollmentToken.set(null);
     const challenge = await this.launch.resumeChallenge(wallet);
-    const resumeSignature = await this.wallet.signLaunchAction(challenge.typedData);
+    const resumeSignature = await this.wallet.signLaunchAction(challenge.typedData, challenge.ceremonyBinding);
     await this.launch.resumeLogin(wallet, challenge.nonce, resumeSignature);
     await this.reloadWorkspace();
     this.message.set('Enrollment complete. This wallet is now mapped to its administrator role.');

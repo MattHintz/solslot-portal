@@ -33,13 +33,13 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/animations": "~20.3.27",
-    "@angular/common": "~20.3.27",
-    "@angular/compiler": "~20.3.27",
-    "@angular/core": "~20.3.27",
-    "@angular/forms": "~20.3.27",
-    "@angular/platform-browser": "~20.3.27",
-    "@angular/router": "~20.3.27",
+    "@angular/animations": "20.3.31",
+    "@angular/common": "20.3.31",
+    "@angular/compiler": "20.3.31",
+    "@angular/core": "20.3.31",
+    "@angular/forms": "20.3.31",
+    "@angular/platform-browser": "20.3.31",
+    "@angular/router": "20.3.31",
     "@scure/bip39": "1.6.0",
     "@walletconnect/ethereum-provider": "~2.23.10",
     "@walletconnect/sign-client": "~2.23.10",
@@ -59,7 +59,7 @@
   "devDependencies": {
     "@angular/build": "~20.3.32",
     "@angular/cli": "~20.3.32",
-    "@angular/compiler-cli": "~20.3.27",
+    "@angular/compiler-cli": "20.3.31",
     "@types/jasmine": "~5.1.0",
     "@types/node": "^20.14.2",
     "@types/qrcode": "^1.5.6",
@@ -78,6 +78,7 @@
     "ethers": "$ethers",
     "@coinbase/cdp-sdk": {
       "axios": "1.18.1"
-    }
+    },
+    "qs": "6.16.0"
   }
 }

@@ -859,6 +859,14 @@
             </div>
           }
         </dl>
+        @if (enrollmentCommitmentEntries().length) {
+          <p>Selected identity deployment. Alpha test assets have no monetary value or real property rights.</p>
+          <dl>
+            @for (entry of enrollmentCommitmentEntries(); track entry[0]) {
+              <div><dt>{{ entry[0] }}</dt><dd style="overflow-wrap:anywhere">{{ entry[1] }}</dd></div>
+            }
+          </dl>
+        }
         @if (decision.kind === 'rail-broadcast') {
           <div class="wallet-review">
             <strong>What your wallet will show</strong>

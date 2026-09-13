@@ -4,6 +4,7 @@ import { environment as base } from './environment.shared';
 export const environment = {
   ...base,
   production: true,
+  runtimeEnvironment: 'production',
   experienceMode: 'mainnet-beta-preview' as const,
   protocolWritesEnabled: false,
   faucetApi: '/protocol-api',

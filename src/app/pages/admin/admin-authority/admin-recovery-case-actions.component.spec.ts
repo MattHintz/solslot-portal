@@ -133,6 +133,41 @@ describe('AdminRecoveryCaseActionsComponent', () => {
         .trim() ?? ''
     );
   }
+
+  it('explains unavailable Chia recovery signing without offering a failing export', () => {
+    const chia = chiaPackage();
+    chia.actions = [{
+      actionId: `0x${'94'.repeat(32)}`,
+      phase: 'PREPARE',
+      signerKind: 'BLS_RECOVERY',
+      signerSlot: 0,
+      signerPublicKey: `0x${'41'.repeat(48)}`,
+      messageHash: `0x${'95'.repeat(32)}`,
+      title: 'Authorize the recovery lock',
+      summary: 'Use the registered recovery key.',
+      network: 'Testnet11',
+      financialEffect: 'No funds move.',
+      coinId: null,
+      delegatedPuzzleHash: null,
+      typedData: null,
+      blsPairs: [],
+      signed: false,
+    }];
+    component.chiaPackage.set(chia);
+    fixture.detectChanges();
+
+    const buttons = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    );
+    expect(buttons.some((button) => button.textContent?.includes('Use recovery kit'))).toBeFalse();
+    expect(pageText()).toContain('Chia recovery signing is unavailable');
+    expect(pageText()).toContain('Keep your recovery phrase offline');
+
+    chia.actions[0].signed = true;
+    component.chiaPackage.set({ ...chia });
+    fixture.detectChanges();
+    expect(pageText()).toContain('Signature recorded');
+  });
 });
 
 function action(actionId: string): EvmRecoveryAction {

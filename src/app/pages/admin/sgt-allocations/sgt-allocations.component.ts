@@ -248,6 +248,9 @@ import { formatError } from '../../../utils/format-error';
                               </span>
                             </div>
                             @if (connectedVault(); as vaultId) {
+                              @if (googleVotingUnavailable()) {
+                                <p role="status">Voting with Google Vault is not available in this alpha. You can still view your holdings.</p>
+                              }
                               <label>
                                 <span>SGT voting balance</span>
                                 <input
@@ -265,7 +268,7 @@ import { formatError } from '../../../utils/format-error';
                                   type="button"
                                   class="primary"
                                   (click)="castVote(proposal)"
-                                  [disabled]="busy() || !positiveVoteAmount(proposal)"
+                                  [disabled]="busy() || googleVotingUnavailable() || !positiveVoteAmount(proposal)"
                                 >
                                   Review and vote
                                 </button>
@@ -476,6 +479,7 @@ export class SgtAllocationsComponent {
   private readonly api = inject(GovernanceQueueService);
   private readonly wallet = inject(EvmWalletService);
   private readonly vote = inject(GovernanceVaultVoteService);
+  readonly googleVotingUnavailable = this.vote.googleVotingUnavailable;
   private readonly vaultSession = inject(SessionService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly executionPolls = new Map<string, ReturnType<typeof setTimeout>>();

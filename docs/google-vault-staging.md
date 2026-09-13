@@ -6,18 +6,23 @@ Before running the staging configuration script, create a dedicated **Web applic
 
 Also configure Cloudflare Access for `https://staging.solslot.com/genesis-admin/*` for the named administrators. This is independent of wallet membership, one-time ceremony credentials, and API authorization.
 
-After committing and pushing the exact feature SHA on the current release branch, run:
+After the required release approval, with the exact feature SHA and coordinated tag already pushed on the current release branch, run:
 
 ```bash
 node scripts/configure-google-vault-staging.mjs \
   --gcp-project YOUR_PROJECT_ID \
   --oauth-client-id YOUR_PUBLIC_WEB_CLIENT_ID \
   --release-sha YOUR_COMMITTED_40_CHAR_SHA \
+  --release-tag YOUR_COORDINATED_RELEASE_TAG \
   --confirm-oauth-prerequisites \
   --confirm-cloudflare-access
 ```
 
-The script enables only `drive.googleapis.com`, creates or checks the GitHub `staging` environment, validates deployment secret names without printing their values, sets the two public runtime variables, dispatches the current release branch's workflow, and makes that workflow check out the exact `--release-sha` for deployment. It then waits for completion and checks `release.json` and the deployed CSP. It deliberately does not create or alter browser OAuth clients, Google consent settings, test users, or Cloudflare policies.
+The tag must use the workflow's coordinated format, such as `solslot-v2-alpha-rc27.41-20260907`; this example is not an approved release. Before changing cloud or GitHub configuration, the helper checks that the remote tag resolves to the requested SHA, that the release branch/workflow is available, and that all required deployment secret names exist. It never reads or prints secret values.
+
+The script then enables `drive.googleapis.com`, creates or checks the GitHub `staging` environment, sets the two public runtime variables and dispatches the current release branch's workflow with both `release_sha` and `release_tag`. The workflow checks out and revalidates that release identity. After completion, the helper checks the served SHA, tag, staging environment, mount, test-only declaration, Google Vault configuration and CSP. These manifest declarations do not substitute for backend gate or transaction verification. Browser OAuth clients, Google consent settings, test users and Cloudflare policies remain console-managed prerequisites.
+
+Run the isolated helper regression with `node --test scripts/configure-google-vault-staging.test.mjs`. It replaces all external commands and HTTP responses with disposable fixtures; it does not configure or deploy a service.
 
 ## Required Staging Evidence
 

@@ -581,3 +581,29 @@ describe('EvmWalletService', () => {
     expect(testable.eip1193.request).not.toHaveBeenCalled();
   }));
 });
+
+describe('Server-selected launch signing boundary', () => {
+  const hash=(byte:string)=>'0x'+byte.repeat(32);
+  const domainFields=[{name:'name',type:'string'},{name:'version',type:'string'},{name:'chainId',type:'uint256'}];
+  function plan():any { return {domain:{name:'Solslot Protocol',version:'2',chainId:84532},primaryType:'SolslotGenesisPlan',
+    types:{EIP712Domain:domainFields,SolslotGenesisPlan:[{name:'ceremonyId',type:'bytes32'},{name:'rosterHash',type:'bytes32'},
+      {name:'planHash',type:'bytes32'},{name:'network',type:'string'},{name:'expiresAt',type:'uint64'}]},
+    message:{ceremonyId:hash('11'),rosterHash:hash('22'),planHash:hash('33'),network:'testnet11',expiresAt:1900000000}}; }
+  const binding={ceremonyId:hash('11'),evmChainId:84532,planHash:hash('33')};
+  function service() { TestBed.configureTestingModule({}); const s=TestBed.inject(EvmWalletService);
+    const sign=spyOn<any>(s,'signTypedDataOnChain').and.resolveTo('synthetic-signature');return {s,sign}; }
+  it('signs only the exact server-selected Base Sepolia plan through its narrow signer',async()=>{
+    const {s,sign}=service();const data=plan();await s.signLaunchCeremony(data,binding);expect(sign).toHaveBeenCalledOnceWith(data,84532);
+  });
+  for(const change of ['chain','ceremony','plan','domain','primary','extra','expired']) it(`rejects altered ${change} before wallet dispatch`,async()=>{
+    const {s,sign}=service();const data=plan();
+    if(change==='chain')data.domain.chainId=11155111;
+    if(change==='ceremony')data.message.ceremonyId=hash('55');
+    if(change==='plan')data.message.planHash=hash('56');
+    if(change==='domain')data.domain.name='Unrelated';
+    if(change==='primary')data.primaryType='SolslotAdminLogin';
+    if(change==='extra')data.message.extra='x';
+    if(change==='expired')data.message.expiresAt=1;
+    await expectAsync(s.signLaunchCeremony(data,binding)).toBeRejected();expect(sign).not.toHaveBeenCalled();
+  });
+});

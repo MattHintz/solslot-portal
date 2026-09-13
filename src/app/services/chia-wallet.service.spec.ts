@@ -27,6 +27,8 @@ import {
   UnsignedCoinSpend,
 } from './chia-wallet.service';
 import { ChiaWasmService } from './chia-wasm.service';
+import { GoogleBlsWalletService } from './google-bls-wallet.service';
+import { environment } from '../../environments/environment';
 
 /**
  * Stub WASM SDK that exposes just enough of the ``Address``
@@ -148,6 +150,24 @@ describe('ChiaWalletService.signSpendBundle', () => {
   // ───────────────────────────────────────────────────────────────────
   // Happy paths
   // ───────────────────────────────────────────────────────────────────
+
+  it('Google: refuses generic transactions without presenting a signing confirmation', async () => {
+    setConnectedState('google');
+    const originalEnabled = environment.googleVaultEnabled;
+    const originalNetwork = environment.chiaNetwork;
+    environment.googleVaultEnabled = true;
+    environment.chiaNetwork = 'testnet11';
+    const confirm = spyOn(window, 'confirm').and.returnValue(true);
+    const signer = spyOn(TestBed.inject(GoogleBlsWalletService), 'signSpendBundle').and.callThrough();
+    try {
+      await expectAsync(service.signSpendBundle(SAMPLE_COIN_SPENDS)).toBeRejectedWithError(/Google Vault transactions are not available/);
+      expect(signer).toHaveBeenCalledOnceWith(SAMPLE_COIN_SPENDS);
+      expect(confirm).not.toHaveBeenCalled();
+    } finally {
+      environment.googleVaultEnabled = originalEnabled;
+      environment.chiaNetwork = originalNetwork;
+    }
+  });
 
   it('Goby: signCoinSpends returns spendBundle-nested coin_spends', async () => {
     setConnectedState('goby');
@@ -1306,3 +1326,4 @@ describe('ChiaWalletService.getCurrentAddress', () => {
     expect(addr).toBe('0x' + 'cd'.repeat(32));
   });
 });
+

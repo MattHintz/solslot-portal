@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
-import type { BaseSepoliaTransaction } from './evm-wallet.service';
+import type { BaseSepoliaTransaction, LaunchCeremonyBinding } from './evm-wallet.service';
 import { Eip712TypedData } from './solslot-api.service';
 
 @Injectable({ providedIn: 'root' })
@@ -226,6 +226,7 @@ export interface OwnerClaimResult {
 }
 
 export interface TypedAction {
+  ceremonyBinding?: LaunchCeremonyBinding;
   ceremonyId: string;
   slot: number;
   expiresAt: number;
@@ -233,6 +234,7 @@ export interface TypedAction {
 }
 
 export interface ResumeChallenge {
+  ceremonyBinding?: LaunchCeremonyBinding;
   nonce: string;
   expiresAt: number;
   typedData: Eip712TypedData;
@@ -270,6 +272,8 @@ export interface LaunchAdministrator {
 }
 
 export interface LaunchSummary {
+  evmChainId?: 11155111 | 84532;
+  enrollmentCommitments?: Record<string, string | number> | null;
   ceremonyId: string;
   state: string;
   network: string;
@@ -346,6 +350,7 @@ export interface FundingPreparation {
 }
 
 export interface DecisionReceipt {
+  enrollmentCommitments?: Record<string, string | number> | null;
   title: string;
   network: string;
   financialEffect: string;
@@ -367,6 +372,7 @@ export interface PreparedLaunchAction {
 }
 
 export interface PreparedSignature {
+  ceremonyBinding?: LaunchCeremonyBinding;
   ceremonyId: string;
   slot: number;
   typedData: Eip712TypedData;

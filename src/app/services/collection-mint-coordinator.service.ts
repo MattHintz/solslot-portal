@@ -15,7 +15,7 @@ import { PublishMintArgsAssemblerService } from './mint-proposal-v2/publish-mint
 import { PropertyRegistryRegistrationMaterialService } from './mint-proposal-v2/property-registry-registration-material.service';
 import { PropertyDossierV1 } from './property-metadata/property-dossier';
 import { PropertyMetadataService } from './property-metadata/property-metadata.service';
-import { SolslotProtocolArtifactService } from './solslot-protocol-artifact.service';
+import { SolslotProtocolArtifactService, verifyInventoryActivation } from './solslot-protocol-artifact.service';
 
 export interface CollectionMintPreview {
   proposalId: string;
@@ -58,6 +58,7 @@ export class CollectionMintCoordinatorService {
     deed: CollectionDeed,
     ownerMemberHash: string,
   ): Promise<CollectionMintPreview> {
+    verifyInventoryActivation(this.protocolArtifact.artifact);
     if (!['SEALED', 'PUBLISHED'].includes(workspace.state)) {
       throw new Error('The collection must be sealed before proposal preparation.');
     }
@@ -81,16 +82,15 @@ export class CollectionMintCoordinatorService {
     }
     const basePurchaseUsdAmountMinor = purchaseNumerator / 1_000_000n;
     const technologyFeeBps = unsignedInteger(offering.royaltyBps, 'technology fee basis points');
-    if (technologyFeeBps > 1_000n) {
-      throw new Error('The primary technology fee cannot exceed 1000 basis points.');
+    if (technologyFeeBps !== 100n) {
+      throw new Error('Alpha inventory purchases require the agreed 1% technology fee.');
     }
     const technologyFeeUsdAmountMinor =
       (basePurchaseUsdAmountMinor * technologyFeeBps + 9_999n) / 10_000n;
-    const primaryPurchaseUsdAmountMinor =
-      basePurchaseUsdAmountMinor + technologyFeeUsdAmountMinor;
+    const primaryPurchaseUsdAmountMinor = basePurchaseUsdAmountMinor;
     if (
       primaryPurchaseUsdAmountMinor <= 0n ||
-      primaryPurchaseUsdAmountMinor > BigInt(Number.MAX_SAFE_INTEGER)
+      primaryPurchaseUsdAmountMinor + technologyFeeUsdAmountMinor > BigInt(Number.MAX_SAFE_INTEGER)
     ) {
       throw new Error(
         `${deed.deedId} primary purchase amount cannot be serialized exactly for publication.`,
@@ -145,6 +145,7 @@ export class CollectionMintCoordinatorService {
       propertyRegistryCoinSpend: registration.spend,
       metadataRoot: workspace.metadataRoot,
       primaryPurchaseUsdAmountMinor,
+      inventoryPuzzleVersion: 2,
       primaryPurchaseValidatorPubkeys: [...validatorSet.pubkeys],
       primaryPurchaseNetwork: environment.chiaNetwork,
       primaryPurchaseProtocolTreasuryPuzhash: protocolTreasuryPuzhash,

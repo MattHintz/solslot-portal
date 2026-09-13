@@ -1,3 +1,4 @@
+import { RECOVERY_DRILL_API_FIXTURES } from './recovery-drill-api.fixture';
 import { SigningKey, Wallet, getAddress, sha256, toUtf8Bytes } from 'ethers';
 
 import {
@@ -166,78 +167,42 @@ describe('administrator recovery handoff', () => {
     ).toThrowError(/does not match/i);
   });
 
-  it('binds an offline BLS signature to one exact Testnet11 recovery action', () => {
+  it('rejects current message-only Chia recovery packages before they can be signed', () => {
     const recovery = lostRecoveryCase();
     const action = lostChiaAction(recovery);
-    const created = createAdminChiaRecoveryActionPackage(recovery, action);
-    const parsed = parseAdminChiaRecoveryActionPackage(JSON.stringify(created));
-
-    expect(parsed).toEqual(created);
-    expect(parsed.action.signerPublicKey).toBe(
-      recovery.intent.oldRecoveryBlsKey,
-    );
-
-    const result = createAdminChiaRecoveryActionResult(
-      parsed,
-      `0x${'ab'.repeat(96)}`,
-    );
-    expect(
-      parseAdminChiaRecoveryActionResult(JSON.stringify(result), parsed),
-    ).toEqual(result);
+    expect(() => createAdminChiaRecoveryActionPackage(recovery, action)).toThrowError(/Chia recovery signing is unavailable/);
+    const body = { schemaVersion: 1 as const, purpose: 'Solslot administrator Testnet11 recovery action' as const,
+      caseId: recovery.caseId, intent: recovery.intent, intentHash: recovery.intentHash, action };
+    for (const message of [action.blsPairs[0].message, '0x' + '99'.repeat(32)]) {
+      body.action.blsPairs[0].message = message;
+      const envelope = { ...body, checksum: stableHash(body) };
+      expect(() => parseAdminChiaRecoveryActionPackage(JSON.stringify(envelope))).toThrowError(/Chia recovery signing is unavailable/);
+    }
+    // Historical result parsing still binds the receipt to the original action.
+    const envelope = { ...body, checksum: stableHash(body) };
+    const result = createAdminChiaRecoveryActionResult(envelope, '0x' + 'ac'.repeat(96));
+    expect(parseAdminChiaRecoveryActionResult(JSON.stringify(result), envelope)).toEqual(result);
+    result.actionId = '0x' + '01'.repeat(32);
+    expect(() => parseAdminChiaRecoveryActionResult(JSON.stringify(result), envelope)).toThrowError(/does not match/i);
   });
 
-  it('rejects altered Testnet11 recovery messages and returned action IDs', () => {
-    const recovery = lostRecoveryCase();
-    const action = lostChiaAction(recovery);
-    const created = createAdminChiaRecoveryActionPackage(recovery, action);
-    created.action.blsPairs[0].message = `0x${'99'.repeat(32)}`;
-
-    expect(() =>
-      parseAdminChiaRecoveryActionPackage(JSON.stringify(created)),
-    ).toThrowError(/checksum does not match/i);
-
-    const valid = createAdminChiaRecoveryActionPackage(
-      recovery,
-      lostChiaAction(recovery),
-    );
-    const result = createAdminChiaRecoveryActionResult(
-      valid,
-      `0x${'ac'.repeat(96)}`,
-    );
-    result.actionId = `0x${'01'.repeat(32)}`;
-    expect(() =>
-      parseAdminChiaRecoveryActionResult(JSON.stringify(result), valid),
-    ).toThrowError(/does not match/i);
+  it('rejects a substituted restore digest even when the outer checksum is recomputed', () => {
+    const altered = challenge();
+    altered.blsSigningDigest = '0x' + '99'.repeat(32);
+    const envelope = createAdminRecoveryDrillPackage(altered);
+    expect(() => parseAdminRecoveryDrillPackage(JSON.stringify(envelope))).toThrowError(/signing digest does not match/);
   });
+
+  it('rejects extra typed-data fields even with a new public checksum', () => {
+    const altered = challenge();
+    altered.evmTypedData.message['recipient'] = '0x' + '99'.repeat(20);
+    expect(() => parseAdminRecoveryDrillPackage(JSON.stringify(createAdminRecoveryDrillPackage(altered)))).toThrowError(/altered administrator recovery drill/);
+  });
+
 });
 
 function challenge(): RecoveryDrillChallenge {
-  return {
-    challengeId: `0x${'11'.repeat(32)}`,
-    challengeHash: `0x${'22'.repeat(32)}`,
-    expiresAt: Math.floor(Date.now() / 1000) + 900,
-    revision: 1,
-    evmTypedData: {
-      types: {
-        EIP712Domain: [
-          { name: 'name', type: 'string' },
-          { name: 'version', type: 'string' },
-          { name: 'chainId', type: 'uint256' },
-        ],
-        SolslotAdminRecoveryDrill: [],
-      },
-      primaryType: 'SolslotAdminRecoveryDrill',
-      domain: { name: 'Solslot Admin Recovery', version: '1', chainId: 84532 },
-      message: {
-        slot: 0,
-        dailyWallet: '0x1111111111111111111111111111111111111111',
-        evmGuardian: '0x2222222222222222222222222222222222222222',
-      },
-    },
-    blsSigningDigest: `0x${'33'.repeat(32)}`,
-    recoveryBlsPath: 'm/12381/8444/2/0-unhardened',
-    recoveryEvmPath: "m/44'/60'/0'/0/0",
-  };
+  return structuredClone(RECOVERY_DRILL_API_FIXTURES[0].challenge);
 }
 
 function lostPrepared(): PreparedKeyChange {

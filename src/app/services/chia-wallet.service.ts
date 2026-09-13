@@ -323,12 +323,7 @@ export class ChiaWalletService {
     // Goby and Sage's CHIP-0002 implementations use this exact shape;
     // see https://chialisp.com/chips/chip-0002 for the canonical spec.
     if (state.connection === 'google') {
-      if (!environment.googleVaultEnabled || environment.chiaNetwork !== 'testnet11') {
-        throw new Error('Google Vault signing is available only in the enabled Testnet11 deployment.');
-      }
-      if (!reviewGoogleVaultSpend(coinSpends)) {
-        throw new Error('Google Vault signing was cancelled during transaction review.');
-      }
+      // Shared signer fails closed before any generic confirmation or CLVM execution.
       return this.googleWallet.signSpendBundle(coinSpends);
     }
 
@@ -905,18 +900,6 @@ export class ChiaWalletService {
     this.sageWcBridge = null;
     this._sageWalletConnectUri.set(null);
   }
-}
-
-function reviewGoogleVaultSpend(coinSpends: ReadonlyArray<UnsignedCoinSpend>): boolean {
-  const coins = coinSpends
-    .map((spend) => `${normalizeHex(spend.coin.parentCoinInfo).slice(0, 18)}... (${spend.coin.amount} mojos)`)
-    .join('\n');
-  return window.confirm(
-    'Google Vault Testnet11 signing review\n\n' +
-      `You are approving ${coinSpends.length} coin spend(s):\n${coins}\n\n` +
-      'This browser wallet holds its BLS key in page memory while unlocked. A compromised page or browser extension can request signatures. Review the transaction outside this dialog when possible.\n\n' +
-      'Approve this testnet-only signature?',
-  );
 }
 
 export type ChiaState =

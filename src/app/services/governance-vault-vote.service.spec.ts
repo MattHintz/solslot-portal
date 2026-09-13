@@ -14,8 +14,9 @@ describe('GovernanceVaultVoteService', () => {
   let api: jasmine.SpyObj<GovernanceQueueService>;
   let chia: jasmine.SpyObj<ChiaWalletService>;
   let evm: jasmine.SpyObj<EvmWalletService>;
+  const connectionState = signal<'goby' | 'google'>('goby');
   let ownerSession: jasmine.SpyObj<VaultOwnerSessionService>;
-  const sessionState = signal<{ authType: 'chia_bls' | 'evm'; vaultLauncherId: string }>({
+  const sessionState = signal<{ authType: 'chia_bls' | 'evm'; vaultLauncherId: string; walletSource?: 'chia' | 'google' }>({
     authType: 'chia_bls',
     vaultLauncherId: launcher,
   });
@@ -25,7 +26,9 @@ describe('GovernanceVaultVoteService', () => {
       'prepareVaultVote',
       'completeVaultVote',
     ]);
-    chia = jasmine.createSpyObj<ChiaWalletService>('ChiaWalletService', ['signSpendBundle']);
+    chia = jasmine.createSpyObj<ChiaWalletService>('ChiaWalletService', ['signSpendBundle', 'connectionKind']);
+    connectionState.set('goby');
+    chia.connectionKind.and.callFake(connectionState);
     evm = jasmine.createSpyObj<EvmWalletService>('EvmWalletService', ['signTypedData']);
     sessionState.set({ authType: 'chia_bls', vaultLauncherId: launcher });
     ownerSession = jasmine.createSpyObj<VaultOwnerSessionService>('VaultOwnerSessionService', ['ensure']);
@@ -51,7 +54,41 @@ describe('GovernanceVaultVoteService', () => {
     service = TestBed.inject(GovernanceVaultVoteService);
   });
 
-  it('signs and completes the exact server-built BLS vote package', async () => {
+  for (const source of ['session', 'connection'] as const) {
+    it(`blocks Google voting from the ${source} before owner authorization`, async () => {
+      if (source === 'session') sessionState.set({ authType: 'chia_bls', vaultLauncherId: launcher, walletSource: 'google' });
+      else connectionState.set('google');
+
+      await expectAsync(service.vote('GOV-1', '10000')).toBeRejectedWithError(/Voting with Google Vault is not available/);
+
+      expect(ownerSession.ensure).not.toHaveBeenCalled();
+      expect(api.prepareVaultVote).not.toHaveBeenCalled();
+      expect(chia.signSpendBundle).not.toHaveBeenCalled();
+      expect(api.completeVaultVote).not.toHaveBeenCalled();
+    });
+  }
+
+  it('blocks a connection changing to Google during owner authorization', async () => {
+    ownerSession.ensure.and.callFake(async () => {
+      connectionState.set('google');
+      return { vaultLauncherId: launcher, authType: 'chia_bls', network: 'testnet11', protocolVersion: 'solslot-v2', expiresAt: 1_900_000_000 };
+    });
+    await expectAsync(service.vote('GOV-1', '10000')).toBeRejectedWithError(/Voting with Google Vault is not available/);
+    expect(api.prepareVaultVote).not.toHaveBeenCalled();
+    expect(chia.signSpendBundle).not.toHaveBeenCalled();
+  });
+
+  it('blocks a connection changing to Google while the provider prepares a vote', async () => {
+    api.prepareVaultVote.and.callFake(async () => {
+      connectionState.set('google');
+      return { vaultAuthType: 'chia_bls', signingCoinSpends: [], voteAmount: '1' } as any;
+    });
+    await expectAsync(service.vote('GOV-1', '10000')).toBeRejectedWithError(/Voting with Google Vault is not available/);
+    expect(chia.signSpendBundle).not.toHaveBeenCalled();
+    expect(api.completeVaultVote).not.toHaveBeenCalled();
+  });
+
+  it('signs and completes the exact server-built BLS vote package with an external wallet', async () => {
     const spends = [
       {
         coin: {
@@ -120,7 +157,9 @@ describe('GovernanceVaultVoteService', () => {
     expect(result.spendBundleId).toBe('0x' + '68'.repeat(32));
   });
 
-  it('uses the existing EIP-712 signer for an EVM-owned vault', async () => {
+  for (const priorConnection of ['goby', 'google'] as const) {
+  it(`uses the EIP-712 signer for an EVM-owned vault after ${priorConnection}`, async () => {
+    connectionState.set(priorConnection);
     sessionState.set({ authType: 'evm', vaultLauncherId: launcher });
     const typedData = {
       domain: { name: 'Solslot', version: '2', chainId: 11155111 },
@@ -191,4 +230,5 @@ describe('GovernanceVaultVoteService', () => {
       vaultOwnerAuthorization: '0x' + '75'.repeat(65),
     });
   });
+  }
 });

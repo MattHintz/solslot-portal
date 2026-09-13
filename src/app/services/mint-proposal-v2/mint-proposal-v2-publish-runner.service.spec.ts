@@ -550,6 +550,7 @@ describe('MintProposalV2PublishRunnerService', () => {
       owner_member_hash: '0x' + '03'.repeat(32),
       gov_member_hash: '0x' + '04'.repeat(32),
       voting_deadline: 1_086_400,
+      inventory_puzzle_version: 1,
     });
   });
 

@@ -30,6 +30,7 @@ describe('GenesisComponent', () => {
     connectWalletConnect: jasmine.Spy;
     disconnect: jasmine.Spy;
     signTypedData: jasmine.Spy;
+    signLaunchCeremony: jasmine.Spy;
     signLaunchAction: jasmine.Spy;
     signSafeMessage: jasmine.Spy;
     sendBaseSepoliaTransaction: jasmine.Spy;
@@ -140,6 +141,7 @@ describe('GenesisComponent', () => {
         .and.resolveTo(walletAddress),
       disconnect: jasmine.createSpy('disconnect').and.resolveTo(),
       signTypedData: jasmine.createSpy('signTypedData').and.resolveTo('0xsigned'),
+      signLaunchCeremony: jasmine.createSpy('signLaunchCeremony').and.resolveTo('0xsigned'),
       signLaunchAction: jasmine.createSpy('signLaunchAction').and.resolveTo('0xresume'),
       signSafeMessage: jasmine.createSpy('signSafeMessage').and.resolveTo('0xsafe'),
       sendBaseSepoliaTransaction: jasmine
@@ -276,7 +278,7 @@ describe('GenesisComponent', () => {
     fixture.detectChanges();
 
     expect(wallet.connectInjected).toHaveBeenCalled();
-    expect(wallet.signLaunchAction).toHaveBeenCalledOnceWith(typedData);
+    expect(wallet.signLaunchAction).toHaveBeenCalledOnceWith(typedData, undefined);
     expect(launch.resumeLogin).toHaveBeenCalledOnceWith(
       walletAddress,
       'resume-nonce',
@@ -299,6 +301,7 @@ describe('GenesisComponent', () => {
       sessionExpiresAt: 1_900_000_000,
     });
     launch.prepareInvitation.and.resolveTo({
+      ceremonyBinding: {ceremonyId, evmChainId:11155111},
       ceremonyId,
       slot: 1,
       expiresAt: 1_900_000_000,

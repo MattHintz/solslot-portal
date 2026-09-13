@@ -8,6 +8,8 @@ import {
   sha256,
   toUtf8Bytes,
 } from 'ethers';
+import { bytesToHex } from '../utils/chia-hash';
+import { treeHashAtom, treeHashList, treeHashPair } from '../utils/clvm-tree-hash';
 
 import {
   AdminKeyChangeIntentV1,
@@ -197,7 +199,7 @@ export function parseAdminRecoveryDrillResult(
 }
 
 export function createAdminLostRecoveryPackage(
-  prepared: PreparedKeyChange,
+  prepared: Pick<PreparedKeyChange, 'intent' | 'intentHash' | 'coordinator' | 'guardianTypedData' | 'recoveryBlsDigest'>,
 ): AdminLostRecoveryPackage {
   if (!prepared.guardianTypedData || !prepared.recoveryBlsDigest) {
     throw new Error('The lost-wallet recovery package is incomplete.');
@@ -615,6 +617,78 @@ function validateChallengeEnvelope(challenge: RecoveryDrillChallenge): void {
   ) {
     throw new Error('The recovery test challenge is malformed.');
   }
+  validateRecoveryDrill(challenge);
+}
+
+/** Rebuild the API's restore-test domain, payload commitment and CLVM digest. */
+export function validateRecoveryDrill(
+  challenge: RecoveryDrillChallenge,
+  recoveryBlsPublicKey?: string,
+): string {
+  const typed = challenge.evmTypedData;
+  const message = typed?.message;
+  const domainFields = [
+    { name: 'name', type: 'string' }, { name: 'version', type: 'string' },
+    { name: 'chainId', type: 'uint256' },
+  ];
+  const fields = [
+    { name: 'ceremonyId', type: 'bytes32' }, { name: 'slot', type: 'uint8' },
+    { name: 'dailyWallet', type: 'address' }, { name: 'evmGuardian', type: 'address' },
+    { name: 'recoveryBlsCommitment', type: 'bytes32' }, { name: 'revision', type: 'uint64' },
+    { name: 'nonce', type: 'bytes32' }, { name: 'expiresAt', type: 'uint64' },
+  ];
+  if (
+    !isRecord(typed) || !isRecord(typed.domain) || !isRecord(typed.types) || !isRecord(message) ||
+    !hasExactKeys(typed, ['domain', 'types', 'primaryType', 'message']) ||
+    typed.primaryType !== 'SolslotAdminRecoveryDrill' ||
+    stableJson(typed.domain) !== stableJson({ name: 'Solslot Admin Recovery', version: '1', chainId: 84532 }) ||
+    !hasExactKeys(typed.types, ['EIP712Domain', 'SolslotAdminRecoveryDrill']) ||
+    stableJson(typed.types['EIP712Domain']) !== stableJson(domainFields) ||
+    stableJson(typed.types['SolslotAdminRecoveryDrill']) !== stableJson(fields) ||
+    !hasExactKeys(message, fields.map(field => field.name)) ||
+    !isHex(challenge.challengeId, 32) || !isHex(challenge.challengeHash, 32) ||
+    !isHex(challenge.blsSigningDigest, 32) ||
+    challenge.recoveryBlsPath !== 'm/12381/8444/2/0-unhardened' ||
+    challenge.recoveryEvmPath !== "m/44'/60'/0'/0/0" ||
+    typeof message['slot'] !== 'number' || !Number.isInteger(message['slot']) ||
+    message['slot'] < 0 || message['slot'] > 2 ||
+    !Number.isSafeInteger(challenge.expiresAt) || challenge.expiresAt <= 0 ||
+    !Number.isSafeInteger(challenge.revision) || challenge.revision < 1 ||
+    message['expiresAt'] !== challenge.expiresAt || message['revision'] !== challenge.revision ||
+    !isHex(message['ceremonyId'], 32) || !isHex(message['nonce'], 32) ||
+    !isHex(message['recoveryBlsCommitment'], 32) ||
+    typeof message['dailyWallet'] !== 'string' || typeof message['evmGuardian'] !== 'string'
+  ) {
+    throw new Error('Refusing an altered administrator recovery drill.');
+  }
+  getAddress(message['dailyWallet']);
+  getAddress(message['evmGuardian']);
+  const inner = treeHashList([
+    toUtf8Bytes('SolslotAdminRecoveryDrill'), 1,
+    getBytes(message['ceremonyId']), message['slot'],
+    getBytes(message['recoveryBlsCommitment']), challenge.revision,
+    getBytes(message['nonce']), challenge.expiresAt,
+  ]);
+  const digest = bytesToHex(treeHashPair(treeHashAtom(toUtf8Bytes('Chia Signed Message')), treeHashAtom(inner)));
+  if (digest !== challenge.blsSigningDigest.toLowerCase()) {
+    throw new Error('The recovery test signing digest does not match its reviewed fields.');
+  }
+  if (recoveryBlsPublicKey !== undefined) {
+    if (!isHex(recoveryBlsPublicKey, 48) ||
+      keccak256(recoveryBlsPublicKey) !== message['recoveryBlsCommitment'].toLowerCase()) {
+      throw new Error('The recovery test does not match the unlocked Chia recovery key.');
+    }
+    // Preserve the validated address strings: the API payload uses their original case.
+    const payload = {
+      schemaVersion: 1, purpose: 'Solslot administrator recovery drill',
+      ...message, recoveryBlsPubkey: recoveryBlsPublicKey.toLowerCase(),
+      recoveryBlsPath: challenge.recoveryBlsPath, recoveryEvmPath: challenge.recoveryEvmPath,
+    };
+    if (checksum(payload) !== challenge.challengeHash.toLowerCase()) {
+      throw new Error('The recovery test payload does not match its challenge hash.');
+    }
+  }
+  return digest;
 }
 
 function validateLostRecoveryBody(
@@ -715,59 +789,9 @@ function validateRecoveryGuardianActionBody(
 }
 
 function validateChiaRecoveryActionBody(
-  body: Omit<AdminChiaRecoveryActionPackage, 'checksum'>,
+  _body: Omit<AdminChiaRecoveryActionPackage, 'checksum'>,
 ): void {
-  validateLostIntent(body.intent);
-  const intentHash = hashAdminKeyChangeIntent(body.intent);
-  const action = body.action;
-  const pairs = action.blsPairs;
-  const wirePairs = pairs.map((pair) => [pair.publicKey, pair.message]);
-  const expectedMessageHash = checksum({
-    schemaVersion: 1,
-    kind: 'AuthorityV3BlsMessages',
-    pairs: wirePairs,
-  });
-  const expectedActionId = checksum({
-    schemaVersion: 1,
-    phase: 'PREPARE',
-    role: 'lost-key-recovery',
-    slot: body.intent.slot,
-    publicKey: body.intent.oldRecoveryBlsKey,
-    messageHash: expectedMessageHash,
-    pairs: wirePairs,
-  });
-  if (
-    body.schemaVersion !== 1 ||
-    body.purpose !== CHIA_RECOVERY_ACTION_PURPOSE ||
-    body.caseId.toLowerCase() !== `recovery-${intentHash.slice(2)}` ||
-    body.intentHash.toLowerCase() !== intentHash.toLowerCase() ||
-    action.phase !== 'PREPARE' ||
-    action.signerKind !== 'BLS_RECOVERY' ||
-    action.signerSlot !== body.intent.slot ||
-    action.signerPublicKey.toLowerCase() !==
-      body.intent.oldRecoveryBlsKey.toLowerCase() ||
-    action.network !== 'Testnet11' ||
-    action.typedData !== null ||
-    action.coinId !== null ||
-    action.delegatedPuzzleHash !== null ||
-    action.signed ||
-    !Array.isArray(pairs) ||
-    pairs.length < 1 ||
-    pairs.length > 8 ||
-    pairs.some(
-      (pair) =>
-        !isHex(pair.publicKey, 48) ||
-        pair.publicKey.toLowerCase() !==
-          body.intent.oldRecoveryBlsKey.toLowerCase() ||
-        !isBoundedHexMessage(pair.message),
-    ) ||
-    action.messageHash.toLowerCase() !== expectedMessageHash.toLowerCase() ||
-    action.actionId.toLowerCase() !== expectedActionId.toLowerCase()
-  ) {
-    throw new Error(
-      'The Testnet11 recovery action does not match its exact lost-wallet intent.',
-    );
-  }
+  throw new Error('Chia recovery signing is unavailable until this page can verify the complete recovery transaction.');
 }
 
 function validateRecoveryKitIntent(intent: AdminKeyChangeIntentV1): void {

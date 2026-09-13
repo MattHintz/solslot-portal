@@ -188,6 +188,7 @@ export interface PublishProposalMetadataJson {
   metadata_root?: string;
   metadata_anchor_id?: string;
   primary_purchase_usd_amount_minor?: number;
+  inventory_puzzle_version?: 1 | 2;
 }
 
 interface CommitteeVoteApiResponseWire {
