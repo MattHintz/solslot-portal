@@ -123,7 +123,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
       description: 'Test one delivery and one full refund before opening sales.',
     },
   ];
-  readonly operationGateNames = ['minting', 'presale', 'purchases'] as const;
+  readonly operationGateNames = ['minting', 'presale', 'purchases', 'xchVouchers'] as const;
 
   readonly enrolledCount = computed(
     () => this.workspace()?.launch.administrators.filter((admin) => admin.enrolled).length ?? 0,
@@ -412,17 +412,27 @@ export class GenesisComponent implements OnInit, OnDestroy {
       minting: 'Minting',
       presale: 'Refundable presales',
       purchases: 'Direct purchases',
+      xchVouchers: 'XCH voucher purchases',
     }[name];
   }
 
   gateHelp(name: Exclude<LaunchGateName, 'ceremonyBroadcast'>): string {
     return {
       minting: 'Publish approved SmartDeeds from a reviewed collection.',
+      xchVouchers: 'Off by default. Vouchers currently use approved stablecoins or Stripe. Existing XCH refunds and recovery remain available.',
       presale:
         'Accept new refundable reservations. Existing deliveries and refunds continue after closing.',
       purchases:
         'Accept new direct SmartDeed purchases for approved vaults. Existing settlement continues after closing.',
     }[name];
+  }
+
+  canOpenXchVouchers(): boolean {
+    return this.workspace()?.voucherRailControls?.xch?.canOpen === true;
+  }
+
+  async closeXchVouchers(): Promise<void> {
+    await this.simpleMutation('close-xch-vouchers', () => this.launch.closeXchVouchers());
   }
 
   private launchBinding() {
@@ -506,7 +516,8 @@ export class GenesisComponent implements OnInit, OnDestroy {
   }
 
   gateOpen(name: LaunchGateName): boolean {
-    return this.workspace()?.gates[name]?.state === 'open';
+    return (name !== 'xchVouchers' || this.canOpenXchVouchers()) &&
+      this.workspace()?.gates[name]?.state === 'open';
   }
 
   formatTime(epoch?: number | null): string {
