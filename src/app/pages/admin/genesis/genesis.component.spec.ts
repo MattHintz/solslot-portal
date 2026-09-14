@@ -112,6 +112,7 @@ describe('GenesisComponent', () => {
       'prepareAction',
       'approveAction',
       'activateGate',
+      'closeXchVouchers',
       'buildPlan',
       'preparePlanSignature',
       'signPlan',
@@ -504,4 +505,24 @@ describe('GenesisComponent', () => {
     expect(text).toContain('Prove a full refund');
     expect(text).toContain('Unlock sales controls');
   });
+  it('shows XCH vouchers off when readiness is absent, even with a stale open gate', () => {
+    const current = workspace('locked');
+    current.gates.xchVouchers = {name: 'xchVouchers', network: 'testnet11', opensAt: 1,
+      closesAt: 2_000_000_000, state: 'open', configuredState: 'open', payloadHash: 'hash', updatedAt: 1};
+    component.workspace.set(current);
+    expect(component.operationGateNames).toContain('xchVouchers');
+    expect(component.canOpenXchVouchers()).toBeFalse();
+    expect(component.gateOpen('xchVouchers')).toBeFalse();
+    expect(component.gateHelp('xchVouchers')).toContain('stablecoins or Stripe');
+  });
+
+  it('uses the authenticated off endpoint and refreshes the server state', async () => {
+    launch.closeXchVouchers.and.resolveTo({} as any);
+    launch.workspace.and.resolveTo(workspace('locked'));
+    await component.closeXchVouchers();
+    expect(launch.closeXchVouchers).toHaveBeenCalledTimes(1);
+    expect(launch.workspace).toHaveBeenCalled();
+    expect(component.gateOpen('xchVouchers')).toBeFalse();
+  });
+
 });

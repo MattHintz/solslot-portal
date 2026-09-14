@@ -148,6 +148,10 @@ export class AdminLaunchService {
     return this.post<LaunchGate>(`/gates/${gate}/activate`, {});
   }
 
+  closeXchVouchers(): Promise<LaunchGate> {
+    return this.post<LaunchGate>('/gates/xchVouchers/close', {});
+  }
+
   prepareAbandonment(reason: string): Promise<PreparedLaunchAction> {
     return this.post<PreparedLaunchAction>('/abandon/prepare', { reason });
   }
@@ -307,7 +311,7 @@ export interface LaunchTask {
   action?: string | null;
 }
 
-export type LaunchGateName = 'ceremonyBroadcast' | 'minting' | 'presale' | 'purchases';
+export type LaunchGateName = 'ceremonyBroadcast' | 'minting' | 'presale' | 'purchases' | 'xchVouchers';
 export type LaunchActionType = 'funding' | 'abandon' | `gate:${LaunchGateName}`;
 
 export interface LaunchGate {
@@ -495,6 +499,7 @@ export interface LaunchWorkspace {
   readiness: ReadinessFinding[];
   nextTask: LaunchTask;
   gates: Partial<Record<LaunchGateName, LaunchGate>>;
+  voucherRailControls?: { xch: { defaultEnabled: boolean; releaseReady: boolean; serverEnabled: boolean; canOpen: boolean; reason: string | null } };
   actionApprovals: Partial<Record<LaunchActionType, ActionApproval>>;
   notice: string;
 }

@@ -687,6 +687,9 @@
                   <div>
                     <strong>{{ gateLabel(name) }}</strong>
                     <span>{{ gateHelp(name) }}</span>
+                    @if (name === 'xchVouchers' && !canOpenXchVouchers()) {
+                      <small>{{ workspace()?.voucherRailControls?.xch?.reason || 'XCH voucher activation awaits a reviewed release.' }}</small>
+                    }
                   </div>
                   <div>
                     <span
@@ -703,6 +706,10 @@
                     }
                   </div>
                   <div class="inline-actions">
+                    @if (name === 'xchVouchers' && ownerSession()) {
+                      <button type="button" class="btn btn--ghost" [disabled]="!!pending()"
+                        (click)="closeXchVouchers()">Turn XCH vouchers off</button>
+                    }
                     @if (!hasCurrentApproval(gateAction(name))) {
                       <button
                         type="button"
@@ -710,7 +717,8 @@
                         [disabled]="
                           !!pending() ||
                           gateOpen(name) ||
-                          (name !== 'minting' && !customerPaymentsReady())
+                          (name !== 'minting' && !customerPaymentsReady()) ||
+                          (name === 'xchVouchers' && !canOpenXchVouchers())
                         "
                         (click)="reviewOperationWindow(name)"
                       >
@@ -727,7 +735,8 @@
                         class="btn btn--primary"
                         [disabled]="
                           !!pending() ||
-                          (name !== 'minting' && !customerPaymentsReady())
+                          (name !== 'minting' && !customerPaymentsReady()) ||
+                          (name === 'xchVouchers' && !canOpenXchVouchers())
                         "
                         (click)="activateOperationWindow(name)"
                       >
