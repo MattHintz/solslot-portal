@@ -615,7 +615,7 @@ export interface PresaleSeries {
     parentCoinId: string | null;
     fullPuzzleHash: string | null;
     spendBundleId: string | null;
-    status: 'MEMPOOL_ACCEPTED' | 'LEGACY_TEST_FIXTURE';
+    status: 'MEMPOOL_ACCEPTED' | 'LEGACY_TEST_FIXTURE' | 'AWAITING_CONFIRMATION' | 'CONFIRMED';
   };
   vouchers: PresaleVoucher[];
   launchedAt: number | null;
@@ -633,7 +633,7 @@ export interface PresaleSeries {
     governanceExecutionIds: string[];
     submittedAt: number | null;
     confirmedHeight: number | null;
-    status: 'NOT_SUBMITTED' | 'MEMPOOL_ACCEPTED' | 'CONFIRMED';
+    status: 'NOT_SUBMITTED' | 'MEMPOOL_ACCEPTED' | 'CONFIRMED' | 'PREPARING' | 'AWAITING_CONFIRMATION';
   };
   createdAt: number;
   updatedAt: number;
