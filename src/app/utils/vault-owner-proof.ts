@@ -1,12 +1,12 @@
 /**
  * Complete single-owner vault puzzle commitment. Search hints never authorize
  * a vault. Keep this verifier identical in the coordinated customer/admin release.
- * Module hash: protocol vault_singleton_inner.clsp, bound by the release sources.
+ * Module hash: protocol vault_singleton_inner_v2.clsp, bound by the release sources.
  */
 import { getBytes, hexlify, sha256 } from 'ethers';
 
 export const VAULT_OWNER_MODULE_HASH =
-  '0xb9165548667a296c6ecf4921f4a0ba54bb98104810fd539abd7416417eb39b45';
+  '0x104a7d0356d628b9073bf39f550a3b41163008381e2db3b8d2327ffe20216903';
 export const VAULT_SINGLETON_MODULE_HASH =
   '0x7faa3253bfddd1e0decb0906b2dc6247bbc4cf608f58345d173adb63e8b47c9f';
 export const VAULT_SINGLETON_LAUNCHER_HASH =

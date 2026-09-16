@@ -37,7 +37,7 @@ export interface AcceptOfferVectorFixture {
 }
 
 export const ACCEPT_OFFER_PROTOCOL_VECTOR = normalizeAcceptOfferVectorFixture({
-  protocolCommit: 'c3c032e',
+  protocolCommit: 'alpha-draft46-current-puzzle-manifest',
   inputs: {
     vaultLauncherId: '0xe9fb9d0439f55099c232c41c179232c96a2fe58453ec0abc49caa723a384607f',
     ownerPubkey: '0x' + '00'.repeat(48),
@@ -45,7 +45,7 @@ export const ACCEPT_OFFER_PROTOCOL_VECTOR = normalizeAcceptOfferVectorFixture({
     membersMerkleRoot: '0x' + 'ee'.repeat(32),
     poolLauncherId: '0x' + 'bb'.repeat(32),
     vaultCoinId: '0x' + '11'.repeat(32),
-    vaultInnerPuzzleHash: '0xa4a914044fb51307a52a3abcbbecaaa1cf5679d044f066ea931a61669c5549ec',
+    vaultInnerPuzzleHash: '0xa9b24ef0f546c108e5422baedaae74c2f0f3ce5377a5abb3b6489c31892fe0f0',
     vaultAmount: 1,
     spendCase: '0x61',
     deedLauncherId: '0x' + 'dd'.repeat(32),
@@ -59,8 +59,8 @@ export const ACCEPT_OFFER_PROTOCOL_VECTOR = normalizeAcceptOfferVectorFixture({
   },
   expected: {
     serializedSolution:
-      '0xffa01111111111111111111111111111111111111111111111111111111111111111ffa0a4a914044fb51307a52a3abcbbecaaa1cf5679d044f066ea931a61669c5549ecff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080',
-    solutionTreeHash: '0xf36a63fc4036701d9ffc8ea1db2da7e7e3ed525b5378cc16a03f6e22912c5866',
+      '0xffa01111111111111111111111111111111111111111111111111111111111111111ffa0a9b24ef0f546c108e5422baedaae74c2f0f3ce5377a5abb3b6489c31892fe0f0ff01ff61ffffa0ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddff830186a0ffa0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffa04444444444444444444444444444444444444444444444444444444444444444ffff8080ff8467748580ff808080',
+    solutionTreeHash: '0x5f10360a895e743282649e100257b83376f272cb5650424b50db02a81bcc54bb',
     aggSigMeMessage: '0xd59c6fec26bc835512b78b7d2545606671601976711129830a909732545c660c',
     poolAnnouncementAssert: '0x9aa9d6bf073dd575af41ac85dc855a174a82f7ae7ac12d04340673258ad87b39',
   },
