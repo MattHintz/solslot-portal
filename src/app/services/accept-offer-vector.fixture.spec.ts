@@ -8,7 +8,7 @@ describe('ACCEPT_OFFER_PROTOCOL_VECTOR', () => {
   it('parses and validates the required accept-offer fields', () => {
     const vector = ACCEPT_OFFER_PROTOCOL_VECTOR;
 
-    expect(vector.protocolCommit).toBe('c3c032e');
+    expect(vector.protocolCommit).toBe('alpha-draft46-current-puzzle-manifest');
     expect(Object.keys(vector.inputs)).toEqual([
       'vaultLauncherId',
       'ownerPubkey',
@@ -41,7 +41,7 @@ describe('ACCEPT_OFFER_PROTOCOL_VECTOR', () => {
     expect(vector.inputs.attestationProof).toEqual({ bitpath: 0, siblings: [] });
     expect(vector.inputs.signatureData).toBeNull();
     expect(vector.expected.solutionTreeHash).toBe(
-      '0xf36a63fc4036701d9ffc8ea1db2da7e7e3ed525b5378cc16a03f6e22912c5866',
+      '0x5f10360a895e743282649e100257b83376f272cb5650424b50db02a81bcc54bb',
     );
   });
 
