@@ -110,7 +110,8 @@ export class VaultDiscoveryService {
     let current = launcher;
     let currentId = launcherId;
     const seen = new Set([launcherId]);
-    for (let depth = 0; depth < 10000; depth++) {
+    let enrolledHash: string | null = null;
+    for (let depth = 0; depth < 512; depth++) {
       const children = await this.coinset.getCoinRecordsByParentIds([currentId], true);
       if (!children.length) {
         if (depth === 0 && current.spent_block_index === 0) return null;
@@ -131,13 +132,22 @@ export class VaultDiscoveryService {
           child.confirmed_block_index !== current.spent_block_index ||
           child.confirmed_block_index < current.confirmed_block_index ||
           !Number.isSafeInteger(child.spent_block_index) || child.spent_block_index < 0 ||
-          (child.spent_block_index > 0 && child.spent_block_index < child.confirmed_block_index)) {
+          (child.spent_block_index > 0 && child.spent_block_index < child.confirmed_block_index) ||
+          ('spent' in child && (typeof child.spent !== 'boolean' || child.spent !== (child.spent_block_index > 0))) ||
+          ('spent' in current && (typeof current.spent !== 'boolean' || current.spent !== (current.spent_block_index > 0)))) {
         throw new UnrelatedVaultCandidate('Vault continuation lacks an atomic confirmed parent spend.');
       }
       if (seen.has(childId)) throw new UnrelatedVaultCandidate('Vault singleton chain contains a cycle.');
       seen.add(childId);
+      await this.verifyOwner(launcherId, child, current, owner, coordinates);
+      const childHash = normalizeHex(child.coin.puzzle_hash);
+      if (enrolledHash && childHash !== enrolledHash) {
+        throw new UnrelatedVaultCandidate('Vault history changed its enrolled owner or credential.');
+      }
+      if (childHash !== canonicalOwnedVaultHash(launcherId, owner, coordinates, EMPTY_VAULT_IDENTITY_ROOT)) {
+        enrolledHash = childHash;
+      }
       if (child.spent_block_index === 0) {
-        await this.verifyOwner(launcherId, child, current, owner, coordinates);
         return {
           vaultLauncherId: launcherId,
           vaultFullPuzhash: normalizeHex(child.coin.puzzle_hash),
@@ -150,7 +160,7 @@ export class VaultDiscoveryService {
       current = child;
       currentId = childId;
     }
-    throw new Error('Vault singleton chain exceeded 10000 spends.');
+    throw new Error('Vault singleton chain exceeded 512 spends.');
   }
 
   private async verifyOwner(

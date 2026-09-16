@@ -335,6 +335,8 @@ export interface VaultCredentialReceipt {
   evmTxHash: string;
   evmConfirmedBlockIndex?: number | null;
   chiaVaultCoinId?: string | null;
+  chiaStampCoinId?: string | null;
+  genesisArtifactHash?: string | null;
   confirmedBlockIndex?: number | null;
   chiaSpendBundleId?: string | null;
   enrolledAt: number;

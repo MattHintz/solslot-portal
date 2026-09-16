@@ -76,7 +76,7 @@ export class VaultCredentialReceiptService {
         normalizeHex32(record.bridgeCoinId, 'record.bridgeCoinId')) return null;
     const expectedBridgeCoinId = coinId(record.bridgeParentId, record.bridgePolicyHash, record.bridgeAmount);
     if (normalizeHex32(record.bridgeCoinId, 'record.bridgeCoinId') !== expectedBridgeCoinId) return null;
-    if (receipt.confirmedBlockIndex === null || receipt.confirmedBlockIndex === undefined) return null;
+    if (!Number.isSafeInteger(receipt.confirmedBlockIndex) || Number(receipt.confirmedBlockIndex) <= 0) return null;
     const root = normalizeHex32(receipt.identityAttestRoot, 'receipt.identityAttestRoot');
     if (root === EMPTY_ATTEST_ROOT) return null;
     if (!receipt.chiaVaultCoinId) return null;
