@@ -536,6 +536,11 @@ export class MintPublishSpendBuilderService {
     const billOpProgram = clvm.deserialize(
       hexToBytes(this.normalizeHex(args.billOperationHex)),
     );
+    const curried = trackerInner.uncurry?.();
+    const isV2 = curried && this.curriedArgs(curried, 'governance tracker').length === 19;
+    if (isV2 && !args.proposalEvidenceHex) {
+      throw new Error('mint-publish-spend: V2 requires current authority and statutes evidence');
+    }
     const innerSolution = clvm.list([
       clvm.atom(myId),
       clvm.atom(trackerInnerHash),
@@ -547,6 +552,9 @@ export class MintPublishSpendBuilderService {
         clvm.atom(voterInnerPh),
         clvm.int(firstVote),
         clvm.int(deadline),
+        ...(args.proposalEvidenceHex
+          ? [clvm.deserialize(hexToBytes(this.normalizeHex(args.proposalEvidenceHex)))]
+          : []),
       ]),
     ]);
 
@@ -835,6 +843,8 @@ export interface BuildTrackerProposeArgs {
   voterInnerPuzzleHash: string;
   firstVoteAmount: number | bigint;
   votingDeadline: number | bigint;
+  /** Selected V2: current authority/statutes hashes and all nine parameters. */
+  proposalEvidenceHex?: string;
 }
 
 export interface PropertyRegistryAnnouncementArgs {

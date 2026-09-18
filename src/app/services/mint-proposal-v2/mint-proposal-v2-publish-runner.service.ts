@@ -8,11 +8,11 @@ import {
   PublishProposalMetadataJson,
 } from '../committee-api.service';
 import { CoinsetService } from '../coinset.service';
-import {
-  GovernanceTrackerReaderService,
-  IdleStateProposeInputs,
-} from '../governance-tracker-reader.service';
-import { SgtCoin, SgtCoinDiscoveryService } from '../sgt-driver/sgt-coin-discovery.service';
+import { SgtCoin } from '../sgt-driver/sgt-coin-discovery.service';
+import { MintPublicationApiService, MintPublicationContext, MintStakePackage, MintStakeRequest } from '../mint-publication-api.service';
+import { SessionService } from '../session.service';
+import { VaultOwnerSessionService } from '../vault-owner-session.service';
+import { EvmWalletService } from '../evm-wallet.service';
 import { SgtDriverService } from '../sgt-driver/sgt-driver.service';
 import { WalletCoinPickerService } from '../wallet-coin-picker.service';
 import { bytesToHex, coinId, hexToBytes } from '../../utils/chia-hash';
@@ -27,67 +27,21 @@ import {
 } from '../property-metadata/property-metadata.service';
 
 /**
- * End-to-end orchestrator for the Mint V2 **Publish** flow (Phase 4
- * sub-brick 4d.3).
- *
- * **4d.3b scope (this commit).**  Glue every service needed to take a
- * single MINT proposal from the connected wallet to a *signed* spend
- * bundle — but stop short of posting it.  The runner returns the
- * assembled {@link SignedSpendBundle} (+ the pinned artifacts) so the
- * caller can inspect/dump it.  4d.3c adds the
- * ``CommitteeApiService.publishProposal()`` forwarder and flips the
- * happy-path result from ``'assembled'`` to ``'submitted'``.
- *
- * **Bundle topology.**  The publish bundle lands three on-chain
- * artifacts atomically (the "P-C-soft" path):
- *
- *   1. **XCH parent spend** — one standard p2 coin from the connected
- *      wallet, spent to emit:
- *        * ``CREATE_COIN(deed_launcher_puzhash, 1)`` — pre-spawns the
- *          DID-gated deed launcher coin (the deed launcher itself is
- *          NOT spent here; that's a post-Phase-4 deed-launch brick).
- *        * the two Artifact A launcher parent conditions
- *          (``CREATE_COIN(singleton_launcher, 1)`` +
- *          ``ASSERT_COIN_ANNOUNCEMENT``) from
- *          {@link MintPublishSpendBuilderService.buildProposalEveLaunchSpend}.
- *        * a change ``CREATE_COIN`` back to the wallet.
- *      The same XCH coin is the parent for BOTH launchers — the two
- *      children have distinct puzzle hashes (DID-gated vs. standard)
- *      so their coin ids differ.
- *   2. **Artifact A launcher coin spend** — launcher → eve singleton
- *      (V2 mint-proposal, DRAFT state).
- *   3. **Tracker PROPOSE spend** — the governance tracker singleton
- *      IDLE → OPEN.
- *   4. **SGT first-vote LOCK spend** — the proposer's SGT free coin
- *      locked as the proposal's first vote / anti-spam stake.
- *
- * Property registration is intentionally deferred to the quorum-authorized
- * EXECUTE bundle.  The current registry coin is carried only as a witness at
- * publish time and is never spent before governance passes.
- *
- * The wallet signs the AGG_SIG_ME conditions in (1), (4), and (5) when
- * the connected wallet controls the required keys.  (2) and (3) are
- * permissionless.
- *
- * **Protocol context.**  Several curry inputs to
- * {@link MintPublishService.buildMintPublishArtifacts}
- * (``protocolDidSingletonStructHex``, ``protocolDidPuzhash``,
- * ``poolSingletonLauncherId``, ``p2PoolModHash``, ``p2VaultModHash``,
- * ``govMemberHash``) are threaded as explicit ``PublishMintArgs`` fields.
- * The admin UI assembles them from the verified protocol context and the
- * operator's draft.
- *
- * **Result.**  Discriminated-union {@link PublishRunResult} mirroring
- * Phase 3's ``VoteRunResult`` shape: every non-``'assembled'`` variant
- * is a pre-flight failure that didn't touch the wallet.
+ * Prepare a vault-funded MINT proposal against current chain evidence.
+ * The wallet package contains funding, proposal launcher, tracker, vault and
+ * SGT spends. Admin Approvals then collects owner-plus-one HTTP and identity
+ * signatures; the API appends the four current authority/statutes spends.
+ * Property registration and deed issuance occur only after the SGT vote.
  */
 @Injectable({ providedIn: 'root' })
 export class MintProposalV2PublishRunnerService {
   private readonly wallet = inject(ChiaWalletService);
   private readonly wasm = inject(ChiaWasmService);
   private readonly coinset = inject(CoinsetService);
-  private readonly tracker = inject(GovernanceTrackerReaderService);
-  private readonly discovery = inject(SgtCoinDiscoveryService);
+  private readonly mintApi = inject(MintPublicationApiService);
+  private readonly session = inject(SessionService);
+  private readonly ownerSession = inject(VaultOwnerSessionService);
+  private readonly evm = inject(EvmWalletService);
   private readonly sgt = inject(SgtDriverService);
   private readonly publish = inject(MintPublishService);
   private readonly v2 = inject(MintProposalV2Service);
@@ -103,12 +57,11 @@ export class MintProposalV2PublishRunnerService {
    * @returns {@link PublishRunResult}.  ``'submitted'`` when the bundle
    *   was pushed (the API may still report ``pushed: false`` for a
    *   mempool rejection — the UI renders ``apiResponse.status`` either
-   *   way).  All other variants are pre-flight failures that did not
-   *   reach the wallet or the API.
+   *   way). Failure variants identify the stage that could not complete.
    */
   async publishMint(args: PublishMintArgs): Promise<PublishRunResult> {
     // ── 0. Validate inputs ──
-    const firstVoteAmount = BigInt(args.firstVoteAmount);
+    let firstVoteAmount = BigInt(args.firstVoteAmount);
     if (firstVoteAmount <= 0n) {
       return { kind: 'invalid-input', reason: 'first-vote-amount-must-be-positive' };
     }
@@ -128,40 +81,40 @@ export class MintProposalV2PublishRunnerService {
     const sdk = this.sdk();
     const syntheticKey = sdk.PublicKey.fromBytes(hexToBytes(pubkeyHex));
     const voterInnerPuzzleHashBytes = sdk.standardPuzzleHash(syntheticKey);
-    const voterInnerPuzzleHash = bytesToHex(voterInnerPuzzleHashBytes);
     const fundingPuzzleHash = bytesToHex(voterInnerPuzzleHashBytes);
 
-    // ── 2. Tracker IDLE state ──
-    let trackerInputs: IdleStateProposeInputs | null;
+    // Current protocol inputs are reconstructed by the API, including genesis IDLE.
+    const owner = this.session.session();
+    if (!owner?.vaultLauncherId || this.wallet.connectionKind() === 'google') {
+      return { kind: 'vault-required', error: 'Connect an enrolled external-wallet vault to stake SGT for minting.' };
+    }
+    const fundingKey = pubkeyHex;
+    const ownerAddress = owner.authType === 'evm' ? this.evm.address() : null;
+    const assertWallets = () => {
+      const latest = this.session.session();
+      if (latest?.vaultLauncherId !== owner.vaultLauncherId || latest?.authType !== owner.authType ||
+          this.wallet.pubkey() !== fundingKey || this.wallet.connectionKind() === 'google' ||
+          (owner.authType === 'evm' && this.evm.address() !== ownerAddress)) {
+        throw new Error('The funding or stake wallet changed. Prepare the mint again.');
+      }
+    };
+    let trackerInputs: MintPublicationContext;
     try {
-      trackerInputs = await this.tracker.getIdleStateProposeInputs();
+      await this.ownerSession.ensure(owner.vaultLauncherId);
+      assertWallets();
+      trackerInputs = await this.mintApi.context();
+      assertWallets();
+      if (args.useCurrentMinimumStake) {
+        if (trackerInputs.parameters.length !== 9 || BigInt(trackerInputs.parameters[2]) <= 0n) {
+          throw new Error('Current minimum proposal stake is unavailable. Refresh the protocol context.');
+        }
+        firstVoteAmount = BigInt(trackerInputs.parameters[2]);
+      }
     } catch (err) {
-      return {
-        kind: 'tracker-read-failed',
-        error: err instanceof Error ? err.message : String(err),
-      };
+      return { kind: 'tracker-read-failed', error: err instanceof Error ? err.message : String(err) };
     }
-    if (!trackerInputs) {
-      return { kind: 'tracker-not-idle' };
-    }
-
-    // ── 3. SGT coin discovery (proposer's first-vote stake) ──
     const sgtGenesisCoinId = environment.solslotProtocol.sgtGenesisCoinId;
-    if (!sgtGenesisCoinId) {
-      return { kind: 'sgt-not-deployed' };
-    }
-    const discovery = await this.discovery.discover({ voterInnerPuzzleHash });
-    if (discovery.kind !== 'found') {
-      return { kind: 'no-sgt-coins', discovery };
-    }
-    const sgtPick = discovery.coins.find((c) => BigInt(c.amount) === firstVoteAmount);
-    if (!sgtPick) {
-      return {
-        kind: 'no-sgt-coin-matches-stake',
-        availableAmounts: discovery.coins.map((c) => c.amount),
-        requestedAmount: firstVoteAmount,
-      };
-    }
+    if (!sgtGenesisCoinId) return { kind: 'sgt-not-deployed' };
 
     // ── 4. Pick a single XCH funding coin (parent for both launchers) ──
     let xchPick: { coinId: string; amount: bigint };
@@ -292,77 +245,73 @@ export class MintProposalV2PublishRunnerService {
       stateVersion: 0,
     });
 
-    // ── 7. Compute the proposer's SGT LOCK inner solution ──
-    // A standard p2 delegated spend that creates exactly the canonical
-    // sgt_locked_inner output and nothing else; the wallet signs the
-    // AGG_SIG_ME this delegated puzzle introduces.
-    const votingDeadline =
-      BigInt(args.nowSeconds ?? Math.floor(Date.now() / 1000)) + votingWindowSeconds;
-    const trackerStructHash = this.sgt.trackerStructHash({
-      trackerLauncherId: trackerInputs.trackerLauncherId,
-    });
-    const lockedPuzzleHash = this.sgt.sgtLockedInnerHash({
-      trackerStructHash,
-      voterInnerPuzzleHash,
-      lockProposalHash: artifacts.proposalHash,
-      lockDeadlineSeconds: votingDeadline,
-    });
-    const clvm = this.clvm();
-    const lockCreateCoin = clvm.createCoin(lockedPuzzleHash, firstVoteAmount, undefined);
-    const lockDelegatedSpend = clvm.delegatedSpend([lockCreateCoin]);
-    const lockInnerSpend = clvm.standardSpend(syntheticKey, lockDelegatedSpend);
-    const voterInnerPuzzleHex = bytesToHex(lockInnerSpend.puzzle.serialize());
-    const voterInnerSolutionHex = bytesToHex(lockInnerSpend.solution.serialize());
-
+    // The stake remains owned by the enrolled administrator vault.
+    const votingDeadline = BigInt(trackerInputs.votingDeadline);
+    const stakeRequest: MintStakeRequest = {
+      contextHash: trackerInputs.contextHash, proposalHash: artifacts.proposalHash,
+      vaultLauncherId: owner.vaultLauncherId, stakeAmount: firstVoteAmount.toString(),
+      votingDeadline: trackerInputs.votingDeadline,
+    };
+    let stake: MintStakePackage;
+    const validateStake = (value: MintStakePackage) => {
+      assertWallets();
+      if (value.contextHash !== stakeRequest.contextHash || value.proposalHash !== stakeRequest.proposalHash ||
+          value.vaultLauncherId !== stakeRequest.vaultLauncherId || value.vaultAuthType !== owner.authType ||
+          BigInt(value.stakeAmount) !== firstVoteAmount || value.votingDeadline !== stakeRequest.votingDeadline ||
+          value.signingCoinSpends.length !== 2) {
+        throw new Error('The mint stake package differs from the selected vault, proposal or deadline.');
+      }
+    };
+    try {
+      stake = await this.mintApi.stake(stakeRequest);
+      validateStake(stake);
+      if (stake.vaultAuthType === 'evm') {
+        if (!stake.vaultTypedData) throw new Error('Mint stake owner authorization is missing.');
+        const operationHash = stake.operationHash;
+        const vaultCoinId = stake.vaultCoinId;
+        const authorization = await this.evm.signTypedData(stake.vaultTypedData);
+        assertWallets();
+        stake = await this.mintApi.stake({ ...stakeRequest, operationHash, vaultOwnerAuthorization: authorization });
+        validateStake(stake);
+        if (!stake.evmOwnerAuthorized || stake.operationHash !== operationHash || stake.vaultCoinId !== vaultCoinId) {
+          throw new Error('Mint stake changed while the vault owner was signing.');
+        }
+      }
+    } catch (err) {
+      return { kind: 'spend-builder-failed', error: err instanceof Error ? err.message : String(err) };
+    }
+    const voterInnerPuzzleHash = stake.voterInnerPuzzleHash;
+    const sgtPick: SgtCoin = { ...stake.sgtCoin, amount: Number(stake.sgtCoin.amount), confirmedBlockIndex: 0 };
+    if (!Number.isSafeInteger(sgtPick.amount) || BigInt(sgtPick.amount) !== firstVoteAmount) {
+      return { kind: 'spend-builder-failed', error: 'SGT stake amount is not represented exactly.' };
+    }
     const sgtTailHash = bytesToHex(this.sgt.sgtTailHash(sgtGenesisCoinId));
-    // The delegated inner spend creates the locked inner puzzle hash; the
-    // actual child coin is CAT-wrapped with the SGT TAIL as its asset id.
-    const lockedCatPuzzleHash = bytesToHex(
-      this.sgt.catSgtFreePuzzleHash({
-        sgtFreeInnerHash: lockedPuzzleHash,
-        sgtTailHash,
-      }),
-    );
-    const sgtPickCoinId = coinId(sgtPick.parentCoinInfo, sgtPick.puzzleHash, sgtPick.amount);
-    const sgtLockCoinId = coinId(sgtPickCoinId, lockedCatPuzzleHash, firstVoteAmount);
+    const lockedCatPuzzleHash = bytesToHex(this.sgt.catSgtFreePuzzleHash({
+      sgtFreeInnerHash: hexToBytes(stake.lockedInnerPuzzleHash), sgtTailHash,
+    }));
+    const sgtLockCoinId = coinId(stake.sgtCoinId, lockedCatPuzzleHash, firstVoteAmount);
 
-    // ── 8. Build the three publish spends ──
+    // Build the launcher and tracker spends alongside the prepared vault stake.
     let eveLaunch: ReturnType<MintPublishSpendBuilderService['buildProposalEveLaunchSpend']>;
     let trackerProposeSpend: UnsignedCoinSpend;
-    let sgtLockSpend: UnsignedCoinSpend;
     try {
       eveLaunch = this.spendBuilder.buildProposalEveLaunchSpend({
         xchParentCoin: xchCoin,
         eveInnerPuzzleHex,
       });
       trackerProposeSpend = this.spendBuilder.buildTrackerProposeCoinSpend({
-        trackerCoin: trackerInputs.trackerCoin,
+        trackerCoin: { ...trackerInputs.trackerCoin, amount: BigInt(trackerInputs.trackerCoin.amount) },
         trackerInnerPuzzleHex: trackerInputs.trackerInnerPuzzleHex,
         trackerLauncherId: trackerInputs.trackerLauncherId,
-        lineageProof: trackerInputs.lineageProof,
+        lineageProof: { ...trackerInputs.lineageProof, amount: BigInt(trackerInputs.lineageProof.amount) },
+        proposalEvidenceHex: trackerInputs.proposalEvidenceHex,
         proposalHash: artifacts.proposalHash,
         billOperationHex: artifacts.billOpProgramHex,
         voterInnerPuzzleHash,
         firstVoteAmount,
         votingDeadline,
       });
-      sgtLockSpend = this.spendBuilder.buildSgtFirstVoteCoinSpend({
-        sgtCoin: {
-          parentCoinInfo: sgtPick.parentCoinInfo,
-          puzzleHash: sgtPick.puzzleHash,
-          amount: sgtPick.amount,
-        },
-        voterInnerPuzzleHex,
-        voterInnerSolutionHex,
-        trackerLauncherId: trackerInputs.trackerLauncherId,
-        sgtTailHash,
-        // Eve case (empty lineage proof) — sufficient for SGT coins that
-        // are direct children of the TAIL issuance.  Transferred coins
-        // need a real proof; same alpha caveat as the Phase 3 vote runner.
-        lineageProof: {},
-        proposalHash: artifacts.proposalHash,
-        votingDeadline,
-      });
+
     } catch (err) {
       return {
         kind: 'spend-builder-failed',
@@ -391,16 +340,18 @@ export class MintProposalV2PublishRunnerService {
       };
     }
 
-    // ── 10. Sign the bundle (wallet covers XCH parent + SGT lock) ──
+    // Sign funding and, for a BLS vault, the vault owner authorization.
     const unsigned: UnsignedCoinSpend[] = [
       xchParentSpend,
       eveLaunch.launcherCoinSpend,
       trackerProposeSpend,
-      sgtLockSpend,
+      ...stake.signingCoinSpends,
     ];
     let signedBundle: SignedSpendBundle;
     try {
+      assertWallets();
       signedBundle = await this.wallet.signSpendBundle(unsigned);
+      assertWallets();
     } catch (err) {
       return {
         kind: 'sign-failed',
@@ -455,6 +406,7 @@ export class MintProposalV2PublishRunnerService {
     };
     let apiResponse: CommitteeVoteApiResponse;
     try {
+      assertWallets();
       apiResponse = await this.api.publishProposal(
         {
           coin_spends: signedBundle.coinSpends.map((cs) => ({
@@ -470,6 +422,7 @@ export class MintProposalV2PublishRunnerService {
         },
         args.proposalId,
         proposalMetadata,
+        { stakeVaultLauncherId: owner.vaultLauncherId, publicationContextHash: trackerInputs.contextHash },
       );
     } catch (err) {
       return {
@@ -640,6 +593,8 @@ export interface PublishMintArgs {
   // ── Publish-flow inputs ──
   /** SGT mojos locked as the first vote / anti-spam stake (> 0). */
   firstVoteAmount: number | bigint;
+  /** Resolve the ordinary default from current statutes; explicit choices stay fixed. */
+  useCurrentMinimumStake?: boolean;
   /** Voting window length in seconds (> 0).  deadline = now + window. */
   votingWindowSeconds: number | bigint;
   /** Override "now" for deterministic tests; defaults to wall-clock. */
@@ -654,6 +609,7 @@ export type PublishRunResult =
       reason: 'first-vote-amount-must-be-positive' | 'voting-window-must-be-positive';
     }
   | { kind: 'wallet-not-connected' }
+  | { kind: 'vault-required'; error: string }
   | { kind: 'tracker-read-failed'; error: string }
   | { kind: 'tracker-not-idle' }
   | { kind: 'sgt-not-deployed' }

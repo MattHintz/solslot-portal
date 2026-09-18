@@ -109,6 +109,17 @@ import { formatError } from '../../../utils/format-error';
               <span>Reject unexpected payments, approvals, recipients, or recovery-phrase requests.</span>
             </div>
 
+            @if (item.operation === 'mint.publish') {
+              <p>Publishing requires the owner administrator and one coadministrator.
+                You will sign the exact mint transaction approval and its matching request approval.
+                The selected vault's SGT stays locked until the voting deadline.</p>
+              <dl class="decision-grid">
+                @for (field of mintReview(item); track field.label) {
+                  <div><dt>{{ field.label }}</dt><dd>{{ field.value }}</dd></div>
+                }
+              </dl>
+            }
+
             <div class="signers" aria-label="Recorded signatures">
               @for (signature of item.signatures; track signature.adminIndex) {
                 <span>Administrator {{ signature.adminIndex + 1 }} approved</span>
@@ -147,10 +158,13 @@ import { formatError } from '../../../utils/format-error';
                 type="button"
                 class="button button--primary"
                 (click)="execute()"
-                [disabled]="busy() || item.status !== 'approved' || !signedByCurrentAdmin(item)"
+                [disabled]="busy() || !canComplete(item)"
               >
                 Complete approved action
               </button>
+              @if (item.operation === 'mint.publish' && item.createdBy.toLowerCase() !== currentSubject()) {
+                <p>The original proposer completes this mint after both approvals are recorded.</p>
+              }
             </div>
           } @else {
             <div class="empty empty--review">
@@ -252,7 +266,7 @@ export class AdminApprovalsComponent {
 
   async execute(): Promise<void> {
     const current = this.approval();
-    if (!current) return;
+    if (!current || !this.canComplete(current)) return;
     this.busy.set(true);
     this.error.set(null);
     try {
@@ -269,6 +283,11 @@ export class AdminApprovalsComponent {
     return item.signatures.some(
       (signature) => signature.signerAddress.toLowerCase() === this.currentSubject(),
     );
+  }
+
+  canComplete(item: AdminOperationApproval): boolean {
+    return item.status === 'approved' && this.signedByCurrentAdmin(item) &&
+      (item.operation !== 'mint.publish' || item.createdBy.toLowerCase() === this.currentSubject());
   }
 
   operationLabel(operation: AdminOperationName): string {
@@ -315,6 +334,18 @@ export class AdminApprovalsComponent {
     return segments.at(-2) === 'collections'
       ? `Collection ${segments.at(-1)}`
       : segments.at(-1)?.replaceAll('-', ' ') || 'Protocol operation';
+  }
+
+  mintReview(item: AdminOperationApproval): Array<{ label: string; value: string }> {
+    const body = item.requestBinding.body as Record<string, unknown> | null;
+    const metadata = body?.['proposal_metadata'] as Record<string, unknown> | undefined;
+    return [
+      { label: 'Property', value: String(metadata?.['property_id'] ?? '') },
+      { label: 'Collection', value: String(metadata?.['collection_id'] ?? '') },
+      { label: 'SGT stake vault', value: String(body?.['stake_vault_launcher_id'] ?? '') },
+      { label: 'Voting deadline', value: metadata?.['voting_deadline']
+        ? new Date(Number(metadata['voting_deadline']) * 1000).toISOString() : '' },
+    ];
   }
 
   statusLabel(item: AdminOperationApproval): string {

@@ -26,6 +26,14 @@ export type GovernanceProposalState =
   | 'FAILED'
   | 'CANCELED';
 
+export interface StarterGrantPreview {
+  amountPerAdministrator: string;
+  totalAmount: string;
+  statutesCoinId: string;
+  authorityRule: string;
+  proposals: Array<Extract<CreateGovernanceProposal, { kind: 'SGT_GRANT' }>>;
+}
+
 export interface GovernanceProposalRecord {
   id: string;
   kind: GovernanceProposalKind;
@@ -184,6 +192,13 @@ export class GovernanceQueueService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(AdminSessionService);
   private readonly base = environment.faucetApi;
+
+  previewStarterGrants(vaultLauncherIds: string[]): Promise<StarterGrantPreview> {
+    return firstValueFrom(this.http.post<StarterGrantPreview>(
+      `${this.base}/admin/governance/sgt-starter-grants/preview`,
+      { vaultLauncherIds }, { headers: this.headers() },
+    ));
+  }
 
   async list(): Promise<GovernanceProposalRecord[]> {
     const response = await firstValueFrom(

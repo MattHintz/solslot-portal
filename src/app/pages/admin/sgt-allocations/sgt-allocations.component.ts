@@ -21,6 +21,7 @@ import {
   GovernanceQueueService,
   SgtSalePaymentOption,
   SgtSalePaymentRail,
+  StarterGrantPreview,
 } from '../../../services/governance-queue.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { GovernanceVaultVoteService } from '../../../services/governance-vault-vote.service';
@@ -70,6 +71,29 @@ import { formatError } from '../../../utils/format-error';
       @if (notice()) {
         <div class="message success" role="status">{{ notice() }}</div>
       }
+
+      <section class="publication" aria-labelledby="starter-grants-title">
+        <h2 id="starter-grants-title">Administrator starter SGT</h2>
+        <p>Prepare one minimum proposal stake for each administrator from the company reserve.
+          Every grant requires the owner plus one coadministrator and the existing SGT vote.</p>
+        @for (slot of [0, 1, 2]; track slot) {
+          <label>
+            <span>{{ slot === 0 ? 'Owner administrator' : 'Administrator ' + (slot + 1) }} enrolled vault ID</span>
+            <input [ngModel]="starterVaults[slot]" (ngModelChange)="setStarterVault(slot, $event)" class="mono" placeholder="0x…" />
+          </label>
+        }
+        <button type="button" (click)="previewStarterGrants()" [disabled]="busy() || !starterRecipientsReady()">Review starter grants</button>
+        @if (starterPreview(); as preview) {
+          <p>{{ preview.amountPerAdministrator }} SGT per administrator; {{ preview.totalAmount }} SGT total.
+            Confirm that each selected vault belongs to the named administrator.</p>
+          <ol>
+            @for (grant of preview.proposals; track grant.grantId) {
+              <li>{{ grant.title }} — {{ grant.sgtAmount }} SGT <span class="mono">{{ grant.recipientVaultLauncherId }}</span></li>
+            }
+          </ol>
+          <button type="button" (click)="queueStarterGrants()" [disabled]="busy()">Add reviewed starter grants to queue</button>
+        }
+      </section>
 
       <div class="workspace-grid">
         <section class="proposal-form" aria-labelledby="new-allocation-title">
@@ -509,6 +533,56 @@ export class SgtAllocationsComponent {
   paymentAmount = '';
   expiresLocal = defaultExpiry();
   grantReason = '';
+  starterVaults = ['', '', ''];
+  readonly starterPreview = signal<StarterGrantPreview | null>(null);
+
+  setStarterVault(slot: number, value: string): void {
+    this.starterVaults[slot] = value.trim();
+    this.starterPreview.set(null);
+  }
+
+  starterRecipientsReady(): boolean {
+    const ids = this.starterVaults.map(value => value.toLowerCase());
+    return ids.every(value => /^0x[0-9a-f]{64}$/.test(value)) && new Set(ids).size === 3;
+  }
+
+  async previewStarterGrants(): Promise<void> {
+    if (!this.starterRecipientsReady() || this.busy()) return;
+    this.busy.set(true);
+    this.error.set(null);
+    try {
+      const recipients = [...this.starterVaults];
+      const preview = await this.api.previewStarterGrants(recipients);
+      if (recipients.some((value, index) => value !== this.starterVaults[index])) {
+        throw new Error('The recipient vaults changed. Review the starter grants again.');
+      }
+      this.starterPreview.set(preview);
+    } catch (error) {
+      this.error.set(formatError(error));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  async queueStarterGrants(): Promise<void> {
+    const preview = this.starterPreview();
+    if (!preview || this.busy()) return;
+    this.busy.set(true);
+    this.error.set(null);
+    try {
+      for (const grant of preview.proposals) {
+        if (this.proposals().some(item => item.bill['grantId'] === grant.grantId)) continue;
+        const proposal = await this.api.create(grant);
+        this.proposals.update(items => [...items, proposal]);
+      }
+      this.starterPreview.set(null);
+      this.notice.set('Three starter grants are queued for owner-plus-one approval.');
+    } catch (error) {
+      this.error.set(formatError(error));
+    } finally {
+      this.busy.set(false);
+    }
+  }
 
   constructor() {
     this.destroyRef.onDestroy(() => {

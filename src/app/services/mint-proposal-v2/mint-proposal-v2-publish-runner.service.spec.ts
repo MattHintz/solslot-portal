@@ -2,6 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 
+import { MintPublicationApiService } from '../mint-publication-api.service';
+import { SessionService } from '../session.service';
+import { VaultOwnerSessionService } from '../vault-owner-session.service';
+import { EvmWalletService } from '../evm-wallet.service';
 import { ChiaWalletService } from '../chia-wallet.service';
 import { ChiaWasmService } from '../chia-wasm.service';
 import { CommitteeApiService } from '../committee-api.service';
@@ -101,6 +105,11 @@ function defaultArgs(overrides: Partial<PublishMintArgs> = {}): PublishMintArgs 
 
 function makeMockedRunner(overrides: {
   pubkey?: string | null;
+  vaultMissing?: boolean;
+  stakeMismatch?: boolean;
+  minimumStake?: string;
+  evm?: boolean;
+  walletChanged?: boolean;
   idle?: IdleStateProposeInputs | null;
   idleThrows?: boolean;
   discoverKind?: 'found' | 'no-coins' | 'sgt-not-deployed' | 'governance-not-deployed';
@@ -132,6 +141,7 @@ function makeMockedRunner(overrides: {
     });
   const wallet = {
     pubkey: () => overrides.pubkey ?? null,
+    connectionKind: () => 'walletconnect',
     signSpendBundle: signSpy,
   } as unknown as ChiaWalletService;
 
@@ -190,39 +200,37 @@ function makeMockedRunner(overrides: {
     }),
   } as unknown as ChiaWasmService;
 
-  const tracker = {
-    getIdleStateProposeInputs: overrides.idleThrows
-      ? jasmine
-          .createSpy('getIdleStateProposeInputs')
-          .and.rejectWith(new Error('reconstructed tracker full puzzle hash mismatch'))
-      : jasmine
-          .createSpy('getIdleStateProposeInputs')
-          .and.resolveTo('idle' in overrides ? overrides.idle : idleInputs()),
-  } as unknown as GovernanceTrackerReaderService;
-
-  const discoveryResult =
-    overrides.discoverKind === 'sgt-not-deployed'
-      ? { kind: 'sgt-not-deployed' as const }
-      : overrides.discoverKind === 'governance-not-deployed'
-        ? { kind: 'governance-not-deployed' as const }
-        : overrides.discoverKind === 'no-coins'
-          ? { kind: 'no-coins' as const, catSgtFreePuzzleHash: SGT_PUZZLE_HASH }
-          : {
-              kind: 'found' as const,
-              catSgtFreePuzzleHash: SGT_PUZZLE_HASH,
-              coins: overrides.coins ?? [
-                {
-                  parentCoinInfo: '0x' + '55'.repeat(32),
-                  puzzleHash: SGT_PUZZLE_HASH,
-                  amount: 10_000,
-                  confirmedBlockIndex: 1,
-                },
-              ],
-              totalMojos: BigInt(10_000),
-            };
-  const discovery = {
-    discover: jasmine.createSpy('discover').and.resolveTo(discoveryResult),
-  } as unknown as SgtCoinDiscoveryService;
+  const vaultId = '0x' + '67'.repeat(32);
+  const ownerSession = { ensure: jasmine.createSpy('ensure').and.resolveTo(undefined) };
+  const evmWallet = {
+    address: () => '0x' + '68'.repeat(20),
+    signTypedData: jasmine.createSpy('signTypedData').and.resolveTo('0x' + '69'.repeat(65)),
+  };
+  const mintApi = {
+    context: jasmine.createSpy('context').and.callFake(async () => {
+      if (overrides.idleThrows || overrides.idle === null) throw new Error('Tracker must be idle');
+      return { ...idleInputs(), contextHash: '0x' + '66'.repeat(32),
+        proposalEvidenceHex: '0xff01', parameters: ['86400','5000',overrides.minimumStake ?? '10000','0','0','0','0','0','0'],
+        votingDeadline: 1_086_400 };
+    }),
+    stake: jasmine.createSpy('stake').and.callFake(async (request: any) => {
+      if (overrides.discoverKind === 'no-coins' || overrides.coins) throw new Error('No exact vault-held SGT coin');
+      return {
+        ...request, vaultAuthType: overrides.evm ? 'evm' : 'chia_bls',
+        vaultLauncherId: overrides.stakeMismatch ? '0x' + '70'.repeat(32) : vaultId,
+        operationHash: '0x' + '71'.repeat(32), vaultCoinId: '0x' + '72'.repeat(32),
+        vaultTypedData: { message: {}, domain: {}, types: {}, primaryType: 'VaultSpend' },
+        evmOwnerAuthorized: !!request.vaultOwnerAuthorization,
+        voterInnerPuzzleHash: '0x' + '73'.repeat(32), lockedInnerPuzzleHash: '0x' + '20'.repeat(32),
+        sgtCoinId: coinId('0x' + '55'.repeat(32), SGT_PUZZLE_HASH, BigInt(request.stakeAmount)),
+        sgtCoin: { parentCoinInfo: '0x' + '55'.repeat(32), puzzleHash: SGT_PUZZLE_HASH, amount: request.stakeAmount },
+        signingCoinSpends: [
+          { coin: { parentCoinInfo: '0x' + '74'.repeat(32), puzzleHash: '0x' + '75'.repeat(32), amount: '1' }, puzzleReveal: '0x01', solution: '0x80' },
+          { coin: { parentCoinInfo: '0x' + '55'.repeat(32), puzzleHash: SGT_PUZZLE_HASH, amount: request.stakeAmount }, puzzleReveal: '0x01', solution: '0x80' },
+        ],
+      };
+    }),
+  };
 
   const sgt = {
     trackerStructHash: jasmine.createSpy('trackerStructHash').and.returnValue(bytes(0x10)),
@@ -344,8 +352,10 @@ function makeMockedRunner(overrides: {
       { provide: ChiaWalletService, useValue: wallet },
       { provide: ChiaWasmService, useValue: wasm },
       { provide: CoinsetService, useValue: coinset },
-      { provide: GovernanceTrackerReaderService, useValue: tracker },
-      { provide: SgtCoinDiscoveryService, useValue: discovery },
+      { provide: MintPublicationApiService, useValue: mintApi },
+      { provide: SessionService, useValue: { session: () => overrides.vaultMissing ? null : ({ vaultLauncherId: vaultId, authType: overrides.evm ? 'evm' : 'chia_bls' }) } },
+      { provide: VaultOwnerSessionService, useValue: ownerSession },
+      { provide: EvmWalletService, useValue: evmWallet },
       { provide: SgtDriverService, useValue: sgt },
       { provide: MintPublishService, useValue: publish },
       { provide: MintProposalV2Service, useValue: v2 },
@@ -382,6 +392,44 @@ describe('MintProposalV2PublishRunnerService', () => {
 
   const PUBKEY = '0x' + 'a0'.repeat(48);
 
+  it('requires an enrolled vault before requesting any signature', async () => {
+    const { service, signSpy } = makeMockedRunner({ pubkey: PUBKEY, vaultMissing: true });
+    expect((await service.publishMint(defaultArgs())).kind).toBe('vault-required');
+    expect(signSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stake response for a different vault before signing', async () => {
+    const { service, signSpy } = makeMockedRunner({ pubkey: PUBKEY, stakeMismatch: true });
+    expect((await service.publishMint(defaultArgs())).kind).toBe('spend-builder-failed');
+    expect(signSpy).not.toHaveBeenCalled();
+  });
+
+  it('binds EVM owner authorization to the prepared stake before signing the funding package', async () => {
+    const { service, publishSpy } = makeMockedRunner({ pubkey: PUBKEY, evm: true });
+    expect((await service.publishMint(defaultArgs())).kind).toBe('submitted');
+    const stakeSpy = TestBed.inject(MintPublicationApiService).stake as jasmine.Spy;
+    expect(stakeSpy).toHaveBeenCalledTimes(2);
+    expect(stakeSpy.calls.argsFor(1)[0].vaultOwnerAuthorization).toBe('0x' + '69'.repeat(65));
+    expect(stakeSpy.calls.argsFor(1)[0].operationHash).toBe('0x' + '71'.repeat(32));
+    expect(publishSpy.calls.mostRecent().args[3]).toEqual({
+      stakeVaultLauncherId: '0x' + '67'.repeat(32), publicationContextHash: '0x' + '66'.repeat(32),
+    });
+  });
+
+  it('uses current statutes for the default stake and the matching starter receipt', async () => {
+    const { service } = makeMockedRunner({ pubkey: PUBKEY, minimumStake: '15000' });
+    expect((await service.publishMint(defaultArgs({ useCurrentMinimumStake: true }))).kind).toBe('submitted');
+    const stakeSpy = TestBed.inject(MintPublicationApiService).stake as jasmine.Spy;
+    expect(stakeSpy.calls.first().args[0].stakeAmount).toBe('15000');
+  });
+
+  it('preserves an explicit stake choice when the current minimum changes', async () => {
+    const { service } = makeMockedRunner({ pubkey: PUBKEY, minimumStake: '15000' });
+    expect((await service.publishMint(defaultArgs({ firstVoteAmount: 20000, useCurrentMinimumStake: false }))).kind).toBe('submitted');
+    const stakeSpy = TestBed.inject(MintPublicationApiService).stake as jasmine.Spy;
+    expect(stakeSpy.calls.first().args[0].stakeAmount).toBe('20000');
+  });
+
   it('rejects non-positive first-vote amount', async () => {
     const { service } = makeMockedRunner({ pubkey: PUBKEY });
     const res = await service.publishMint(defaultArgs({ firstVoteAmount: 0 }));
@@ -411,10 +459,10 @@ describe('MintProposalV2PublishRunnerService', () => {
     expect(res.kind).toBe('wallet-not-connected');
   });
 
-  it("returns 'tracker-not-idle' when tracker is not IDLE", async () => {
+  it("fails context preparation when the tracker is not IDLE", async () => {
     const { service } = makeMockedRunner({ pubkey: PUBKEY, idle: null });
     const res = await service.publishMint(defaultArgs());
-    expect(res.kind).toBe('tracker-not-idle');
+    expect(res.kind).toBe('tracker-read-failed');
   });
 
   it("returns 'tracker-read-failed' when the reader throws", async () => {
@@ -430,13 +478,13 @@ describe('MintProposalV2PublishRunnerService', () => {
     expect(res.kind).toBe('sgt-not-deployed');
   });
 
-  it("returns 'no-sgt-coins' when discovery surfaces no-coins", async () => {
+  it("rejects a vault without a confirmed SGT receipt", async () => {
     const { service } = makeMockedRunner({ pubkey: PUBKEY, discoverKind: 'no-coins' });
     const res = await service.publishMint(defaultArgs());
-    expect(res.kind).toBe('no-sgt-coins');
+    expect(res.kind).toBe('spend-builder-failed');
   });
 
-  it("returns 'no-sgt-coin-matches-stake' when no coin equals the stake", async () => {
+  it("rejects a stake that does not match one complete vault coin", async () => {
     const { service } = makeMockedRunner({
       pubkey: PUBKEY,
       coins: [
@@ -449,11 +497,7 @@ describe('MintProposalV2PublishRunnerService', () => {
       ],
     });
     const res = await service.publishMint(defaultArgs({ firstVoteAmount: 10_000 }));
-    expect(res.kind).toBe('no-sgt-coin-matches-stake');
-    if (res.kind === 'no-sgt-coin-matches-stake') {
-      expect(res.availableAmounts).toEqual([9_999]);
-      expect(res.requestedAmount).toBe(BigInt(10_000));
-    }
+    expect(res.kind).toBe('spend-builder-failed');
   });
 
   it("returns 'no-xch-coin' when the picker throws", async () => {
@@ -480,7 +524,7 @@ describe('MintProposalV2PublishRunnerService', () => {
     }
   });
 
-  it('happy path: signs the four-spend publish bundle and POSTs it', async () => {
+  it('happy path: signs the five-spend wallet package and POSTs it', async () => {
     const { service, signSpy, publishSpy } = makeMockedRunner({ pubkey: PUBKEY });
     const res = await service.publishMint(defaultArgs({ proposalId: 'draft-123' }));
     expect(res.kind).toBe('submitted');
@@ -488,7 +532,7 @@ describe('MintProposalV2PublishRunnerService', () => {
     expect(publishSpy).toHaveBeenCalledTimes(1);
     // Property registration is deferred to quorum-authorized execution.
     const passed = signSpy.calls.mostRecent().args[0] as unknown[];
-    expect(passed.length).toBe(4);
+    expect(passed.length).toBe(5);
     expect(passed).not.toContain(REGISTRY_COIN_SPEND);
     // The API call must forward the draft id for correlation.
     const [, proposalArg] = publishSpy.calls.mostRecent().args;
@@ -659,13 +703,13 @@ describe('MintProposalV2PublishRunnerService', () => {
     }
   });
 
-  it('computes the voting deadline from nowSeconds + window', async () => {
+  it('uses the server deadline from current statutes instead of a local override', async () => {
     const { service } = makeMockedRunner({ pubkey: PUBKEY });
     const res = await service.publishMint(
       defaultArgs({ nowSeconds: 2_000_000, votingWindowSeconds: 100 }),
     );
     if (res.kind === 'submitted') {
-      expect(res.votingDeadline).toBe(BigInt(2_000_100));
+      expect(res.votingDeadline).toBe(BigInt(1_086_400));
     } else {
       fail(`expected submitted, got ${res.kind}`);
     }
