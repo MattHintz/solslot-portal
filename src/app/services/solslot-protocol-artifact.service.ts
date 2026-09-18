@@ -1,3 +1,4 @@
+import { artifactActivation } from '../utils/enrollment-activation';
 import { Injectable } from '@angular/core';
 import { INVENTORY_V2_HASH, RESERVED_V5_HASH } from './mint-proposal-v2/inventory-puzzles';
 import { computeAddress, SigningKey, verifyTypedData } from 'ethers';
@@ -117,11 +118,23 @@ export async function canonicalArtifactHash(artifact: SolslotPublicArtifact): Pr
     .join('')}`;
 }
 
+/** Host selection is independent of financial networks and write availability. */
+function identityDeploymentDomain(): string {
+  const config = environment.zkPassport;
+  const expectedDomain = config.deploymentEnvironment === 'production-alpha' ? 'solslot.com'
+    : config.deploymentEnvironment === 'staging-alpha' ? 'staging.solslot.com' : null;
+  if (!expectedDomain || config.domain !== expectedDomain) {
+    throw new Error('Identity deployment environment and domain configuration disagree.');
+  }
+  return expectedDomain;
+}
+
 /** Content check only; use exclusively after verifying the signed artifact. */
 export function verifyInventoryActivation(artifact: SolslotPublicArtifact | null, required = true): void {
   const activation = artifact?.inventoryActivation;
   if (!activation && !required) return;
   if (!artifact || !activation) throw new Error('Reviewed inventory V2 activation is not available for this release.');
+  identityDeploymentDomain();
   const expected = {
     schema: 'solslot.inventory-activation.v1', network: 'testnet11',
     deploymentId: artifact.ceremony.ceremonyId, inventoryVersion: 2, adapterVersion: 1,
@@ -132,7 +145,7 @@ export function verifyInventoryActivation(artifact: SolslotPublicArtifact | null
       Object.entries(expected).some(([key, value]) => asciiStableJson((activation as unknown as Record<string, unknown>)[key]) !== asciiStableJson(value)) ||
       artifact.network !== 'testnet11' ||
       !['staging-alpha', 'production-alpha'].includes(activation.environment) ||
-      activation.environment !== environment.runtimeEnvironment + '-alpha' ||
+      activation.environment !== environment.zkPassport.deploymentEnvironment ||
       !/^[0-9a-f]{64}$/.test(activation.reviewEvidenceSha256) || /^0+$/.test(activation.reviewEvidenceSha256)) {
     throw new Error('Inventory activation does not match this environment, deployment or release.');
   }
@@ -145,7 +158,7 @@ async function verifyArtifact(
 ): Promise<void> {
   if (
     artifact.schemaVersion !== 4 ||
-    artifact.sourceManifestVersion !== 3 ||
+    ![3, 4].includes(artifact.sourceManifestVersion) ||
     artifact.protocolVersion !== 'solslot-v2-rc23' ||
     artifact.network !== 'testnet11' ||
     ![11155111, 84532].includes(artifact.evmChainId)
@@ -173,6 +186,7 @@ async function verifyArtifact(
   }
   const sourceShas = artifact.sourceShas;
   verifyInventoryActivation(artifact, false);
+  artifactActivation(artifact, identityDeploymentDomain());
   const requiredSources = [
     'protocol',
     'evm',
@@ -412,7 +426,8 @@ function installRuntimeBindings(
   });
   Object.assign(environment.zkPassport, {
     policyVersion: artifact.bridgePolicy.policyVersion,
-    evmChainId: artifact.evmChainId,
+    // Identity contracts can be on Base while artifact signatures stay on Base Sepolia.
+    evmChainId: artifactActivation(artifact)?.evmChainId ?? artifact.evmChainId,
     attestationEmitterAddress: artifact.evmAddresses.attestationEmitter,
     trustedForwarderAddress: artifact.evmAddresses.forwarder,
     bridgeParentId: '',

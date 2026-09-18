@@ -911,3 +911,6 @@ td:last-child {
 .access-panel .ux-steps li { padding: 16px; }
 .access-panel .ux-steps p { font-size: 13px; }
 .launch-shell :is(input, button) { min-height: 44px; }
+
+.identity-privacy { margin: 22px 0; }
+.identity-privacy__context { font-size: 12px; line-height: 1.6; color: #a8bdb2; margin: 10px 2px 0; }

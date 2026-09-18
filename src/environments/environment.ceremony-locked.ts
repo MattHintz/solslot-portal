@@ -7,4 +7,10 @@ import { environment as ceremonyEnvironment } from './environment.ceremony';
 export const environment = {
   ...ceremonyEnvironment,
   protocolWritesEnabled: false,
+  // Hosting the Testnet11 desk on solslot.com does not promote financial chains.
+  zkPassport: {
+    ...ceremonyEnvironment.zkPassport,
+    domain: 'solslot.com',
+    deploymentEnvironment: 'production-alpha' as const,
+  },
 };

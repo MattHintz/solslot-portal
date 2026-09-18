@@ -14,6 +14,8 @@ export const environment = {
   walletConnectProjectId: '',
   zkPassport: {
     ...base.zkPassport,
+    domain: 'solslot.com',
+    deploymentEnvironment: 'production-alpha' as const,
     verificationUrl: '',
     evmRpcUrl: '',
     attestationEmitterAddress: '',
