@@ -1,3 +1,4 @@
+import { ZkPassportPrivacyComponent } from '../../../components/zkpassport-privacy/zkpassport-privacy.component';
 import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -71,7 +72,7 @@ interface LaunchStage {
 @Component({
   selector: 'solslot-admin-genesis',
   standalone: true,
-  imports: [CommonModule, FormsModule, AdminWorkspaceNavComponent],
+  imports: [CommonModule, FormsModule, AdminWorkspaceNavComponent, ZkPassportPrivacyComponent],
   templateUrl: './genesis.component.html',
   styleUrl: './genesis.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

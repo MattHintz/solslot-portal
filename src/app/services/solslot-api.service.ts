@@ -1,3 +1,4 @@
+import type { EnrollmentActivation } from '../utils/enrollment-activation';
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -370,10 +371,12 @@ export interface SolslotPublicArtifact {
     reviewEvidenceSha256: string;
   };
   schemaVersion: 4;
-  sourceManifestVersion: 3;
+  sourceManifestVersion: 3 | 4;
   protocolVersion: 'solslot-v2-rc23';
   network: 'testnet11';
-  evmChainId: 11155111;
+  evmChainId: 11155111 | 84532;
+  enrollmentActivation?: EnrollmentActivation | null;
+  genesisPlan?: Record<string, unknown>;
   reviewClass: 'independent-release-review' | 'internal-engineering-testnet';
   testOnly: boolean;
   auditStatus: 'independently-reviewed' | 'pending-external-review';
