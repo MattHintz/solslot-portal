@@ -167,6 +167,24 @@ export class GovernanceTrackerReaderService {
           );
         }
         const params = decoded.params;
+        const fields = this.properList(params, 6, 'PROPOSE');
+        if (fields.length !== 5 && fields.length !== 6) {
+          throw new Error('GovernanceTrackerReader: PROPOSE requires five legacy or six V2 fields');
+        }
+        let proposalParameters = state.proposalParameters;
+        if (fields.length === 6) {
+          const evidence = this.properList(fields[5], 3, 'proposal evidence');
+          if (evidence.length !== 3 || evidence[0].toAtom()?.length !== 32 || evidence[1].toAtom()?.length !== 32) {
+            throw new Error('GovernanceTrackerReader: invalid authority/statutes evidence');
+          }
+          const parameters = this.properList(evidence[2], 9, 'statutes parameters');
+          if (parameters.length !== 9) throw new Error('GovernanceTrackerReader: expected nine statutes parameters');
+          proposalParameters = parameters.map(item => item.toInt());
+          if (proposalParameters.some(value => value < 0n) || proposalParameters[0] <= 0n ||
+              proposalParameters[1] <= 0n || proposalParameters[1] > 10000n || proposalParameters[2] <= 0n) {
+            throw new Error('GovernanceTrackerReader: invalid proposal policy');
+          }
+        }
         // params = (proposal_hash bill_op voter_inner_puzhash
         //           first_vote_amount voting_deadline)
         const proposalHash = bytesToHex(params.first().toAtom() ?? new Uint8Array());
@@ -179,6 +197,7 @@ export class GovernanceTrackerReaderService {
           bill: this.decodeBill(billOp),
           voteTally: firstVoteAmount,
           votingDeadlineSeconds: votingDeadline,
+          proposalParameters,
         };
       }
       case GovernanceTrackerReaderService.TRK_VOTE: {
@@ -193,12 +212,23 @@ export class GovernanceTrackerReaderService {
       }
       case GovernanceTrackerReaderService.TRK_EXECUTE:
       case GovernanceTrackerReaderService.TRK_EXPIRE:
-        return { kind: 'IDLE' };
+        return { kind: 'IDLE', proposalParameters: state.proposalParameters };
       default:
         throw new Error(
           `GovernanceTrackerReader: unknown spend_case ${decoded.spendCase}`,
         );
     }
+  }
+
+  private properList(node: ClvmNode, limit: number, label: string): ClvmNode[] {
+    const items: ClvmNode[] = [];
+    while (node.toAtom() == null) {
+      if (items.length >= limit) throw new Error(`GovernanceTrackerReader: oversized ${label}`);
+      items.push(node.first());
+      node = node.rest();
+    }
+    if (node.toAtom()!.length !== 0) throw new Error(`GovernanceTrackerReader: improper ${label}`);
+    return items;
   }
 
   /**
@@ -315,7 +345,7 @@ export class GovernanceTrackerReaderService {
   ): TrackerStateSnapshot {
     const env = environment.solslotProtocol;
     const quorumRequired =
-      (BigInt(env.governanceQuorumBps) * BigInt(env.governanceSgtTotalSupply)) /
+      ((state.proposalParameters?.[1] ?? BigInt(env.governanceQuorumBps)) * BigInt(env.governanceSgtTotalSupply) + 9999n) /
       10000n;
     if (state.kind === 'IDLE') {
       return {
@@ -323,8 +353,9 @@ export class GovernanceTrackerReaderService {
         spendCount,
         lastSpendBlockIndex,
         quorumRequired,
-        minProposalStake: BigInt(env.governanceMinProposalStake),
-        votingWindowSeconds: BigInt(env.governanceVotingWindowSeconds),
+        minProposalStake: state.proposalParameters?.[2] ?? BigInt(env.governanceMinProposalStake),
+        votingWindowSeconds: state.proposalParameters?.[0] ?? BigInt(env.governanceVotingWindowSeconds),
+        proposalParameters: state.proposalParameters,
       };
     }
     // OPEN: bucket by deadline + quorum.
@@ -347,6 +378,7 @@ export class GovernanceTrackerReaderService {
       quorumRequired,
       spendCount,
       lastSpendBlockIndex: lastSpendBlockIndex ?? 0,
+      proposalParameters: state.proposalParameters,
     };
   }
 
@@ -476,6 +508,7 @@ export class GovernanceTrackerReaderService {
     }
     // Replace the last 4 state args with the CURRENT state (post-transition).
     const immutableArgs = innerUncurried.args.slice(0, 15);
+    this.applyProposalPolicy(clvm, immutableArgs, snapshot.proposalParameters);
     const proposalHashBytes = hexToBytes(snapshot.proposalHash);
     const billProgram = this.encodeBillProgram(clvm, snapshot.bill);
     const newStateArgs = [
@@ -537,12 +570,9 @@ export class GovernanceTrackerReaderService {
    * **Fresh-launch caveat.**  If the current unspent coin IS the eve
    * coin (i.e. the singleton was just launched and has never had a
    * proposal opened), there is no prior non-launcher spend to uncurry,
-   * so the reader throws.  Supporting the fresh-launch case requires a
-   * separate ``buildIdleInnerFromEnvironment()`` helper that materialises
-   * all 12 immutable args from ``environment.solslotProtocol``
-   * constants; tracked as a follow-up.  Production tracker singletons
-   * are launched well before the first MINT publish, so this branch is
-   * rare in practice.
+   * so this historical reader requires a spent parent. The active mint flow
+   * uses MintPublicationApiService.context(), which verifies signed genesis
+   * evidence and supplies both fresh and returned IDLE inputs.
    *
    * Cross-checks the reconstructed full puzzle hash against the
    * current unspent coin's claimed puzzle hash.  Mismatch throws — the
@@ -581,9 +611,8 @@ export class GovernanceTrackerReaderService {
       throw new Error(
         'getIdleStateProposeInputs: tracker is in fresh-launch IDLE ' +
           '(eve never spent).  Reconstructing the IDLE inner from ' +
-          'environment constants is not yet implemented; this branch is ' +
-          'expected to be rare in practice because production trackers ' +
-          'are launched well before the first MINT publish.',
+          'environment constants is not supported here. Use the current ' +
+          'mint publication context endpoint for fresh genesis.',
       );
     }
     const ps = await this.coinset.getPuzzleAndSolution(
@@ -620,6 +649,7 @@ export class GovernanceTrackerReaderService {
     // canonical serialisation; we use clvm.nil() for byte-exact match
     // with how `Program.to(0)` is encoded by chia_rs.
     const immutableArgs = innerUncurried.args.slice(0, 15);
+    this.applyProposalPolicy(clvm, immutableArgs, snapshot.proposalParameters);
     const idleStateArgs = [clvm.nil(), clvm.nil(), clvm.nil(), clvm.nil()];
     const newInner = innerUncurried.program.curry([
       ...immutableArgs,
@@ -734,6 +764,13 @@ export class GovernanceTrackerReaderService {
 
   // ── WASM accessor ────────────────────────────────────────────────────
 
+  private applyProposalPolicy(clvm: ClvmShape, args: ClvmNode[], parameters?: readonly bigint[]): void {
+    if (!parameters) return;
+    args[10] = clvm.int(parameters[1]);
+    args[11] = clvm.int(parameters[0]);
+    args[13] = clvm.int(parameters[2]);
+  }
+
   private clvm(): ClvmShape {
     const sdk = this.chiaWasm.sdk() as { Clvm?: new () => ClvmShape };
     if (!sdk.Clvm) {
@@ -758,6 +795,7 @@ export type TrackerStateSnapshot =
       quorumRequired: bigint;
       minProposalStake: bigint;
       votingWindowSeconds: bigint;
+      proposalParameters?: readonly bigint[];
     }
   | {
       kind: 'OPEN' | 'AWAITING_EXECUTE' | 'AWAITING_EXPIRE';
@@ -768,6 +806,7 @@ export type TrackerStateSnapshot =
       quorumRequired: bigint;
       spendCount: number;
       lastSpendBlockIndex: number;
+      proposalParameters?: readonly bigint[];
     };
 
 export type DecodedBill =
@@ -912,13 +951,14 @@ export interface IdleStateProposeInputs {
 // ─── Internal types ──────────────────────────────────────────────────────
 
 type InternalState =
-  | { kind: 'IDLE' }
+  | { kind: 'IDLE'; proposalParameters?: readonly bigint[] }
   | {
       kind: 'OPEN';
       proposalHash: string;
       bill: DecodedBill;
       voteTally: bigint;
       votingDeadlineSeconds: bigint;
+      proposalParameters?: readonly bigint[];
     };
 
 type ActiveTrackerSnapshot = Extract<
@@ -946,7 +986,7 @@ interface ReconstructedActiveTrackerInputs {
 export interface ClvmNode {
   first(): ClvmNode;
   rest(): ClvmNode;
-  toAtom(): Uint8Array | null;
+  toAtom(): Uint8Array | null | undefined;
   toInt(): bigint;
   treeHash(): Uint8Array;
   serialize(): Uint8Array;

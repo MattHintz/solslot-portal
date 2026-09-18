@@ -28,6 +28,7 @@ describe('SgtAllocationsComponent', () => {
       'submit',
       'reconcile',
       'execute',
+      'previewStarterGrants',
     ]);
     wallet = jasmine.createSpyObj<EvmWalletService>('EvmWalletService', [
       'connectInjected',
@@ -68,6 +69,32 @@ describe('SgtAllocationsComponent', () => {
     expect(text).toContain('What SGT grants');
     expect(text).toContain('No administrator key');
     expect(text).toContain('No proposals prepared');
+  });
+
+  it('reviews three current-stake grants and resumes a partially saved queue without duplicates', async () => {
+    const recipients = ['11', '22', '33'].map(value => '0x' + value.repeat(32));
+    const grants = recipients.map((recipientVaultLauncherId, index) => ({
+      kind: 'SGT_GRANT' as const, title: `Administrator ${index + 1} starter SGT`, sgtAmount: '15000',
+      recipientVaultLauncherId, grantId: '0x' + `${index + 4}4`.repeat(32), reasonHash: '0x' + '55'.repeat(32),
+    }));
+    api.previewStarterGrants.and.resolveTo({ proposals: grants, amountPerAdministrator: '15000',
+      totalAmount: '45000', statutesCoinId: '0x' + '66'.repeat(32), authorityRule: 'Owner plus one' });
+    recipients.forEach((value, index) => component.setStarterVault(index, value));
+    await component.previewStarterGrants();
+    expect(api.create).not.toHaveBeenCalled();
+    expect(component.starterPreview()?.totalAmount).toBe('45000');
+    let count = 0;
+    api.create.and.callFake(async (grant) => {
+      if (++count === 2) throw new Error('Temporary connection failure');
+      return { id: `GOV-${count}`, kind: 'SGT_GRANT', state: 'DRAFT', bill: grant } as any;
+    });
+    await component.queueStarterGrants();
+    expect(component.proposals().length).toBe(1);
+    await component.queueStarterGrants();
+    expect(component.proposals().length).toBe(3);
+    expect(api.create.calls.allArgs().filter(args => args[0] === grants[0]).length).toBe(1);
+    expect(api.sign).not.toHaveBeenCalled();
+    expect(api.submit).not.toHaveBeenCalled();
   });
 
   it('converts ordinary XCH to exact mojos before creating a sale draft', async () => {

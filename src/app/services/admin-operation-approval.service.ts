@@ -6,6 +6,7 @@ import { environment } from '../../environments/environment';
 import { AdminSessionService } from './admin-session.service';
 import { Eip712TypedData } from './solslot-api.service';
 import { EvmWalletService } from './evm-wallet.service';
+import type { GovernancePublicationAction } from './governance-queue.service';
 
 export type AdminOperationName =
   | 'bridge.top-up'
@@ -45,6 +46,7 @@ export interface AdminOperationApproval {
   requestBinding: AdminRequestBindingV1;
   signatures: Array<{ adminIndex: number; signerAddress: string; signedAt: number }>;
   typedData: Eip712TypedData;
+  chainActions?: GovernancePublicationAction[];
 }
 
 export class PendingAdminApprovalError extends Error {
@@ -110,12 +112,36 @@ export class AdminOperationApprovalService {
     operationId: string,
     typedData?: Eip712TypedData,
   ): Promise<AdminOperationApproval> {
-    const current = typedData ? undefined : await this.get(operationId);
+    const current = !typedData || typedData.message['operation'] === 'mint.publish'
+      ? await this.get(operationId) : undefined;
+    const subject = this.session.subject();
+    const publicKey = this.session.pubkey();
+    const walletAddress = this.wallet.address();
+    const requireSameAdministrator = () => {
+      if (this.session.subject() !== subject || this.session.pubkey() !== publicKey ||
+          this.wallet.address() !== walletAddress) {
+        throw new Error('The administrator wallet changed. Review the approval again.');
+      }
+    };
+    let chain: { chainActionId: string; chainSignature: string } | undefined;
+    if (current?.operation === 'mint.publish') {
+      const action = current.chainActions?.find(item => item.signerSlot === this.session.authoritySlot());
+      if (!action || action.signerPublicKey.toLowerCase() !== publicKey?.toLowerCase()) {
+        throw new Error('This mint approval does not contain your current administrator action.');
+      }
+      const chainSignature = await this.wallet.signAuthorityV3ChiaAction(action.typedData, {
+        coinId: action.coinId, delegatedPuzzleHash: action.delegatedPuzzleHash,
+        compressedPubkey: action.signerPublicKey,
+      });
+      requireSameAdministrator();
+      chain = { chainActionId: action.actionId, chainSignature };
+    }
     const signature = await this.wallet.signTypedData(typedData ?? current!.typedData);
+    requireSameAdministrator();
     return firstValueFrom(
       this.http.post<AdminOperationApproval>(
         `${this.base}/admin/auth/operations/${encodeURIComponent(operationId)}/sign`,
-        { signature },
+        { signature, ...chain },
         { headers: this.authHeaders() },
       ),
     );

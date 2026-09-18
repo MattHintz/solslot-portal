@@ -208,6 +208,7 @@ export class PublishMintArgsAssemblerService {
       p2VaultModHash: ctx.p2VaultModHash,
       propertyRegistryPuzzleHash: ctx.propertyRegistryPuzzleHash,
       firstVoteAmount,
+      useCurrentMinimumStake: input.firstVoteAmount === undefined,
       votingWindowSeconds,
       ...(input.nowSeconds !== undefined ? { nowSeconds: input.nowSeconds } : {}),
       proposalId: input.draft.id,

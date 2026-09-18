@@ -59,13 +59,13 @@ describe('AdminOperationApprovalService', () => {
   let wallet: jasmine.SpyObj<EvmWalletService>;
 
   beforeEach(() => {
-    wallet = jasmine.createSpyObj<EvmWalletService>('EvmWalletService', ['signTypedData']);
+    wallet = jasmine.createSpyObj<EvmWalletService>('EvmWalletService', ['signTypedData', 'signAuthorityV3ChiaAction', 'address']);
     wallet.signTypedData.and.resolveTo(`0x${'44'.repeat(65)}`);
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: AdminSessionService, useValue: { requireJwt: () => 'admin-jwt' } },
+        { provide: AdminSessionService, useValue: { requireJwt: () => 'admin-jwt', subject: () => 'admin', pubkey: () => '0x02', authoritySlot: () => 0 } },
         { provide: EvmWalletService, useValue: wallet },
       ],
     });
@@ -115,5 +115,24 @@ describe('AdminOperationApprovalService', () => {
     );
     request.flush({ sealed: true });
     expect(await result).toEqual({ sealed: true });
+  });
+
+  it('requires the current mint chain action and submits it with the HTTP approval', async () => {
+    const mint = { ...approval('pending'), operation: 'mint.publish' as const,
+      typedData: { ...typedData, message: { ...typedData.message, operation: 'mint.publish' } },
+      chainActions: [{ actionId: '0xaction', signerSlot: 0, signerPublicKey: '0x02', coinId: '0xcoin',
+        delegatedPuzzleHash: '0xpuzzle', typedData, messageHash: '0xhash', network: 'Testnet11',
+        title: 'Publish mint', summary: 'Exact package', financialEffect: 'Lock SGT', signed: false }],
+    };
+    wallet.signAuthorityV3ChiaAction.and.resolveTo('0xchain');
+    const pending = service.sign(mint.operationId, mint.typedData);
+    http.expectOne(`${environment.faucetApi}/admin/auth/operations/${mint.operationId}`).flush(mint);
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    const sign = http.expectOne(`${environment.faucetApi}/admin/auth/operations/${mint.operationId}/sign`);
+    expect(wallet.signAuthorityV3ChiaAction).toHaveBeenCalledOnceWith(typedData,
+      { coinId: '0xcoin', delegatedPuzzleHash: '0xpuzzle', compressedPubkey: '0x02' });
+    expect(sign.request.body).toEqual({ signature: `0x${'44'.repeat(65)}`, chainActionId: '0xaction', chainSignature: '0xchain' });
+    sign.flush(mint);
+    expect((await pending).operation).toBe('mint.publish');
   });
 });

@@ -33,6 +33,7 @@ import { MintPublishService, type MintPublishArtifacts } from './mint-publish.se
 import { MintProposalV2Service } from './mint-proposal-v2.service';
 import fixturesJson from './mint-publish.fixtures.json';
 import inventoryFixture from './inventory-mint.fixtures.json';
+import currentInventoryFixture from './governance-v2-inventory.fixture.json';
 import metadataFixture from '../property-metadata/property-metadata-v1.fixture.json';
 
 // ── Fixture shape ──────────────────────────────────────────────────────────
@@ -157,6 +158,26 @@ describe('MintPublishService', () => {
       ...builderArgsFromFixture(fixture), inventoryPuzzleVersion: 3 as 2,
       primaryPurchaseUsdAmountMinor: 101,
     })).toThrowError(/supported version/);
+  });
+
+  it('matches the Python V2 governance inventory commitment and keeps metadata bound', () => {
+    const args = {
+      ...builderArgsFromFixture(fixture), royaltyBps: 100, royaltyPuzhash: inventoryFixture.treasury,
+      metadataRoot: inventoryFixture.metadataRoot, primaryPurchaseUsdAmountMinor: currentInventoryFixture.base,
+      inventoryPuzzleVersion: 2 as const, governanceTrackerVersion: 2 as const,
+      primaryPurchaseValidatorPubkeys: inventoryFixture.validators,
+      primaryPurchaseNetwork: 'testnet11', primaryPurchaseProtocolTreasuryPuzhash: inventoryFixture.treasury,
+    };
+    const result = service.buildMintPublishArtifacts(args);
+    const actual = result as unknown as Record<string, unknown>;
+    for (const [key, expected] of Object.entries(currentInventoryFixture.expected)) {
+      const camel = key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+      expect(actual[camel]).withContext(key).toBe(expected);
+    }
+    const changed = service.buildMintPublishArtifacts({...args, metadataRoot: `0x${'78'.repeat(32)}`});
+    expect(changed.proposalHash).not.toBe(result.proposalHash);
+    expect(changed.proposalDataHash).not.toBe(result.proposalDataHash);
+    expect(changed.deedFullPuzhash).not.toBe(result.deedFullPuzhash);
   });
 
   describe('constants', () => {

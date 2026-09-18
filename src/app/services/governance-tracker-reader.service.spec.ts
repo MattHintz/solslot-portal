@@ -330,6 +330,38 @@ describe('GovernanceTrackerReaderService', () => {
 
   // ── OPEN: eve spent with PROPOSE, child unspent ────────────────────
 
+  it('carries the V2 statutes policy through voting and returned IDLE state', async () => {
+    const policy = [600n, 6001n, 15000n, 0n, 0n, 0n, 0n, 0n, 0n];
+    const proposal = singletonSolution(GovernanceTrackerReaderService.TRK_PROPOSE, list([
+      atom(bytes(PROPOSAL_HASH)), list([atom(Uint8Array.of(0x4d)), atom(bytes(DEED_PH)),
+        atom(bytes(PROPERTY_ID_CANON)), atom(bytes(PROPERTY_REGISTRY_PH))]),
+      atom(bytes(VOTER_PH)), int(600000), int(VOTING_DEADLINE_SECONDS),
+      list([atom(bytes(DEED_PH)), atom(bytes(VOTER_PH)), list(policy.map(int))]),
+    ]));
+    registerSolution(EVE, 5, '0x1101', proposal);
+    reader.walkLineage.and.resolveTo(buildLineage([
+      { coinId: EVE, spentBlockIndex: 5 }, { coinId: POST_PROPOSE, spentBlockIndex: null },
+    ]));
+    const active = await service.readCurrentState(Number(VOTING_DEADLINE_SECONDS) + 1);
+    expect(active.kind).toBe('AWAITING_EXPIRE');
+    if (active.kind === 'AWAITING_EXPIRE') {
+      expect(active.quorumRequired).toBe(600100n);
+      expect(active.proposalParameters).toEqual(policy);
+    }
+    registerSolution(POST_PROPOSE, 7, '0x1102', singletonSolution(GovernanceTrackerReaderService.TRK_EXPIRE, nil()));
+    reader.walkLineage.and.resolveTo(buildLineage([
+      { coinId: EVE, spentBlockIndex: 5 }, { coinId: POST_PROPOSE, spentBlockIndex: 7 },
+      { coinId: POST_EXECUTE, spentBlockIndex: null },
+    ]));
+    const idle = await service.readCurrentState();
+    expect(idle.kind).toBe('IDLE');
+    if (idle.kind === 'IDLE') {
+      expect(idle.minProposalStake).toBe(15000n);
+      expect(idle.votingWindowSeconds).toBe(600n);
+      expect(idle.quorumRequired).toBe(600100n);
+    }
+  });
+
   it('decodes a PROPOSE MINT bill into an OPEN snapshot before the deadline', async () => {
     // Eve was spent with a TRK_PROPOSE for a MINT bill; the child is unspent.
     const tree = singletonSolution(

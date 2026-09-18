@@ -97,15 +97,22 @@ export class CommitteeApiService {
     spendBundle: SpendBundleJson,
     proposalId: string,
     proposalMetadata: PublishProposalMetadataJson,
+    publication?: { stakeVaultLauncherId: string; publicationContextHash: string },
   ): Promise<CommitteeVoteApiResponse> {
     const body: {
       spend_bundle: SpendBundleJson;
       proposal_id: string;
       proposal_metadata: PublishProposalMetadataJson;
+      stake_vault_launcher_id?: string;
+      publication_context_hash?: string;
     } = {
       spend_bundle: spendBundle,
       proposal_id: proposalId,
       proposal_metadata: proposalMetadata,
+      ...(publication ? {
+        stake_vault_launcher_id: publication.stakeVaultLauncherId,
+        publication_context_hash: publication.publicationContextHash,
+      } : {}),
     };
     return this.approvals.prepareSignAndRequireSecond({
       operation: 'mint.publish',

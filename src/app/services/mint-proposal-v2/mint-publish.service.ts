@@ -175,7 +175,7 @@ export class MintPublishService {
     p2PoolModHash: string;
     p2VaultModHash: string;
     propertyRegistryPuzzleHash: string;
-    /** SHA-256 of canonical PropertyDossierV1. Enables the extended MINT bill. */
+    /** SHA-256 of canonical PropertyDossierV1. */
     metadataRoot?: string;
     /** First deed launcher id. Omit on the first proposal to bind to this launcher. */
     metadataAnchorId?: string;
@@ -183,6 +183,8 @@ export class MintPublishService {
     primaryPurchaseUsdAmountMinor?: number | bigint;
     /** Explicit inventory path; omitted only for historical delegate fixtures. Price is base. */
     inventoryPuzzleVersion?: 1 | 2;
+    /** Omitted only by historical fixtures; current publication uses V2. */
+    governanceTrackerVersion?: 1 | 2;
     primaryPurchaseValidatorPubkeys?: string[];
     primaryPurchaseNetwork?: string;
     primaryPurchaseProtocolTreasuryPuzhash?: string;
@@ -347,6 +349,7 @@ export class MintPublishService {
       propertyRegistryPuzzleHash: args.propertyRegistryPuzzleHash,
       metadataRoot: args.metadataRoot,
       metadataAnchorId: resolvedMetadataAnchorId,
+      governanceTrackerVersion: args.governanceTrackerVersion,
     });
     const proposalHash = billOpProgram.treeHash();
 
@@ -429,7 +432,12 @@ export class MintPublishService {
     propertyRegistryPuzzleHash: string;
     metadataRoot?: string;
     metadataAnchorId?: string;
+    governanceTrackerVersion?: 1 | 2;
   }): ClvmProgramShape {
+    const version = args.governanceTrackerVersion ?? 1;
+    if (version !== 1 && version !== 2) {
+      throw new Error('Unsupported governance tracker version');
+    }
     if (!!args.metadataRoot !== !!args.metadataAnchorId) {
       throw new Error('metadataRoot and metadataAnchorId must be supplied together');
     }
@@ -446,7 +454,9 @@ export class MintPublishService {
       if (metadataRoot.length !== 32 || metadataAnchorId.length !== 32) {
         throw new Error('metadataRoot and metadataAnchorId must each be 32 bytes');
       }
-      billFields.push(clvm.atom(metadataRoot), clvm.atom(metadataAnchorId));
+      // V2 commits purchase metadata through the deed full puzzle hash and
+      // proposal data hash; its MINT bill has exactly four fields.
+      if (version === 1) billFields.push(clvm.atom(metadataRoot), clvm.atom(metadataAnchorId));
     }
     return clvm.list(billFields);
   }
