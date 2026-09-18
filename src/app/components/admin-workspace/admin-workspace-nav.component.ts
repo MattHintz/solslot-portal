@@ -30,17 +30,20 @@ import { AdminSessionService } from '../../services/admin-session.service';
       <div class="workspace-links">
         <a
           routerLink="/admin"
-          routerLinkActive="is-active"
+          routerLinkActive="is-active" ariaCurrentWhenActive="page"
           [routerLinkActiveOptions]="{ exact: true }"
         >
-          Tasks
+          Admin desk
         </a>
-        <a routerLink="/admin/collections" routerLinkActive="is-active">Collections</a>
-        <a routerLink="/admin/approvals" routerLinkActive="is-active">Approvals</a>
-        <a routerLink="/admin/sgt-allocations" routerLinkActive="is-active">SGT</a>
-        <a routerLink="/admin/sales" routerLinkActive="is-active">Sales</a>
-        <a routerLink="/admin/system-health" routerLinkActive="is-active">Health</a>
-        <a routerLink="/admin/authority" routerLinkActive="is-active">Security</a>
+        <a routerLink="/admin/collections" routerLinkActive="is-active" ariaCurrentWhenActive="page">Properties</a>
+        <a routerLink="/admin/mint" routerLinkActive="is-active" ariaCurrentWhenActive="page">Mint proposals</a>
+        <a routerLink="/admin/approvals" routerLinkActive="is-active" ariaCurrentWhenActive="page">Approvals</a>
+        <a routerLink="/admin/sgt-allocations" routerLinkActive="is-active" ariaCurrentWhenActive="page">SGT sales & grants</a>
+        <a routerLink="/committee" routerLinkActive="is-active" ariaCurrentWhenActive="page">Committee desk</a>
+        <a routerLink="/admin/genesis" routerLinkActive="is-active" ariaCurrentWhenActive="page">Setup & launch</a>
+        <a routerLink="/admin/sales" routerLinkActive="is-active" ariaCurrentWhenActive="page">Sales</a>
+        <a routerLink="/admin/system-health" routerLinkActive="is-active" ariaCurrentWhenActive="page">Health</a>
+        <a routerLink="/admin/authority" routerLinkActive="is-active" ariaCurrentWhenActive="page">Security</a>
       </div>
 
       <div class="workspace-account">
@@ -48,20 +51,20 @@ import { AdminSessionService } from '../../services/admin-session.service';
           <strong>Administrator</strong>
           <small>Secure workspace</small>
         </span>
-        <button type="button" (click)="helpOpen.set(true)">Help</button>
+        <button type="button" [attr.aria-expanded]="helpOpen()" aria-controls="admin-help-panel" (click)="helpOpen.set(!helpOpen())">Help</button>
         <button type="button" (click)="signOut()">Sign out</button>
       </div>
     </nav>
 
     @if (helpOpen()) {
-      <div class="help-shell" role="dialog" aria-modal="true" aria-labelledby="admin-help-title">
+      <div class="help-shell" (keydown.escape)="helpOpen.set(false)">
         <button
           type="button"
           class="help-backdrop"
           aria-label="Close administrator help"
           (click)="helpOpen.set(false)"
         ></button>
-        <section class="help-panel">
+        <section class="help-panel" id="admin-help-panel" role="region" aria-labelledby="admin-help-title">
           <header>
             <div>
               <small>Administrator guide</small>
@@ -74,12 +77,12 @@ import { AdminSessionService } from '../../services/admin-session.service';
           </header>
 
           <div class="help-next">
-            <strong>Open Tasks first</strong>
+            <strong>Start at the Admin desk</strong>
             <p>
-              The task list shows the one action that needs your attention. If nothing is
-              waiting, you do not need to sign or approve anything.
+              Check assigned work, then choose a desk. Properties prepares SmartDeeds;
+              Mint proposals tracks issuance; SGT sales & grants manages governance allocations.
             </p>
-            <a routerLink="/admin" (click)="helpOpen.set(false)">Open my tasks</a>
+            <a routerLink="/admin" (click)="helpOpen.set(false)">Open Admin desk</a>
           </div>
 
           <ol>
@@ -120,7 +123,7 @@ import { AdminSessionService } from '../../services/admin-session.service';
         z-index: 40;
         border-bottom: 1px solid #21483d;
         background: rgba(4, 18, 15, 0.96);
-        backdrop-filter: blur(18px);
+
       }
       .workspace-nav {
         display: grid;
@@ -166,20 +169,23 @@ import { AdminSessionService } from '../../services/admin-session.service';
         font: 10px/1.1 var(--font-mono);
       }
       .workspace-links {
+        flex-wrap: wrap;
         min-width: 0;
         gap: 4px;
-        overflow-x: auto;
-        scrollbar-width: none;
+        overflow: visible;
       }
       .workspace-links::-webkit-scrollbar {
         display: none;
       }
       .workspace-links a {
         flex: 0 0 auto;
-        padding: 18px 9px 16px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        padding: 10px 9px;
         border-bottom: 2px solid transparent;
         color: #a9c2b8;
-        font-size: 12px;
+        font-size: 13px;
         text-decoration: none;
       }
       .workspace-links a:hover,
@@ -202,7 +208,9 @@ import { AdminSessionService } from '../../services/admin-session.service';
         border: 0;
         background: none;
         color: #85dcb5;
-        font: 11px var(--font-sans);
+        min-height: 44px;
+        padding: 8px;
+        font: 13px var(--font-sans);
         cursor: pointer;
       }
       .workspace-account button:hover {
@@ -315,10 +323,11 @@ import { AdminSessionService } from '../../services/admin-session.service';
         overflow: hidden;
         clip: rect(0, 0, 0, 0);
       }
-      @media (max-width: 840px) {
-        .workspace-nav {
-          grid-template-columns: auto minmax(0, 1fr) auto;
-        }
+      @media (max-width: 1100px) {
+        :host { position: relative; }
+        .workspace-nav { grid-template-columns: 1fr auto; gap: 4px 12px; padding-top: 8px; }
+        .workspace-links { grid-row: 2; grid-column: 1 / -1; padding-bottom: 6px; }
+        .workspace-account { grid-row: 1; grid-column: 2; }
         .workspace-account > span {
           display: none;
         }

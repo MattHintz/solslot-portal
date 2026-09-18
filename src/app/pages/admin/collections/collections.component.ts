@@ -24,7 +24,7 @@ type StateFilter = 'ALL' | CollectionState;
       <header class="desk-header">
         <div>
           <div class="eyebrow">Property workspace</div>
-          <h1>Collections</h1>
+          <h1>Properties & SmartDeeds</h1>
           <p>Prepare a property once, then manage its documents, ownership plan, review, and SmartDeeds.</p>
         </div>
         <div class="desk-actions">
@@ -38,6 +38,13 @@ type StateFilter = 'ALL' | CollectionState;
           </button>
         </div>
       </header>
+
+      <ol class="ux-steps" aria-label="SmartDeed minting process">
+        <li><span>01</span><div><strong>Prepare the property</strong><p>Add its details, documents, and SmartDeed allocation.</p></div></li>
+        <li><span>02</span><div><strong>Review and seal</strong><p>Resolve open checks, then seal the agreed property record.</p></div></li>
+        <li><span>03</span><div><strong>Approve and vote</strong><p>The owner and one coadministrator approve publication. SGT holders vote separately.</p></div></li>
+        <li><span>04</span><div><strong>Mint and confirm</strong><p>Execute a passed proposal and wait for network confirmation.</p></div></li>
+      </ol>
 
       @if (feature(); as flags) {
         @if (!flags.metadataEnabled) {
@@ -59,6 +66,7 @@ type StateFilter = 'ALL' | CollectionState;
           <button
             type="button"
             [class.is-active]="filter() === state"
+            [attr.aria-pressed]="filter() === state"
             (click)="filter.set(state)"
           >
             {{ state === 'ALL' ? 'All' : stateLabel(state) }}
@@ -70,7 +78,7 @@ type StateFilter = 'ALL' | CollectionState;
       @if (loading()) {
         <div class="empty-state mono">Loading shared collection workspace…</div>
       } @else if (error()) {
-        <section class="notice notice--error">
+        <section class="notice notice--error" role="alert">
           <strong>Collections could not be loaded</strong>
           <span>{{ error() }}</span>
           <button type="button" class="btn btn--ghost" (click)="reload()">Retry</button>

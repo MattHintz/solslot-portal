@@ -114,7 +114,7 @@ describe('CommitteeComponent', () => {
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('No open proposal');
     expect(text).toContain('500,000 SGT');
-    expect(text).toContain('Voting window: 300s');
+    expect(text).toContain('Voting window: 5 minutes');
   });
 
   // ── OPEN state rendering ────────────────────────────────────────────
@@ -133,8 +133,8 @@ describe('CommitteeComponent', () => {
     await flushReload();
     const host: HTMLElement = fixture.nativeElement;
     const text = host.textContent ?? '';
-    expect(text).toContain('MINT — spawn deed coin');
-    expect(text).toContain('proposal_hash 0x' + '01'.repeat(32));
+    expect(text).toContain('Mint a SmartDeed');
+    expect(text).toContain('Proposal ID: 0x' + '01'.repeat(32));
     expect(text).toContain('250,000 / 500,000 SGT (50%)');
     expect(text).toContain('GC:VOTING');
     expect(text).toContain('Committee can vote on this MINT proposal.');

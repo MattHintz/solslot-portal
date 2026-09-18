@@ -24,14 +24,14 @@
       <div class="access-panel__brand">Solslot</div>
       <div class="access-panel__copy">
         <span class="eyebrow">Testnet11 administrator access</span>
-        <h1 id="launch-title">Alpha Protocol Launch</h1>
+        <h1 id="launch-title">Administrator setup & launch</h1>
 
         @if (publicStatus() && !publicStatus()?.enabled) {
-          <p>The guided launch desk is not open on this server. No ceremony action is available.</p>
+          <div class="ux-context ux-context--waiting" role="status"><strong>Setup is waiting for activation</strong><p>The launch desk is currently closed. Keep your invitation and return when the owner confirms setup is open. No wallet action is needed now.</p></div>
         } @else if (secureLinkMode() === 'owner') {
           <p>
-            This private link starts a new launch and assigns your connected wallet as the owner in
-            Administrator 1.
+            Start the administrator team with this private owner link. The daily wallet you connect
+            will belong to the owner, Administrator 1.
           </p>
           <div class="profile-fields">
             <label>
@@ -63,8 +63,8 @@
           </div>
         } @else if (secureLinkMode() === 'invite') {
           <p>
-            You were invited as a Solslot coadministrator. Connect the wallet you will use for this
-            launch.
+            Join the team as a coadministrator. Choose the daily wallet you will use to sign in
+            and review administrator requests.
           </p>
           <div class="wallet-actions">
             <button
@@ -86,8 +86,8 @@
           </div>
         } @else {
           <p>
-            Connect an enrolled administrator wallet. The desk finds your launch and role
-            automatically.
+            Already enrolled? Connect your administrator wallet to resume your assigned setup step.
+            New to the team? Open the private invitation sent by the owner first.
           </p>
           <div class="wallet-actions">
             <button
@@ -108,6 +108,15 @@
             </button>
           </div>
         }
+        <div class="ux-context">
+          <strong>You do not need SGT to enroll</strong>
+          <p>Start with your daily administrator wallet. Your SGT vault and starter grant come after team setup and launch.</p>
+        </div>
+        <ol class="ux-steps ux-steps--three" aria-label="Administrator onboarding overview">
+          <li><span>01</span><div><strong>Join the team</strong><p>Use your private link and confirm the daily wallet assigned to your role.</p></div></li>
+          <li><span>02</span><div><strong>Protect your access</strong><p>Follow Security & Access to prepare and test your recovery kit.</p></div></li>
+          <li><span>03</span><div><strong>Review your next task</strong><p>The owner coordinates launch. Each administrator reviews their own requests.</p></div></li>
+        </ol>
       </div>
       <footer>
         Wallet signatures approve only the exact action shown. No wallet seed phrase or private key
@@ -118,7 +127,7 @@
     <header class="launch-header">
           <div>
             <span class="eyebrow">Solslot Testnet Alpha</span>
-            <h1>Alpha Protocol Launch</h1>
+            <h1>Administrator setup & launch</h1>
             <p>
               Signed in as {{ displayRole(workspace()!.session.role) }}, Administrator
               {{ workspace()!.session.slot }}
@@ -133,6 +142,10 @@
       </div>
     </header>
 
+    <aside class="ux-context" aria-label="How the team works">
+      <strong>Follow your assigned task, one step at a time</strong>
+      <p>The owner is Administrator 1. Actions requiring team approval need the owner and one of the two coadministrators. Administrator approval and SGT committee voting are separate steps.</p>
+    </aside>
     <div class="launch-layout">
       <nav class="stage-nav" aria-label="Alpha launch progress">
         <ol>

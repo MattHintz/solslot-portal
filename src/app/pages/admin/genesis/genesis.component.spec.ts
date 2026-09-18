@@ -126,7 +126,7 @@ describe('GenesisComponent', () => {
     launch.publicStatus.and.resolveTo({
       enabled: true,
       network: 'testnet11',
-      title: 'Alpha Protocol Launch',
+      title: 'Administrator setup & launch',
       notice: 'Testnet only',
     });
     launch.workspace.and.rejectWith(new Error('not signed in'));
@@ -168,8 +168,8 @@ describe('GenesisComponent', () => {
 
   it('shows a neutral wallet sign-in without ceremony identifiers or raw protocol inputs', () => {
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Alpha Protocol Launch');
-    expect(text).toContain('Connect an enrolled administrator wallet');
+    expect(text).toContain('Administrator setup & launch');
+    expect(text).toContain('Already enrolled?');
     expect(text).toContain('Sign in with browser wallet');
     expect(text).not.toContain('bearer token');
     expect(text).not.toContain('Source SHA');

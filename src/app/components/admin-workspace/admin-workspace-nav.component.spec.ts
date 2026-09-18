@@ -31,8 +31,8 @@ describe('AdminWorkspaceNavComponent', () => {
     const text = pageText();
     expect(text).toContain('Administrator');
     expect(text).toContain('Secure workspace');
-    expect(text).toContain('Tasks');
-    expect(text).toContain('Collections');
+    expect(text).toContain('Admin desk');
+    expect(text).toContain('Properties');
     expect(text).toContain('Approvals');
     expect(text).toContain('Sales');
     expect(text).toContain('Health');

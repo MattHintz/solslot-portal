@@ -51,24 +51,28 @@ import { formatError } from '../../../utils/format-error';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   template: `
-    <section class="container-p pt-12 pb-24 max-w-5xl">
+    <section class="committee-desk container-p pt-12 pb-24 max-w-5xl">
       <header>
         <div class="mono text-[0.7rem] uppercase tracking-[0.25em] text-brand mb-2">
           Solslot · Committee
         </div>
-        <h1 class="font-display text-4xl md:text-5xl">Governance proposal feed.</h1>
+        <h1 class="font-display text-4xl md:text-5xl">Committee desk</h1>
         <p class="mt-4 text-text-muted text-sm max-w-2xl">
-          The SGT-backed governance tracker holds at most one open
-          proposal at a time.  This page reads the tracker singleton
-          directly from chain (coinset.org) — there is no API in the
-          read path.  Anyone holding SGT / Committee Coin can vote.
+          Review the current proposal, understand what it changes, and follow the vote.
+          Voting uses SGT. You can read this desk without an administrator account.
         </p>
-        <p class="mt-3 text-text-muted text-xs max-w-2xl">
-          Your wallet builds and signs an SGT-VOTE spend bundle locally;
-          the committee endpoint is a public, publish-only forwarder.
-        </p>
+        <nav class="ux-link-row" aria-label="Committee navigation">
+          <a href="/my-solslot">My Solslot</a>
+          <a routerLink="/connect">Connect a voting wallet</a>
+          <a routerLink="/admin">Admin desk</a>
+        </nav>
       </header>
 
+      <ol class="ux-steps ux-steps--three" aria-label="Committee voting process">
+        <li><span>01</span><div><strong>Read the proposal</strong><p>Check the action, recipient, terms, and deadline before deciding.</p></div></li>
+        <li><span>02</span><div><strong>Choose your SGT stake</strong><p>A yes vote locks the selected SGT until the voting deadline. Match one available coin’s full amount.</p></div></li>
+        <li><span>03</span><div><strong>Follow confirmation</strong><p>Your wallet signs the vote. A submitted vote counts after network confirmation.</p></div></li>
+      </ol>
       <div class="mt-10 flex items-center gap-3 flex-wrap">
         <button class="btn btn--ghost" type="button" (click)="reload()" [disabled]="loading()">
           @if (loading()) { Refreshing&hellip; } @else { Refresh }
@@ -86,8 +90,8 @@ import { formatError } from '../../../utils/format-error';
       <div class="mt-8">
         @if (error()) {
           <div class="rounded-card border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
-            <div class="font-display text-base mb-1">Couldn't read the governance tracker.</div>
-            <div class="mono text-xs">{{ error() }}</div>
+            <div class="font-display text-base mb-1">Proposal status is temporarily unavailable.</div>
+            <p>Use Refresh to try again. This does not mean there is no proposal.</p><details class="ux-details"><summary>Technical details</summary><p class="mono text-xs">{{ error() }}</p></details>
           </div>
         } @else if (loading() && !snapshot()) {
           <div class="mono text-sm text-text-muted">Loading on-chain state&hellip;</div>
@@ -95,19 +99,19 @@ import { formatError } from '../../../utils/format-error';
           @switch (snap.kind) {
             @case ('NOT_DEPLOYED') {
               <div class="card text-center text-text-muted">
-                <div class="font-display text-2xl text-text">Governance tracker not deployed.</div>
+                <div class="font-display text-2xl text-text">Committee voting is not open yet</div>
                 <p class="mt-2 max-w-md mx-auto text-sm">
-                  No tracker singleton is configured for this network, or
-                  the configured launcher id has not yet confirmed on chain.
+                  The governance system has not been configured or confirmed on this network.
+                  No vote is needed now. The owner must complete setup before proposals can appear.
                 </p>
               </div>
             }
             @case ('NOT_SPENT') {
               <div class="card text-center text-text-muted">
-                <div class="font-display text-2xl text-text">Tracker launcher pending.</div>
+                <div class="font-display text-2xl text-text">Governance setup is confirming</div>
                 <p class="mt-2 max-w-md mx-auto text-sm">
-                  The launcher coin has confirmed but its eve singleton
-                  hasn't been minted yet.  Refresh in a moment.
+                  The first setup transaction is confirmed. The next network step is still pending.
+                  Refresh later to check progress; there is nothing to sign here yet.
                 </p>
               </div>
             }
@@ -115,13 +119,13 @@ import { formatError } from '../../../utils/format-error';
               <div class="card text-center text-text-muted">
                 <div class="font-display text-2xl text-text">No open proposal.</div>
                 <p class="mt-2 max-w-md mx-auto text-sm">
-                  The tracker is idle.  When an admin opens a proposal on
-                  chain it will appear here automatically.
+                  There is nothing to vote on right now. Refresh after an administrator
+                  publishes a proposal. Only one proposal can be open at a time.
                 </p>
                 <p class="mt-3 mono text-[0.7rem]">
                   Quorum required: {{ formatSgt(snap.quorumRequired) }} SGT ·
-                  Voting window: {{ Number(snap.votingWindowSeconds) }}s ·
-                  Min stake: {{ formatSgt(snap.minProposalStake) }} SGT
+                  Voting window: {{ Number(snap.votingWindowSeconds) >= 3600 ? (Number(snap.votingWindowSeconds) / 3600 | number:'1.0-2') + ' hours' : Number(snap.votingWindowSeconds) >= 60 ? (Number(snap.votingWindowSeconds) / 60 | number:'1.0-2') + ' minutes' : Number(snap.votingWindowSeconds) + ' seconds' }} ·
+                  Proposal opening stake: {{ formatSgt(snap.minProposalStake) }} SGT
                 </p>
               </div>
             }
@@ -134,26 +138,23 @@ import { formatError } from '../../../utils/format-error';
                       @if (committeeLifecycle(snap); as lifecycle) {
                         <span class="notation-pill">{{ lifecycle.notation }}</span>
                       }
-                      <span class="mono text-xs text-text-muted truncate">
-                        proposal_hash {{ snap.proposalHash }}
-                      </span>
+
                     </div>
                     <div class="mt-3 font-display text-2xl">
-                      {{ billHeadline(snap.bill) }}
+                      {{ snap.bill.kind === 'MINT' ? 'Mint a SmartDeed' : billHeadline(snap.bill) }}
                     </div>
-                    <div class="mt-1 text-xs text-text-muted">
-                      {{ billSubhead(snap.bill) }}
-                    </div>
+                    <details class="ux-details"><summary>Proposal identifiers & terms</summary><p class="mono text-xs break-all">{{ billSubhead(snap.bill) }}</p><p class="mono text-xs break-all">Proposal ID: {{ snap.proposalHash }}</p></details>
                   </div>
-                  <div class="flex items-end gap-2 shrink-0">
+                  <div class="vote-controls">
                     <label class="flex flex-col gap-1 text-xs mono text-text-muted">
-                      Vote amount (SGT mojos)
+                      SGT to lock for this vote (base units)
                       <input
                         type="number"
                         class="input mono text-sm w-40"
                         min="1"
                         step="1"
                         [(ngModel)]="voteAmountInput"
+                        aria-describedby="vote-amount-help"
                         [disabled]="!canVote(snap) || voting()"
                       />
                     </label>
@@ -169,6 +170,12 @@ import { formatError } from '../../../utils/format-error';
                   </div>
                 </div>
 
+                <div class="ux-context" id="vote-amount-help">
+                  <strong>Before you vote</strong>
+                  <p>Enter the full coin amount in SGT base units (mojos), matching one available coin exactly. Review the proposal and lock amount in your wallet before signing.</p>
+                  @if (!canVote(snap)) { <p>{{ voteButtonTitle(snap) }}</p> }
+                  @if (snap.kind === 'OPEN' && !canVote(snap)) { <a routerLink="/connect">Connect a voting wallet</a> }
+                </div>
                 @if (snap.bill.kind === 'MINT') {
                   @if (committeeLifecycle(snap); as lifecycle) {
                     <div class="lifecycle-note">
@@ -211,7 +218,7 @@ import { formatError } from '../../../utils/format-error';
                       ({{ progressPct(snap) }}%)
                     </span>
                   </div>
-                  <div class="quorum-bar">
+                  <div class="quorum-bar" role="progressbar" aria-label="SGT quorum progress" aria-valuemin="0" aria-valuemax="100" [attr.aria-valuenow]="progressPct(snap)">
                     <div class="quorum-bar__fill" [style.width.%]="progressPct(snap)"></div>
                   </div>
                 </div>
@@ -237,7 +244,7 @@ import { formatError } from '../../../utils/format-error';
 
                 <details class="text-xs mono">
                   <summary class="cursor-pointer text-text-muted">
-                    Bill payload
+                    Full proposal data
                   </summary>
                   <pre class="mt-2 whitespace-pre-wrap break-all">{{ billDetailJson(snap.bill) }}</pre>
                 </details>
@@ -250,6 +257,9 @@ import { formatError } from '../../../utils/format-error';
   `,
   styles: [
     `
+      .committee-desk h1 { font-family: var(--font-sans); }
+      .vote-controls { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; max-width: 100%; }
+      .vote-controls input { width: 100%; max-width: 240px; }
       .state-pill {
         font-family: var(--font-mono);
         font-size: 0.65rem;

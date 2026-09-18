@@ -372,3 +372,32 @@ wcm-modal .wcm-view-all {
     grid-template-columns: 1fr;
   }
 }
+
+/* Administrator and committee guidance. No transaction or policy behavior. */
+.ux-steps { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 0; margin: 24px 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; background: #081c17; overflow: hidden; }
+.ux-steps--three { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.ux-steps li { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 20px; border-right: 1px solid var(--border); }
+.ux-steps li:last-child { border-right: 0; }
+.ux-steps li > span { color: var(--accent); font: 600 12px/1.6 var(--font-mono); }
+.ux-steps strong { display: block; font: 600 15px/1.4 var(--font-sans); color: var(--text); }
+.ux-steps p { margin: 7px 0 0; font: 400 13px/1.55 var(--font-sans); color: #b2c9bf; }
+.ux-context { margin: 20px 0; padding: 18px 20px; border-left: 3px solid var(--accent); background: #0b251d; font: 400 14px/1.6 var(--font-sans); }
+.ux-context strong { color: #effff6; font-weight: 600; }
+.ux-context p { margin: 6px 0 0; color: #b7cdc3; }
+.ux-context a { display: inline-flex; align-items: center; min-height: 44px; color: #9be9c1; text-decoration: underline; text-underline-offset: 4px; }
+.ux-context--waiting { border-left-color: #e8c77a; background: #232417; }
+.ux-caption { margin: 20px 0; color: #b2c9bf; font: 400 14px/1.6 var(--font-sans); max-width: 80ch; }
+.ux-link-row { display: flex; gap: 10px 24px; flex-wrap: wrap; margin: 14px 0; }
+.ux-link-row a { display: inline-flex; align-items: center; min-height: 44px; color: #9be9c1; font-size: 14px; text-decoration: underline; text-underline-offset: 4px; }
+.ux-shortcuts { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin: 24px 0; }
+.ux-shortcuts a { display: grid; align-content: start; gap: 8px; padding: 20px; border: 1px solid #35604f; border-radius: 8px; background: #0b231c; text-decoration: none; }
+.ux-shortcuts a:hover { background: #113227; border-color: #7cffb2; }
+.ux-shortcuts span { color: #98d2b7; font: 600 11px/1.4 var(--font-mono); text-transform: uppercase; }
+.ux-shortcuts strong { color: #effff6; font: 600 18px/1.25 var(--font-sans); }
+.ux-shortcuts small { color: #b2c9bf; font: 400 13px/1.5 var(--font-sans); }
+.ux-details { min-width: 0; margin-top: 10px; font-size: 13px; }
+.ux-details summary { color: #acd9c2; cursor: pointer; min-height: 44px; padding: 10px 0; }
+:is(a,button,input,select,textarea,summary):focus-visible { outline: 3px solid #9af0c4; outline-offset: 4px; }
+@media (max-width: 900px) { .ux-steps,.ux-shortcuts { grid-template-columns: repeat(2,minmax(0,1fr)); } .ux-steps li { border-bottom: 1px solid var(--border); } }
+@media (max-width: 560px) { .ux-steps,.ux-shortcuts { grid-template-columns: 1fr; } .ux-steps li { border-right: 0; padding: 16px; } .ux-steps li:last-child { border-bottom: 0; } .ux-shortcuts a { padding: 16px; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

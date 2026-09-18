@@ -39,10 +39,17 @@ interface DeskTask {
       <header class="desk-header">
         <div>
           <span class="eyebrow">Administrator home</span>
-          <h1>What needs attention</h1>
-          <p>Start with the next assigned action. Everything else can wait.</p>
+          <h1>Admin desk</h1>
+          <p>Prepare SmartDeeds, review team requests, and follow each action through confirmation.</p>
         </div>
       </header>
+
+      <nav class="ux-shortcuts" aria-label="Common administrator tasks">
+        <a routerLink="/admin/collections"><span>01 · Prepare</span><strong>Create SmartDeeds</strong><small>Start with a property and its documents</small></a>
+        <a routerLink="/admin/mint"><span>02 · Track</span><strong>Mint proposals</strong><small>Follow voting, execution, and confirmation</small></a>
+        <a routerLink="/admin/sgt-allocations"><span>03 · Allocate</span><strong>SGT sales & grants</strong><small>Prepare an allocation for team review</small></a>
+        <a routerLink="/committee"><span>04 · Participate</span><strong>Committee desk</strong><small>Read the current proposal and voting status</small></a>
+      </nav>
 
       @if (error()) {
         <div class="notice notice--error" role="alert">
@@ -58,6 +65,8 @@ interface DeskTask {
             <span class="eyebrow">Next action</span>
             <h2 id="next-action-title">Checking your assignments...</h2>
           </div>
+        } @else if (error()) {
+          <div><span class="eyebrow">Refresh needed</span><h2 id="next-action-title">Your task list may be incomplete</h2><p>Some records could not be checked. Retry above before relying on these counts.</p></div>
         } @else if (primaryTask(); as task) {
           <div>
             <span class="eyebrow">Next action</span>
@@ -69,9 +78,9 @@ interface DeskTask {
           <div>
             <span class="eyebrow">Up to date</span>
             <h2 id="next-action-title">No administrator action is waiting</h2>
-            <p>You can continue preparing a property collection or review system readiness.</p>
+            <p>Choose a desk above, or check which preparation and minting actions are currently available.</p>
           </div>
-          <a routerLink="/admin/collections">Open collections</a>
+          <a routerLink="/admin/system-health">Check availability</a>
         }
       </section>
 
@@ -103,10 +112,12 @@ interface DeskTask {
         </div>
         @if (loading()) {
           <p class="empty">Checking current operations...</p>
+        } @else if (error() && !tasks().length) {
+          <p class="empty">Refresh to confirm whether any work is waiting.</p>
         } @else if (!tasks().length) {
           <div class="empty">
             <strong>No assigned action is waiting</strong>
-            <span>You can continue preparing collections while chain-write windows remain closed.</span>
+            <span>Preparation and publishing availability are shown in System health.</span>
           </div>
         } @else {
           <div class="task-list">
@@ -132,18 +143,18 @@ interface DeskTask {
           <strong>Collections</strong>
           <p>Prepare property information, documents, ownership plans, and SmartDeeds.</p>
           <dl>
-            <div><dt>Total</dt><dd>{{ collections().length }}</dd></div>
-            <div><dt>Need attention</dt><dd>{{ collectionAttentionCount() }}</dd></div>
+            <div><dt>Total</dt><dd>{{ loading() || error() ? '—' : collections().length }}</dd></div>
+            <div><dt>Need attention</dt><dd>{{ loading() || error() ? '—' : collectionAttentionCount() }}</dd></div>
           </dl>
         </a>
 
         <a routerLink="/admin/approvals" class="desk-tile">
-          <span class="eyebrow">Independent review</span>
+          <span class="eyebrow">Team decisions</span>
           <strong>Approvals</strong>
           <p>Approve important actions only after reviewing the complete decision receipt.</p>
           <dl>
-            <div><dt>Open</dt><dd>{{ approvals().length }}</dd></div>
-            <div><dt>Ready</dt><dd>{{ readyApprovalCount() }}</dd></div>
+            <div><dt>Open</dt><dd>{{ loading() || error() ? '—' : approvals().length }}</dd></div>
+            <div><dt>Ready</dt><dd>{{ loading() || error() ? '—' : readyApprovalCount() }}</dd></div>
           </dl>
         </a>
 
@@ -152,8 +163,8 @@ interface DeskTask {
           <strong>Sales & refunds</strong>
           <p>Follow reservations through SmartDeed delivery or an exact refund.</p>
           <dl>
-            <div><dt>Vouchers</dt><dd>{{ voucherCount() }}</dd></div>
-            <div><dt>Need action</dt><dd>{{ voucherAttentionCount() }}</dd></div>
+            <div><dt>Vouchers</dt><dd>{{ loading() || error() ? '—' : voucherCount() }}</dd></div>
+            <div><dt>Need action</dt><dd>{{ loading() || error() ? '—' : voucherAttentionCount() }}</dd></div>
           </dl>
         </a>
 
@@ -162,8 +173,8 @@ interface DeskTask {
           <strong>SOLS liquidity</strong>
           <p>See available swaps, reserves, governed values, and approved venues.</p>
           <dl>
-            <div><dt>Customer view</dt><dd>{{ solsMarket()?.outcome || 'Checking' }}</dd></div>
-            <div><dt>Verified swaps</dt><dd>{{ solsMarket()?.verifiedOpportunityCount || 0 }}</dd></div>
+            <div><dt>Customer view</dt><dd>{{ loading() ? 'Checking…' : solsMarket() ? (solsMarket()?.verifiedOpportunityCount ? 'Swaps available' : 'No verified swaps') : 'Unavailable' }}</dd></div>
+            <div><dt>Verified swaps</dt><dd>{{ loading() || error() ? '—' : solsMarket()?.verifiedOpportunityCount || 0 }}</dd></div>
           </dl>
         </a>
 
@@ -172,8 +183,8 @@ interface DeskTask {
           <strong>System health</strong>
           <p>See what is working, waiting, or blocked and what customers can safely do.</p>
           <dl>
-            <div><dt>Drafting</dt><dd>{{ feature()?.metadataEnabled ? 'Available' : 'Locked' }}</dd></div>
-            <div><dt>Minting</dt><dd>{{ feature()?.mintingEnabled ? 'Open' : 'Closed' }}</dd></div>
+            <div><dt>Drafting</dt><dd>{{ loading() ? 'Checking…' : !feature() ? 'Unavailable' : feature()?.metadataEnabled ? 'Available' : 'Paused' }}</dd></div>
+            <div><dt>Minting</dt><dd>{{ loading() ? 'Checking…' : !feature() ? 'Unavailable' : feature()?.mintingEnabled ? 'Open' : 'Paused' }}</dd></div>
           </dl>
         </a>
 
@@ -186,9 +197,9 @@ interface DeskTask {
 
         <a routerLink="/admin/genesis" class="desk-tile">
           <span class="eyebrow">Protocol launch</span>
-          <strong>Launch archive</strong>
+          <strong>Setup & launch</strong>
           <p>Continue the guided launch or review its signed record after completion.</p>
-          <span class="tile-action">Open archive</span>
+          <span class="tile-action">Open setup & launch</span>
         </a>
       </section>
 
@@ -202,8 +213,8 @@ interface DeskTask {
         </div>
         @if (!collections().length && !loading()) {
           <div class="empty">
-            <strong>No collection workspace yet</strong>
-            <span>Create the first property through the general collection desk.</span>
+            <strong>{{ error() ? "Collections could not be checked" : "No collection workspace yet" }}</strong>
+            <span>{{ error() ? "Retry above to load the shared property workspace." : "Create the first property through the general collection desk." }}</span>
           </div>
         } @else {
           <div class="collection-list">

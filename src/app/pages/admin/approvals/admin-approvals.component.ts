@@ -18,7 +18,7 @@ import { formatError } from '../../../utils/format-error';
     <main class="approval-desk">
       <header class="desk-header">
         <div>
-          <span class="eyebrow">Independent review</span>
+          <span class="eyebrow">Administrator decisions</span>
           <h1>Approval inbox</h1>
           <p>Approve only after the purpose, effect, and wallet request all agree.</p>
         </div>
@@ -29,6 +29,7 @@ import { formatError } from '../../../utils/format-error';
         </div>
       </header>
 
+      <aside class="ux-context"><strong>Two approvals, including the owner</strong><p>Read the receipt, compare the wallet request, then approve only if both agree. Approval records consent; execution is a separate action. Committee voting is also separate.</p></aside>
       @if (error()) {
         <div class="notice notice--error" role="alert">
           <strong>Approval inbox needs attention</strong>
@@ -47,6 +48,8 @@ import { formatError } from '../../../utils/format-error';
           </div>
           @if (loading()) {
             <p class="empty">Loading approvals...</p>
+          } @else if (error() && !operations().length) {
+            <p class="empty">Refresh to check whether any approvals are waiting.</p>
           } @else if (!operations().length) {
             <div class="empty">
               <strong>Nothing is waiting</strong>
@@ -90,7 +93,7 @@ import { formatError } from '../../../utils/format-error';
               </div>
               <div>
                 <dt>Approvals</dt>
-                <dd>{{ item.signatures.length }} of 2 required</dd>
+                <dd>{{ item.signatures.length }} of 2 required · owner required</dd>
               </div>
               <div>
                 <dt>Expires</dt>

@@ -56,8 +56,8 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
     <section class="container-p pt-12 pb-24 max-w-4xl">
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div class="min-w-0">
-          <a routerLink="/admin" class="mono text-xs text-text-muted hover:text-brand">
-            &larr; Back to dashboard
+          <a routerLink="/admin/mint" class="mono text-xs text-text-muted hover:text-brand">
+            &larr; Back to mint proposals
           </a>
           <h1 class="mt-2 font-display text-3xl md:text-4xl truncate">
             @if (proposal(); as p) {
@@ -76,6 +76,7 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
         }
       </header>
 
+      <p class="ux-caption">Review the property terms and the next required action below. Publishing opens committee voting; minting happens only after the proposal passes and its transaction is confirmed.</p>
       @if (loading()) {
         <div class="mt-8 mono text-sm text-text-muted">Loading proposal&hellip;</div>
       } @else if (loadError()) {
@@ -132,7 +133,7 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
           }
 
           <section class="card grid gap-4">
-            <h2 class="font-display text-2xl">Operator metadata</h2>
+            <h2 class="font-display text-2xl">Property & mint terms</h2>
             <div class="grid gap-3 sm:grid-cols-2">
               <div>
                 <div class="form-label">Asset class</div>

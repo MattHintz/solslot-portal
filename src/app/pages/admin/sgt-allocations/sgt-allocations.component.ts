@@ -40,7 +40,7 @@ import { formatError } from '../../../utils/format-error';
       <header class="page-header">
         <div>
           <span class="eyebrow">Governance participation</span>
-          <h1>SGT allocations</h1>
+          <h1>SGT sales & grants</h1>
           <p>
             Prepare company SGT sales and grants. The committee votes on one proposal at a
             time; the rest remain safely queued.
@@ -51,6 +51,12 @@ import { formatError } from '../../../utils/format-error';
         </button>
       </header>
 
+      <ol class="ux-steps" aria-label="SGT allocation process">
+        <li><span>01</span><div><strong>Choose the recipient</strong><p>Use the verified vault that will receive the SGT.</p></div></li>
+        <li><span>02</span><div><strong>Set the terms</strong><p>Choose a sale with payment, or a grant without payment.</p></div></li>
+        <li><span>03</span><div><strong>Get team approval</strong><p>Two of three administrators must approve, including the owner.</p></div></li>
+        <li><span>04</span><div><strong>Complete governance</strong><p>Publish, complete the committee vote, then follow delivery.</p></div></li>
+      </ol>
       <section class="reserve-note" aria-label="SGT authority summary">
         <div>
           <strong>What SGT grants</strong>
@@ -74,8 +80,8 @@ import { formatError } from '../../../utils/format-error';
 
       <section class="publication" aria-labelledby="starter-grants-title">
         <h2 id="starter-grants-title">Administrator starter SGT</h2>
-        <p>Prepare one minimum proposal stake for each administrator from the company reserve.
-          Every grant requires the owner plus one coadministrator and the existing SGT vote.</p>
+        <p>After administrator onboarding and launch, create and enroll each administrator’s SGT vault, then enter those vault IDs below. Review the proposed amount for each person before adding the grants to the queue.</p>
+        <div class="ux-context"><strong>Starting from zero SGT is expected</strong><p>Daily-wallet enrollment comes first. The company reserve can sponsor a grant or sale proposal’s first vote. Every allocation still needs the owner plus one coadministrator and the required committee vote.</p><a routerLink="/admin/genesis">Open setup & launch</a></div>
         @for (slot of [0, 1, 2]; track slot) {
           <label>
             <span>{{ slot === 0 ? 'Owner administrator' : 'Administrator ' + (slot + 1) }} enrolled vault ID</span>
@@ -106,6 +112,7 @@ import { formatError } from '../../../utils/format-error';
               <button
                 type="button"
                 [class.active]="kind() === 'SGT_SALE'"
+                [attr.aria-pressed]="kind() === 'SGT_SALE'"
                 (click)="kind.set('SGT_SALE')"
               >
                 Sale
@@ -113,6 +120,7 @@ import { formatError } from '../../../utils/format-error';
               <button
                 type="button"
                 [class.active]="kind() === 'SGT_GRANT'"
+                [attr.aria-pressed]="kind() === 'SGT_GRANT'"
                 (click)="kind.set('SGT_GRANT')"
               >
                 Grant
@@ -122,7 +130,7 @@ import { formatError } from '../../../utils/format-error';
 
           <label>
             <span>Proposal title</span>
-            <input [(ngModel)]="title" maxlength="120" placeholder="Example: Allocate SGT to Abraham" />
+            <input [(ngModel)]="title" maxlength="120" placeholder="Example: Administrator starter grant" />
           </label>
 
           <div class="two-col">

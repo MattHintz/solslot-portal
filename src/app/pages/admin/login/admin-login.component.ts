@@ -45,12 +45,17 @@ import { formatError } from '../../../utils/format-error';
       <div class="login-layout">
         <section class="welcome" aria-labelledby="admin-sign-in-title">
           <span class="eyebrow">Solslot administration</span>
-          <h1 id="admin-sign-in-title">Welcome back</h1>
+          <h1 id="admin-sign-in-title">Sign in to your admin desk</h1>
           <p>
             Use the administrator wallet assigned to you. Your wallet will ask for
             a sign-in signature. This does not send a transaction or move funds.
           </p>
 
+          <aside class="ux-context">
+            <strong>Joining for the first time?</strong>
+            <p>Use the owner’s private invitation to enroll your daily wallet first. You do not need an SGT vault or an SGT balance to enroll.</p>
+            <a routerLink="/admin/genesis">View setup & launch</a>
+          </aside>
           <div class="safety-brief" aria-labelledby="sign-in-safety-title">
             <h2 id="sign-in-safety-title">Before you connect</h2>
             <ul>

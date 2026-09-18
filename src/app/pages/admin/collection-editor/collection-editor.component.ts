@@ -99,6 +99,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
             </section>
           }
 
+          <aside class="ux-context"><strong>Work through the property, then open its mint proposals</strong><p>Complete the property information and allocation, resolve the review checks, and seal the record. Open Governance to prepare issuance. Sealing a collection does not mint or sell a SmartDeed.</p></aside>
           <div class="editor-layout">
             <nav class="section-nav" aria-label="Collection workspace sections">
               @for (item of sections; track item.id; let index = $index) {
@@ -108,6 +109,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                 <button
                   type="button"
                   [class.is-active]="activeSection() === item.id"
+                  [attr.aria-current]="activeSection() === item.id ? 'step' : null"
                   [class.has-issues]="sectionIssueCount(item.id) > 0"
                   (click)="activeSection.set(item.id)"
                 >
