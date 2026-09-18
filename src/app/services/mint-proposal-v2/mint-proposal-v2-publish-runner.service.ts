@@ -177,6 +177,7 @@ export class MintProposalV2PublishRunnerService {
         metadataAnchorId: args.metadataAnchorId,
         primaryPurchaseUsdAmountMinor: args.primaryPurchaseUsdAmountMinor,
         inventoryPuzzleVersion: args.inventoryPuzzleVersion,
+        governanceTrackerVersion: 2,
         primaryPurchaseValidatorPubkeys: args.primaryPurchaseValidatorPubkeys,
         primaryPurchaseNetwork: args.primaryPurchaseNetwork,
         primaryPurchaseProtocolTreasuryPuzhash:

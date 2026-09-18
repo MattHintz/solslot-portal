@@ -148,7 +148,7 @@ async function verifyArtifact(
     artifact.sourceManifestVersion !== 3 ||
     artifact.protocolVersion !== 'solslot-v2-rc23' ||
     artifact.network !== 'testnet11' ||
-    artifact.evmChainId !== 11155111
+    ![11155111, 84532].includes(artifact.evmChainId)
   ) {
     throw new Error('The public artifact does not describe Solslot V2 testnet11.');
   }

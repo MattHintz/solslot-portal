@@ -47,7 +47,7 @@ describe('signed inventory activation content', () => {
   });
 });
 
-async function signedArtifact(slots: number[] = [0, 2]): Promise<SolslotPublicArtifact> {
+async function signedArtifact(slots: number[] = [0, 2], evmChainId = 11155111): Promise<SolslotPublicArtifact> {
   const wallets = ['01', '02', '03'].map((byte) => new Wallet(`0x${byte.repeat(32)}`));
   const compressedPubkeys = wallets.map((wallet) =>
     SigningKey.computePublicKey(wallet.privateKey, true),
@@ -77,7 +77,7 @@ async function signedArtifact(slots: number[] = [0, 2]): Promise<SolslotPublicAr
     sourceManifestVersion: 3,
     protocolVersion: 'solslot-v2-rc23',
     network: 'testnet11',
-    evmChainId: 11155111,
+    evmChainId,
     reviewClass: 'internal-engineering-testnet',
     testOnly: true,
     auditStatus: 'pending-external-review',
@@ -223,7 +223,7 @@ async function signedArtifact(slots: number[] = [0, 2]): Promise<SolslotPublicAr
       adminIndex: index,
       compressedPubkey: artifact.adminAuthority.compressedPubkeys[index],
       signature: await wallets[index].signTypedData(
-        { name: 'Solslot Protocol', version: '4', chainId: 11155111 },
+        { name: 'Solslot Protocol', version: '4', chainId: evmChainId },
         {
           SolslotGenesisArtifact: [
             { name: 'artifactHash', type: 'bytes32' },
@@ -245,6 +245,21 @@ describe('SolslotProtocolArtifactService', () => {
     Object.assign(environment.zkPassport, originalZkPassport);
     clearVerifiedProtocolCoordinates();
   });
+
+  for (const chainId of [84532, 1, 8453]) {
+    it(`accepts Base Sepolia enrollment and rejects mainnet artifacts: ${chainId}`, async () => {
+      const artifact = await signedArtifact([0, 2], chainId);
+      const vaultSignatureChain = environment.eip712ChainId;
+      Object.assign(environment.solslotProtocol, {artifactHash: artifact.artifactHash, adminPortalSourceSha: SOURCE_SHA});
+      const api = jasmine.createSpyObj<SolslotApiService>('SolslotApiService', ['getSignedProtocolArtifact']);
+      api.getSignedProtocolArtifact.and.resolveTo(artifact);
+      const service = new SolslotProtocolArtifactService(api);
+      await service.initialize();
+      expect(service.isReady).toBe(chainId === 84532);
+      if (chainId === 84532) expect(environment.zkPassport.evmChainId).toBe(84532);
+      expect(environment.eip712ChainId).toBe(vaultSignatureChain);
+    });
+  }
 
   it('accepts a source-pinned owner-plus-one artifact and installs runtime authority', async () => {
     const artifact = await signedArtifact();
