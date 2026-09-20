@@ -627,6 +627,9 @@ export function validateRecoveryDrill(
 ): string {
   const typed = challenge.evmTypedData;
   const message = typed?.message;
+  const mainnet = typed?.domain?.version === '2' && typed.domain.chainId === 8453;
+  const version = mainnet ? 2 : 1;
+  const chainId = mainnet ? 8453 : 84532;
   const domainFields = [
     { name: 'name', type: 'string' }, { name: 'version', type: 'string' },
     { name: 'chainId', type: 'uint256' },
@@ -641,7 +644,7 @@ export function validateRecoveryDrill(
     !isRecord(typed) || !isRecord(typed.domain) || !isRecord(typed.types) || !isRecord(message) ||
     !hasExactKeys(typed, ['domain', 'types', 'primaryType', 'message']) ||
     typed.primaryType !== 'SolslotAdminRecoveryDrill' ||
-    stableJson(typed.domain) !== stableJson({ name: 'Solslot Admin Recovery', version: '1', chainId: 84532 }) ||
+    stableJson(typed.domain) !== stableJson({ name: 'Solslot Admin Recovery', version: String(version), chainId }) ||
     !hasExactKeys(typed.types, ['EIP712Domain', 'SolslotAdminRecoveryDrill']) ||
     stableJson(typed.types['EIP712Domain']) !== stableJson(domainFields) ||
     stableJson(typed.types['SolslotAdminRecoveryDrill']) !== stableJson(fields) ||
@@ -664,7 +667,8 @@ export function validateRecoveryDrill(
   getAddress(message['dailyWallet']);
   getAddress(message['evmGuardian']);
   const inner = treeHashList([
-    toUtf8Bytes('SolslotAdminRecoveryDrill'), 1,
+    toUtf8Bytes('SolslotAdminRecoveryDrill'), version,
+    ...(mainnet ? [chainId] : []),
     getBytes(message['ceremonyId']), message['slot'],
     getBytes(message['recoveryBlsCommitment']), challenge.revision,
     getBytes(message['nonce']), challenge.expiresAt,
@@ -680,7 +684,8 @@ export function validateRecoveryDrill(
     }
     // Preserve the validated address strings: the API payload uses their original case.
     const payload = {
-      schemaVersion: 1, purpose: 'Solslot administrator recovery drill',
+      schemaVersion: version, ...(mainnet ? { evmChainId: chainId } : {}),
+      purpose: 'Solslot administrator recovery drill',
       ...message, recoveryBlsPubkey: recoveryBlsPublicKey.toLowerCase(),
       recoveryBlsPath: challenge.recoveryBlsPath, recoveryEvmPath: challenge.recoveryEvmPath,
     };
@@ -720,7 +725,7 @@ function validateLostRecoveryBody(
     ]) ||
     typedData.domain.name !== 'Solslot Admin Recovery' ||
     typedData.domain.version !== '1' ||
-    Number(typedData.domain.chainId) !== 84532 ||
+    Number(typedData.domain.chainId) !== body.intent.evmChainId ||
     getAddress(String(typedData.domain.verifyingContract)) !== body.coordinator ||
     !hasExactKeys(typedData.types, [
       'EIP712Domain',
@@ -773,7 +778,7 @@ function validateRecoveryGuardianActionBody(
     ]) ||
     typedData.domain.name !== 'Solslot Admin Recovery' ||
     typedData.domain.version !== '1' ||
-    Number(typedData.domain.chainId) !== 84532 ||
+    Number(typedData.domain.chainId) !== body.intent.evmChainId ||
     getAddress(String(typedData.domain.verifyingContract)) !== body.coordinator ||
     !hasExactKeys(typedData.types, ['EIP712Domain', primaryType]) ||
     JSON.stringify(typedData.types['EIP712Domain']) !== JSON.stringify(domainFields) ||
@@ -855,7 +860,7 @@ function validateIntentShape(intent: AdminKeyChangeIntentV1): void {
     intent.slot < 0 ||
     intent.slot > 2 ||
     intent.chiaNetwork !== 'testnet11' ||
-    intent.evmChainId !== 84532 ||
+    ![84532, 8453].includes(intent.evmChainId) ||
     !Number.isSafeInteger(intent.nonce) ||
     intent.nonce < 1 ||
     !Number.isSafeInteger(intent.expiresAt) ||

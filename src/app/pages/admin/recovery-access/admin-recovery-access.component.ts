@@ -130,7 +130,7 @@ import { formatError } from '../../../utils/format-error';
             </dl>
             <p>
               Signing starts the exact owner-and-both-coadministrator recovery. All privileged
-              operations remain paused until Chia and Base Sepolia match.
+              operations remain paused until Chia and the selected Base network match.
             </p>
             <details>
               <summary>Advanced evidence</summary>
@@ -165,7 +165,7 @@ import { formatError } from '../../../utils/format-error';
                 <dt>Recovery guardian</dt>
                 <dd>{{ guardianPackage.expectedGuardian }}</dd>
               </div>
-              <div><dt>Network</dt><dd>Base Sepolia</dd></div>
+              <div><dt>Network</dt><dd>{{ guardianPackage.intent.evmChainId === 8453 ? 'Base mainnet' : 'Base Sepolia' }}</dd></div>
               <div>
                 <dt>Safety effect</dt>
                 <dd>
@@ -580,6 +580,7 @@ export class AdminRecoveryAccessComponent implements OnDestroy {
       const guardianSignature =
         await this.recoveryKit.signRecoveryGuardianAction({
           action: guardianPackage.action,
+          expectedChainId: guardianPackage.intent.evmChainId,
           intentHash: guardianPackage.intentHash,
           coordinator: guardianPackage.coordinator,
           expectedGuardian: guardianPackage.expectedGuardian,

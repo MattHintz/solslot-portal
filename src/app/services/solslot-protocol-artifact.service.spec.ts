@@ -18,6 +18,7 @@ import {
 const SOURCE_SHA = 'a'.repeat(40);
 const HASH = (byte: string) => `0x${byte.repeat(32)}`;
 const ADDRESS = (byte: string) => `0x${byte.repeat(20)}`;
+const originalOperationalChain = environment.eip712ChainId;
 const originalProtocol = { ...environment.solslotProtocol };
 const originalZkPassport = { ...environment.zkPassport };
 
@@ -218,7 +219,7 @@ async function signedArtifact(slots: number[] = [0, 2], evmChainId = 11155111, i
   if (identityChain !== undefined) {
     artifact.sourceManifestVersion = 4;
     const activation: EnrollmentActivation = {
-      schema: 'solslot.enrollment-activation.v1', environment: environment.zkPassport.domain === 'solslot.com' ? 'production-alpha' : 'staging-alpha',
+      schema: evmChainId === 8453 ? 'solslot.enrollment-activation.v2' : 'solslot.enrollment-activation.v1', environment: environment.zkPassport.domain === 'solslot.com' ? 'production-alpha' : 'staging-alpha',
       network: 'testnet11', evmChainId: identityChain, deploymentId: artifact.ceremony.ceremonyId,
       sourceShas: {...artifact.sourceShas}, releaseIdentity: hashJson({schema:'solslot.enrollment-release.v1',sourceShas:artifact.sourceShas}),
       emitter: artifact.evmAddresses.attestationEmitter, issuer: ADDRESS('e1'),
@@ -264,6 +265,7 @@ async function signedArtifact(slots: number[] = [0, 2], evmChainId = 11155111, i
 
 describe('SolslotProtocolArtifactService', () => {
   afterEach(() => {
+    environment.eip712ChainId = originalOperationalChain;
     Object.assign(environment.solslotProtocol, originalProtocol);
     Object.assign(environment.zkPassport, originalZkPassport);
     clearVerifiedProtocolCoordinates();
@@ -306,6 +308,19 @@ describe('SolslotProtocolArtifactService', () => {
     expect(service.artifact?.evmChainId).toBe(84532);
     expect(environment.zkPassport.evmChainId).toBe(identityChain);
     expect(environment.eip712ChainId).toBe(vaultSignatureChain);
+  });
+
+  it('installs explicitly signed Base mainnet operations with Chia Testnet11', async () => {
+    const artifact = await signedArtifact([0, 2], 8453, 8453);
+    Object.assign(environment.solslotProtocol, {artifactHash: artifact.artifactHash, adminPortalSourceSha: SOURCE_SHA});
+    const api = jasmine.createSpyObj<SolslotApiService>('API', ['getSignedProtocolArtifact']);
+    api.getSignedProtocolArtifact.and.resolveTo(artifact);
+    const service = new SolslotProtocolArtifactService(api);
+    await service.initialize();
+    expect(service.isReady).withContext(service.failure).toBeTrue();
+    expect(service.artifact?.network).toBe('testnet11');
+    expect(environment.eip712ChainId).toBe(8453);
+    expect(environment.zkPassport.evmChainId).toBe(8453);
   });
 
   it('accepts production-hosted identity activation in the locked Testnet11 ceremony build only', async () => {

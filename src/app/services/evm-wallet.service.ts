@@ -22,11 +22,14 @@ const EVM_SIGNATURE_PROMPT_TIMEOUT_MS = 180_000;
 const EVM_WALLETCONNECT_STORAGE_PREFIX = 'solslot-admin-v2';
 const EVM_WALLETCONNECT_SIGNING_METHODS = ['eth_signTypedData', 'eth_signTypedData_v4'];
 const EVM_WALLETCONNECT_TRANSACTION_METHOD = 'eth_sendTransaction';
-const EVM_WALLETCONNECT_REQUIRED_CHAIN_ID = environment.eip712ChainId;
 const BASE_SEPOLIA_CHAIN_ID = 84532;
+function selectedAuthorityChain(): number {
+  return environment.eip712ChainId === 8453 ? 8453 : BASE_SEPOLIA_CHAIN_ID;
+}
 const EVM_WALLETCONNECT_KNOWN_RPC_MAP: Record<number, string> = {
   11155111: 'https://ethereum-sepolia-rpc.publicnode.com',
   [BASE_SEPOLIA_CHAIN_ID]: 'https://sepolia.base.org',
+  8453: 'https://mainnet.base.org',
 };
 type EvmWalletConnectOptionalChainsMode = 'solslot' | 'none';
 export interface EvmWalletConnectOptions {
@@ -356,7 +359,7 @@ export class EvmWalletService {
     const messageKeys = Object.keys(typedData.message).sort();
     const safeTypes = typedData.types['SafeMessage'];
     if (
-      Number(domain.chainId) !== BASE_SEPOLIA_CHAIN_ID ||
+      Number(domain.chainId) !== selectedAuthorityChain() ||
       !domain.verifyingContract ||
       getAddress(domain.verifyingContract) !== safe ||
       JSON.stringify(domainKeys) !== JSON.stringify(['chainId', 'verifyingContract']) ||
@@ -366,9 +369,9 @@ export class EvmWalletService {
       JSON.stringify(messageKeys) !== JSON.stringify(['message']) ||
       !isHexString(String(typedData.message['message']))
     ) {
-      throw new Error('Refusing altered Base Sepolia SafeMessage approval data.');
+      throw new Error('Refusing altered Base authority SafeMessage approval data.');
     }
-    return this.signTypedDataOnChain(typedData, BASE_SEPOLIA_CHAIN_ID);
+    return this.signTypedDataOnChain(typedData, selectedAuthorityChain());
   }
 
   /**
@@ -444,7 +447,7 @@ export class EvmWalletService {
       nonce: Number(typedData.message['nonce']),
     };
     if (
-      Number(typedData.domain.chainId) !== BASE_SEPOLIA_CHAIN_ID ||
+      Number(typedData.domain.chainId) !== selectedAuthorityChain() ||
       !typedData.domain.verifyingContract ||
       getAddress(typedData.domain.verifyingContract) !== getAddress(expected.safe) ||
       JSON.stringify(domainKeys) !== JSON.stringify(['chainId', 'verifyingContract']) ||
@@ -479,7 +482,7 @@ export class EvmWalletService {
     ) {
       throw new Error('Refusing altered Authority V3 Identity Safe transaction data.');
     }
-    return this.signTypedDataOnChain(typedData, BASE_SEPOLIA_CHAIN_ID);
+    return this.signTypedDataOnChain(typedData, selectedAuthorityChain());
   }
 
   /**
@@ -567,7 +570,7 @@ export class EvmWalletService {
     const fields = shapes[typedData.primaryType];
     const domain = typedData.domain;
     const versions = typedData.primaryType === 'SolslotGenesisArtifact'
-      ? (binding.evmChainId === 84532 ? ['4'] : ['2','3','4']) : ['2'];
+      ? ([84532, 8453].includes(binding.evmChainId) ? ['4'] : ['2','3','4']) : ['2'];
     if (!fields || domain.name !== 'Solslot Protocol' || !versions.includes(String(domain.version)) ||
         JSON.stringify(Object.keys(domain).sort()) !== JSON.stringify(['chainId','name','version']) ||
         JSON.stringify(Object.keys(typedData.types).sort()) !== JSON.stringify(['EIP712Domain',typedData.primaryType].sort()) ||
@@ -595,7 +598,7 @@ export class EvmWalletService {
   }
 
   private assertLaunchBinding(typedData: Eip712TypedData, binding: LaunchCeremonyBinding): void {
-    if (!binding || ![11155111,84532].includes(binding.evmChainId) ||
+    if (!binding || ![11155111,84532,8453].includes(binding.evmChainId) ||
         Number(typedData.domain.chainId) !== binding.evmChainId ||
         !isHexString(binding.ceremonyId,32) || /^0x0+$/.test(binding.ceremonyId) ||
         typedData.message['ceremonyId'] !== binding.ceremonyId)
@@ -691,20 +694,20 @@ export class EvmWalletService {
     const address = this.address();
     if (!address) throw new Error('Not connected');
     if (
-      Number(transaction.chainId) !== BASE_SEPOLIA_CHAIN_ID ||
+      Number(transaction.chainId) !== selectedAuthorityChain() ||
       !isHexString(transaction.data) ||
       transaction.data === '0x' ||
       getAddress(transaction.to) !== transaction.to ||
       transaction.value.toLowerCase() !== '0x0'
     ) {
-      throw new Error('Refusing an altered Base Sepolia protocol transaction.');
+      throw new Error('Refusing an altered Base authority protocol transaction.');
     }
     if (this.connectionKind() === 'walletconnect') {
-      const chain = formatWalletConnectChainId(BASE_SEPOLIA_CHAIN_ID);
+      const chain = formatWalletConnectChainId(selectedAuthorityChain());
       const provider = this.wcProvider as unknown as WalletConnectDebugProvider | null;
       if (!provider || !walletConnectSessionSupportsChain(provider, chain)) {
         throw new Error(
-          `WalletConnect has not approved Base Sepolia (${chain}). Reconnect and approve it.`,
+          `WalletConnect has not approved the selected Base network (${chain}). Reconnect and approve it.`,
         );
       }
       const result = await withWalletPromptTimeout(
@@ -724,14 +727,14 @@ export class EvmWalletService {
           WALLET_CONNECT_REQUEST_EXPIRY_SECONDS,
         ),
         EVM_SIGNATURE_PROMPT_TIMEOUT_MS,
-        'WalletConnect did not return the Base Sepolia ownership transaction.',
+        'WalletConnect did not return the Base authority transaction.',
       );
       if (typeof result !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(result)) {
         throw new Error('WalletConnect returned an invalid transaction hash.');
       }
       return result;
     }
-    await this.ensureChainId(BASE_SEPOLIA_CHAIN_ID);
+    await this.ensureChainId(selectedAuthorityChain());
     const provider = new BrowserProvider(this.eip1193);
     const signer = await provider.getSigner(address);
     const submitted = await signer.sendTransaction({
@@ -1348,7 +1351,7 @@ function isUnsupportedTypedDataError(e: unknown): boolean {
 }
 
 function evmWalletConnectRequiredChainId(): number {
-  return EVM_WALLETCONNECT_REQUIRED_CHAIN_ID;
+  return environment.eip712ChainId;
 }
 
 function walletConnectMethodTimeoutSeconds(): number {
@@ -1370,7 +1373,7 @@ function evmWalletConnectOptionalChainIds(
 ): number[] {
   const normalizedMode = normalizeOptionalChainsMode(mode);
   if (normalizedMode === 'none') return [];
-  return [BASE_SEPOLIA_CHAIN_ID];
+  return [BASE_SEPOLIA_CHAIN_ID, 8453].filter(chain => chain !== evmWalletConnectRequiredChainId());
 }
 
 function evmWalletConnectRpcMap(
@@ -1395,6 +1398,8 @@ function evmChainDisplayName(chainId: number): string {
       return 'Sepolia';
     case 84532:
       return 'Base Sepolia';
+    case 8453:
+      return 'Base mainnet';
     default:
       return `chain ${chainId}`;
   }

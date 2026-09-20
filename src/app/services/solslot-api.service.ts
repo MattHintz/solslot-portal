@@ -374,7 +374,7 @@ export interface SolslotPublicArtifact {
   sourceManifestVersion: 3 | 4;
   protocolVersion: 'solslot-v2-rc23';
   network: 'testnet11';
-  evmChainId: 11155111 | 84532;
+  evmChainId: 11155111 | 84532 | 8453;
   enrollmentActivation?: EnrollmentActivation | null;
   genesisPlan?: Record<string, unknown>;
   reviewClass: 'independent-release-review' | 'internal-engineering-testnet';

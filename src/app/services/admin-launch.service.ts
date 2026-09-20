@@ -276,7 +276,7 @@ export interface LaunchAdministrator {
 }
 
 export interface LaunchSummary {
-  evmChainId?: 11155111 | 84532;
+  evmChainId?: 11155111 | 84532 | 8453;
   enrollmentCommitments?: Record<string, string | number> | null;
   ceremonyId: string;
   state: string;

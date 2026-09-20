@@ -4,7 +4,7 @@ import { concat, sha256, toUtf8Bytes } from 'ethers';
 import { canonicalIntBytes } from './chia-hash';
 import type { SolslotPublicArtifact } from '../services/solslot-api.service';
 export interface EnrollmentActivation {
-  schema: 'solslot.enrollment-activation.v1'; environment: 'staging-alpha' | 'production-alpha';
+  schema: 'solslot.enrollment-activation.v1' | 'solslot.enrollment-activation.v2'; environment: 'staging-alpha' | 'production-alpha';
   network: 'testnet11'; evmChainId: 8453 | 84532; deploymentId: string; sourceShas: Record<string,string>;
   releaseIdentity: string; emitter: string; issuer: string; issuerKeyRef: string; issuerIdentityClientId: string;
   permitVersion: 1; adapterVersion: 1; validatorMessageVersion: 1; bridgeModuleHash: string;
@@ -38,6 +38,11 @@ export function permitBridgePolicy(validators:string[],context:string):string {
   for(const h of [list(validators),atom(uint(2)),atom(context)].reverse()) args=listHashes([atom('0x04'),pair(atom('0x01'),h),args]);
   return listHashes([atom('0x02'),pair(atom('0x01'),BRIDGE_MODULE_HASH),args]);
 }
+export function activationOperationsChain(a: EnrollmentActivation): 8453 | 84532 {
+  if (a.schema === 'solslot.enrollment-activation.v1' && [8453, 84532].includes(a.evmChainId)) return 84532;
+  if (a.schema === 'solslot.enrollment-activation.v2' && a.evmChainId === 8453) return 8453;
+  throw new Error('Unsupported enrollment activation network selection.');
+}
 export function artifactActivation(artifact:SolslotPublicArtifact,expectedDomain?:string):EnrollmentActivation|null {
   const plan=artifact.genesisPlan;
   const selected=Object.hasOwn(artifact,'enrollmentActivation') || !!plan && Object.hasOwn(plan,'enrollmentActivation') || artifact.evmChainId!==11155111;
@@ -47,7 +52,7 @@ export function artifactActivation(artifact:SolslotPublicArtifact,expectedDomain
     'issuerIdentityClientId','permitVersion','adapterVersion','validatorMessageVersion','bridgeModuleHash','contextHash','bridgePolicyHash','permitLifetimeSeconds','reviewEvidenceSha256'],'Selected identity deployment');
   requireThat(a,'Selected identity deployment is missing.');
   requireThat(artifact.schemaVersion===4 && artifact.sourceManifestVersion===4 && artifact.protocolVersion==='solslot-v2-rc23' &&
-    artifact.evmChainId===84532 && a.schema==='solslot.enrollment-activation.v1' && a.network==='testnet11' && [8453,84532].includes(a.evmChainId) &&
+    artifact.evmChainId===activationOperationsChain(a) && a.network==='testnet11' && [8453,84532].includes(a.evmChainId) &&
     ['staging-alpha','production-alpha'].includes(a.environment),'Selected identity deployment is not an isolated alpha deployment.');
   const domain=a.environment==='staging-alpha'?'staging.solslot.com':'solslot.com';
   if (expectedDomain !== undefined) requireThat(domain===expectedDomain,'Identity deployment belongs to another host.');

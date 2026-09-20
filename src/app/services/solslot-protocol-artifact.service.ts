@@ -161,7 +161,7 @@ async function verifyArtifact(
     ![3, 4].includes(artifact.sourceManifestVersion) ||
     artifact.protocolVersion !== 'solslot-v2-rc23' ||
     artifact.network !== 'testnet11' ||
-    ![11155111, 84532].includes(artifact.evmChainId)
+    ![11155111, 84532, 8453].includes(artifact.evmChainId)
   ) {
     throw new Error('The public artifact does not describe Solslot V2 testnet11.');
   }
@@ -388,6 +388,8 @@ function artifactCoordinates(artifact: SolslotPublicArtifact): SolslotProtocolCo
   };
 }
 
+const INITIAL_OPERATIONAL_CHAIN_ID = environment.eip712ChainId;
+
 function installRuntimeBindings(
   artifact: SolslotPublicArtifact,
   coordinates: SolslotProtocolCoordinates,
@@ -424,6 +426,9 @@ function installRuntimeBindings(
     p2PoolModHash: artifact.puzzleHashes.p2PoolModHash || '',
     p2VaultModHash: artifact.puzzleHashes.p2VaultModHash || '',
   });
+  if (artifactActivation(artifact)?.schema === 'solslot.enrollment-activation.v2') {
+    environment.eip712ChainId = artifact.evmChainId;
+  }
   Object.assign(environment.zkPassport, {
     policyVersion: artifact.bridgePolicy.policyVersion,
     // Identity contracts can be on Base while artifact signatures stay on Base Sepolia.
@@ -438,6 +443,7 @@ function installRuntimeBindings(
 }
 
 function clearRuntimeBindings(): void {
+  environment.eip712ChainId = INITIAL_OPERATIONAL_CHAIN_ID;
   Object.assign(environment.solslotProtocol, {
     artifactVerified: false,
     retiredCoordinates: [],
