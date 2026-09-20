@@ -104,6 +104,7 @@ import { formatError } from '../../../utils/format-error';
               <div><dt>Purpose</dt><dd>Recovery-kit restore test only</dd></div>
               <div><dt>Funds moved</dt><dd>None</dd></div>
               <div><dt>Authority changed</dt><dd>No</dd></div>
+              <div><dt>Network</dt><dd>{{ drillPackage.challenge.evmTypedData.domain.chainId === 8453 ? 'Base mainnet' : 'Base Sepolia' }}</dd></div>
               <div><dt>Administrator slot</dt><dd>{{ administratorSlot(drillPackage) }}</dd></div>
               <div><dt>Daily wallet</dt><dd>{{ dailyWallet(drillPackage) }}</dd></div>
               <div><dt>Expires</dt><dd>{{ expiry(drillPackage) }}</dd></div>
@@ -126,6 +127,7 @@ import { formatError } from '../../../utils/format-error';
               <div><dt>Administrator slot</dt><dd>{{ lostPackage.intent.slot + 1 }}</dd></div>
               <div><dt>Replacement wallet</dt><dd>{{ lostPackage.intent.newDailyEvmKey }}</dd></div>
               <div><dt>Safety delay</dt><dd>7 days</dd></div>
+              <div><dt>Network</dt><dd>{{ lostPackage.intent.evmChainId === 8453 ? 'Base mainnet' : 'Base Sepolia' }}</dd></div>
               <div><dt>Expires</dt><dd>{{ lostExpiry(lostPackage) }}</dd></div>
             </dl>
             <p>
