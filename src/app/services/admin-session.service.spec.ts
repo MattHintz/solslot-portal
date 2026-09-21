@@ -23,7 +23,7 @@ describe('AdminSessionService', () => {
     isReady: boolean;
     failure: string;
     adminRoster: string[];
-    artifact: { artifactHash: string } | null;
+    artifact: { artifactHash: string; evmChainId: number; identityChain?: { chainId: number } } | null;
   };
 
   beforeEach(() => {
@@ -33,7 +33,7 @@ describe('AdminSessionService', () => {
       isReady: true,
       failure: '',
       adminRoster: [...roster],
-      artifact: { artifactHash },
+      artifact: { artifactHash, evmChainId: 11155111 },
     };
   });
 
@@ -73,6 +73,41 @@ describe('AdminSessionService', () => {
     expect(service.isAuthenticated()).toBeTrue();
     expect(service.subject()).toBe(wallet.address.toLowerCase());
     expect(service.requireSession().pubkey).toBe(pubkey.toLowerCase());
+  });
+
+  for (const operationalChain of [84532, 8453]) {
+    it(`accepts and restores signed logins on operational chain ${operationalChain} with Base identity`, async () => {
+      artifact.artifact = { artifactHash, evmChainId: operationalChain, identityChain: { chainId: 8453 } };
+      const service = configure();
+      const envelope = await signedEnvelope(undefined, operationalChain);
+      await expectAsync(service.loginWithWallet({ ...envelope, signatureKind: 'eip712' }))
+        .toBeResolvedTo(wallet.address.toLowerCase());
+      TestBed.resetTestingModule();
+      expect(configure().requireSession().address).toBe(wallet.address.toLowerCase());
+    });
+
+    for (const signedChain of [11155111, 84532, 8453].filter(chain => chain !== operationalChain)) {
+      it(`rejects a valid chain ${signedChain} signature when the release uses ${operationalChain}`, async () => {
+        artifact.artifact = { artifactHash, evmChainId: operationalChain, identityChain: { chainId: 8453 } };
+        const envelope = await signedEnvelope(undefined, signedChain);
+        const service = configure();
+        await expectAsync(service.loginWithWallet({ ...envelope, signatureKind: 'eip712' }))
+          .toBeRejectedWithError('Administrator login envelope is invalid.');
+        sessionStorage.setItem(storageKey, JSON.stringify(persisted(envelope)));
+        TestBed.resetTestingModule();
+        expect(configure().isAuthenticated()).toBeFalse();
+        expect(sessionStorage.getItem(storageKey)).toBeNull();
+      });
+    }
+  }
+
+  it('invalidates a cached session when the verified operational chain changes', async () => {
+    artifact.artifact = { artifactHash, evmChainId: 84532 };
+    const service = configure();
+    await service.loginWithWallet({ ...await signedEnvelope(undefined, 84532), signatureKind: 'eip712' });
+    artifact.artifact = { artifactHash, evmChainId: 8453 };
+    expect(() => service.requireSession()).toThrowError('Administrator login envelope is invalid.');
+    expect(service.isAuthenticated()).toBeFalse();
   });
 
   it('rejects a cached envelope with a different API scope', async () => {
@@ -153,6 +188,7 @@ describe('AdminSessionService', () => {
 
   async function signedEnvelope(
     expiresAt = Math.floor(Date.now() / 1_000) + 3_600,
+    chainId = 11155111,
   ): Promise<{
     address: string;
     pubkey: string;
@@ -167,7 +203,7 @@ describe('AdminSessionService', () => {
       domain: {
         name: 'Solslot Protocol',
         version: '2',
-        chainId: 11155111,
+        chainId,
       },
       types: {
         EIP712Domain: [

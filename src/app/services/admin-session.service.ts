@@ -212,7 +212,7 @@ export class AdminSessionService implements OnDestroy {
       !sameKeys(typedData.domain, ['chainId', 'name', 'version']) ||
       typedData.domain.name !== 'Solslot Protocol' ||
       typedData.domain.version !== '2' ||
-      typedData.domain.chainId !== 11155111 ||
+      typedData.domain.chainId !== artifact.evmChainId ||
       !sameKeys(typedData.types, ['EIP712Domain', 'SolslotAdminLogin']) ||
       JSON.stringify(typedData.types['EIP712Domain']) !==
         JSON.stringify(EIP712_DOMAIN_TYPES) ||
