@@ -1,3 +1,4 @@
+import { MAINNET_RECOVERY_DRILL } from './recovery-drill-mainnet.fixture';
 import { TestBed } from '@angular/core/testing';
 import { getBytes } from 'ethers';
 
@@ -33,12 +34,24 @@ describe('AdminRecoveryKitService signing boundaries', () => {
 
   afterEach(() => service.clear());
 
-  for (const fixture of RECOVERY_DRILL_API_FIXTURES) {
+  for (const fixture of [...RECOVERY_DRILL_API_FIXTURES, MAINNET_RECOVERY_DRILL]) {
     it(`signs the API-derived restore drill for slot ${fixture.payload['slot']} and revision ${fixture.payload['revision']}`, async () => {
       const challenge = structuredClone(fixture.challenge);
       await service.signDrill(challenge);
       expect(signedMessages).toEqual([getBytes(challenge.blsSigningDigest)]);
       expect(guardianSign).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  for (const mutation of ['chain', 'version', 'digest']) {
+    it(`rejects mainnet recovery ${mutation} drift before signing`, async () => {
+      const challenge = structuredClone(MAINNET_RECOVERY_DRILL.challenge);
+      if (mutation === 'chain') challenge.evmTypedData.domain.chainId = 84532;
+      if (mutation === 'version') challenge.evmTypedData.domain.version = '1';
+      if (mutation === 'digest') challenge.blsSigningDigest = RECOVERY_DRILL_API_FIXTURES[0].challenge.blsSigningDigest;
+      await expectAsync(service.signDrill(challenge)).toBeRejected();
+      expect(blsSign).not.toHaveBeenCalled();
+      expect(guardianSign).not.toHaveBeenCalled();
     });
   }
 

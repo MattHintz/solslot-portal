@@ -1,3 +1,7 @@
+import { activationContext, artifactActivation, EnrollmentActivation, permitBridgePolicy, hashJson, BRIDGE_MODULE_HASH } from '../utils/enrollment-activation';
+import { environment as ceremonyLockedEnvironment } from '../../environments/environment.ceremony-locked';
+import { environment as stagingEnvironment } from '../../environments/environment.staging';
+import baseIdentityVector from '../utils/enrollment-permit-base-identity-v1.json';
 import { SigningKey, Wallet } from 'ethers';
 import { environment } from '../../environments/environment';
 import { SolslotApiService, SolslotPublicArtifact } from './solslot-api.service';
@@ -14,6 +18,7 @@ import {
 const SOURCE_SHA = 'a'.repeat(40);
 const HASH = (byte: string) => `0x${byte.repeat(32)}`;
 const ADDRESS = (byte: string) => `0x${byte.repeat(20)}`;
+const originalOperationalChain = environment.eip712ChainId;
 const originalProtocol = { ...environment.solslotProtocol };
 const originalZkPassport = { ...environment.zkPassport };
 
@@ -47,7 +52,7 @@ describe('signed inventory activation content', () => {
   });
 });
 
-async function signedArtifact(slots: number[] = [0, 2], evmChainId = 11155111): Promise<SolslotPublicArtifact> {
+async function signedArtifact(slots: number[] = [0, 2], evmChainId = 11155111, identityChain?: 8453 | 84532, sourceManifestVersion: 3 | 4 = 3): Promise<SolslotPublicArtifact> {
   const wallets = ['01', '02', '03'].map((byte) => new Wallet(`0x${byte.repeat(32)}`));
   const compressedPubkeys = wallets.map((wallet) =>
     SigningKey.computePublicKey(wallet.privateKey, true),
@@ -74,7 +79,7 @@ async function signedArtifact(slots: number[] = [0, 2], evmChainId = 11155111): 
   })) as SolslotPublicArtifact['adminAuthority']['recoveryKits'];
   const artifact = {
     schemaVersion: 4,
-    sourceManifestVersion: 3,
+    sourceManifestVersion,
     protocolVersion: 'solslot-v2-rc23',
     network: 'testnet11',
     evmChainId,
@@ -211,6 +216,25 @@ async function signedArtifact(slots: number[] = [0, 2], evmChainId = 11155111): 
     retiredCoordinates: [HASH('ff')],
     signatures: [],
   } as SolslotPublicArtifact;
+  if (identityChain !== undefined) {
+    artifact.sourceManifestVersion = 4;
+    const activation: EnrollmentActivation = {
+      schema: evmChainId === 8453 ? 'solslot.enrollment-activation.v2' : 'solslot.enrollment-activation.v1', environment: environment.zkPassport.domain === 'solslot.com' ? 'production-alpha' : 'staging-alpha',
+      network: 'testnet11', evmChainId: identityChain, deploymentId: artifact.ceremony.ceremonyId,
+      sourceShas: {...artifact.sourceShas}, releaseIdentity: hashJson({schema:'solslot.enrollment-release.v1',sourceShas:artifact.sourceShas}),
+      emitter: artifact.evmAddresses.attestationEmitter, issuer: ADDRESS('e1'),
+      issuerKeyRef: 'https://example-vault.vault.azure.net/keys/enrollment/' + 'a'.repeat(32),
+      issuerIdentityClientId: '11111111-1111-1111-1111-111111111111',
+      permitVersion: 1, adapterVersion: 1, validatorMessageVersion: 1, bridgeModuleHash: BRIDGE_MODULE_HASH,
+      contextHash: '', bridgePolicyHash: '', permitLifetimeSeconds: 900, reviewEvidenceSha256: 'b'.repeat(64),
+    };
+    activation.contextHash = activationContext(activation);
+    activation.bridgePolicyHash = permitBridgePolicy(artifact.validatorSet.pubkeys, activation.contextHash);
+    artifact.bridgePolicy.policyHash = activation.bridgePolicyHash;
+    artifact.puzzleHashes['bridgePolicy'] = activation.bridgePolicyHash;
+    artifact.enrollmentActivation = activation;
+    artifact.genesisPlan = {enrollmentActivation: structuredClone(activation)};
+  }
   artifact.artifactHash = await canonicalArtifactHash(artifact);
   const value = {
     artifactHash: artifact.artifactHash,
@@ -241,13 +265,14 @@ async function signedArtifact(slots: number[] = [0, 2], evmChainId = 11155111): 
 
 describe('SolslotProtocolArtifactService', () => {
   afterEach(() => {
+    environment.eip712ChainId = originalOperationalChain;
     Object.assign(environment.solslotProtocol, originalProtocol);
     Object.assign(environment.zkPassport, originalZkPassport);
     clearVerifiedProtocolCoordinates();
   });
 
   for (const chainId of [84532, 1, 8453]) {
-    it(`accepts Base Sepolia enrollment and rejects mainnet artifacts: ${chainId}`, async () => {
+    it(`rejects unselected Base Sepolia and mainnet artifacts: ${chainId}`, async () => {
       const artifact = await signedArtifact([0, 2], chainId);
       const vaultSignatureChain = environment.eip712ChainId;
       Object.assign(environment.solslotProtocol, {artifactHash: artifact.artifactHash, adminPortalSourceSha: SOURCE_SHA});
@@ -255,11 +280,104 @@ describe('SolslotProtocolArtifactService', () => {
       api.getSignedProtocolArtifact.and.resolveTo(artifact);
       const service = new SolslotProtocolArtifactService(api);
       await service.initialize();
-      expect(service.isReady).toBe(chainId === 84532);
-      if (chainId === 84532) expect(environment.zkPassport.evmChainId).toBe(84532);
+      expect(service.isReady).toBeFalse();
       expect(environment.eip712ChainId).toBe(vaultSignatureChain);
     });
   }
+
+  it('keeps the historical source-manifest-v4 Ethereum Sepolia artifact readable without activation', async () => {
+    const artifact = await signedArtifact([0, 2], 11155111, undefined, 4);
+    Object.assign(environment.solslotProtocol, {artifactHash: artifact.artifactHash, adminPortalSourceSha: SOURCE_SHA});
+    const api = jasmine.createSpyObj<SolslotApiService>('API', ['getSignedProtocolArtifact']);
+    api.getSignedProtocolArtifact.and.resolveTo(artifact);
+    const service = new SolslotProtocolArtifactService(api);
+    await service.initialize();
+    expect(service.isReady).withContext(service.failure).toBeTrue();
+    expect(environment.zkPassport.evmChainId).toBe(11155111);
+  });
+
+  for (const identityChain of [8453, 84532] as const) it(`installs selected identity chain ${identityChain} without changing ceremony or recovery domains`, async () => {
+    const artifact = await signedArtifact([0, 2], 84532, identityChain);
+    const vaultSignatureChain = environment.eip712ChainId;
+    Object.assign(environment.solslotProtocol, {artifactHash: artifact.artifactHash, adminPortalSourceSha: SOURCE_SHA});
+    const api = jasmine.createSpyObj<SolslotApiService>('API', ['getSignedProtocolArtifact']);
+    api.getSignedProtocolArtifact.and.resolveTo(artifact);
+    const service = new SolslotProtocolArtifactService(api);
+    await service.initialize();
+    expect(service.isReady).withContext(service.failure).toBeTrue();
+    expect(service.artifact?.evmChainId).toBe(84532);
+    expect(environment.zkPassport.evmChainId).toBe(identityChain);
+    expect(environment.eip712ChainId).toBe(vaultSignatureChain);
+  });
+
+  it('installs explicitly signed Base mainnet operations with Chia Testnet11', async () => {
+    const artifact = await signedArtifact([0, 2], 8453, 8453);
+    Object.assign(environment.solslotProtocol, {artifactHash: artifact.artifactHash, adminPortalSourceSha: SOURCE_SHA});
+    const api = jasmine.createSpyObj<SolslotApiService>('API', ['getSignedProtocolArtifact']);
+    api.getSignedProtocolArtifact.and.resolveTo(artifact);
+    const service = new SolslotProtocolArtifactService(api);
+    await service.initialize();
+    expect(service.isReady).withContext(service.failure).toBeTrue();
+    expect(service.artifact?.network).toBe('testnet11');
+    expect(environment.eip712ChainId).toBe(8453);
+    expect(environment.zkPassport.evmChainId).toBe(8453);
+  });
+
+  it('accepts production-hosted identity activation in the locked Testnet11 ceremony build only', async () => {
+    expect(ceremonyLockedEnvironment.zkPassport.domain).toBe('solslot.com');
+    expect(ceremonyLockedEnvironment.chiaNetwork).toBe('testnet11');
+    expect(ceremonyLockedEnvironment.experienceMode).toBe('testnet-alpha');
+    expect(ceremonyLockedEnvironment.eip712ChainId).toBe(stagingEnvironment.eip712ChainId);
+    expect(ceremonyLockedEnvironment.protocolWritesEnabled).toBeFalse();
+    environment.zkPassport.domain = ceremonyLockedEnvironment.zkPassport.domain;
+    environment.zkPassport.deploymentEnvironment = ceremonyLockedEnvironment.zkPassport.deploymentEnvironment;
+    const artifact = await signedArtifact([0, 2], 84532, 8453);
+    Object.assign(environment.solslotProtocol, {artifactHash: artifact.artifactHash, adminPortalSourceSha: SOURCE_SHA});
+    const api = jasmine.createSpyObj<SolslotApiService>('API', ['getSignedProtocolArtifact']);
+    api.getSignedProtocolArtifact.and.resolveTo(artifact);
+    const service = new SolslotProtocolArtifactService(api);
+    await service.initialize();
+    expect(service.isReady).withContext(service.failure).toBeTrue();
+    const {INVENTORY_V2_HASH, RESERVED_V5_HASH} = await import('./mint-proposal-v2/inventory-puzzles');
+    const inventoryArtifact = structuredClone(artifact);
+    inventoryArtifact.inventoryActivation = {
+      schema: 'solslot.inventory-activation.v1', network: 'testnet11', environment: 'production-alpha',
+      deploymentId: artifact.ceremony.ceremonyId, inventoryVersion: 2, adapterVersion: 1,
+      availableModuleHash: INVENTORY_V2_HASH, reservedModuleHash: RESERVED_V5_HASH,
+      sourceShas: {...artifact.sourceShas}, reviewEvidenceSha256: 'ab'.repeat(32),
+    };
+    expect(() => verifyInventoryActivation(inventoryArtifact)).not.toThrow();
+    inventoryArtifact.inventoryActivation.environment = 'staging-alpha';
+    expect(() => verifyInventoryActivation(inventoryArtifact)).toThrowError(/does not match/);
+    environment.zkPassport.domain = 'staging.solslot.com';
+    await service.initialize();
+    expect(service.isReady).toBeFalse();
+    expect(service.failure).toContain('configuration disagree');
+    environment.zkPassport.deploymentEnvironment = 'staging-alpha';
+    await service.initialize();
+    expect(service.isReady).toBeFalse();
+    expect(service.failure).toContain('another host');
+  });
+
+  it('matches the independent Python/CLVM Base identity vector', () => {
+    const vector = baseIdentityVector as any;
+    expect(activationContext(vector.context)).toBe(vector.permit.contextHash);
+    expect(permitBridgePolicy(vector.validatorPubkeys, vector.permit.contextHash)).toBe(vector.bridgePolicyHash);
+  });
+
+  for (const failure of ['chain', 'context', 'projection', 'missing', 'host', 'operational_mainnet']) it(`rejects mismatched identity activation: ${failure}`, async () => {
+    const artifact = await signedArtifact([0, 2], 84532, 8453);
+    if (failure === 'chain') (artifact.enrollmentActivation as any).evmChainId = 1;
+    if (failure === 'context') artifact.enrollmentActivation!.contextHash = HASH('00');
+    if (failure === 'projection') artifact.genesisPlan!['enrollmentActivation'] = null;
+    if (failure === 'missing') delete artifact.enrollmentActivation;
+    if (failure === 'host') {
+      expect(() => artifactActivation(artifact, 'unrelated.solslot.com')).toThrowError(/another host/);
+      return;
+    }
+    if (failure === 'operational_mainnet') (artifact as any).evmChainId = 8453;
+    expect(() => artifactActivation(artifact)).toThrow();
+  });
 
   it('accepts a source-pinned owner-plus-one artifact and installs runtime authority', async () => {
     const artifact = await signedArtifact();

@@ -1,3 +1,4 @@
+import { MAINNET_RECOVERY_DRILL } from './recovery-drill-mainnet.fixture';
 import { RECOVERY_DRILL_API_FIXTURES } from './recovery-drill-api.fixture';
 import { SigningKey, Wallet, getAddress, sha256, toUtf8Bytes } from 'ethers';
 
@@ -30,6 +31,13 @@ import {
 } from './admin-security.service';
 
 describe('administrator recovery handoff', () => {
+  it('checksums and parses the independent API mainnet restore vector', () => {
+    const created = createAdminRecoveryDrillPackage(structuredClone(MAINNET_RECOVERY_DRILL.challenge));
+    const parsed = parseAdminRecoveryDrillPackage(JSON.stringify(created));
+    expect(parsed.challenge.evmTypedData.domain.chainId).toBe(8453);
+    expect(parsed).toEqual(created);
+  });
+
   it('checksums and parses the exact second-device package', () => {
     const created = createAdminRecoveryDrillPackage(challenge());
     const parsed = parseAdminRecoveryDrillPackage(JSON.stringify(created));

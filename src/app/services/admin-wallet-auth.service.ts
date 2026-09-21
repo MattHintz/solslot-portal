@@ -52,7 +52,7 @@ export class AdminWalletAuthService {
    *   * ``name`` — the human-readable scope (rendered by the wallet).
    *   * ``version`` — lets us evolve the envelope without confusing
    *     signatures across versions.
-   *   * ``chainId`` - Sepolia 11155111 for the fresh Alpha ceremony.
+   *   * ``chainId`` - operational chain selected by the verified release artifact.
    *
    * @param expiresAt Unix-seconds ceiling for the session.
    * @param nonce 0x-prefixed 32-byte hex (caller generates).

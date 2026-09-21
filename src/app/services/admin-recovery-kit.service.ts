@@ -167,6 +167,7 @@ export class AdminRecoveryKitService {
 
   async signRecoveryGuardianAction(args: {
     action: 'ACCEPT' | 'VETO';
+    expectedChainId?: 84532 | 8453;
     intentHash: string;
     coordinator: string;
     expectedGuardian: string;
@@ -180,6 +181,7 @@ export class AdminRecoveryKitService {
       args.coordinator,
       args.expectedGuardian,
       guardian.address,
+      args.expectedChainId ?? 84532,
     );
     const { EIP712Domain: _domain, ...types } = args.typedData.types;
     return guardian.signTypedData(
@@ -250,8 +252,8 @@ function validateDrillTypedData(
   const typedData = challenge.evmTypedData;
   const expectedDomain = {
     name: 'Solslot Admin Recovery',
-    version: '1',
-    chainId: 84532,
+    version: typedData.domain.version === '2' && typedData.domain.chainId === 8453 ? '2' : '1',
+    chainId: typedData.domain.version === '2' && typedData.domain.chainId === 8453 ? 8453 : 84532,
   };
   const expectedDomainFields = [
     { name: 'name', type: 'string' },
@@ -318,7 +320,7 @@ function validateLostKeyTypedData(
   if (
     intent.kind !== 'LOST' ||
     !isBytes32(normalizedHash) ||
-    intent.evmChainId !== 84532 ||
+    ![84532, 8453].includes(intent.evmChainId) ||
     intent.chiaNetwork !== 'testnet11' ||
     getAddress(intent.oldRecoveryGuardian) !== getAddress(expectedGuardian) ||
     normalizeHex(intent.oldRecoveryBlsKey) !== normalizeHex(expectedBlsPublicKey) ||
@@ -331,7 +333,7 @@ function validateLostKeyTypedData(
     ]) ||
     typedData.domain.name !== 'Solslot Admin Recovery' ||
     typedData.domain.version !== '1' ||
-    Number(typedData.domain.chainId) !== 84532 ||
+    Number(typedData.domain.chainId) !== intent.evmChainId ||
     getAddress(String(typedData.domain.verifyingContract)) !== getAddress(coordinator) ||
     !sameJson(Object.keys(typedData.types).sort(), [
       'EIP712Domain',
@@ -358,6 +360,7 @@ function validateRecoveryGuardianTypedData(
   coordinator: string,
   expectedGuardian: string,
   unlockedGuardian: string,
+  expectedChainId: number,
 ): void {
   const domainFields = [
     { name: 'name', type: 'string' },
@@ -371,6 +374,7 @@ function validateRecoveryGuardianTypedData(
       : 'SolslotRecoveryGuardianVeto';
   const authorizationFields = [{ name: 'intentHash', type: 'bytes32' }];
   if (
+    ![84532, 8453].includes(expectedChainId) ||
     !isBytes32(intentHash) ||
     getAddress(coordinator) !== coordinator ||
     getAddress(expectedGuardian) !== getAddress(unlockedGuardian) ||
@@ -378,7 +382,7 @@ function validateRecoveryGuardianTypedData(
     !sameJson(typedData.domain, {
       name: 'Solslot Admin Recovery',
       version: '1',
-      chainId: 84532,
+      chainId: expectedChainId,
       verifyingContract: coordinator,
     }) ||
     !sameJson(typedData.types['EIP712Domain'], domainFields) ||

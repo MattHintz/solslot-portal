@@ -6,9 +6,11 @@ import { environment } from '../../environments/environment';
 import { EvmWalletService, _internal } from './evm-wallet.service';
 
 describe('EvmWalletService', () => {
+  const originalOperationalChain = environment.eip712ChainId;
   const walletAddress = '0x1234567890abcdef1234567890abcdef12345678';
 
   afterEach(() => {
+    environment.eip712ChainId = originalOperationalChain;
     localStorage.clear();
     sessionStorage.clear();
   });
@@ -140,7 +142,7 @@ describe('EvmWalletService', () => {
       rpcMap: Record<number, string>;
     };
     expect(initArgs.chains).toEqual([environment.eip712ChainId]);
-    expect(initArgs.optionalChains).toEqual([84532]);
+    expect(initArgs.optionalChains).toEqual([84532, 8453]);
     expect(initArgs.methods).toEqual(['eth_signTypedData', 'eth_signTypedData_v4']);
     expect(initArgs.rpcMap[environment.eip712ChainId]).toBeTruthy();
     expect(initArgs.rpcMap[84532]).toBe('https://sepolia.base.org');
@@ -217,13 +219,14 @@ describe('EvmWalletService', () => {
     });
   });
 
-  it('adds only Base Sepolia as the Solslot optional WalletConnect chain', () => {
+  it('supports Base mainnet and legacy Base Sepolia WalletConnect chains', () => {
     expect(_internal.evmWalletConnectRequiredChainId()).toBe(environment.eip712ChainId);
-    expect(_internal.evmWalletConnectOptionalChainIds('solslot')).toEqual([84532]);
+    expect(_internal.evmWalletConnectOptionalChainIds('solslot')).toEqual([84532, 8453]);
     expect(_internal.evmWalletConnectOptionalChainIds('none')).toEqual([]);
     expect(_internal.evmWalletConnectRpcMap()).toEqual({
       [environment.eip712ChainId]: 'https://ethereum-sepolia-rpc.publicnode.com',
       84532: 'https://sepolia.base.org',
+      8453: 'https://mainnet.base.org',
     });
   });
 
@@ -329,12 +332,14 @@ describe('EvmWalletService', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('signs only the exact Base Sepolia SafeMessage through its approved namespace', async () => {
+  for (const authorityChain of [84532, 8453]) it(`signs only the exact Base SafeMessage through its approved namespace on ${authorityChain}`, async () => {
+    environment.eip712ChainId = authorityChain;
     const service = create();
     const signature = '0x' + '11'.repeat(64) + '1b';
     const request = jasmine.createSpy('request').and.resolveTo(signature);
     const typedData = safeMessageTypedData();
-    const chain = 'eip155:84532';
+    typedData.domain.chainId = authorityChain;
+    const chain = `eip155:${authorityChain}`;
     const testable = service as unknown as {
       _state: { set: (state: unknown) => void };
       eip1193: { request: typeof request };
@@ -369,21 +374,28 @@ describe('EvmWalletService', () => {
       _internal.walletConnectMethodTimeoutSeconds(),
     );
 
+    request.calls.reset();
+    const crossed = {...typedData, domain: {...typedData.domain, chainId: authorityChain === 8453 ? 84532 : 8453}};
+    await expectAsync(service.signSafeMessage(crossed, typedData.domain.verifyingContract)).toBeRejected();
+    expect(request).not.toHaveBeenCalled();
+
     const altered = {
       ...typedData,
       message: { message: typedData.message.message, target: walletAddress },
     };
     await expectAsync(
       service.signSafeMessage(altered, typedData.domain.verifyingContract),
-    ).toBeRejectedWithError(/Refusing altered Base Sepolia SafeMessage/);
+    ).toBeRejectedWithError(/Refusing altered Base authority SafeMessage/);
   });
 
-  it('signs only an exact zero-value Authority V3 Identity Safe transaction', async () => {
+  for (const authorityChain of [84532, 8453]) it(`signs only an exact zero-value Authority V3 Identity Safe transaction on ${authorityChain}`, async () => {
+    environment.eip712ChainId = authorityChain;
     const service = create();
     const signature = '0x' + '12'.repeat(64) + '1b';
     const request = jasmine.createSpy('request').and.resolveTo(signature);
     const typedData = safeTransactionTypedData();
-    const chain = 'eip155:84532';
+    typedData.domain.chainId = authorityChain;
+    const chain = `eip155:${authorityChain}`;
     const testable = service as unknown as {
       _state: { set: (state: unknown) => void };
       eip1193: { request: typeof request };
@@ -425,11 +437,12 @@ describe('EvmWalletService', () => {
     ).toBeRejectedWithError(/Refusing altered Authority V3 Identity Safe/);
   });
 
-  it('broadcasts only a byte-exact zero-value Base Sepolia transaction', async () => {
+  for (const authorityChain of [84532, 8453]) it(`broadcasts only a byte-exact zero-value Base transaction on ${authorityChain}`, async () => {
+    environment.eip712ChainId = authorityChain;
     const service = create();
     const transactionHash = '0x' + '99'.repeat(32);
     const request = jasmine.createSpy('request').and.resolveTo(transactionHash);
-    const chain = 'eip155:84532';
+    const chain = `eip155:${authorityChain}`;
     const to = '0xb7e02C216A2B3aF0cC4Ad8808fA169f2F0B19724';
     const testable = service as unknown as {
       _state: { set: (state: unknown) => void };
@@ -455,7 +468,7 @@ describe('EvmWalletService', () => {
 
     expect(
       await service.sendBaseSepoliaTransaction({
-        chainId: 84532,
+        chainId: authorityChain,
         to,
         value: '0x0',
         data: '0x6a761202',
@@ -479,12 +492,12 @@ describe('EvmWalletService', () => {
 
     await expectAsync(
       service.sendBaseSepoliaTransaction({
-        chainId: 84532,
+        chainId: authorityChain,
         to,
         value: '0x1',
         data: '0x6a761202',
       }),
-    ).toBeRejectedWithError(/Refusing an altered Base Sepolia protocol transaction/);
+    ).toBeRejectedWithError(/Refusing an altered Base authority protocol transaction/);
   });
 
   it('refuses typed data outside the allowed Solslot Sepolia domains', async () => {

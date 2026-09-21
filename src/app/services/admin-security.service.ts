@@ -390,7 +390,7 @@ export interface AdminKeyChangeIntentV1 {
   coadminSafe: string;
   rootSafe: string;
   chiaNetwork: 'testnet11';
-  evmChainId: 84532;
+  evmChainId: 84532 | 8453;
   sourceManifestHash: string;
   nonce: number;
   expiresAt: number;
@@ -562,8 +562,8 @@ export interface EvmSafeActionPackage {
   caseId: string;
   actionId: string;
   intentHash: string;
-  network: 'baseSepolia';
-  chainId: 84532;
+  network: 'baseSepolia' | 'baseMainnet';
+  chainId: 84532 | 8453;
   executionSafe: string;
   safeNonce: number;
   coadminSlot: 1 | 2 | null;

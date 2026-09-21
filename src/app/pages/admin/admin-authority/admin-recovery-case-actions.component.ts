@@ -87,7 +87,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
       <ol class="progress" aria-label="Protected key-change progress">
         <li [class.is-complete]="hasReceipt('EVM', 'PREPARE')">
           <span>1</span>
-          <div><strong>Request opened</strong><small>Base Sepolia</small></div>
+          <div><strong>Request opened</strong><small>{{ baseNetworkLabel }}</small></div>
         </li>
         <li [class.is-complete]="hasReceipt('CHIA', 'PREPARE')">
           <span>2</span>
@@ -204,7 +204,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
               </button>
             </header>
             <dl>
-              <div><dt>Network</dt><dd>Base Sepolia</dd></div>
+              <div><dt>Network</dt><dd>{{ baseNetworkLabel }}</dd></div>
               <div><dt>Funds moved</dt><dd>None</dd></div>
               <div><dt>Authority effect</dt><dd>{{ authorityEffect(action) }}</dd></div>
               <div><dt>Required signer</dt><dd>{{ signerLabel(action) }}</dd></div>
@@ -328,7 +328,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
             @if (pendingEvmTransaction(); as pending) {
               <div class="pending-confirmation">
                 <strong>Transaction sent</strong>
-                <span>Waiting for the required Base Sepolia confirmations.</span>
+                <span>Waiting for the required Base confirmations.</span>
                 <button type="button" [disabled]="busy()" (click)="observeEvm(pending)">
                   Check confirmation
                 </button>
@@ -488,7 +488,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
           <div>
             <strong>Cancellation restores the current administrator identity.</strong>
             <p>
-              It cannot choose another wallet or move funds. Chia and Base Sepolia must both
+              It cannot choose another wallet or move funds. Chia and Base must both
               record the same cancellation before operations resume.
             </p>
             <div class="cancel-actions">
@@ -519,7 +519,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
           <span>
             {{
               recovery.state === 'COMPLETED'
-                ? 'Chia and Base Sepolia now agree on the administrator identity.'
+                ? 'Chia and Base now agree on the administrator identity.'
                 : 'The prior administrator identity remains in force.'
             }}
           </span>
@@ -659,6 +659,10 @@ export class AdminRecoveryCaseActionsComponent {
     signal<AdminChiaRecoveryActionPackage | null>(null);
   readonly pendingEvmTransaction =
     signal<{ actionId: string; transactionHash: string } | null>(null);
+
+  get baseNetworkLabel(): string {
+    return this.recovery.intent.evmChainId === 8453 ? 'Base mainnet' : 'Base Sepolia';
+  }
 
   positiveEvmActions(): EvmRecoveryAction[] {
     return (this.recovery?.actions ?? []).filter(
@@ -864,7 +868,7 @@ export class AdminRecoveryCaseActionsComponent {
         action.execution === 'WALLET' ? action.signer : this.current.actor.wallet;
       await this.connectExpected(expected, mode);
       const transactionHash = await this.wallet.sendBaseSepoliaTransaction({
-        chainId: 84532,
+        chainId: this.recovery.intent.evmChainId,
         to: action.to,
         value: '0x0',
         data: action.data,
@@ -1014,7 +1018,7 @@ export class AdminRecoveryCaseActionsComponent {
         pending.transactionHash,
       );
       this.pendingEvmTransaction.set(null);
-      this.message.set('The Base Sepolia action is confirmed and recorded.');
+      this.message.set('The Base action is confirmed and recorded.');
       this.changed.emit();
     });
   }
@@ -1206,7 +1210,7 @@ export class AdminRecoveryCaseActionsComponent {
     try {
       await this.security.observeEvm(this.recovery.caseId, transactionHash);
       this.pendingEvmTransaction.set(null);
-      this.message.set('The Base Sepolia action is confirmed and recorded.');
+      this.message.set('The Base action is confirmed and recorded.');
       this.changed.emit();
     } catch {
       this.message.set(

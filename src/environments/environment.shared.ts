@@ -24,6 +24,8 @@ export const environment = {
   eip712ChainId: 11155111,
 
   zkPassport: {
+    domain: 'staging.solslot.com',
+    deploymentEnvironment: 'staging-alpha' as 'staging-alpha' | 'production-alpha',
     policyVersion: 2,
     verificationUrl: '/verify',
     evmRpcUrl: '',
