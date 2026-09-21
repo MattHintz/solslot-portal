@@ -251,11 +251,8 @@ jobs:
               exit 1
             fi
             sudo touch "$release_dir/.release-verified"
-            current="$(readlink -f "$root/current")"
-            mapfile -t old < <(find "$root/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | awk 'NR>5 {print $2}')
-            for candidate in "${old[@]}"; do
-              [ "$candidate" = "$current" ] || sudo rm -rf "$candidate"
-            done
+            # Release evidence is under preservation hold. Retain prior releases
+            # for review and rollback; cleanup requires separate authorization.
 
   rollback:
     if: ${{ inputs.rollback_release != '' }}
