@@ -44,6 +44,12 @@ describe('AdminWorkspaceNavComponent', () => {
     expect(logoutAndRedirect).toHaveBeenCalled();
   });
 
+  it('opens recovery setup without the post-launch admin login guard', () => {
+    const links = Array.from(fixture.nativeElement.querySelectorAll('a')) as HTMLAnchorElement[];
+    const security = links.find((link) => link.textContent?.trim() === 'Security');
+    expect(security?.getAttribute('href')).toBe('/admin/genesis/security');
+  });
+
   it('keeps safety help available from every work area', () => {
     accountButton('Help').click();
     fixture.detectChanges();

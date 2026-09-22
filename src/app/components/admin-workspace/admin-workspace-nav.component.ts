@@ -43,7 +43,7 @@ import { AdminSessionService } from '../../services/admin-session.service';
         <a routerLink="/admin/genesis" routerLinkActive="is-active" ariaCurrentWhenActive="page">Setup & launch</a>
         <a routerLink="/admin/sales" routerLinkActive="is-active" ariaCurrentWhenActive="page">Sales</a>
         <a routerLink="/admin/system-health" routerLinkActive="is-active" ariaCurrentWhenActive="page">Health</a>
-        <a routerLink="/admin/authority" routerLinkActive="is-active" ariaCurrentWhenActive="page">Security</a>
+        <a routerLink="/admin/genesis/security" routerLinkActive="is-active" ariaCurrentWhenActive="page">Security</a>
       </div>
 
       <div class="workspace-account">
@@ -106,7 +106,7 @@ import { AdminSessionService } from '../../services/admin-session.service';
               Stop signing. Tell the owner and another administrator immediately, then open
               Security & Access for the protected replacement procedure.
             </p>
-            <a routerLink="/admin/authority" (click)="helpOpen.set(false)">
+            <a routerLink="/admin/genesis/security" (click)="helpOpen.set(false)">
               Open Security & Access
             </a>
           </div>
