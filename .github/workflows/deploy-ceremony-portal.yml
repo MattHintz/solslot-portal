@@ -18,6 +18,14 @@ on:
         description: "Annotated coordinated release tag resolving to release_sha."
         required: true
         type: string
+      launch_profile:
+        description: "Scope shown in release metadata; runtime policy is configured separately."
+        required: false
+        type: choice
+        default: standard
+        options:
+          - standard
+          - disposable-vault-identity
       rollback_release:
         description: "Verified immutable release ID: <40-char SHA>-<coordinated tag>."
         required: false
@@ -101,7 +109,10 @@ jobs:
             environment: "${{ inputs.target }}",
             baseHref: "/genesis-admin/",
             testOnly: true,
-            auditStatus: "final-independent-approval-confirmed",
+            auditStatus: "${{ inputs.launch_profile }}" === "disposable-vault-identity"
+              ? "internal-engineering-testnet-pending-external-review"
+              : "final-independent-approval-confirmed",
+            launchProfile: "${{ inputs.launch_profile || 'standard' }}",
             activationStatus: "pending-runtime-enrollment",
             serverWritesExpectedLocked: true,
             mintingExpectedLocked: true,

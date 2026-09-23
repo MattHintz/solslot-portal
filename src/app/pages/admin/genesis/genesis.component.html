@@ -146,6 +146,15 @@
       </div>
     </header>
 
+    @if (disposable()) {
+      <aside class="ux-context" aria-label="Disposable test scope">
+        <strong>Disposable vault and identity test</strong>
+        <p>This unaudited internal Testnet11 genesis is for wallet vaults and ZKPassport verification.
+          Sales, SGT grants and the bridge stay closed. We will replace this genesis before bridge testing.
+          EVM recovery setup and independent recovery review are deferred.</p>
+      </aside>
+    }
+
     <aside class="ux-context" aria-label="How the team works">
       <strong>Follow your assigned task, one step at a time</strong>
       <p>The owner is Administrator 1. Actions requiring team approval need the owner and one of the two coadministrators. Administrator approval and SGT committee voting are separate steps.</p>
@@ -363,6 +372,7 @@
           }
         </section>
 
+        @if (!disposable()) {
         <section id="rail-ownership" class="workspace-section">
           <div class="section-heading">
             <div>
@@ -424,6 +434,7 @@
           </div>
         </section>
 
+        }
         <section class="workspace-section" aria-labelledby="funding-title">
           <div class="section-heading">
             <div>
@@ -542,7 +553,7 @@
           </section>
         }
 
-        @if (workspace()!.launch.state === 'locked') {
+        @if (workspace()!.launch.state === 'locked' && !disposable()) {
           <section id="settlement-rehearsal" class="workspace-section">
             <div class="section-heading">
               <div>

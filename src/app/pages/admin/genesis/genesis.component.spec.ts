@@ -87,6 +87,35 @@ describe('GenesisComponent', () => {
     };
   }
 
+  for (const state of ['roster_open', 'roster_frozen', 'planned', 'locked']) {
+    it(`places deferred payment setup after genesis while ${state}`, () => {
+      const value = workspace(state);
+      value.launch.administrators.forEach(admin => admin.enrolled = true);
+      value.readiness.find(item => item.id === 'funding')!.status = 'Healthy';
+      value.readiness.push({id:'railOwnership',title:'Payment rail',status:'Blocked',impact:'Deferred',assignedRole:'technical-coadmin'});
+      component.workspace.set(value);
+      const label = component.stages[component.currentStageIndex()].label;
+      expect(label).toBe(state === 'locked' ? 'Payment Rail' : state === 'planned' ? 'Administrator Protection' : 'Plan Review');
+    });
+  }
+
+  it('shows disposable scope and skips deferred payment and authority steps', () => {
+    const value = workspace('planned');
+    value.launch.launchProfile = 'disposable-vault-identity';
+    value.launch.administrators.forEach(admin => admin.enrolled = true);
+    value.readiness.find(item => item.id === 'funding')!.status = 'Healthy';
+    component.workspace.set(value);
+    fixture.detectChanges();
+    expect(component.stages[component.currentStageIndex()].label).toBe('Team Approval');
+    expect(component.stages.some(stage => stage.label === 'Payment Rail')).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('replace this genesis before bridge testing');
+    expect(fixture.nativeElement.querySelector('#rail-ownership')).toBeNull();
+    component.workspace.set({...value, launch: {...value.launch, state: 'locked'}});
+    fixture.detectChanges();
+    expect(component.stages[component.currentStageIndex()].label).toBe('Signed Archive');
+    expect(fixture.nativeElement.textContent).not.toContain('Customer payment check');
+  });
+
   beforeEach(async () => {
     launch = jasmine.createSpyObj<AdminLaunchService>('AdminLaunchService', [
       'publicStatus',

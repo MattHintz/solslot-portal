@@ -276,6 +276,8 @@ export interface LaunchAdministrator {
 }
 
 export interface LaunchSummary {
+  launchProfile?: string | null;
+  reviewClass?: string | null;
   evmChainId?: 11155111 | 84532 | 8453;
   enrollmentCommitments?: Record<string, string | number> | null;
   ceremonyId: string;
