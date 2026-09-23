@@ -109,21 +109,26 @@ export class GenesisComponent implements OnInit, OnDestroy {
   abandonmentReason = '';
   timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago';
 
-  readonly stages: LaunchStage[] = [
+  readonly disposable = computed(() => this.workspace()?.launch.launchProfile === "disposable-vault-identity");
+  get stages(): LaunchStage[] {
+    const stages: LaunchStage[] = [
     { label: 'Release Check', description: 'Confirm the reviewed Solslot release.' },
     { label: 'Administrator Team', description: 'Enroll the owner and two coadministrators.' },
-    { label: 'Payment Rail', description: 'Put the test payment rail under team control.' },
     { label: 'Test Funding', description: 'Create the nine fixed Testnet11 inputs.' },
     { label: 'Plan Review', description: 'See exactly what the launch will create.' },
+    { label: 'Administrator Protection', description: 'Bind the recovery contracts to the planned administrator vaults.' },
     { label: 'Team Approval', description: 'Owner plus one approve the exact plan.' },
     { label: 'Final Launch', description: 'Owner launches during a short approved window.' },
     { label: 'Confirmation', description: 'Confirm the chain result and approve the record.' },
     { label: 'Signed Archive', description: 'Preserve the completed launch as read-only.' },
+    { label: 'Payment Rail', description: 'After genesis, put the test payment rail under team control.' },
     {
       label: 'Payment Check',
       description: 'Test one delivery and one full refund before opening sales.',
     },
-  ];
+    ];
+    return this.disposable() ? stages.filter((_stage, index) => ![4, 9, 10].includes(index)) : stages;
+  }
   readonly operationGateNames = ['minting', 'presale', 'purchases', 'xchVouchers'] as const;
 
   readonly enrolledCount = computed(
@@ -990,16 +995,26 @@ export class GenesisComponent implements OnInit, OnDestroy {
     if (!workspace) return 0;
     if (this.finding('release')?.status !== 'Healthy') return 0;
     if (this.enrolledCount() < 3) return 1;
-    if (this.finding('railOwnership')?.status !== 'Healthy') return 2;
-    if (this.finding('funding')?.status !== 'Healthy') return 3;
+    if (this.finding('funding')?.status !== 'Healthy') return 2;
     const state = workspace.launch.state;
-    if (state === 'roster_open' || state === 'roster_frozen') return 4;
+    if (this.disposable()) {
+      if (['roster_open', 'roster_frozen'].includes(state)) return 3;
+      if (state === 'planned') return 4;
+      if (state === 'plan_approved') return 5;
+      if (state === 'broadcast') return 6;
+      return 7;
+    }
+    if (state === 'roster_open' || state === 'roster_frozen') return 3;
+    if (['planned', 'plan_approved'].includes(state) &&
+        (this.finding('authorityV3Evm')?.status !== 'Healthy' ||
+         this.finding('authorityV3Review')?.status !== 'Healthy')) return 4;
     if (state === 'planned') return 5;
     if (state === 'plan_approved') return 6;
     if (state === 'broadcast') return 7;
     if (['confirmed', 'artifact_pending', 'artifact_signed'].includes(state)) return 8;
-    if (state === 'locked' && !this.customerPaymentsReady()) return 9;
-    return 10;
+    if (state === 'locked' && this.finding('railOwnership')?.status !== 'Healthy') return 9;
+    if (state === 'locked' && !this.customerPaymentsReady()) return 10;
+    return this.stages.length - 1;
   }
 
   private nextActionLabel(): string {
