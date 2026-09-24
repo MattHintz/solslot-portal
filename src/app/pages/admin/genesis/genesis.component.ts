@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  NgZone,
   OnDestroy,
   OnInit,
   computed,
@@ -150,23 +151,52 @@ export class GenesisComponent implements OnInit, OnDestroy {
   readonly customerPaymentsReady = computed(
     () => this.finding('settlement')?.status === 'Healthy',
   );
+  readonly deferredFindings = computed(() =>
+    (this.workspace()?.readiness ?? []).filter((item) => item.status !== 'Healthy' && item.blocksCeremony === false),
+  );
   readonly attentionFindings = computed(() =>
-    (this.workspace()?.readiness ?? []).filter((item) => item.status !== 'Healthy'),
+    (this.workspace()?.readiness ?? []).filter((item) => item.status !== 'Healthy' && item.blocksCeremony !== false),
   );
   readonly readyFindings = computed(() =>
     (this.workspace()?.readiness ?? []).filter((item) => item.status === 'Healthy'),
   );
   readonly readinessPercent = computed(() => {
-    const total = this.workspace()?.readiness.length ?? 0;
+    const total = this.readyFindings().length + this.attentionFindings().length;
     return total ? Math.round((this.readyFindings().length / total) * 100) : 0;
   });
   readonly primaryActionLabel = computed(() => this.nextActionLabel());
+
+  readonly clockSeconds = signal(Math.floor(Date.now() / 1000));
+  private readonly zone = inject(NgZone);
+  private approvalClock: ReturnType<typeof setInterval> | null = null;
+
+  approvalLabel(action: LaunchActionType, slot: number): string {
+    const receipt = this.approval(action);
+    const recorded = receipt?.approvals.find(item => item.slot === slot);
+    if (recorded?.currentSigner === false) return 'Wallet changed · review again';
+    if (recorded?.expired || (recorded?.expiresAt && recorded.expiresAt <= this.clockSeconds())) return 'Expired · approve again';
+    return receipt?.slots.includes(slot) ? 'Approval recorded' : 'Awaiting approval';
+  }
+
+  approvalRemaining(action: LaunchActionType, slot: number): string {
+    const receipt = this.approval(action)?.approvals.find(item => item.slot === slot);
+    if (!receipt?.expiresAt || receipt.expired || receipt.currentSigner === false) return '';
+    const seconds = Math.max(0, receipt.expiresAt - this.clockSeconds());
+    return seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} remaining` : '';
+  }
+
+  async refreshStatus(): Promise<void> {
+    await this.perform('refresh', () => this.reloadWorkspace());
+  }
 
   private progressTimer: ReturnType<typeof setInterval> | null = null;
   private rehearsalTimer: ReturnType<typeof setInterval> | null = null;
   private railTimer: ReturnType<typeof setInterval> | null = null;
 
   async ngOnInit(): Promise<void> {
+    this.zone.runOutsideAngular(() => {
+      this.approvalClock = setInterval(() => this.clockSeconds.set(Math.floor(Date.now() / 1000)), 1000);
+    });
     this.consumeFragment();
     await this.perform('load', async () => {
       this.publicStatus.set(await this.launch.publicStatus());
@@ -179,6 +209,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.approvalClock) clearInterval(this.approvalClock);
     this.stopProgressPolling();
     this.stopRehearsalPolling();
     this.stopRailPolling();
@@ -514,7 +545,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
 
   hasCurrentApproval(actionType: LaunchActionType): boolean {
     const slot = this.workspace()?.session.slot;
-    return slot != null && (this.approval(actionType)?.slots ?? []).includes(slot);
+    return slot != null && this.approvalLabel(actionType, slot) === 'Approval recorded';
   }
 
   statusClass(status: string): string {
