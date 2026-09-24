@@ -359,12 +359,13 @@ export interface ZkPassportEnrollmentRecord {
 
 export interface SolslotPublicArtifact {
   inventoryActivation?: {
-    schema: 'solslot.inventory-activation.v1';
+    schema: 'solslot.inventory-activation.v1' | 'solslot.inventory-activation.v2';
     network: 'testnet11';
     environment: 'staging-alpha' | 'production-alpha';
     deploymentId: string;
-    inventoryVersion: 2;
-    adapterVersion: 1;
+    inventoryVersion: 2 | 3;
+    adapterVersion: 1 | 2;
+    paymentProfile?: unknown;
     availableModuleHash: string;
     reservedModuleHash: string;
     sourceShas: SolslotPublicArtifact['sourceShas'];
@@ -375,6 +376,8 @@ export interface SolslotPublicArtifact {
   protocolVersion: 'solslot-v2-rc23';
   network: 'testnet11';
   evmChainId: 11155111 | 84532 | 8453;
+  paymentChainId?: 84532 | 8453;
+  identityPolicy?: unknown;
   enrollmentActivation?: EnrollmentActivation | null;
   genesisPlan?: Record<string, unknown>;
   reviewClass: 'independent-release-review' | 'internal-engineering-testnet';

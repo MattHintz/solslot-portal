@@ -1,6 +1,7 @@
-import { artifactActivation } from '../utils/enrollment-activation';
+import { artifactActivation, activationOperationsChain } from '../utils/enrollment-activation';
 import { Injectable } from '@angular/core';
 import { INVENTORY_V2_HASH, RESERVED_V5_HASH } from './mint-proposal-v2/inventory-puzzles';
+import { INVENTORY_V3_HASH, RESERVED_V6_HASH, BASE_TEST_PAYMENT_PROFILE } from './mint-proposal-v2/base-inventory-puzzles';
 import { computeAddress, SigningKey, verifyTypedData } from 'ethers';
 import { environment } from '../../environments/environment';
 import { SolslotApiService, SolslotPublicArtifact } from './solslot-api.service';
@@ -135,11 +136,20 @@ export function verifyInventoryActivation(artifact: SolslotPublicArtifact | null
   if (!activation && !required) return;
   if (!artifact || !activation) throw new Error('Reviewed inventory V2 activation is not available for this release.');
   identityDeploymentDomain();
+  const base = activation.schema === 'solslot.inventory-activation.v2';
+  if (base) {
+    const explicit = Object.hasOwn(artifact, 'paymentChainId');
+    const chain = explicit ? artifact.paymentChainId : (artifact.enrollmentActivation ? activationOperationsChain(artifact.enrollmentActivation) : 84532);
+    if (chain !== 8453 || (explicit && artifact.genesisPlan?.['paymentChainId'] !== chain)) {
+      throw new Error('Inventory payment chain does not match the signed release.');
+    }
+  }
   const expected = {
-    schema: 'solslot.inventory-activation.v1', network: 'testnet11',
-    deploymentId: artifact.ceremony.ceremonyId, inventoryVersion: 2, adapterVersion: 1,
-    availableModuleHash: INVENTORY_V2_HASH, reservedModuleHash: RESERVED_V5_HASH,
+    schema: base ? 'solslot.inventory-activation.v2' : 'solslot.inventory-activation.v1', network: 'testnet11',
+    deploymentId: artifact.ceremony.ceremonyId, inventoryVersion: base ? 3 : 2, adapterVersion: base ? 2 : 1,
+    availableModuleHash: base ? INVENTORY_V3_HASH : INVENTORY_V2_HASH, reservedModuleHash: base ? RESERVED_V6_HASH : RESERVED_V5_HASH,
     sourceShas: artifact.sourceShas,
+    ...(base ? { paymentProfile: BASE_TEST_PAYMENT_PROFILE } : {}),
   };
   if (Object.keys(activation).sort().join(',') !== [...Object.keys(expected), 'environment', 'reviewEvidenceSha256'].sort().join(',') ||
       Object.entries(expected).some(([key, value]) => asciiStableJson((activation as unknown as Record<string, unknown>)[key]) !== asciiStableJson(value)) ||

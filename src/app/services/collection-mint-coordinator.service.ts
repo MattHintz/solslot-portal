@@ -145,7 +145,7 @@ export class CollectionMintCoordinatorService {
       propertyRegistryCoinSpend: registration.spend,
       metadataRoot: workspace.metadataRoot,
       primaryPurchaseUsdAmountMinor,
-      inventoryPuzzleVersion: 2,
+      inventoryPuzzleVersion: this.protocolArtifact.artifact!.inventoryActivation!.inventoryVersion,
       primaryPurchaseValidatorPubkeys: [...validatorSet.pubkeys],
       primaryPurchaseNetwork: environment.chiaNetwork,
       primaryPurchaseProtocolTreasuryPuzhash: protocolTreasuryPuzhash,

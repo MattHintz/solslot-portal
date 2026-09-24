@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { INVENTORY_V1_HEX, INVENTORY_V2_HEX, RESERVED_V5_HASH, INVENTORY_PROVIDER_ID, INVENTORY_P2_VAULT_HASH } from './inventory-puzzles';
+import { INVENTORY_V3_HEX, RESERVED_V6_HASH } from './base-inventory-puzzles';
 
 import { ChiaWasmService } from '../chia-wasm.service';
 import { bytesToHex, coinId, hexToBytes } from '../../utils/chia-hash';
@@ -182,7 +183,7 @@ export class MintPublishService {
     /** Enables the H-system-priced, vault-bound primary purchase path. */
     primaryPurchaseUsdAmountMinor?: number | bigint;
     /** Explicit inventory path; omitted only for historical delegate fixtures. Price is base. */
-    inventoryPuzzleVersion?: 1 | 2;
+    inventoryPuzzleVersion?: 1 | 2 | 3;
     /** Omitted only by historical fixtures; current publication uses V2. */
     governanceTrackerVersion?: 1 | 2;
     primaryPurchaseValidatorPubkeys?: string[];
@@ -192,7 +193,7 @@ export class MintPublishService {
     const clvm = this.clvm();
 
     if (args.inventoryPuzzleVersion !== undefined &&
-        (args.inventoryPuzzleVersion !== 1 && args.inventoryPuzzleVersion !== 2 ||
+        (![1, 2, 3].includes(args.inventoryPuzzleVersion) ||
          args.primaryPurchaseUsdAmountMinor === undefined)) {
       throw new Error('Inventory mints require an explicit supported version and base price');
     }
@@ -296,9 +297,13 @@ export class MintPublishService {
         if (usdAmountMinor + fee > 0xffff_ffff_ffff_ffffn) {
           throw new Error('Inventory subtotal exceeds uint64');
         }
-        const available = clvm.deserialize(hexToBytes(args.inventoryPuzzleVersion === 2 ? INVENTORY_V2_HEX : INVENTORY_V1_HEX));
+        if (args.inventoryPuzzleVersion === 3 && args.primaryPurchaseNetwork !== 'testnet11') {
+          throw new Error('Base test-payment inventory requires Testnet11');
+        }
+        const available = clvm.deserialize(hexToBytes(args.inventoryPuzzleVersion === 3 ? INVENTORY_V3_HEX
+          : args.inventoryPuzzleVersion === 2 ? INVENTORY_V2_HEX : INVENTORY_V1_HEX));
         eveMintOfferInner = available.curry([
-          clvm.atom(available.treeHash()), clvm.atom(hexToBytes(RESERVED_V5_HASH)),
+          clvm.atom(available.treeHash()), clvm.atom(hexToBytes(args.inventoryPuzzleVersion === 3 ? RESERVED_V6_HASH : RESERVED_V5_HASH)),
           clvm.atom(smartDeedInnerPuzhash), clvm.atom(hexToBytes(INVENTORY_P2_VAULT_HASH)),
           clvm.atom(hexToBytes(MintPublishService.SINGLETON_MOD_HASH)),
           clvm.atom(hexToBytes(MintPublishService.SINGLETON_LAUNCHER_HASH)),
@@ -309,7 +314,7 @@ export class MintPublishService {
           clvm.int(BigInt(args.sharePpm)), clvm.int(usdAmountMinor), clvm.int(100n),
           clvm.int(fee), clvm.int(usdAmountMinor + fee), clvm.atom(treasuryPuzhash),
           clvm.atom(treasuryPuzhash), clvm.list(validatorAtoms),
-          clvm.atom(hexToBytes(args.inventoryPuzzleVersion === 2 ? INVENTORY_PROVIDER_ID : MintPublishService.PRIMARY_PURCHASE_PROVIDER_ID)),
+          clvm.atom(hexToBytes(args.inventoryPuzzleVersion >= 2 ? INVENTORY_PROVIDER_ID : MintPublishService.PRIMARY_PURCHASE_PROVIDER_ID)),
         ]);
       } else {
         eveMintOfferInner = mintOfferV2Mod.curry([

@@ -23,6 +23,29 @@ const originalProtocol = { ...environment.solslotProtocol };
 const originalZkPassport = { ...environment.zkPassport };
 
 describe('signed inventory activation content', () => {
+  it('accepts reviewed Base test payments with separate Sepolia identity and rejects binding drift', async () => {
+    const { INVENTORY_V3_HASH, RESERVED_V6_HASH, BASE_TEST_PAYMENT_PROFILE } = await import('./mint-proposal-v2/base-inventory-puzzles');
+    const artifact = await signedArtifact();
+    artifact.paymentChainId = 8453;
+    artifact.genesisPlan = { ...artifact.genesisPlan, paymentChainId: 8453 };
+    artifact.inventoryActivation = {
+      schema: 'solslot.inventory-activation.v2', network: 'testnet11',
+      environment: environment.zkPassport.deploymentEnvironment as 'staging-alpha' | 'production-alpha',
+      deploymentId: artifact.ceremony.ceremonyId, inventoryVersion: 3, adapterVersion: 2,
+      availableModuleHash: INVENTORY_V3_HASH, reservedModuleHash: RESERVED_V6_HASH,
+      sourceShas: { ...artifact.sourceShas }, reviewEvidenceSha256: 'ab'.repeat(32),
+      paymentProfile: BASE_TEST_PAYMENT_PROFILE,
+    };
+    expect(artifact.evmChainId).toBe(11155111);
+    expect(() => verifyInventoryActivation(artifact)).not.toThrow();
+    for (const change of [ { tokenAddress: ADDRESS('33') }, { tokenDecimals: 3 }, { hasMonetaryValue: true } ]) {
+      artifact.inventoryActivation.paymentProfile = { ...BASE_TEST_PAYMENT_PROFILE, ...change };
+      expect(() => verifyInventoryActivation(artifact)).toThrow();
+    }
+    artifact.inventoryActivation.paymentProfile = BASE_TEST_PAYMENT_PROFILE;
+    artifact.genesisPlan['paymentChainId'] = 84532;
+    expect(() => verifyInventoryActivation(artifact)).toThrow();
+  });
   it('keeps historical artifacts readable and requires activation for new mints', async () => {
     const artifact = await signedArtifact();
     expect(() => verifyInventoryActivation(artifact, false)).not.toThrow();

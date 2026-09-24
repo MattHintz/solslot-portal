@@ -34,6 +34,7 @@ import { MintProposalV2Service } from './mint-proposal-v2.service';
 import fixturesJson from './mint-publish.fixtures.json';
 import inventoryFixture from './inventory-mint.fixtures.json';
 import currentInventoryFixture from './governance-v2-inventory.fixture.json';
+import baseInventoryFixture from './base-inventory.fixture.json';
 import metadataFixture from '../property-metadata/property-metadata-v1.fixture.json';
 
 // ── Fixture shape ──────────────────────────────────────────────────────────
@@ -155,9 +156,23 @@ describe('MintPublishService', () => {
 
   it('rejects unsupported explicit inventory versions before computing a commitment', () => {
     expect(() => service.buildMintPublishArtifacts({
-      ...builderArgsFromFixture(fixture), inventoryPuzzleVersion: 3 as 2,
+      ...builderArgsFromFixture(fixture), inventoryPuzzleVersion: 4 as 2,
       primaryPurchaseUsdAmountMinor: 101,
     })).toThrowError(/supported version/);
+  });
+
+  it('matches Python Base test-payment inventory with current governance byte for byte', () => {
+    const result = service.buildMintPublishArtifacts({
+      ...builderArgsFromFixture(fixture), royaltyBps: 100, royaltyPuzhash: inventoryFixture.treasury,
+      metadataRoot: inventoryFixture.metadataRoot, primaryPurchaseUsdAmountMinor: baseInventoryFixture.base,
+      inventoryPuzzleVersion: 3, governanceTrackerVersion: 2,
+      primaryPurchaseValidatorPubkeys: inventoryFixture.validators,
+      primaryPurchaseNetwork: 'testnet11', primaryPurchaseProtocolTreasuryPuzhash: inventoryFixture.treasury,
+    }) as unknown as Record<string, unknown>;
+    for (const [key, expected] of Object.entries(baseInventoryFixture.expected)) {
+      const camel = key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+      expect(result[camel]).withContext(key).toBe(expected);
+    }
   });
 
   it('matches the Python V2 governance inventory commitment and keeps metadata bound', () => {
