@@ -108,12 +108,44 @@ describe('GenesisComponent', () => {
     fixture.detectChanges();
     expect(component.stages[component.currentStageIndex()].label).toBe('Team Approval');
     expect(component.stages.some(stage => stage.label === 'Payment Rail')).toBeFalse();
-    expect(fixture.nativeElement.textContent).toContain('replace this genesis before bridge testing');
+    expect(fixture.nativeElement.textContent).toContain('A replacement genesis is required for payment and bridge testing');
     expect(fixture.nativeElement.querySelector('#rail-ownership')).toBeNull();
     component.workspace.set({...value, launch: {...value.launch, state: 'locked'}});
     fixture.detectChanges();
     expect(component.stages[component.currentStageIndex()].label).toBe('Signed Archive');
     expect(fixture.nativeElement.textContent).not.toContain('Customer payment check');
+  });
+
+  it('separates later work from launch blockers without hiding it', () => {
+    const value = workspace();
+    value.readiness.push({id: 'bridge', title: 'Bridge', status: 'Blocked', impact: 'Later', assignedRole: 'technical-coadmin', blocksCeremony: false});
+    component.workspace.set(value);
+    expect(component.attentionFindings().map(item => item.id)).toEqual(['funding']);
+    expect(component.deferredFindings().map(item => item.id)).toEqual(['bridge']);
+    expect(component.readinessPercent()).toBe(50);
+  });
+
+  it('makes an expired approval available to sign again without reloading', () => {
+    const value = workspace();
+    value.actionApprovals['gate:ceremonyBroadcast'] = {
+      slots: [1], approved: false, approvals: [{slot: 1, expiresAt: 1800000010, currentSigner: true}],
+    } as any;
+    component.workspace.set(value);
+    component.clockSeconds.set(1800000000);
+    expect(component.hasCurrentApproval('gate:ceremonyBroadcast')).toBeTrue();
+    expect(component.approvalRemaining('gate:ceremonyBroadcast', 1)).toBe('0:10 remaining');
+    component.clockSeconds.set(1800000010);
+    expect(component.hasCurrentApproval('gate:ceremonyBroadcast')).toBeFalse();
+    expect(component.approvalLabel('gate:ceremonyBroadcast', 1)).toBe('Expired · approve again');
+  });
+
+  it('refreshes status without executing the next launch action', async () => {
+    launch.workspace.and.resolveTo(workspace());
+    await component.refreshStatus();
+    expect(launch.workspace).toHaveBeenCalled();
+    expect(launch.buildPlan).not.toHaveBeenCalled();
+    expect(launch.prepareFunding).not.toHaveBeenCalled();
+    expect(wallet.signTypedData).not.toHaveBeenCalled();
   });
 
   beforeEach(async () => {
@@ -411,6 +443,12 @@ describe('GenesisComponent', () => {
     expect(component.fundingPreparation()?.summary.customizationAllowed).toBeFalse();
     expect(component.fundingPreparation()?.summary.bridgeBatchMojos).toBe(530);
     expect(component.fundingReceipt()?.plan.outputs.length).toBe(9);
+    component.fundingPreparation.update(value => value ? { ...value, receipt: { ...value.receipt, state: 'confirmed' } } : value);
+    fixture.detectChanges();
+    const panel = fixture.nativeElement.querySelector('[aria-labelledby="funding-title"]');
+    expect(panel.textContent).toContain('Complete');
+    expect(panel.textContent).not.toContain('Review and approve');
+    expect(panel.textContent).not.toContain('Create fixed funding');
     expect(fixture.nativeElement.textContent).toContain('Less than 0.000002 XCH');
     expect(fixture.nativeElement.textContent).toContain('cannot be changed');
     expect(fixture.nativeElement.textContent).toContain('Exact mojos');

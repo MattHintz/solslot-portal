@@ -304,6 +304,7 @@ export interface ReadinessFinding {
   assignedRole: string;
   action?: string | null;
   evidence?: unknown;
+  blocksCeremony?: boolean;
 }
 
 export interface LaunchTask {
@@ -389,7 +390,7 @@ export interface ActionApproval {
   actionId: string;
   approved: boolean;
   slots: number[];
-  approvals: Array<{ slot: number; signer: string; submittedAt: number }>;
+  approvals: Array<{ slot: number; signer: string; submittedAt: number; expiresAt?: number; expired?: boolean; currentSigner?: boolean }>;
 }
 
 export interface GateProposal {

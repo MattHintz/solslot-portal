@@ -131,7 +131,7 @@
     <header class="launch-header">
           <div>
             <span class="eyebrow">Solslot Testnet Alpha</span>
-            <h1>Administrator setup & launch</h1>
+            <h1>{{ workspace()!.launch.state === 'locked' ? 'Launch complete.' : 'Let’s launch Solslot.' }}</h1>
             <p>
               Signed in as {{ displayRole(workspace()!.session.role) }}, Administrator
               {{ workspace()!.session.slot }}
@@ -142,23 +142,11 @@
             </span>
       </div>
       <div class="launch-header__actions">
-        <span class="wallet-label">{{ connectedWalletLabel() }}</span>
+        <button type="button" class="btn btn--ghost" [disabled]="!!pending()" (click)="refreshStatus()">Refresh status</button><span class="wallet-label">{{ connectedWalletLabel() }}</span>
       </div>
     </header>
 
-    @if (disposable()) {
-      <aside class="ux-context" aria-label="Disposable test scope">
-        <strong>Disposable vault and identity test</strong>
-        <p>This unaudited internal Testnet11 genesis is for wallet vaults and ZKPassport verification.
-          Sales, SGT grants and the bridge stay closed. We will replace this genesis before bridge testing.
-          EVM recovery setup and independent recovery review are deferred.</p>
-      </aside>
-    }
-
-    <aside class="ux-context" aria-label="How the team works">
-      <strong>Follow your assigned task, one step at a time</strong>
-      <p>The owner is Administrator 1. Actions requiring team approval need the owner and one of the two coadministrators. Administrator approval and SGT committee voting are separate steps.</p>
-    </aside>
+    <div class="launch-scope"><strong>{{ disposable() ? 'Vault & identity test' : 'Full protocol test' }}</strong><span>Test assets only · Owner plus one coadministrator approve team decisions.</span></div>
     <div class="launch-layout">
       <nav class="stage-nav" aria-label="Alpha launch progress">
         <ol>
@@ -199,7 +187,24 @@
           </button>
         </section>
 
-        <section class="workspace-section" aria-labelledby="readiness-title">
+        @if (workspace()!.launch.planHash) {
+          <section class="team-approval-panel" aria-labelledby="team-approval-title">
+            <div class="section-heading"><div><span class="eyebrow">Owner + one coadministrator</span><h2 id="team-approval-title">{{ ['confirmed', 'artifact_signed', 'locked'].includes(workspace()!.launch.state) ? 'Completed launch record' : 'Plan approvals' }}</h2></div></div>
+            <p>{{ ['confirmed', 'artifact_signed', 'locked'].includes(workspace()!.launch.state) ? 'Archive signatures acknowledge the completed chain result. They do not launch another transaction.' : 'Both people approve the same plan. Enrollment and SGT committee votes are separate.' }}</p>
+            <div class="team-approval-list">
+              @for (admin of workspace()!.launch.administrators; track admin.slot) {
+                <div><strong>{{ admin.profile?.displayName || 'Administrator ' + admin.slot }}</strong><small>{{ admin.slot === 1 ? 'Owner · required' : 'Coadministrator · either one' }}</small>
+                  <span>{{ (['confirmed', 'artifact_signed', 'locked'].includes(workspace()!.launch.state) ? workspace()!.launch.artifactSignatureSlots : workspace()!.launch.planSignatureSlots).includes(admin.slot) ? 'Signature recorded' : 'Not signed' }}</span>
+                </div>
+              }
+            </div>
+            @if (workspace()!.launch.planExpiresAt && !['confirmed','artifact_signed','locked','broadcast'].includes(workspace()!.launch.state)) { <p class="approval-deadline">Plan expires {{ formatTime(workspace()!.launch.planExpiresAt) }}. Coordinate with the other signer before this time.</p> }
+            <details><summary>Exact signed record</summary><p class="mono">{{ workspace()!.launch.state === 'locked' ? workspace()!.launch.artifactHash : workspace()!.launch.planHash }}</p></details>
+          </section>
+        }
+
+        <details class="workspace-section launch-checks" [open]="attentionFindings().length > 0 && workspace()!.launch.state !== 'locked'"><summary>Launch checks <span>{{ attentionFindings().length ? attentionFindings().length + ' need attention' : 'Ready' }}</span></summary>
+        <div aria-labelledby="readiness-title">
           <div class="section-heading">
             <div>
               <span class="eyebrow">Automatic safety checks</span>
@@ -209,7 +214,7 @@
               type="button"
               class="icon-button"
               title="Refresh readiness"
-              (click)="runPrimaryAction()"
+              (click)="refreshStatus()"
             >
               <span aria-hidden="true">&#8635;</span>
               <span class="sr-only">Refresh readiness</span>
@@ -217,7 +222,7 @@
           </div>
           <div class="readiness-overview">
             <div>
-              <strong>{{ readyFindings().length }} of {{ workspace()!.readiness.length }} ready</strong>
+              <strong>{{ readyFindings().length }} of {{ readyFindings().length + attentionFindings().length }} ready</strong>
               <span>
                 {{
                   attentionFindings().length
@@ -282,7 +287,12 @@
               }
             </details>
           }
-        </section>
+          @if (deferredFindings().length) {
+            <details class="ready-checks"><summary>{{ deferredFindings().length }} later steps · not required for this ceremony</summary>
+              @for (item of deferredFindings(); track item.id) { <div class="ready-check"><div><strong>{{ item.title }}</strong><small>{{ item.impact }}</small></div></div> }
+            </details>
+          }
+        </div></details>
 
         <section
           id="administrator-team"
@@ -457,11 +467,11 @@
               </div>
               <div>
                 <dt>Network fee</dt>
-                <dd>0</dd>
+                <dd>{{ receipt.plan.fee | number }} mojos <small>Fixed funding bundle; any sponsor fee is recorded separately.</small></dd>
               </div>
               <div>
                 <dt>Approval</dt>
-                <dd>{{ approval('funding')?.slots?.length || 0 }} of 2 required</dd>
+                <dd>{{ receipt.state === 'confirmed' ? 'Complete' : (approval('funding')?.slots?.length || 0) + ' of 2 required' }}</dd>
               </div>
               <div>
                 <dt>Transaction</dt>
@@ -488,7 +498,7 @@
               </table>
             </details>
             <div class="inline-actions">
-              @if (!hasCurrentApproval('funding')) {
+              @if (receipt.state === 'prepared' && !hasCurrentApproval('funding')) {
                 <button type="button" class="btn btn--ghost" (click)="reviewFundingApproval()">
                   Review and approve
                 </button>
@@ -534,6 +544,12 @@
               A 15-minute window permits only the exact approved ceremony bundle. It cannot enable
               minting, presales, or purchases.
             </p>
+            <p class="approval-deadline">Sign together: these approvals expire. The owner opens the window after the second approval arrives.</p>
+            <div class="team-approval-list">
+              @for (admin of workspace()!.launch.administrators; track admin.slot) {
+                <div><strong>{{ admin.profile?.displayName || 'Administrator ' + admin.slot }}</strong><span>{{ approvalLabel('gate:ceremonyBroadcast', admin.slot) }}</span><small>{{ approvalRemaining('gate:ceremonyBroadcast', admin.slot) }}</small></div>
+              }
+            </div>
             <div class="inline-actions">
               @if (!hasCurrentApproval('gate:ceremonyBroadcast')) {
                 <button type="button" class="btn btn--ghost" (click)="proposeLaunchWindow()">
@@ -829,6 +845,8 @@
             </div>
           </details>
         }
+
+        @if (disposable()) { <details class="workspace-section"><summary>What this test includes</summary><p>This disposable, unaudited genesis is for vault creation and private age verification. Sales, SGT grants and bridging remain closed. A replacement genesis is required for payment and bridge testing; EVM recovery setup and independent recovery review remain deferred.</p></details> }
 
         <section id="launch-archive" class="workspace-section">
           <div class="section-heading">
