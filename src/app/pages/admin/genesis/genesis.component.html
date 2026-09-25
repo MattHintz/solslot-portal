@@ -349,6 +349,10 @@
                   {{ invitationLinks()[2] ? 'Reissue private link' : 'Create private link' }}
                 </button>
                 @if (invitationLinks()[2]) {
+                  <label>
+                    <span>Private invitation for Administrator 2</span>
+                    <input readonly [value]="invitationLinks()[2]" autocomplete="off" spellcheck="false" />
+                  </label>
                   <button type="button" class="text-button" (click)="copyInvitation(2)">
                     Copy Admin 2 link
                   </button>
@@ -373,6 +377,10 @@
                   {{ invitationLinks()[3] ? 'Reissue private link' : 'Create private link' }}
                 </button>
                 @if (invitationLinks()[3]) {
+                  <label>
+                    <span>Private invitation for Administrator 3</span>
+                    <input readonly [value]="invitationLinks()[3]" autocomplete="off" spellcheck="false" />
+                  </label>
                   <button type="button" class="text-button" (click)="copyInvitation(3)">
                     Copy Admin 3 link
                   </button>

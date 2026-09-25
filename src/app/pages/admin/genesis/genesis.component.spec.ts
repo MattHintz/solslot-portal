@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick, flushMicrotasks } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
 import {
@@ -226,6 +226,43 @@ describe('GenesisComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
   });
+
+  it('lets the owner create both invitations when browser clipboard access never resolves', async () => {
+    const clipboard = spyOn<any>(component, 'copyText').and.returnValue(new Promise<void>(() => {}));
+    launch.workspace.and.resolveTo(workspace());
+    launch.issueInvitation.and.callFake(async (slot, profile) => ({
+      slot, profile: { ...profile, slot, role: 'coadmin', updatedAt: 1_800_000_001 },
+      expiresAt: 1_900_000_000, invitationFragment: `#launch-invite=test-admin-${slot}`,
+    }));
+    component.admin2Name = 'Administrator Two';
+    component.admin3Name = 'Administrator Three';
+    await component.issueInvitation(2);
+    await component.issueInvitation(3);
+    fixture.detectChanges();
+    expect(component.pending()).toBeNull();
+    expect(launch.issueInvitation.calls.count()).toBe(2);
+    expect(clipboard).not.toHaveBeenCalled();
+    const fields: HTMLInputElement[] = Array.from(fixture.nativeElement.querySelectorAll('input[readonly]'));
+    expect(fields.map(field => field.value)).toEqual([
+      jasmine.stringMatching(/#launch-invite=test-admin-2$/),
+      jasmine.stringMatching(/#launch-invite=test-admin-3$/),
+    ]);
+  });
+
+  it('keeps a manually copyable invitation when clipboard permission hangs', fakeAsync(() => {
+    spyOn<any>(component, 'copyText').and.returnValue(new Promise<void>(() => {}));
+    component.invitationLinks.set({ 2: 'https://example.invalid/#launch-invite=test-only' });
+    let finished = false;
+    void component.copyInvitation(2).then(() => { finished = true; });
+    flushMicrotasks();
+    expect(finished).toBeFalse();
+    tick(3000);
+    flushMicrotasks();
+    expect(finished).toBeTrue();
+    expect(component.message()).toContain('Select and copy');
+    expect(component.invitationLinks()[2]).toContain('test-only');
+    expect(component.pending()).toBeNull();
+  }));
 
   it('shows a neutral wallet sign-in without ceremony identifiers or raw protocol inputs', () => {
     const text = fixture.nativeElement.textContent as string;

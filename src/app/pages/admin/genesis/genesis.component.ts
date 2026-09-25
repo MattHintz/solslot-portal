@@ -137,7 +137,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
   );
   readonly currentStageIndex = computed(() => this.resolveStageIndex());
   readonly connectedWalletLabel = computed(() => {
-    const value = this.wallet.address();
+    const value = this.wallet.address() || this.workspace()?.session.wallet;
     return value ? `${value.slice(0, 8)}...${value.slice(-6)}` : 'Not connected';
   });
   readonly fundingReceipt = computed<FundingReceipt | null>(() => {
@@ -279,17 +279,30 @@ export class GenesisComponent implements OnInit, OnDestroy {
       });
       const link = this.invitationUrl(invitation);
       this.invitationLinks.update((current) => ({ ...current, [slot]: link }));
-      await this.copyText(link);
       await this.reloadWorkspace();
-      this.message.set(`Admin ${slot}'s private invitation link was copied.`);
+      this.message.set(`Admin ${slot}'s private invitation is ready. Copy and share the link with that administrator.`);
     });
   }
 
   async copyInvitation(slot: 2 | 3): Promise<void> {
     const link = this.invitationLinks()[slot];
     if (!link) return;
-    await this.copyText(link);
-    this.message.set(`Admin ${slot}'s invitation link was copied.`);
+    // Copying must not hold the launch workflow open while the browser waits
+    // for focus or clipboard permission. The readonly field is always usable.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.copyText(link),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('clipboard timed out')), 3000);
+        }),
+      ]);
+      this.message.set(`Admin ${slot}'s invitation link was copied.`);
+    } catch {
+      this.message.set(`Select and copy Admin ${slot}'s private link from the field below.`);
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
   }
 
   async runPrimaryAction(): Promise<void> {
