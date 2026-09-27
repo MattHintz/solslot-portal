@@ -1,4 +1,5 @@
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -9,7 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { AdminWorkspaceNavComponent } from '../../../components/admin-workspace/admin-workspace-nav.component';
 import {
@@ -35,6 +36,7 @@ import {
   RecoveryDrillChallenge,
 } from '../../../services/admin-security.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
+import { AdminLaunchService } from '../../../services/admin-launch.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { SolslotProtocolArtifactService } from '../../../services/solslot-protocol-artifact.service';
 import { environment } from '../../../../environments/environment';
@@ -71,20 +73,39 @@ type ChangeFlowKind = Extract<AdminKeyChangeKind, 'ROUTINE' | 'RECOVERY_KIT'>;
           </p>
         </div>
         <a
-          [routerLink]="session.isAuthenticated() ? '/admin' : '/admin/genesis'"
+          [routerLink]="launchSecurity ? '/admin/genesis' : '/admin'"
           class="secondary-action"
         >
-          {{ session.isAuthenticated() ? 'Back to tasks' : 'Back to launch' }}
+          {{ launchSecurity ? 'Back to launch' : 'Back to tasks' }}
         </a>
       </header>
 
+      @if (launchSignInRequired()) {
+        <section class="notice" role="status" aria-live="polite">
+          <div>
+            <strong>Sign in to continue</strong>
+            <span>Your administrator session ended. Your saved recovery records are unchanged.</span>
+            @if (setupStage() !== 'closed') {
+              <span>Keep this page open. Your unfinished recovery setup stays here while you reconnect.</span>
+            }
+          </div>
+          <div class="session-actions">
+            <button type="button" class="primary-action" [disabled]="busy()"
+              (click)="reconnectLaunch('injected')">Sign in with browser wallet</button>
+            <button type="button" class="secondary-action" [disabled]="busy()"
+              (click)="reconnectLaunch('walletconnect')">Use mobile or hardware wallet</button>
+          </div>
+        </section>
+      }
       @if (error(); as detail) {
         <section class="notice notice--error" role="alert">
           <div>
             <strong>Action needs attention</strong>
             <span>{{ detail }}</span>
           </div>
-          <button type="button" (click)="reload()">Try again</button>
+          @if (!launchSignInRequired()) {
+            <button type="button" (click)="reload()">Try again</button>
+          }
         </section>
       }
       @if (message(); as detail) {
@@ -680,6 +701,10 @@ type ChangeFlowKind = Extract<AdminKeyChangeKind, 'ROUTINE' | 'RECOVERY_KIT'>;
       .safety-guide li strong { color:#eefbf5; } .safety-guide li span { margin-top:3px; color:#a9c2b8; font-size:12px; }
       .evidence > summary { color:#9fb8ae; } .evidence dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:15px; }
       .evidence dl div { padding:11px; border:1px solid #1d4035; } .evidence a { display:inline-block; margin-top:13px; color:#75e9b5; }
+      .notice > .session-actions { display:flex; flex-direction:column; gap:8px; flex-shrink:0; }
+      .session-actions button.primary-action { border:1px solid #75e9b5; background:#75e9b5; color:#062018; }
+      .session-actions button.secondary-action { border:1px solid #4f8d77; background:#102a22; color:#effbf6; }
+      @media (max-width:620px) { .notice { align-items:stretch; flex-direction:column; } }
       @media (max-width:820px) { .summary-grid,.wallet-options { grid-template-columns:1fr; } .phrase-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .safety-guide { grid-template-columns:1fr; } }
       @media (max-width:620px) { .page-header,.next-action { align-items:flex-start; flex-direction:column; } .approval-rule { grid-template-columns:auto 1fr; } .approval-rule > .state { grid-column:2; } .phrase-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .action-list article { align-items:flex-start; flex-direction:column; } .active-case dl,.decision-receipt dl,.evidence dl { grid-template-columns:1fr; } }
     `,
@@ -691,6 +716,8 @@ export class AdminAuthorityComponent implements OnInit, OnDestroy {
   private readonly backupCrypto = inject(AdminRecoveryBackupCryptoService);
   private readonly recoveryDrive = inject(AdminRecoveryDriveService);
   private readonly evmWallet = inject(EvmWalletService);
+  private readonly launch = inject(AdminLaunchService);
+  readonly launchSecurity = inject(ActivatedRoute).snapshot.data['launchSecurity'] === true;
 
   readonly session = inject(AdminSessionService);
   readonly artifactService = inject(SolslotProtocolArtifactService);
@@ -698,6 +725,7 @@ export class AdminAuthorityComponent implements OnInit, OnDestroy {
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+  readonly launchSignInRequired = signal(false);
   readonly message = signal<string | null>(null);
   readonly setupStage = signal<RecoverySetupStage>('closed');
   readonly recoveryPhrase = signal('');
@@ -734,12 +762,93 @@ export class AdminAuthorityComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.error.set(null);
     try {
-      this.status.set(await this.security.status());
+      await this.loadStatus();
     } catch (error) {
-      this.error.set(formatError(error));
+      await this.handleError(error);
     } finally {
       this.loading.set(false);
     }
+  }
+
+  async reconnectLaunch(kind: 'injected' | 'walletconnect'): Promise<void> {
+    if (!this.launchSecurity || this.busy()) return;
+    this.busy.set(true);
+    this.error.set(null);
+    try {
+      const wallet = kind === 'injected'
+        ? await this.evmWallet.connectInjected()
+        : await this.evmWallet.connectWalletConnect({ resetSession: true });
+      const current = this.status();
+      if (current && wallet.toLowerCase() !== current.actor.wallet.toLowerCase()) {
+        throw new Error('Use the same administrator wallet to continue this recovery setup.');
+      }
+      const challenge = await this.launch.resumeChallenge(wallet);
+      if (current && challenge.ceremonyBinding?.ceremonyId !== current.actor.ceremonyId) {
+        throw new Error('This sign-in belongs to a different launch. Your recovery setup has not changed.');
+      }
+      const signature = await this.evmWallet.signLaunchAction(challenge.typedData, challenge.ceremonyBinding);
+      await this.launch.resumeLogin(wallet, challenge.nonce, signature);
+      await this.loadStatus();
+      this.message.set('Signed in. Continue your recovery setup where you left off.');
+    } catch (error) {
+      await this.handleError(error);
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  private async requireLaunchSession(): Promise<void> {
+    if (!this.launchSecurity) return;
+    // The launch cookie expires independently of the post-genesis admin JWT.
+    // Check its authoritative endpoint before the shared security endpoint.
+    const workspace = await this.launch.workspace();
+    const current = this.status();
+    if (workspace.session.setup || !workspace.session.wallet) {
+      throw new Error('Finish administrator wallet enrollment before setting up recovery.');
+    }
+    if (current && (
+      workspace.launch.ceremonyId !== current.actor.ceremonyId ||
+      workspace.session.slot !== current.actor.slot + 1 ||
+      workspace.session.wallet.toLowerCase() !== current.actor.wallet.toLowerCase()
+    )) {
+      throw new Error('The signed-in administrator changed. Reconnect the original wallet to continue.');
+    }
+  }
+
+  private async loadStatus(): Promise<void> {
+    await this.requireLaunchSession();
+    const next = await this.security.status();
+    const current = this.status();
+    if (this.launchSecurity && current && (
+      next.actor.ceremonyId !== current.actor.ceremonyId ||
+      next.actor.slot !== current.actor.slot ||
+      next.actor.wallet.toLowerCase() !== current.actor.wallet.toLowerCase()
+    )) {
+      throw new Error('The signed-in administrator changed. Reconnect the original wallet to continue.');
+    }
+    this.status.set(next);
+    this.launchSignInRequired.set(false);
+  }
+
+  private async handleError(error: unknown): Promise<void> {
+    let sessionExpired = error instanceof HttpErrorResponse && error.status === 401;
+    // A cookie can expire between the workspace check and a security request.
+    // Confirm this legacy fallback is an expired launch session, not an outage.
+    if (this.launchSecurity && error instanceof HttpErrorResponse && error.status === 503 &&
+      formatError(error) === 'Admin desk is disabled (no chain-verified admin records).') {
+      try {
+        await this.launch.workspace();
+      } catch (sessionError) {
+        sessionExpired = sessionError instanceof HttpErrorResponse && sessionError.status === 401;
+      }
+    }
+    if (this.launchSecurity && sessionExpired) {
+      this.launchSignInRequired.set(true);
+      this.error.set(null);
+      this.message.set(null);
+      return;
+    }
+    this.error.set(formatError(error));
   }
 
   beginRecoverySetup(): void {
@@ -1040,9 +1149,10 @@ export class AdminAuthorityComponent implements OnInit, OnDestroy {
     this.error.set(null);
     this.message.set(null);
     try {
+      await this.requireLaunchSession();
       await operation();
     } catch (error) {
-      this.error.set(formatError(error));
+      await this.handleError(error);
     } finally {
       this.busy.set(false);
     }

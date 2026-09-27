@@ -63,6 +63,7 @@ export const routes: Routes = [
   },
   {
     path: 'admin/genesis/security',
+    data: { launchSecurity: true },
     loadComponent: () =>
       import('./pages/admin/admin-authority/admin-authority.component').then(
         (m) => m.AdminAuthorityComponent,
