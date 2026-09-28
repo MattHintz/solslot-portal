@@ -603,6 +603,7 @@ export class SgtAllocationsComponent {
   formReady(): boolean {
     if (this.title.trim().length < 3 || !positiveInteger(this.sgtAmount)) return false;
     if (!/^0x[0-9a-fA-F]{64}$/.test(this.recipientVaultLauncherId.trim())) return false;
+    if (/^0x0{64}$/i.test(this.recipientVaultLauncherId.trim())) return false;
     if (this.kind() === 'SGT_SALE') {
       return this.paymentToUnits() !== null && Number.isFinite(Date.parse(this.expiresLocal));
     }

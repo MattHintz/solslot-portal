@@ -75,6 +75,35 @@ describe('AdminSessionService', () => {
     expect(service.requireSession().pubkey).toBe(pubkey.toLowerCase());
   });
 
+  it('keeps an unexpired API session usable after the challenge signing window', async () => {
+    const now = Date.now();
+    const service = configure();
+    const envelope = await signedEnvelope(Math.floor(now / 1000) + 900);
+    await service.loginWithWallet({ ...envelope, signatureKind: 'eip712' });
+    spyOn(Date, 'now').and.returnValue(now + 11 * 60 * 1000);
+    expect(service.requireJwt()).toBe(envelope.jwt);
+    TestBed.resetTestingModule();
+    expect(configure().requireSession().address).toBe(wallet.address.toLowerCase());
+  });
+
+  it('still rejects a stale challenge when establishing a new session', async () => {
+    const now = Date.now();
+    const envelope = await signedEnvelope(Math.floor(now / 1000) + 900);
+    spyOn(Date, 'now').and.returnValue(now + 11 * 60 * 1000);
+    await expectAsync(configure().loginWithWallet({ ...envelope, signatureKind: 'eip712' }))
+      .toBeRejectedWithError('Administrator login envelope is invalid.');
+  });
+
+  it('does not extend the API token expiry when reusing a signed envelope', async () => {
+    const now = Date.now();
+    const envelope = await signedEnvelope(Math.floor(now / 1000) + 900);
+    const service = configure();
+    await service.loginWithWallet({ ...envelope, signatureKind: 'eip712' });
+    spyOn(Date, 'now').and.returnValue(now + 16 * 60 * 1000);
+    expect(() => service.requireSession()).toThrowError('Administrator session expiry is invalid.');
+    expect(service.isAuthenticated()).toBeFalse();
+  });
+
   for (const operationalChain of [84532, 8453]) {
     it(`accepts and restores signed logins on operational chain ${operationalChain} with Base identity`, async () => {
       artifact.artifact = { artifactHash, evmChainId: operationalChain, identityChain: { chainId: 8453 } };

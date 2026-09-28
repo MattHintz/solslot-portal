@@ -71,8 +71,8 @@ export interface HealthCheck {
       <aside>
         <strong>Closed means protected</strong>
         <span>
-          Property preparation and review can continue while launch, minting, presale, or
-          purchase actions remain closed. Only the approved workflow can open a timed action.
+          Each check above shows what is available on this server. A signed launch archive
+          does not by itself enable property drafting, minting, or purchases.
         </span>
       </aside>
     </main>
@@ -186,7 +186,7 @@ export class AdminSystemHealthComponent {
       status: result.value.metadataEnabled ? 'Healthy' : 'Waiting',
       impact: result.value.metadataEnabled
         ? `Draft and review are available. Minting is ${result.value.mintingEnabled ? 'open' : 'closed'}.`
-        : 'Collection drafting is intentionally disabled.',
+        : 'Collection drafting is disabled. Its storage, pinning, and file-scanning services must be configured and checked before it opens.',
       evidence: result.value,
     };
   }

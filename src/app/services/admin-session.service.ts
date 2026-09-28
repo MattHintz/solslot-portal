@@ -78,7 +78,7 @@ export class AdminSessionService implements OnDestroy {
 
   /** Verify a wallet-signed envelope before creating a local UI session. */
   async loginWithWallet(opts: WalletLoginOptions): Promise<string> {
-    const verified = this.verifyEnvelope(opts);
+    const verified = this.verifyEnvelope(opts, true);
     this.beginSession({
       address: verified.address,
       pubkey: verified.pubkey,
@@ -188,7 +188,7 @@ export class AdminSessionService implements OnDestroy {
     }
   }
 
-  private verifyEnvelope(input: EnvelopeFields): {
+  private verifyEnvelope(input: EnvelopeFields, newLogin = false): {
     address: string;
     pubkey: string;
   } {
@@ -224,7 +224,11 @@ export class AdminSessionService implements OnDestroy {
       !/^0x[0-9a-f]{64}$/i.test(String(typedData.message['nonce'] || '')) ||
       !Number.isInteger(Number(typedData.message['issuedAt'])) ||
       Number(typedData.message['issuedAt']) > nowSec + 30 ||
-      Number(typedData.message['issuedAt']) < nowSec - 10 * 60 ||
+      // Challenge freshness applies when establishing a session. An already
+      // authenticated session is bounded by its API token expiry, not by the
+      // original challenge's ten-minute signing window.
+      Number(typedData.message['issuedAt']) < nowSec - AdminSessionService.MAX_SESSION_SECONDS ||
+      (newLogin && Number(typedData.message['issuedAt']) < nowSec - 10 * 60) ||
       typedData.message['authType'] !== 'evm' ||
       typedData.message['scope'] !== 'admin' ||
       !/^0x[0-9a-f]{130}$/i.test(input.signature)
