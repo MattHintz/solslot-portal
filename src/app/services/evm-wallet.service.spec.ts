@@ -7,10 +7,12 @@ import { EvmWalletService, _internal } from './evm-wallet.service';
 
 describe('EvmWalletService', () => {
   const originalOperationalChain = environment.eip712ChainId;
+  const originalAuthorityChain = environment.authorityEvmChainId;
   const walletAddress = '0x1234567890abcdef1234567890abcdef12345678';
 
   afterEach(() => {
     environment.eip712ChainId = originalOperationalChain;
+    environment.authorityEvmChainId = originalAuthorityChain;
     localStorage.clear();
     sessionStorage.clear();
   });
@@ -333,7 +335,8 @@ describe('EvmWalletService', () => {
   });
 
   for (const authorityChain of [84532, 8453]) it(`signs only the exact Base SafeMessage through its approved namespace on ${authorityChain}`, async () => {
-    environment.eip712ChainId = authorityChain;
+    environment.eip712ChainId = 11155111;
+    environment.authorityEvmChainId = authorityChain;
     const service = create();
     const signature = '0x' + '11'.repeat(64) + '1b';
     const request = jasmine.createSpy('request').and.resolveTo(signature);
@@ -389,7 +392,8 @@ describe('EvmWalletService', () => {
   });
 
   for (const authorityChain of [84532, 8453]) it(`signs only an exact zero-value Authority V3 Identity Safe transaction on ${authorityChain}`, async () => {
-    environment.eip712ChainId = authorityChain;
+    environment.eip712ChainId = 11155111;
+    environment.authorityEvmChainId = authorityChain;
     const service = create();
     const signature = '0x' + '12'.repeat(64) + '1b';
     const request = jasmine.createSpy('request').and.resolveTo(signature);
@@ -438,7 +442,8 @@ describe('EvmWalletService', () => {
   });
 
   for (const authorityChain of [84532, 8453]) it(`broadcasts only a byte-exact zero-value Base transaction on ${authorityChain}`, async () => {
-    environment.eip712ChainId = authorityChain;
+    environment.eip712ChainId = 11155111;
+    environment.authorityEvmChainId = authorityChain;
     const service = create();
     const transactionHash = '0x' + '99'.repeat(32);
     const request = jasmine.createSpy('request').and.resolveTo(transactionHash);

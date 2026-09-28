@@ -297,6 +297,7 @@ describe('GenesisComponent', () => {
         state: 'BROADCAST_PENDING',
         phase: 'schedule',
         network: 'baseSepolia',
+        chainId: 84532,
         scheduledFor: null,
         approvals: [],
         broadcastTransaction: null,
@@ -323,6 +324,9 @@ describe('GenesisComponent', () => {
 
     const text = (fixture.nativeElement.textContent as string).replace(/\s+/g, ' ');
     expect(component.railStateLabel()).toBe('Submitted to Base Sepolia');
+    component.railOwnership.set({...rail, status: {...rail.status, chainId: 8453, network: 'baseMainnet'}});
+    expect(component.railStateLabel()).toBe('Submitted to Base mainnet');
+    expect(component.railNetworkLabel()).toBe('Base mainnet');
     expect(text).toContain('You do not need to submit it again');
     expect(text).toContain(transactionHash);
     expect(text).not.toContain('Schedule 24-hour handoff');
@@ -334,6 +338,7 @@ describe('GenesisComponent', () => {
         state: 'WAITING_FOR_DELAY',
         phase: 'execute',
         network: 'baseSepolia',
+        chainId: 84532,
         scheduledFor: 1_900_000_000,
         approvals: [],
         broadcastTransaction: null,

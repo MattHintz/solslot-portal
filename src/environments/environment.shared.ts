@@ -22,6 +22,8 @@ export const environment = {
   eip712Name: 'Solslot Protocol' as const,
   eip712Version: '2' as const,
   eip712ChainId: 11155111,
+  // Authority Safes may live on a different chain from vault/login signatures.
+  authorityEvmChainId: 84532,
 
   zkPassport: {
     domain: 'staging.solslot.com',

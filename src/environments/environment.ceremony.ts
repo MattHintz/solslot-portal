@@ -7,4 +7,6 @@ import { environment as stagingEnvironment } from './environment.staging';
 export const environment = {
   ...stagingEnvironment,
   protocolWritesEnabled: true,
+  // RC28 authority and paused test-token contracts are deployed on Base mainnet.
+  authorityEvmChainId: 8453,
 };

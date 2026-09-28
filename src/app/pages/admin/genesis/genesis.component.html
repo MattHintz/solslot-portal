@@ -934,10 +934,19 @@
           <div class="wallet-review">
             <strong>What your wallet will show</strong>
             <span>
-              A Base Sepolia transaction to the reviewed Root Safe. It moves no protocol or
-              customer funds; the submitting wallet pays only test-network gas.
+              A {{ railNetworkLabel() }} transaction to the reviewed Root Safe. It transfers no tokens.
+              @if (railNetworkLabel() === 'Base mainnet') {
+                The submitting wallet pays real Base ETH for gas.
+              } @else {
+                The submitting wallet pays test-network gas.
+              }
             </span>
           </div>
+        } @else if (decision.kind === 'rail-sign') {
+          <p class="wallet-review">
+            Your wallet will show a {{ railNetworkLabel() }} SafeMessage signature for this exact handoff.
+            Signing costs no gas.
+          </p>
         } @else {
           <p class="wallet-review">
             Your wallet will show a signature request for only this exact Testnet action.

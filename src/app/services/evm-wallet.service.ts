@@ -24,7 +24,11 @@ const EVM_WALLETCONNECT_SIGNING_METHODS = ['eth_signTypedData', 'eth_signTypedDa
 const EVM_WALLETCONNECT_TRANSACTION_METHOD = 'eth_sendTransaction';
 const BASE_SEPOLIA_CHAIN_ID = 84532;
 function selectedAuthorityChain(): number {
-  return environment.eip712ChainId === 8453 ? 8453 : BASE_SEPOLIA_CHAIN_ID;
+  const chainId = environment.authorityEvmChainId;
+  if (chainId !== 8453 && chainId !== BASE_SEPOLIA_CHAIN_ID) {
+    throw new Error('The Base authority network is not configured.');
+  }
+  return chainId;
 }
 const EVM_WALLETCONNECT_KNOWN_RPC_MAP: Record<number, string> = {
   11155111: 'https://ethereum-sepolia-rpc.publicnode.com',

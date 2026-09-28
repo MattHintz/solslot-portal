@@ -674,7 +674,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
       this.railOwnership.set(rail);
       if (rail.status.state === 'DONE') {
         await this.reloadWorkspace();
-        this.message.set('Base Sepolia ownership is active and independently verified.');
+        this.message.set(`${this.railNetworkLabel()} ownership is active and independently verified.`);
         return;
       }
       if (
@@ -697,7 +697,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
         this.message.set(
           rail.status.scheduledFor
             ? `The safety delay ends ${this.formatTime(rail.status.scheduledFor)}.`
-            : 'Waiting for the reviewed schedule to appear on Base Sepolia.',
+            : `Waiting for the reviewed schedule to appear on ${this.railNetworkLabel()}.`,
         );
         return;
       }
@@ -730,6 +730,11 @@ export class GenesisComponent implements OnInit, OnDestroy {
     return this.railOwnership()?.status.approvals.filter((item) => item.signed).length ?? 0;
   }
 
+  railNetworkLabel(): string {
+    const chainId = Number(this.railOwnership()?.status.chainId);
+    return chainId === 8453 ? 'Base mainnet' : chainId === 84532 ? 'Base Sepolia' : 'the payment network';
+  }
+
   railStepLabel(): string {
     const status = this.railOwnership()?.status;
     if (!status || status.phase === 'schedule') return 'Start the 24-hour safety delay';
@@ -747,7 +752,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
       return 'No action is needed yet. This page keeps checking and will show the final approval when the delay ends.';
     }
     if (status.state === 'DONE') {
-      return 'The reviewed Safe and timelock now control the Base Sepolia payment rail.';
+      return `The reviewed Safe and timelock now control the ${this.railNetworkLabel()} payment rail.`;
     }
     return 'The owner and one coadministrator give fresh approval, then either may submit the fixed final action.';
   }
@@ -781,8 +786,8 @@ export class GenesisComponent implements OnInit, OnDestroy {
     const labels: Record<string, string> = {
       AWAITING_APPROVALS: 'Awaiting approvals',
       READY_TO_BROADCAST: 'Ready to submit',
-      BROADCAST_PENDING: 'Submitted to Base Sepolia',
-      CONFIRMING: 'Confirming on Base Sepolia',
+      BROADCAST_PENDING: `Submitted to ${this.railNetworkLabel()}`,
+      CONFIRMING: `Confirming on ${this.railNetworkLabel()}`,
       SCHEDULED: '24-hour delay active',
       WAITING_FOR_SCHEDULE: 'Waiting for schedule',
       WAITING_FOR_DELAY: '24-hour delay active',
@@ -1014,7 +1019,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
     ) {
       this.stopRailPolling();
       if (result.status.state === 'DONE') {
-        this.message.set('Base Sepolia ownership is active and fully confirmed.');
+        this.message.set(`${this.railNetworkLabel()} ownership is active and fully confirmed.`);
         await this.reloadWorkspace();
       } else if (result.status.state === 'READY_TO_EXECUTE') {
         this.message.set('The 24-hour safety delay is complete. Fresh approvals are ready.');

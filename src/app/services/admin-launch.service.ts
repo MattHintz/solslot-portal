@@ -423,7 +423,8 @@ export interface RailOwnershipStatus {
     | 'READY_TO_EXECUTE'
     | 'DONE';
   phase: RailOwnershipPhase;
-  network: 'baseSepolia';
+  network: 'baseSepolia' | 'baseMainnet';
+  chainId: number;
   scheduledFor?: number | null;
   approvals: RailOwnershipApproval[];
   broadcastTransaction?: BaseSepoliaTransaction | null;
