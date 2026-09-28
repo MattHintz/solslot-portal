@@ -1170,7 +1170,13 @@ export class GenesisComponent implements OnInit, OnDestroy {
         this.error.set(
           'The administrator service could not be reached. No action is available. Try again after the service is restored.',
         );
-      } else if (/\b401\b|unauthori[sz]ed|session expired/i.test(detail)) {
+      } else if ((error as { status?: number })?.status === 401 || /\b401\b|unauthori[sz]ed|session expired|connect an enrolled administrator wallet/i.test(detail)) {
+        this.stopProgressPolling();
+        this.stopRailPolling();
+        this.stopRehearsalPolling();
+        this.pendingDecision.set(null);
+        this.message.set(null);
+        this.workspace.set(null);
         this.error.set('Your administrator session expired. Sign in with your enrolled wallet again.');
       } else {
         this.error.set(detail);

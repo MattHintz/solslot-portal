@@ -139,6 +139,23 @@ describe('GenesisComponent', () => {
     expect(component.approvalLabel('gate:ceremonyBroadcast', 1)).toBe('Expired · approve again');
   });
 
+  it('stops all polling and offers sign-in when the backend session expires', fakeAsync(() => {
+    component.workspace.set(workspace('locked'));
+    component.message.set('Administrator wallet verified.');
+    launch.railOwnership.and.rejectWith({status: 401, error: {detail: 'Connect an enrolled administrator wallet.'}});
+    (component as any).startRailPolling();
+    tick(15000);
+    flushMicrotasks();
+    expect(launch.railOwnership).toHaveBeenCalledTimes(1);
+    expect(component.workspace()).toBeNull();
+    expect(component.message()).toBeNull();
+    expect(component.error()).toContain('session expired');
+    tick(60000);
+    expect(launch.railOwnership).toHaveBeenCalledTimes(1);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Sign in with browser wallet');
+  }));
+
   it('refreshes status without executing the next launch action', async () => {
     launch.workspace.and.resolveTo(workspace());
     await component.refreshStatus();
