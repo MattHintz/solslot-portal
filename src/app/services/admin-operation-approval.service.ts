@@ -15,6 +15,7 @@ export type AdminOperationName =
   | 'mint.cancel'
   | 'mint.execute'
   | 'mint.publish'
+  | 'identity.activate'
   | 'sgt.allocate'
   | 'presale.create'
   | 'presale.cancel'
@@ -47,6 +48,19 @@ export interface AdminOperationApproval {
   signatures: Array<{ adminIndex: number; signerAddress: string; signedAt: number }>;
   typedData: Eip712TypedData;
   chainActions?: GovernancePublicationAction[];
+  identityReview?: IdentityDeploymentReview;
+}
+
+export interface IdentityDeploymentReview {
+  amendmentHash: string;
+  revision: number;
+  approvalExpiresAt: number;
+  currentDeployment: Record<string, unknown>;
+  replacementDeployment: Record<string, unknown>;
+  acceptedProofVersions: string[];
+  credentialPolicy: Record<string, unknown>;
+  operation?: 'identity.activate';
+  requestBinding?: AdminRequestBindingV1;
 }
 
 export class PendingAdminApprovalError extends Error {
@@ -112,7 +126,10 @@ export class AdminOperationApprovalService {
     operationId: string,
     typedData?: Eip712TypedData,
   ): Promise<AdminOperationApproval> {
-    const current = !typedData || typedData.message['operation'] === 'mint.publish'
+    const chainBacked = ['mint.publish', 'identity.activate'].includes(
+      String(typedData?.message['operation'] ?? ''),
+    );
+    const current = !typedData || chainBacked
       ? await this.get(operationId) : undefined;
     const subject = this.session.subject();
     const publicKey = this.session.pubkey();
@@ -124,7 +141,7 @@ export class AdminOperationApprovalService {
       }
     };
     let chain: { chainActionId: string; chainSignature: string } | undefined;
-    if (current?.operation === 'mint.publish') {
+    if (current?.chainActions?.length) {
       const action = current.chainActions?.find(item => item.signerSlot === this.session.authoritySlot());
       if (!action || action.signerPublicKey.toLowerCase() !== publicKey?.toLowerCase()) {
         throw new Error('This mint approval does not contain your current administrator action.');
@@ -145,6 +162,27 @@ export class AdminOperationApprovalService {
         { headers: this.authHeaders() },
       ),
     );
+  }
+
+  reviewIdentityDeployment(): Promise<IdentityDeploymentReview> {
+    return firstValueFrom(
+      this.http.get<IdentityDeploymentReview>(
+        `${this.base}/admin/identity-deployment/review`,
+        { headers: this.authHeaders() },
+      ),
+    );
+  }
+
+  async prepareIdentityDeployment(): Promise<AdminOperationApproval> {
+    const review = await this.reviewIdentityDeployment();
+    if (!review.requestBinding || review.operation !== 'identity.activate') {
+      throw new Error('The identity activation review is incomplete.');
+    }
+    return this.prepareAndSign({
+      operation: review.operation,
+      revision: review.revision,
+      binding: review.requestBinding,
+    });
   }
 
   async execute<T = unknown>(approval: AdminOperationApproval): Promise<T> {

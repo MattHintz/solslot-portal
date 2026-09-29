@@ -135,4 +135,24 @@ describe('AdminOperationApprovalService', () => {
     sign.flush(mint);
     expect((await pending).operation).toBe('mint.publish');
   });
+
+  it('requires the current identity activation chain action', async () => {
+    const identity = { ...approval('pending'), operation: 'identity.activate' as const,
+      typedData: { ...typedData, message: { ...typedData.message, operation: 'identity.activate' } },
+      chainActions: [{ actionId: '0xidentity', signerSlot: 0, signerPublicKey: '0x02', coinId: '0xcoin',
+        delegatedPuzzleHash: '0xpuzzle', typedData, messageHash: '0xhash', network: 'Testnet11',
+        title: 'Activate verifier', summary: 'Exact amendment', financialEffect: 'No funds move', signed: false }],
+    };
+    wallet.signAuthorityV3ChiaAction.and.resolveTo('0xchain');
+    const pending = service.sign(identity.operationId, identity.typedData);
+    http.expectOne(`${environment.faucetApi}/admin/auth/operations/${identity.operationId}`).flush(identity);
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    const sign = http.expectOne(`${environment.faucetApi}/admin/auth/operations/${identity.operationId}/sign`);
+    expect(wallet.signAuthorityV3ChiaAction).toHaveBeenCalledOnceWith(typedData,
+      { coinId: '0xcoin', delegatedPuzzleHash: '0xpuzzle', compressedPubkey: '0x02' });
+    expect(sign.request.body).toEqual({ signature: `0x${'44'.repeat(65)}`,
+      chainActionId: '0xidentity', chainSignature: '0xchain' });
+    sign.flush(identity);
+    expect((await pending).operation).toBe('identity.activate');
+  });
 });

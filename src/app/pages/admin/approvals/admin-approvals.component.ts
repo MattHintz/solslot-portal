@@ -23,6 +23,11 @@ import { formatError } from '../../../utils/format-error';
           <p>Approve only after the purpose, effect, and wallet request all agree.</p>
         </div>
         <div class="header-actions">
+          @if (canPrepareIdentity()) {
+            <button type="button" class="button button--primary" (click)="prepareIdentity()" [disabled]="busy()">
+              Review identity upgrade
+            </button>
+          }
           <button type="button" class="button button--quiet" (click)="reload()" [disabled]="busy()">
             Refresh
           </button>
@@ -123,6 +128,18 @@ import { formatError } from '../../../utils/format-error';
               </dl>
             }
 
+            @if (item.operation === 'identity.activate') {
+              <section class="identity-review" aria-label="Identity verifier activation details">
+                <strong>New private ID checks</strong>
+                <p>Future vault checks use the replacement contracts below. Existing vault receipts keep their original verifier binding.</p>
+                <dl class="decision-grid">
+                  @for (field of identityReview(item); track field.label) {
+                    <div><dt>{{ field.label }}</dt><dd>{{ field.value }}</dd></div>
+                  }
+                </dl>
+              </section>
+            }
+
             <div class="signers" aria-label="Recorded signatures">
               @for (signature of item.signatures; track signature.adminIndex) {
                 <span>Administrator {{ signature.adminIndex + 1 }} approved</span>
@@ -204,6 +221,8 @@ import { formatError } from '../../../utils/format-error';
       .impact { display:grid; gap:5px; padding:15px; border-left:3px solid #67e7ad; background:#0d241d; }
       .signing-check { display:grid; gap:4px; margin-top:12px; padding:13px; border-left:3px solid #77bce3; background:#091b1d; font-size:11px; }
       .signing-check span { color:#a9c2b8; }
+      .identity-review { margin-top:18px; padding:15px; border:1px solid #356858; background:#081612; }
+      .identity-review p { margin-bottom:0; }
       .signers { display:flex; flex-wrap:wrap; gap:7px; margin:18px 0; }
       .signers span { border:1px solid #356858; padding:6px 9px; font-size:11px; }
       details { margin-top:18px; border-top:1px solid #245144; padding-top:14px; }
@@ -282,6 +301,15 @@ export class AdminApprovalsComponent {
     }
   }
 
+  canPrepareIdentity(): boolean {
+    return this.session.authoritySlot?.() === 0 &&
+      !this.operations().some((item) => item.operation === 'identity.activate');
+  }
+
+  async prepareIdentity(): Promise<void> {
+    await this.run(() => this.api.prepareIdentityDeployment());
+  }
+
   signedByCurrentAdmin(item: AdminOperationApproval): boolean {
     return item.signatures.some(
       (signature) => signature.signerAddress.toLowerCase() === this.currentSubject(),
@@ -301,6 +329,7 @@ export class AdminApprovalsComponent {
       'mint.cancel': 'Cancel mint proposal',
       'mint.execute': 'Execute approved SmartDeed mint',
       'mint.publish': 'Publish SmartDeed proposal',
+      'identity.activate': 'Activate private ID verifier',
       'sgt.allocate': 'Open or complete SGT allocation vote',
       'presale.create': 'Create refundable presale',
       'presale.cancel': 'Cancel refundable presale',
@@ -319,6 +348,9 @@ export class AdminApprovalsComponent {
     if (operation === 'sgt.allocate') {
       return 'Moves a fixed SGT allocation from the company reserve only after committee approval.';
     }
+    if (operation === 'identity.activate') {
+      return 'Moves new vault checks to the reviewed ZKPassport verifier while preserving existing vault receipts.';
+    }
     if (operation.startsWith('presale.')) {
       return 'Changes a refundable testnet voucher campaign and its customer fulfillment state.';
     }
@@ -326,6 +358,9 @@ export class AdminApprovalsComponent {
   }
 
   operationImpact(operation: AdminOperationName): string {
+    if (operation === 'identity.activate') {
+      return 'New identity checks change after Testnet11 confirmation. No funds move.';
+    }
     return operation.includes('cancel')
       ? 'This stops the selected testnet operation.'
       : 'No production investment or mainnet asset is affected.';
@@ -348,6 +383,25 @@ export class AdminApprovalsComponent {
       { label: 'SGT stake vault', value: String(body?.['stake_vault_launcher_id'] ?? '') },
       { label: 'Voting deadline', value: metadata?.['voting_deadline']
         ? new Date(Number(metadata['voting_deadline']) * 1000).toISOString() : '' },
+    ];
+  }
+
+  identityReview(item: AdminOperationApproval): Array<{ label: string; value: string }> {
+    const review = item.identityReview;
+    const current = review?.currentDeployment ?? {};
+    const replacement = review?.replacementDeployment ?? {};
+    const addresses = (replacement['addresses'] ?? {}) as Record<string, unknown>;
+    const policy = review?.credentialPolicy ?? {};
+    return [
+      { label: 'Amendment', value: review?.amendmentHash ?? '' },
+      { label: 'Current verifier', value: String(current['verifierAdapter'] ?? '') },
+      { label: 'Replacement verifier', value: String(addresses['verifierAdapter'] ?? '') },
+      { label: 'Attestation emitter', value: String(addresses['attestationEmitter'] ?? '') },
+      { label: 'Proof versions', value: review?.acceptedProofVersions.join(', ') ?? '' },
+      { label: 'Checks', value: `Age ${String(policy['minimumAge'] ?? '')}+ · sanctions ${String((policy['sanctions'] as Record<string, unknown> | undefined)?.['lists'] ?? '')}` },
+      { label: 'Website', value: String(policy['domain'] ?? '') },
+      { label: 'Approval expires', value: review?.approvalExpiresAt
+        ? new Date(review.approvalExpiresAt * 1000).toLocaleString() : '' },
     ];
   }
 
