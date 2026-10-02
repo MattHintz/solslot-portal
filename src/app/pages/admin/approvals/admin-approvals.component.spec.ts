@@ -36,3 +36,24 @@ describe('Mint approval completion', () => {
     expect(api.execute).toHaveBeenCalledOnceWith(item);
   });
 });
+
+describe('Identity network review', () => {
+  it('shows the current and replacement networks with the reviewed contracts', () => {
+    TestBed.configureTestingModule({providers: [provideRouter([]),
+      {provide: AdminSessionService, useValue: {subject: signal('owner')}},
+      {provide: AdminOperationApprovalService, useValue: {}},
+    ]});
+    const component = TestBed.runInInjectionContext(() => new AdminApprovalsComponent());
+    const rows = component.identityReview({identityReview: {
+      amendmentHash: '0xreviewed', currentEvmChainId: 11155111, replacementEvmChainId: 8453,
+      currentDeployment: {verifierAdapter: 'old-verifier'},
+      replacementDeployment: {addresses: {verifierAdapter: 'base-verifier', attestationEmitter: 'base-emitter'}},
+      acceptedProofVersions: ['0.20.0', '0.21.0'], credentialPolicy: {minimumAge: 18, domain: 'solslot.com', sanctions: {lists: 'all'}},
+    }} as unknown as AdminOperationApproval);
+    expect(rows.find(row => row.label === 'Current identity network')?.value).toBe('Ethereum Sepolia (11155111)');
+    expect(rows.find(row => row.label === 'New identity network')?.value).toBe('Base (8453)');
+    expect(rows.find(row => row.label === 'Replacement verifier')?.value).toBe('base-verifier');
+    expect(rows.find(row => row.label === 'Checks')?.value).toBe('Age 18+ · sanctions all');
+    expect(component.identityNetworkName(1)).toBe('Network details unavailable');
+  });
+});

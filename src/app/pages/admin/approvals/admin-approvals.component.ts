@@ -394,6 +394,8 @@ export class AdminApprovalsComponent {
     const policy = review?.credentialPolicy ?? {};
     return [
       { label: 'Amendment', value: review?.amendmentHash ?? '' },
+      { label: 'Current identity network', value: this.identityNetworkName(review?.currentEvmChainId) },
+      { label: 'New identity network', value: this.identityNetworkName(review?.replacementEvmChainId) },
       { label: 'Current verifier', value: String(current['verifierAdapter'] ?? '') },
       { label: 'Replacement verifier', value: String(addresses['verifierAdapter'] ?? '') },
       { label: 'Attestation emitter', value: String(addresses['attestationEmitter'] ?? '') },
@@ -403,6 +405,11 @@ export class AdminApprovalsComponent {
       { label: 'Approval expires', value: review?.approvalExpiresAt
         ? new Date(review.approvalExpiresAt * 1000).toLocaleString() : '' },
     ];
+  }
+
+  identityNetworkName(chainId?: number): string {
+    return chainId === 8453 ? 'Base (8453)' : chainId === 11155111 ? 'Ethereum Sepolia (11155111)' :
+      chainId === 84532 ? 'Base Sepolia (84532)' : 'Network details unavailable';
   }
 
   statusLabel(item: AdminOperationApproval): string {

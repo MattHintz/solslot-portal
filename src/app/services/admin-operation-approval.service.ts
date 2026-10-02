@@ -56,6 +56,8 @@ export interface IdentityDeploymentReview {
   revision: number;
   approvalExpiresAt: number;
   currentDeployment: Record<string, unknown>;
+  currentEvmChainId?: number;
+  replacementEvmChainId?: number;
   replacementDeployment: Record<string, unknown>;
   acceptedProofVersions: string[];
   credentialPolicy: Record<string, unknown>;
