@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
 import { AdminWorkspaceNavComponent } from '../../../components/admin-workspace/admin-workspace-nav.component';
@@ -15,6 +15,8 @@ import {
   SolsMarketSnapshot,
 } from '../../../services/sols-market-api.service';
 import { formatError } from '../../../utils/format-error';
+import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
+import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
 
 export interface HealthCheck {
   id: string;
@@ -28,7 +30,8 @@ export interface HealthCheck {
 @Component({
   selector: 'solslot-admin-system-health',
   standalone: true,
-  imports: [CommonModule, RouterLink, AdminWorkspaceNavComponent],
+  imports: [CommonModule, RouterLink, AdminWorkspaceNavComponent, AdminRefreshStatusComponent],
+  providers: [AdminStatusRefresh],
   template: `
     <solslot-admin-workspace-nav />
     <main class="health-desk">
@@ -38,10 +41,10 @@ export interface HealthCheck {
           <h1>System health</h1>
           <p>See what is working, what is waiting, and what each issue affects.</p>
         </div>
-        <div class="actions">
-          <button type="button" (click)="reload()" [disabled]="loading()">Refresh checks</button>
-        </div>
       </header>
+      <solslot-admin-refresh-status [state]="refresh" />
+
+      @if (loading() && !checks().length) { <p role="status">Checking system health…</p> }
 
       @if (error()) {
         <div class="notice notice--error">{{ error() }}</div>
@@ -103,6 +106,7 @@ export interface HealthCheck {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminSystemHealthComponent {
+  readonly refresh = inject(AdminStatusRefresh);
   private readonly http = inject(HttpClient);
   private readonly collections = inject(CollectionApiService);
   private readonly solsMarket = inject(SolsMarketApiService);
@@ -111,19 +115,22 @@ export class AdminSystemHealthComponent {
   readonly error = signal<string | null>(null);
 
   constructor() {
-    void this.reload();
+    this.refresh.start(() => this.loadHealth());
   }
 
   async reload(): Promise<void> {
-    this.loading.set(true);
-    this.error.set(null);
+    await this.refresh.refresh();
+  }
+
+  private async loadHealth(): Promise<void> {
+    this.loading.set(!this.checks().length);
     const [feature, node, protocol, launch, solsMarket] = await Promise.allSettled([
       this.collections.featureStatus(),
-      firstValueFrom(this.http.get<unknown>(`${environment.faucetApi}/chia/provider-status`)),
-      firstValueFrom(this.http.get<unknown>(`${environment.faucetApi}/protocol`)),
+      firstValueFrom(this.http.get<unknown>(`${environment.faucetApi}/chia/provider-status`).pipe(timeout(20_000))),
+      firstValueFrom(this.http.get<unknown>(`${environment.faucetApi}/protocol`).pipe(timeout(20_000))),
       firstValueFrom(this.http.get<{ enabled: boolean; network: string }>(
         `${environment.faucetApi}/admin/launch/public`,
-      )),
+      ).pipe(timeout(20_000))),
       this.solsMarket.readMarket(),
     ]);
     const result: HealthCheck[] = [];
@@ -163,6 +170,7 @@ export class AdminSystemHealthComponent {
       .map((item) => formatError(item.reason));
     this.error.set(failures.length ? [...new Set(failures)].join(' ') : null);
     this.loading.set(false);
+    if (failures.length) throw new Error('Some health checks failed');
   }
 
   statusClass(status: HealthCheck['status']): string {

@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import type { BaseSepoliaTransaction, LaunchCeremonyBinding } from './evm-wallet.service';
@@ -50,7 +50,7 @@ export class AdminLaunchService {
     return firstValueFrom(
       this.http.get<LaunchWorkspace>(`${this.base}/workspace`, {
         withCredentials: true,
-      }),
+      }).pipe(timeout(20_000)),
     );
   }
 
@@ -75,7 +75,7 @@ export class AdminLaunchService {
     return firstValueFrom(
       this.http.get<RailOwnershipResult>(`${this.base}/rail-ownership`, {
         withCredentials: true,
-      }),
+      }).pipe(timeout(20_000)),
     );
   }
 
@@ -94,7 +94,7 @@ export class AdminLaunchService {
     return firstValueFrom(
       this.http.get<SettlementRehearsalResult>(`${this.base}/settlement-rehearsal`, {
         withCredentials: true,
-      }),
+      }).pipe(timeout(20_000)),
     );
   }
 

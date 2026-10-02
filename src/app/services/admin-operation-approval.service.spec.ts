@@ -155,4 +155,29 @@ describe('AdminOperationApprovalService', () => {
     sign.flush(identity);
     expect((await pending).operation).toBe('identity.activate');
   });
+
+  it('opens an unsigned identity review without asking the wallet to sign', async () => {
+    const pending = service.prepareIdentityDeployment();
+    const binding = {method: 'POST', path: '/admin/identity-deployment/activate', query: [], body: {amendmentHash: '0xreviewed', revision: 2}};
+    http.expectOne(`${environment.faucetApi}/admin/identity-deployment/review`).flush({
+      operation: 'identity.activate', revision: 2, requestBinding: binding,
+    });
+    await Promise.resolve(); await Promise.resolve();
+    const request = http.expectOne(`${environment.faucetApi}/admin/auth/operations/prepare`);
+    expect(request.request.body.requestBinding).toEqual(binding);
+    request.flush({...approval('pending'), operation: 'identity.activate'});
+    expect((await pending).operation).toBe('identity.activate');
+    expect(wallet.signTypedData).not.toHaveBeenCalled();
+    expect(wallet.signAuthorityV3ChiaAction).not.toHaveBeenCalled();
+  });
+
+  it('does not open a wallet for a missing chain review', async () => {
+    const pending = service.sign('identity');
+    http.expectOne(`${environment.faucetApi}/admin/auth/operations/identity`).flush({
+      ...approval('pending'), operation: 'identity.activate', chainActions: [],
+    });
+    await expectAsync(pending).toBeRejectedWithError(/complete chain review is unavailable/);
+    expect(wallet.signTypedData).not.toHaveBeenCalled();
+    expect(wallet.signAuthorityV3ChiaAction).not.toHaveBeenCalled();
+  });
 });

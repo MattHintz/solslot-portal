@@ -19,6 +19,8 @@ import {
   SolsMarketSnapshot,
 } from '../../../services/sols-market-api.service';
 import { formatError } from '../../../utils/format-error';
+import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
+import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
 
 interface DeskTask {
   id: string;
@@ -32,7 +34,8 @@ interface DeskTask {
 @Component({
   selector: 'pp-admin-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, AdminWorkspaceNavComponent],
+  imports: [CommonModule, RouterLink, AdminWorkspaceNavComponent, AdminRefreshStatusComponent],
+  providers: [AdminStatusRefresh],
   template: `
     <solslot-admin-workspace-nav />
     <main class="operations-desk">
@@ -43,6 +46,7 @@ interface DeskTask {
           <p>Prepare SmartDeeds, review team requests, and follow each action through confirmation.</p>
         </div>
       </header>
+      <solslot-admin-refresh-status [state]="refresh" />
 
       <nav class="ux-shortcuts" aria-label="Common administrator tasks">
         <a routerLink="/admin/collections"><span>01 · Prepare</span><strong>Create SmartDeeds</strong><small>Start with a property and its documents</small></a>
@@ -282,6 +286,7 @@ interface DeskTask {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminDashboardComponent {
+  readonly refresh = inject(AdminStatusRefresh);
   private readonly collectionApi = inject(CollectionApiService);
   private readonly approvalApi = inject(AdminOperationApprovalService);
   private readonly solsMarketApi = inject(SolsMarketApiService);
@@ -378,12 +383,16 @@ export class AdminDashboardComponent {
   readonly primaryTask = computed(() => this.tasks()[0] ?? null);
 
   constructor() {
-    void this.reload();
+    this.refresh.start(() => this.loadDesk(), () => this.session.isAuthenticated?.() === false
+      ? 'Sign in again to resume updates.' : null);
   }
 
   async reload(): Promise<void> {
-    this.loading.set(true);
-    this.error.set(null);
+    await this.refresh.refresh();
+  }
+
+  private async loadDesk(): Promise<void> {
+    this.loading.set(!this.refresh.lastUpdated());
     const errors: string[] = [];
     const [feature, collections, approvals, presales, solsMarket] = await Promise.allSettled([
       this.collectionApi.featureStatus(),
@@ -404,6 +413,7 @@ export class AdminDashboardComponent {
     else errors.push(formatError(solsMarket.reason));
     this.error.set(errors.length ? [...new Set(errors)].join(' ') : null);
     this.loading.set(false);
+    if (errors.length) throw new Error('Some status checks failed');
   }
 
   collectionSummary(collection: CollectionWorkspace): string {

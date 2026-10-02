@@ -35,6 +35,8 @@ import {
 } from '../../../services/admin-launch.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { formatError } from '../../../utils/format-error';
+import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
+import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
 
 type WalletKind = 'injected' | 'walletconnect';
 type PendingDecision =
@@ -73,12 +75,14 @@ interface LaunchStage {
 @Component({
   selector: 'solslot-admin-genesis',
   standalone: true,
-  imports: [CommonModule, FormsModule, AdminWorkspaceNavComponent, ZkPassportPrivacyComponent],
+  imports: [CommonModule, FormsModule, AdminWorkspaceNavComponent, ZkPassportPrivacyComponent, AdminRefreshStatusComponent],
+  providers: [AdminStatusRefresh],
   templateUrl: './genesis.component.html',
   styleUrl: './genesis.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GenesisComponent implements OnInit, OnDestroy {
+  readonly refresh = inject(AdminStatusRefresh);
   private readonly launch = inject(AdminLaunchService);
   private readonly router = inject(Router);
   readonly wallet = inject(EvmWalletService);
@@ -205,6 +209,25 @@ export class GenesisComponent implements OnInit, OnDestroy {
       } catch {
         this.workspace.set(null);
       }
+    });
+    if (this.workspace()) this.refresh.updated();
+    this.refresh.start(async () => {
+      // Reuse status reads, never the primary action or any signing/broadcast method.
+      try { await this.reloadWorkspace(); }
+      catch (error) {
+        if ((error as {status?: number})?.status === 401) {
+          this.workspace.set(null);
+          this.pendingDecision.set(null);
+          this.stopProgressPolling(); this.stopRailPolling(); this.stopRehearsalPolling();
+          this.error.set('Your administrator session expired. Sign in with your enrolled wallet again.');
+        }
+        throw error;
+      }
+    }, () => {
+      if (!this.workspace()) return 'Sign in to resume launch updates.';
+      if (this.pending() || this.pendingDecision()) return 'Updates paused while you review or sign an action.';
+      if (document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')) return 'Updates paused while you edit this form.';
+      return null;
     });
   }
 
@@ -973,7 +996,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
   private startProgressPolling(): void {
     if (this.progressTimer) return;
     this.progressTimer = setInterval(() => {
-      if (!this.pending()) void this.progressLaunch();
+      if (this.canPollLegacyStatus()) void this.progressLaunch();
     }, 15_000);
   }
 
@@ -986,7 +1009,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
   private startRehearsalPolling(): void {
     if (this.rehearsalTimer) return;
     this.rehearsalTimer = setInterval(() => {
-      if (!this.pending()) void this.pollSettlementRehearsal();
+      if (this.canPollLegacyStatus()) void this.pollSettlementRehearsal();
     }, 10_000);
   }
 
@@ -999,7 +1022,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
   private startRailPolling(): void {
     if (this.railTimer) return;
     this.railTimer = setInterval(() => {
-      if (!this.pending()) void this.pollRailOwnership();
+      if (this.canPollLegacyStatus()) void this.pollRailOwnership();
     }, 15_000);
   }
 
@@ -1007,6 +1030,11 @@ export class GenesisComponent implements OnInit, OnDestroy {
     if (!this.railTimer) return;
     clearInterval(this.railTimer);
     this.railTimer = null;
+  }
+
+  private canPollLegacyStatus(): boolean {
+    return !this.pending() && !this.pendingDecision() && !this.refresh.refreshing() &&
+      document.visibilityState !== 'hidden' && navigator.onLine !== false;
   }
 
   private async pollRailOwnership(): Promise<void> {

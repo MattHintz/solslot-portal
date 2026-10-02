@@ -142,9 +142,10 @@
             </span>
       </div>
       <div class="launch-header__actions">
-        <button type="button" class="btn btn--ghost" [disabled]="!!pending()" (click)="refreshStatus()">Refresh status</button><span class="wallet-label">{{ connectedWalletLabel() }}</span>
+        <span class="wallet-label">{{ connectedWalletLabel() }}</span>
       </div>
     </header>
+    <solslot-admin-refresh-status [state]="refresh" />
 
     <div class="launch-scope"><strong>{{ disposable() ? 'Vault & identity test' : 'Full protocol test' }}</strong><span>Test assets only · Owner plus one coadministrator approve team decisions.</span></div>
     <div class="launch-layout">

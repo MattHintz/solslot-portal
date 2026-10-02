@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 
@@ -13,7 +13,7 @@ export class SolsMarketApiService {
     return firstValueFrom(
       this.http.get<SolsMarketSnapshot>(`${this.base}/sols/market`, {
         withCredentials: true,
-      }),
+      }).pipe(timeout(20_000)),
     );
   }
 }

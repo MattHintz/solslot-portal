@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { AdminSessionService } from './admin-session.service';
@@ -22,7 +22,7 @@ export class CollectionApiService {
     return firstValueFrom(
       this.http.get<CollectionFeatureStatus>(`${this.base}/admin/collections/feature-status`, {
         headers: this.headers(),
-      }),
+      }).pipe(timeout(20_000)),
     );
   }
 
@@ -52,7 +52,7 @@ export class CollectionApiService {
     return firstValueFrom(
       this.http.get<CollectionListResponse>(`${this.base}/admin/collections${suffix}`, {
         headers: this.headers(),
-      }),
+      }).pipe(timeout(20_000)),
     );
   }
 
@@ -239,7 +239,7 @@ export class CollectionApiService {
     return firstValueFrom(
       this.http.get<PresaleSeries[]>(`${this.base}/presales/admin`, {
         headers: this.headers(),
-      }),
+      }).pipe(timeout(20_000)),
     );
   }
 

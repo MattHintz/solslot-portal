@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { AdminSessionService } from './admin-session.service';
@@ -65,6 +65,8 @@ export interface IdentityDeploymentReview {
   requestBinding?: AdminRequestBindingV1;
 }
 
+export type ApprovalSigningStage = 'checking' | 'chain-signature' | 'request-signature' | 'saving';
+
 export class PendingAdminApprovalError extends Error {
   constructor(readonly approval: AdminOperationApproval) {
     super(
@@ -106,7 +108,7 @@ export class AdminOperationApprovalService {
       this.http.get<AdminOperationApproval>(
         `${this.base}/admin/auth/operations/${encodeURIComponent(operationId)}`,
         { headers: this.authHeaders() },
-      ),
+      ).pipe(timeout(20_000)),
     );
   }
 
@@ -120,14 +122,16 @@ export class AdminOperationApprovalService {
           headers: this.authHeaders(),
           params: { status_filter: statusFilter },
         },
-      ),
+      ).pipe(timeout(20_000)),
     );
   }
 
   async sign(
     operationId: string,
     typedData?: Eip712TypedData,
+    onStage: (stage: ApprovalSigningStage) => void = () => {},
   ): Promise<AdminOperationApproval> {
+    onStage('checking');
     const chainBacked = ['mint.publish', 'identity.activate'].includes(
       String(typedData?.message['operation'] ?? ''),
     );
@@ -143,11 +147,16 @@ export class AdminOperationApprovalService {
       }
     };
     let chain: { chainActionId: string; chainSignature: string } | undefined;
+    if ((chainBacked || ['mint.publish', 'identity.activate'].includes(current?.operation ?? '')) &&
+        !current?.chainActions?.length) {
+      throw new Error('The complete chain review is unavailable. Refresh the request before signing.');
+    }
     if (current?.chainActions?.length) {
       const action = current.chainActions?.find(item => item.signerSlot === this.session.authoritySlot());
       if (!action || action.signerPublicKey.toLowerCase() !== publicKey?.toLowerCase()) {
-        throw new Error('This mint approval does not contain your current administrator action.');
+        throw new Error('This approval does not contain your current administrator action.');
       }
+      onStage('chain-signature');
       const chainSignature = await this.wallet.signAuthorityV3ChiaAction(action.typedData, {
         coinId: action.coinId, delegatedPuzzleHash: action.delegatedPuzzleHash,
         compressedPubkey: action.signerPublicKey,
@@ -155,8 +164,10 @@ export class AdminOperationApprovalService {
       requireSameAdministrator();
       chain = { chainActionId: action.actionId, chainSignature };
     }
-    const signature = await this.wallet.signTypedData(typedData ?? current!.typedData);
+    onStage('request-signature');
+    const signature = await this.wallet.signTypedData(current?.typedData ?? typedData!);
     requireSameAdministrator();
+    onStage('saving');
     return firstValueFrom(
       this.http.post<AdminOperationApproval>(
         `${this.base}/admin/auth/operations/${encodeURIComponent(operationId)}/sign`,
@@ -171,7 +182,7 @@ export class AdminOperationApprovalService {
       this.http.get<IdentityDeploymentReview>(
         `${this.base}/admin/identity-deployment/review`,
         { headers: this.authHeaders() },
-      ),
+      ).pipe(timeout(20_000)),
     );
   }
 
@@ -180,11 +191,13 @@ export class AdminOperationApprovalService {
     if (!review.requestBinding || review.operation !== 'identity.activate') {
       throw new Error('The identity activation review is incomplete.');
     }
-    return this.prepareAndSign({
-      operation: review.operation,
-      revision: review.revision,
-      binding: review.requestBinding,
-    });
+    // Preparing opens an on-page review; it never opens a wallet or records consent.
+    return firstValueFrom(this.http.post<AdminOperationApproval>(
+      `${this.base}/admin/auth/operations/prepare`,
+      { operation: review.operation, revision: review.revision,
+        expiresInSeconds: 600, requestBinding: review.requestBinding },
+      { headers: this.authHeaders() },
+    ));
   }
 
   async execute<T = unknown>(approval: AdminOperationApproval): Promise<T> {

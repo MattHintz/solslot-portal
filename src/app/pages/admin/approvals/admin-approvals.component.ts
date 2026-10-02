@@ -7,12 +7,15 @@ import {
   AdminOperationName,
 } from '../../../services/admin-operation-approval.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
+import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
+import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
 import { formatError } from '../../../utils/format-error';
 
 @Component({
   selector: 'app-admin-approvals',
   standalone: true,
-  imports: [CommonModule, AdminWorkspaceNavComponent],
+  imports: [CommonModule, AdminWorkspaceNavComponent, AdminRefreshStatusComponent],
+  providers: [AdminStatusRefresh],
   template: `
     <solslot-admin-workspace-nav />
     <main class="approval-desk">
@@ -24,15 +27,13 @@ import { formatError } from '../../../utils/format-error';
         </div>
         <div class="header-actions">
           @if (canPrepareIdentity()) {
-            <button type="button" class="button button--primary" (click)="prepareIdentity()" [disabled]="busy()">
+            <button type="button" class="button button--primary" (click)="prepareIdentity()" [disabled]="busy() || refresh.refreshing()">
               Review identity upgrade
             </button>
           }
-          <button type="button" class="button button--quiet" (click)="reload()" [disabled]="busy()">
-            Refresh
-          </button>
         </div>
       </header>
+      <solslot-admin-refresh-status [state]="refresh" />
 
       <aside class="ux-context"><strong>Two approvals, including the owner</strong><p>Read the receipt, compare the wallet request, then approve only if both agree. Approval records consent; execution is a separate action. Committee voting is also separate.</p></aside>
       @if (error()) {
@@ -41,6 +42,13 @@ import { formatError } from '../../../utils/format-error';
           <span>{{ error() }}</span>
         </div>
       }
+      @if (busy()) {
+        <div class="pending-state" role="status" aria-live="polite">
+          <strong>{{ actionMessage() }}</strong>
+          <span>{{ actionHint() }}</span>
+        </div>
+      }
+      @if (notice()) { <p class="pending-state" role="status">{{ notice() }}</p> }
 
       <div class="approval-layout">
         <section class="inbox" aria-labelledby="inbox-title">
@@ -51,7 +59,7 @@ import { formatError } from '../../../utils/format-error';
             </div>
             <strong>{{ operations().length }}</strong>
           </div>
-          @if (loading()) {
+          @if (loading() && !operations().length) {
             <p class="empty">Loading approvals...</p>
           } @else if (error() && !operations().length) {
             <p class="empty">Refresh to check whether any approvals are waiting.</p>
@@ -68,6 +76,7 @@ import { formatError } from '../../../utils/format-error';
                   class="operation-row"
                   [class.is-selected]="approval()?.operationId === item.operationId"
                   (click)="select(item)"
+                  [disabled]="busy()"
                 >
                   <span [class]="statusClass(item.status)">{{ statusLabel(item) }}</span>
                   <span>
@@ -101,10 +110,19 @@ import { formatError } from '../../../utils/format-error';
                 <dd>{{ item.signatures.length }} of 2 required · owner required</dd>
               </div>
               <div>
-                <dt>Expires</dt>
+                <dt>Request expires</dt>
                 <dd>{{ item.expiresAt * 1000 | date: 'medium' }}</dd>
               </div>
             </dl>
+
+            <div class="pending-state" role="status">
+              <strong>{{ nextStep(item) }}</strong>
+              @if (expired(item)) {
+                <span>This request cannot be signed or executed. The owner can open a fresh review.</span>
+              } @else {
+                <span>{{ remaining(item) }} · The inbox checks for new approvals automatically.</span>
+              }
+            </div>
 
             <div class="impact">
               <strong>{{ operationImpact(item.operation) }}</strong>
@@ -132,11 +150,11 @@ import { formatError } from '../../../utils/format-error';
               <section class="identity-review" aria-label="Identity verifier activation details">
                 <strong>New private ID checks</strong>
                 <p>Future vault checks use the replacement contracts below. Existing vault receipts keep their original verifier binding.</p>
-                <dl class="decision-grid">
+                @if (reviewReady(item)) { <dl class="decision-grid">
                   @for (field of identityReview(item); track field.label) {
                     <div><dt>{{ field.label }}</dt><dd>{{ field.value }}</dd></div>
                   }
-                </dl>
+                </dl> } @else { <p>The complete network and contract review is not available yet. Refresh before signing.</p> }
               </section>
             }
 
@@ -169,7 +187,7 @@ import { formatError } from '../../../utils/format-error';
                   type="button"
                   class="button button--quiet"
                   (click)="sign()"
-                  [disabled]="busy() || item.status === 'consumed'"
+                  [disabled]="busy() || refresh.refreshing() || expired(item) || item.status === 'consumed' || !reviewReady(item)"
                 >
                   Approve this request
                 </button>
@@ -178,9 +196,9 @@ import { formatError } from '../../../utils/format-error';
                 type="button"
                 class="button button--primary"
                 (click)="execute()"
-                [disabled]="busy() || !canComplete(item)"
+                [disabled]="busy() || refresh.refreshing() || !canComplete(item)"
               >
-                Complete approved action
+                {{ item.operation === 'identity.activate' ? 'Activate identity checks' : 'Complete approved action' }}
               </button>
               @if (item.operation === 'mint.publish' && item.createdBy.toLowerCase() !== currentSubject()) {
                 <p>The original proposer completes this mint after both approvals are recorded.</p>
@@ -236,6 +254,7 @@ import { formatError } from '../../../utils/format-error';
       .empty { display:grid; place-content:center; gap:5px; min-height:260px; text-align:center; color:#eefbf5; }
       .empty--review { min-height:360px; }
       .notice { display:grid; gap:4px; margin-top:16px; padding:12px; border:1px solid #844f4f; color:#ffc4c4; }
+      .pending-state { display:grid; gap:5px; margin:16px 0; padding:13px; border-left:3px solid #7dc9ec; background:#0d251e; color:#d2e9dd; }
       @media (max-width:800px) { .approval-layout { grid-template-columns:1fr; } .desk-header { align-items:flex-start; flex-direction:column; } }
       @media (max-width:520px) { .decision-grid { grid-template-columns:1fr; } .operation-row { grid-template-columns:auto 1fr; } .operation-row time { grid-column:2; } }
     `,
@@ -245,55 +264,86 @@ import { formatError } from '../../../utils/format-error';
 export class AdminApprovalsComponent {
   private readonly api = inject(AdminOperationApprovalService);
   private readonly session = inject(AdminSessionService);
+  readonly refresh = inject(AdminStatusRefresh);
 
   readonly operations = signal<AdminOperationApproval[]>([]);
   readonly approval = signal<AdminOperationApproval | null>(null);
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+  readonly notice = signal<string | null>(null);
+  readonly actionMessage = signal('Preparing your review…');
+  readonly actionHint = signal('Checking the exact request with the server.');
   readonly currentSubject = computed(() => this.session.subject()?.toLowerCase() ?? '');
 
   constructor() {
-    void this.reload();
+    this.refresh.start(() => this.loadApprovals(), () => this.busy()
+      ? 'Updates paused while your action is in progress.'
+      : this.session.isAuthenticated?.() === false ? 'Sign in again to resume updates.' : null);
   }
 
   async reload(): Promise<void> {
-    this.loading.set(true);
+    await this.refresh.refresh();
+  }
+
+  private async loadApprovals(): Promise<void> {
+    this.loading.set(!this.refresh.lastUpdated());
     this.error.set(null);
     try {
       const result = await this.api.list('active');
       this.operations.set(result.operations);
       const selected = this.approval();
-      this.approval.set(
+      const next =
         selected
-          ? result.operations.find((item) => item.operationId === selected.operationId) ?? null
-          : result.operations[0] ?? null,
-      );
+          ? result.operations.find((item) => item.operationId === selected.operationId) ??
+            (this.expired(selected) ? selected : null)
+          : result.operations[0] ?? null;
+      this.approval.set(next);
+      if (next && !this.expired(next) && ['identity.activate', 'mint.publish'].includes(next.operation)) {
+        // The list is intentionally lightweight; GET reconstructs the full chain review.
+        const detailed = await this.api.get(next.operationId);
+        if (this.approval()?.operationId === next.operationId) this.approval.set(detailed);
+      }
     } catch (error) {
       this.error.set(formatError(error));
+      throw error;
     } finally {
       this.loading.set(false);
     }
   }
 
   select(item: AdminOperationApproval): void {
+    if (this.busy()) return;
     this.approval.set(item);
+    void this.reload();
   }
 
   async sign(): Promise<void> {
     const current = this.approval();
-    if (!current) return;
-    await this.run(async () => this.api.sign(current.operationId, current.typedData));
+    if (!current || this.busy() || this.refresh.refreshing() || this.signedByCurrentAdmin(current) || this.expired(current) || !this.reviewReady(current)) return;
+    await this.run(async () => this.api.sign(current.operationId, current.typedData, (stage) => {
+      this.actionMessage.set({ checking: 'Checking this request…', 'chain-signature': 'Wallet approval 1 of 2',
+        'request-signature': current.chainActions?.length ? 'Wallet approval 2 of 2' : 'Waiting for your wallet signature',
+        saving: 'Saving your approval…' }[stage]);
+      this.actionHint.set(stage === 'saving' ? 'Wait for the server to confirm your signature.'
+        : 'Open your wallet to review the request. Reject it there to stop signing.');
+    }), 'Approval saved. The inbox will update when the other administrator signs.');
   }
 
   async execute(): Promise<void> {
     const current = this.approval();
-    if (!current || !this.canComplete(current)) return;
+    if (!current || this.busy() || this.refresh.refreshing() || !this.canComplete(current)) return;
     this.busy.set(true);
+    this.notice.set(null);
+    this.actionMessage.set('Submitting the approved action…');
+    this.actionHint.set('Checking the server result. Do not submit a second transaction while this request is pending.');
     this.error.set(null);
     try {
       await this.api.execute(current);
-      await this.reload();
+      this.notice.set('The server accepted the approved action. Check chain confirmation before treating it as complete.');
+      this.approval.set(null);
+      await this.loadApprovals();
+      this.refresh.updated();
     } catch (error) {
       this.error.set(formatError(error));
     } finally {
@@ -303,11 +353,14 @@ export class AdminApprovalsComponent {
 
   canPrepareIdentity(): boolean {
     return this.session.authoritySlot?.() === 0 &&
-      !this.operations().some((item) => item.operation === 'identity.activate');
+      !this.operations().some((item) => item.operation === 'identity.activate' && !this.expired(item));
   }
 
   async prepareIdentity(): Promise<void> {
-    await this.run(() => this.api.prepareIdentityDeployment());
+    if (this.busy() || !this.canPrepareIdentity()) return;
+    this.actionMessage.set('Preparing the identity review…');
+    this.actionHint.set('No signature or transaction is sent until you review and approve this request.');
+    await this.run(() => this.api.prepareIdentityDeployment(), 'Review the network, contracts, and checks below, then choose Approve this request.');
   }
 
   signedByCurrentAdmin(item: AdminOperationApproval): boolean {
@@ -317,7 +370,7 @@ export class AdminApprovalsComponent {
   }
 
   canComplete(item: AdminOperationApproval): boolean {
-    return item.status === 'approved' && this.signedByCurrentAdmin(item) &&
+    return item.status === 'approved' && !this.expired(item) && this.reviewReady(item) && this.signedByCurrentAdmin(item) &&
       (item.operation !== 'mint.publish' || item.createdBy.toLowerCase() === this.currentSubject());
   }
 
@@ -399,10 +452,12 @@ export class AdminApprovalsComponent {
       { label: 'Current verifier', value: String(current['verifierAdapter'] ?? '') },
       { label: 'Replacement verifier', value: String(addresses['verifierAdapter'] ?? '') },
       { label: 'Attestation emitter', value: String(addresses['attestationEmitter'] ?? '') },
-      { label: 'Proof versions', value: review?.acceptedProofVersions.join(', ') ?? '' },
+      { label: 'Proof versions', value: review?.acceptedProofVersions?.join(', ') ?? 'Not available' },
       { label: 'Checks', value: `Age ${String(policy['minimumAge'] ?? '')}+ · sanctions ${String((policy['sanctions'] as Record<string, unknown> | undefined)?.['lists'] ?? '')}` },
+      { label: 'Documents', value: policy['realDocumentOnly'] === true && policy['devMode'] === false
+        ? 'Real documents only · Developer Mode off' : 'Document policy unavailable' },
       { label: 'Website', value: String(policy['domain'] ?? '') },
-      { label: 'Approval expires', value: review?.approvalExpiresAt
+      { label: 'Amendment valid until', value: review?.approvalExpiresAt
         ? new Date(review.approvalExpiresAt * 1000).toLocaleString() : '' },
     ];
   }
@@ -413,7 +468,40 @@ export class AdminApprovalsComponent {
   }
 
   statusLabel(item: AdminOperationApproval): string {
+    if (this.expired(item)) return 'Expired';
     return item.status === 'approved' ? 'Ready' : 'Needs approval';
+  }
+
+  expired(item: AdminOperationApproval): boolean {
+    return item.expiresAt * 1000 <= this.refresh.now();
+  }
+
+  remaining(item: AdminOperationApproval): string {
+    const seconds = Math.max(0, Math.ceil((item.expiresAt * 1000 - this.refresh.now()) / 1000));
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left to approve and execute`;
+  }
+
+  reviewReady(item: AdminOperationApproval): boolean {
+    if (item.operation !== 'identity.activate') return true;
+    const review = item.identityReview;
+    const body = item.requestBinding.body as Record<string, unknown> | null;
+    const policy = review?.credentialPolicy;
+    const sanctions = policy?.['sanctions'] as Record<string, unknown> | undefined;
+    const addresses = review?.replacementDeployment?.['addresses'] as Record<string, unknown> | undefined;
+    return !!review && review.amendmentHash === body?.['amendmentHash'] &&
+      review.revision === body?.['revision'] && !!review.currentEvmChainId && !!review.replacementEvmChainId &&
+      !!review.acceptedProofVersions?.length && !!policy?.['minimumAge'] && !!policy['domain'] &&
+      policy['realDocumentOnly'] === true && policy['devMode'] === false && !!sanctions?.['lists'] &&
+      !!review.currentDeployment?.['verifierAdapter'] && !!addresses?.['verifierAdapter'] && !!addresses['attestationEmitter'];
+  }
+
+  nextStep(item: AdminOperationApproval): string {
+    if (this.expired(item)) return 'This approval window has expired';
+    if (!this.reviewReady(item)) return 'Loading the complete review. Signing is unavailable until all details can be checked.';
+    if (item.status === 'consumed') return 'Submitted. Follow the chain confirmation.';
+    if (item.status === 'approved') return 'Both approvals are saved. Complete the approved action when ready.';
+    if (this.signedByCurrentAdmin(item)) return 'Your approval is saved. Waiting for the other required administrator.';
+    return 'Review the details, then approve this request. Approval alone does not execute it.';
   }
 
   statusClass(status: string): string {
@@ -424,12 +512,16 @@ export class AdminApprovalsComponent {
     return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-6)}` : value;
   }
 
-  private async run(action: () => Promise<AdminOperationApproval>): Promise<void> {
+  private async run(action: () => Promise<AdminOperationApproval>, success: string): Promise<void> {
+    if (this.busy() || this.refresh.refreshing()) return;
     this.busy.set(true);
+    this.notice.set(null);
     this.error.set(null);
     try {
       this.approval.set(await action());
-      await this.reload();
+      this.notice.set(success);
+      await this.loadApprovals();
+      this.refresh.updated();
     } catch (error) {
       this.error.set(formatError(error));
     } finally {
