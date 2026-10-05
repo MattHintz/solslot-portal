@@ -9,13 +9,14 @@ import {
 } from '../../services/property-metadata/property-dossier';
 import { VerifiedMediaComponent } from './verified-media.component';
 import { VerifiedDocumentComponent } from './verified-document.component';
+import { ProjectTeamSummaryComponent } from '../project-team/project-team-summary.component';
 
 type DossierTab = 'overview' | 'economics' | 'legal' | 'documents' | 'updates' | 'evidence';
 
 @Component({
   selector: 'pp-property-dossier',
   standalone: true,
-  imports: [CommonModule, VerifiedMediaComponent, VerifiedDocumentComponent],
+  imports: [CommonModule, VerifiedMediaComponent, VerifiedDocumentComponent, ProjectTeamSummaryComponent],
   template: `
     <article class="dossier">
       <header class="dossier-header">
@@ -29,6 +30,8 @@ type DossierTab = 'overview' | 'economics' | 'legal' | 'documents' | 'updates' |
           <span class="mono">{{ shortHash(workspace().metadataRoot) }}</span>
         </div>
       </header>
+
+      <pp-project-team-summary [team]="dossier().projectTeam" />
 
       @if (hero(); as asset) {
         <pp-verified-media [asset]="asset" [rootVerified]="verified()" />

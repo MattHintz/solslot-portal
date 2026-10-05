@@ -324,10 +324,13 @@ async function sha256File(file: File): Promise<string> {
 export type CollectionState = 'DRAFT' | 'REVIEW' | 'SEALED' | 'PUBLISHED';
 
 export interface CollectionFeatureStatus {
+  metadataConfigured?: boolean;
+  recovery?: { healthy: boolean; checkedAt: number | null; restoredAt: number | null };
   metadataEnabled: boolean;
   mintingEnabled: boolean;
   maxCanonicalBytes: number;
   maxAssetBytes: number;
+  storageQuotaBytes?: number;
   network: 'testnet11' | 'mainnet';
 }
 

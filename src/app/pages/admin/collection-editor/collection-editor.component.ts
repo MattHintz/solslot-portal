@@ -6,6 +6,8 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { AdminWorkspaceNavComponent } from '../../../components/admin-workspace/admin-workspace-nav.component';
 import { PropertyDossierComponent } from '../../../components/property-dossier/property-dossier.component';
+import { ProjectTeamFormComponent } from '../../../components/project-team/project-team-form.component';
+import { ProjectTeamSummaryComponent } from '../../../components/project-team/project-team-summary.component';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import {
   CollectionApiService,
@@ -29,10 +31,13 @@ import {
   PropertyDossierV1,
 } from '../../../services/property-metadata/property-dossier';
 import { formatError } from '../../../utils/format-error';
+import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
+import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
 
 type EditorSection =
   | 'classification'
   | 'overview'
+  | 'team'
   | 'property'
   | 'project'
   | 'media'
@@ -59,7 +64,11 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
     RouterLink,
     AdminWorkspaceNavComponent,
     PropertyDossierComponent,
+    ProjectTeamFormComponent,
+    ProjectTeamSummaryComponent,
+    AdminRefreshStatusComponent,
   ],
+  providers: [AdminStatusRefresh],
   template: `
     <solslot-admin-workspace-nav />
     <main class="editor-shell">
@@ -83,13 +92,19 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
               </div>
             </div>
             <div class="header-actions">
-              <span class="save-state" [attr.data-state]="saveState()">{{ saveLabel() }}</span>
+              <span class="save-state" role="status" aria-live="polite" [attr.data-state]="saveState()">{{ saveLabel() }}</span>
               <button type="button" class="btn btn--ghost" (click)="reload()">Refresh</button>
               @if (canEdit()) {
-                <button type="button" class="btn btn--primary" (click)="saveNow(false, true)">Save</button>
+                <button type="button" class="btn btn--primary" [disabled]="saveState() === 'saving' || saveState() === 'conflict'" (click)="saveNow()">Save</button>
               }
             </div>
           </header>
+
+          <pp-project-team-summary [team]="draft.projectTeam" [compact]="true" />
+          <solslot-admin-refresh-status [state]="refresh" />
+          @if (feature()?.metadataConfigured && !feature()?.recovery?.healthy) {
+            <p class="inline-error" role="status">Recovery check pending. Your fields are retained; saving resumes when recovery is healthy.</p>
+          }
 
           @if (saveState() === 'conflict') {
             <section class="conflict-bar">
@@ -121,6 +136,10 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
 
             <section class="editor-main">
               @switch (activeSection()) {
+                @case ('team') {
+                  <div class="section-head"><span>People behind the project</span><h2>Sponsor & builder</h2></div>
+                  <pp-project-team-form [team]="draft.projectTeam!" [disabled]="!canEdit()" (changed)="changed()" />
+                }
                 @case ('classification') {
                   <div class="section-head"><span>Issuance profile</span><h2>Classification</h2></div>
                   <fieldset [disabled]="!canEdit()">
@@ -206,6 +225,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
 
                 @case ('media') {
                   <div class="section-head"><span>Verified assets</span><h2>Property media</h2></div>
+                  <p class="field-help">{{ uploadLimitLabel() }}</p>
                   @if (canEdit()) {
                     <div class="upload-strip">
                       <label>Role<select [(ngModel)]="mediaRole"><option value="hero">Hero</option><option value="gallery">Gallery</option><option value="site">Site</option><option value="rendering">Rendering</option><option value="plan">Plan</option><option value="floorplan">Floor plan</option><option value="other">Other</option></select></label>
@@ -321,6 +341,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
 
                 @case ('documents') {
                   <div class="section-head"><span>Evidence package</span><h2>Documents and sources</h2></div>
+                  <p class="field-help">{{ uploadLimitLabel() }}</p>
                   @if (canEdit()) {
                     <div class="upload-strip">
                       <label class="span-2">Document title<input type="text" [(ngModel)]="documentTitle" /></label>
@@ -578,7 +599,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
   styles: [
     `
       .editor-shell { max-width:1500px; margin:0 auto; padding:1rem var(--pad-x) 5rem; }
-      .editor-header { position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between; gap:1rem; min-height:4.5rem; border-bottom:1px solid var(--border); background:rgba(2,11,11,.96); }
+      .editor-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; min-height:4.5rem; border-bottom:1px solid var(--border); }
       .title-block,.header-actions,.title-block > div { display:flex; align-items:center; gap:1rem; min-width:0; }
       .title-block > a { color:var(--accent); font-size:.68rem; }
       .title-block h1 { max-width:35rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:600 1rem var(--font-sans); letter-spacing:0; }
@@ -655,11 +676,12 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
       .page-state { display:flex; min-height:65vh; flex-direction:column; align-items:center; justify-content:center; gap:.75rem; color:var(--muted); text-align:center; }
       .page-state--error strong { color:#ffaaa1; }
       @media (max-width:1100px) { .editor-layout { grid-template-columns:10rem minmax(0,1fr); } .review-rail { display:none; } }
-      @media (max-width:760px) { .editor-header { position:static; align-items:flex-start; flex-direction:column; padding:.75rem 0; } .title-block { align-items:flex-start; flex-direction:column; } .editor-layout { grid-template-columns:1fr; } .section-nav { position:static; display:flex; overflow-x:auto; border-bottom:1px solid var(--border); } .section-group { display:none; } .section-nav button { flex:0 0 auto; border-left:0; border-bottom:2px solid transparent; } .section-nav button.is-active { border-bottom-color:var(--accent); } .editor-main { padding-inline:0; border:0; } fieldset,.field-grid,.upload-strip,.commitment-grid { grid-template-columns:1fr; } .span-2,.full { grid-column:auto; } .comments article,.asset-table article,.proposal-list article { grid-template-columns:1fr; } }
+      @media (max-width:760px) { .editor-header { position:static; align-items:flex-start; flex-direction:column; padding:.75rem 0; } .title-block { align-items:flex-start; flex-direction:column; width:100%; } .title-block > div { align-items:flex-start; flex-direction:column; gap:.25rem; width:100%; } .title-block h1 { max-width:100%; white-space:normal; overflow-wrap:anywhere; } .editor-layout { grid-template-columns:1fr; } .section-nav { position:static; display:flex; overflow-x:auto; border-bottom:1px solid var(--border); } .section-group { display:none; } .section-nav button { flex:0 0 auto; border-left:0; border-bottom:2px solid transparent; } .section-nav button.is-active { border-bottom-color:var(--accent); } .editor-main { padding-inline:0; border:0; } fieldset,.field-grid,.upload-strip,.commitment-grid { grid-template-columns:1fr; } .span-2,.full { grid-column:auto; } .comments article,.asset-table article,.proposal-list article { grid-template-columns:1fr; } }
     `,
   ],
 })
 export class CollectionEditorComponent implements OnDestroy {
+  readonly refresh = inject(AdminStatusRefresh);
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(CollectionApiService);
   private readonly session = inject(AdminSessionService);
@@ -669,6 +691,7 @@ export class CollectionEditorComponent implements OnDestroy {
   readonly sections: Array<{ id: EditorSection; label: string; group: string }> = [
     { id: 'classification', label: 'Property type', group: 'Start' },
     { id: 'overview', label: 'Summary', group: 'Start' },
+    { id: 'team', label: 'Sponsor & builder', group: 'Start' },
     { id: 'property', label: 'Facts & location', group: 'Property' },
     { id: 'project', label: 'Project diligence', group: 'Property' },
     { id: 'media', label: 'Photos & media', group: 'Property' },
@@ -736,7 +759,12 @@ export class CollectionEditorComponent implements OnDestroy {
   private saveQueued = false;
 
   constructor() {
-    void this.reload();
+    this.refresh.start(() => this.reload(), () => {
+      if (!this.session.isAuthenticated()) return 'Sign in again to update this property.';
+      if (['dirty', 'saving', 'error', 'conflict'].includes(this.saveState())) return 'Updates paused to protect your unsaved fields.';
+      if (this.mediaUploading() || this.documentUploading() || this.privateDocumentUploading() || this.proposalBusy() || this.sealing() || this.reviewBusy() || this.presaleBusy() || this.amendmentBusy() || this.amendmentOpen() || this.mintPreview()) return 'Updates paused while you review or complete an action.';
+      return null;
+    });
   }
 
   ngOnDestroy(): void {
@@ -744,13 +772,17 @@ export class CollectionEditorComponent implements OnDestroy {
   }
 
   async reload(): Promise<void> {
+    if (this.draftModel && ['dirty', 'saving', 'error', 'conflict'].includes(this.saveState())) {
+      if (!(await this.saveNow(false, true))) return;
+    }
+    const generation = this.editGeneration;
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
       this.loadError.set('Missing collection identifier.');
       this.loading.set(false);
       return;
     }
-    this.loading.set(true);
+    this.loading.set(!this.workspace());
     this.loadError.set(null);
     try {
       const [feature, profiles, collection, presale] = await Promise.all([
@@ -761,10 +793,11 @@ export class CollectionEditorComponent implements OnDestroy {
       ]);
       this.feature.set(feature);
       this.profiles.set(profiles);
-      this.applyWorkspace(collection);
+      if (generation === this.editGeneration) this.applyWorkspace(collection);
       this.presale.set(presale);
     } catch (error) {
-      this.loadError.set(formatError(error));
+      if (!this.workspace()) this.loadError.set(formatError(error));
+      throw error;
     } finally {
       this.loading.set(false);
     }
@@ -905,12 +938,12 @@ export class CollectionEditorComponent implements OnDestroy {
       this.saveTimer = null;
     }
     if (this.activeSave) {
-      this.saveQueued = true;
-      await this.activeSave;
-      return force || submitForReview || this.saveQueued
+      if (!(await this.activeSave)) return false;
+      return force || submitForReview || this.saveState() === 'dirty'
         ? this.saveNow(submitForReview, false)
         : this.saveState() !== 'error' && this.saveState() !== 'conflict';
     }
+    if (!force && !submitForReview && ['idle', 'saved'].includes(this.saveState())) return true;
     const task = this.performSave(submitForReview);
     this.activeSave = task;
     try {
@@ -1467,6 +1500,12 @@ export class CollectionEditorComponent implements OnDestroy {
     return labels[this.saveState()];
   }
 
+  uploadLimitLabel(): string {
+    const max = this.feature()?.maxAssetBytes;
+    const quota = this.feature()?.storageQuotaBytes;
+    return `Uploads are checked before use.${max ? ' Up to ' + Math.floor(max / 1048576) + ' MiB per file.' : ''}${quota ? ' This shared test workspace has a ' + Math.floor(quota / 1048576) + ' MiB storage cap, including retained upload copies.' : ''}`;
+  }
+
   private scheduleSave(delay = 800): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => void this.saveNow(), delay);
@@ -1524,6 +1563,10 @@ export class CollectionEditorComponent implements OnDestroy {
       return await this.api.getPresale(collectionId);
     } catch (error) {
       if (error instanceof HttpErrorResponse && error.status === 404) return null;
+      if (error instanceof HttpErrorResponse && error.status === 503) {
+        this.presaleError.set('Reservations are currently paused. You can still prepare and review this property.');
+        return null;
+      }
       throw error;
     }
   }
@@ -1551,6 +1594,7 @@ function normalizeDraft(value: PropertyDossierDraftV1): PropertyDossierDraftV1 {
   draft.capital ||= { plannedUses: [] };
   draft.capital.plannedUses ||= [];
   draft.legal ||= {};
+  draft.projectTeam ||= { sponsor: {}, builderIsSponsor: false };
   draft.valuation.currency ||= 'USD';
   draft.offering.currency ||= 'USD';
   draft.operations.currency ||= 'USD';
@@ -1699,7 +1743,7 @@ function verifiedUris(asset: CollectionAsset): string[] {
 
 function issuePrefix(section: EditorSection): string {
   const map: Partial<Record<EditorSection, string>> = {
-    classification: '/classification', overview: '/summary', property: '/property', project: '/diligence', media: '/media', economics: '/valuation',
+    classification: '/classification', overview: '/summary', team: '/projectTeam', property: '/property', project: '/diligence', media: '/media', economics: '/valuation',
     operations: '/operations', legal: '/legal', risks: '/risks', documents: '/documents',
     allocation: '/deedAllocation',
   };
@@ -1707,6 +1751,7 @@ function issuePrefix(section: EditorSection): string {
 }
 
 function sectionForPath(path: string): EditorSection {
+  if (path.startsWith('/projectTeam')) return 'team';
   if (path.startsWith('/classification')) return 'classification';
   if (path.startsWith('/diligence')) return 'project';
   if (path.startsWith('/property')) return 'property';

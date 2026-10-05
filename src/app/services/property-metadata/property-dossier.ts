@@ -52,12 +52,36 @@ export interface DeedAllocationV1 {
   deedLauncherId?: string;
 }
 
+export interface ProjectPartyV1 {
+  legalName: string;
+  displayName?: string;
+  website?: string;
+  summary?: string;
+  licenseReference?: string;
+  licenseJurisdiction?: string;
+}
+
+export interface ProjectTeamV1 {
+  sponsor: ProjectPartyV1;
+  builderStatus: 'selected' | 'not-appointed' | 'not-applicable';
+  builderIsSponsor: boolean;
+  builder?: ProjectPartyV1;
+}
+
+export interface DraftProjectTeamV1 {
+  sponsor: Partial<ProjectPartyV1>;
+  builderStatus?: ProjectTeamV1['builderStatus'];
+  builderIsSponsor: boolean;
+  builder?: Partial<ProjectPartyV1>;
+}
+
 export interface PropertyDossierV1 {
   schemaVersion: typeof PROPERTY_DOSSIER_SCHEMA;
   collectionId: string;
   revision: number;
   title: string;
   summary: string;
+  projectTeam?: ProjectTeamV1;
   classification?: {
     assetClass: RealEstateAssetClass;
     propertySubtype: string;
@@ -232,6 +256,7 @@ export interface PropertyDossierDraftV1 {
   revision: number;
   title: string;
   summary?: string;
+  projectTeam?: DraftProjectTeamV1;
   classification?: {
     assetClass?: RealEstateAssetClass;
     propertySubtype?: string;

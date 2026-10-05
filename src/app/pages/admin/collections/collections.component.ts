@@ -11,13 +11,17 @@ import {
   CollectionWorkspace,
 } from '../../../services/collection-api.service';
 import { formatError } from '../../../utils/format-error';
+import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
+import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
+import { AdminSessionService } from '../../../services/admin-session.service';
 
 type StateFilter = 'ALL' | CollectionState;
 
 @Component({
   selector: 'pp-admin-collections',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, AdminWorkspaceNavComponent],
+  imports: [CommonModule, FormsModule, RouterLink, AdminWorkspaceNavComponent, AdminRefreshStatusComponent],
+  providers: [AdminStatusRefresh],
   template: `
     <solslot-admin-workspace-nav />
     <main class="collection-index">
@@ -39,6 +43,8 @@ type StateFilter = 'ALL' | CollectionState;
         </div>
       </header>
 
+      <solslot-admin-refresh-status [state]="refresh" />
+
       <ol class="ux-steps" aria-label="SmartDeed minting process">
         <li><span>01</span><div><strong>Prepare the property</strong><p>Add its details, documents, and SmartDeed allocation.</p></div></li>
         <li><span>02</span><div><strong>Review and seal</strong><p>Resolve open checks, then seal the agreed property record.</p></div></li>
@@ -49,8 +55,8 @@ type StateFilter = 'ALL' | CollectionState;
       @if (feature(); as flags) {
         @if (!flags.metadataEnabled) {
           <section class="notice notice--locked">
-            <strong>Property drafting is not available on this server</strong>
-            <span>Open System Health to see which release setting is keeping it closed.</span>
+            <strong>{{ flags.metadataConfigured && !flags.recovery?.healthy ? 'Recovery check pending' : 'Property drafting is not available on this server' }}</strong>
+            <span>{{ flags.metadataConfigured && !flags.recovery?.healthy ? 'Saved drafts remain available. New changes pause until the recovery check is renewed; this page checks automatically.' : 'Open System Health to see which release setting is keeping it closed.' }}</span>
             <a routerLink="/admin/system-health">Open System Health</a>
           </section>
         } @else if (!flags.mintingEnabled) {
@@ -203,6 +209,8 @@ type StateFilter = 'ALL' | CollectionState;
   ],
 })
 export class CollectionsComponent {
+  readonly refresh = inject(AdminStatusRefresh);
+  private readonly session = inject(AdminSessionService);
   private readonly api = inject(CollectionApiService);
   private readonly router = inject(Router);
 
@@ -225,23 +233,27 @@ export class CollectionsComponent {
   newTitle = '';
 
   constructor() {
-    void this.reload();
+    this.refresh.start(() => this.reload(), () => {
+      if (!this.session.isAuthenticated()) return 'Sign in again to update properties.';
+      return this.creating() || this.createOpen() ? 'Updates paused while you add a property.' : null;
+    });
   }
 
   async reload(): Promise<void> {
-    this.loading.set(true);
+    this.loading.set(!this.collections().length);
     this.error.set(null);
     try {
       const feature = await this.api.featureStatus();
       this.feature.set(feature);
-      if (feature.metadataEnabled) {
+      if (feature.metadataConfigured ?? feature.metadataEnabled) {
         const result = await this.api.list();
         this.collections.set(result.collections);
       } else {
         this.collections.set([]);
       }
     } catch (error) {
-      this.error.set(formatError(error));
+      if (!this.collections().length) this.error.set(formatError(error));
+      throw error;
     } finally {
       this.loading.set(false);
     }

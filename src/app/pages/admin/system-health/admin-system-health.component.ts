@@ -191,10 +191,12 @@ export class AdminSystemHealthComponent {
     return {
       id: 'collections',
       title: 'Collection workspace',
-      status: result.value.metadataEnabled ? 'Healthy' : 'Waiting',
+      status: result.value.metadataEnabled ? 'Healthy' : result.value.metadataConfigured && !result.value.recovery?.healthy ? 'Blocked' : 'Waiting',
       impact: result.value.metadataEnabled
         ? `Draft and review are available. Minting is ${result.value.mintingEnabled ? 'open' : 'closed'}.`
-        : 'Collection drafting is disabled. Its storage, pinning, and file-scanning services must be configured and checked before it opens.',
+        : result.value.metadataConfigured && !result.value.recovery?.healthy
+          ? 'Property changes are paused because the recovery check is missing or stale. Saved drafts remain available; this page checks automatically.'
+          : 'Collection drafting is disabled. Its storage, pinning, and file-scanning services must be configured and checked before it opens.',
       evidence: result.value,
     };
   }
