@@ -230,9 +230,10 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                     <div class="upload-strip">
                       <label>Role<select [(ngModel)]="mediaRole"><option value="hero">Hero</option><option value="gallery">Gallery</option><option value="site">Site</option><option value="rendering">Rendering</option><option value="plan">Plan</option><option value="floorplan">Floor plan</option><option value="other">Other</option></select></label>
                       <label class="span-2">Alt text<input type="text" [(ngModel)]="mediaAlt" /></label>
-                      <label class="file-control">Image<input type="file" accept="image/*" (change)="uploadMedia($event)" [disabled]="mediaUploading()" /></label>
+                      <label class="file-control">Image<input type="file" accept="image/*" (change)="uploadMedia($event)" [disabled]="mediaUploading() || documentUploading() || privateDocumentUploading()" /></label>
                     </div>
                   }
+                  @if (mediaUploading()) { <div class="upload-progress" role="status" aria-live="polite"><span class="upload-spinner" aria-hidden="true"></span><strong>{{ uploadProgress() }}</strong></div> }
                   @if (mediaError()) { <p class="inline-error">{{ mediaError() }}</p> }
                   <div class="asset-table">
                     @for (asset of draft.media; track asset.assetId) {
@@ -243,20 +244,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                       </article>
                     } @empty { <p class="empty-row">No media uploaded.</p> }
                   </div>
-                  <div class="section-head section-head--small private-head"><span>Restricted originals</span><h2>Administrator-only documents</h2></div>
-                  @if (canEdit()) {
-                    <div class="upload-strip">
-                      <label class="span-2">Private document title<input type="text" [(ngModel)]="privateDocumentTitle" /></label>
-                      <label>Category<input type="text" [(ngModel)]="privateDocumentCategory" /></label>
-                      <label class="file-control">File<input type="file" accept="application/pdf,image/*" (change)="uploadPrivateDocument($event)" [disabled]="privateDocumentUploading()" /></label>
-                    </div>
-                  }
-                  @if (privateDocumentError()) { <p class="inline-error">{{ privateDocumentError() }}</p> }
-                  <div class="asset-table">
-                    @for (asset of draft.privateDocuments; track asset.assetId) {
-                      <article><div><strong>{{ asset.title }}</strong><span>{{ asset.category }} · private original</span></div><span class="asset-state" [attr.data-state]="assetStatus(asset.assetId)?.state">{{ assetStatus(asset.assetId)?.state || 'DRAFT' }}</span><button type="button" (click)="openPrivateDocument(asset.assetId)">Open</button>@if (canEdit()) { <button type="button" (click)="removePrivateDocument($index)">Remove</button> }</article>
-                    } @empty { <p class="empty-row">No restricted originals uploaded.</p> }
-                  </div>
+
                 }
 
                 @case ('economics') {
@@ -342,13 +330,36 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                 @case ('documents') {
                   <div class="section-head"><span>Evidence package</span><h2>Documents and sources</h2></div>
                   <p class="field-help">{{ uploadLimitLabel() }}</p>
+                  <div class="section-head section-head--small private-head"><span>Restricted originals</span><h2>Administrator-only documents</h2></div>
+                  <p class="field-help">PDFs, images and XLSX budgets stay private. They are scanned and included in encrypted recovery; they are never published to IPFS.</p>
+                  @if (canEdit()) {
+                    <div class="upload-strip">
+                      <label class="span-2">Private document title<input type="text" [(ngModel)]="privateDocumentTitle" /></label>
+                      <label>Category<input type="text" [(ngModel)]="privateDocumentCategory" /></label>
+                      <label class="file-control">File<input type="file" accept="application/pdf,image/*,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" (change)="uploadPrivateDocument($event)" [disabled]="mediaUploading() || documentUploading() || privateDocumentUploading()" /></label>
+                    </div>
+                  }
+                  @if (privateDocumentError()) { <p class="inline-error">{{ privateDocumentError() }}</p> }
+                  @if (privateResumeAssetId && !privateDocumentUploading()) { <p role="status">Select the same original file to resume. Its saved declaration is retained.</p><button type="button" (click)="clearPrivateUploadSelection()">Choose a different document</button> }
+                  <div class="asset-table">
+                    @for (asset of draft.privateDocuments; track asset.assetId) {
+                      <article><div><strong>{{ asset.title }}</strong><span>{{ asset.category }} · private original</span></div><span class="asset-state" [attr.data-state]="assetStatus(asset.assetId)?.state">{{ assetStatus(asset.assetId)?.state || 'DRAFT' }}</span><button type="button" (click)="openPrivateDocument(asset.assetId)">Open</button>@if (canEdit()) { <button type="button" (click)="removePrivateDocument($index)">Remove</button> }</article>
+                    } @empty { <p class="empty-row">No restricted originals uploaded.</p> }
+                  </div>
+                  @for (asset of pendingPrivateAssets(); track asset.assetId) {
+                    <article class="pending-upload"><strong>{{ asset.title }}</strong><p>Upload unfinished · original declaration retained.</p><button type="button" [disabled]="privateDocumentUploading()" (click)="resumePrivateUpload(asset)">Resume this upload</button></article>
+                  }
+                  @if (privateDocumentUploading()) { <div class="upload-progress" role="status" aria-live="polite"><span class="upload-spinner" aria-hidden="true"></span><div><strong>{{ uploadProgress() }}</strong><p>Keep this tab open. Your draft is retained if the connection stops.</p></div></div> }
+                  <div class="section-head section-head--small"><span>Public diligence</span><h2>Public documents and sources</h2></div>
+                  <p class="field-help">Files in this section are published to IPFS after verification. Use Administrator-only documents above for restricted originals.</p>
                   @if (canEdit()) {
                     <div class="upload-strip">
                       <label class="span-2">Document title<input type="text" [(ngModel)]="documentTitle" /></label>
                       <label>Category<input type="text" [(ngModel)]="documentCategory" /></label>
-                      <label class="file-control">File<input type="file" accept="application/pdf,image/*" (change)="uploadDocument($event)" [disabled]="documentUploading()" /></label>
+                      <label class="file-control">File<input type="file" accept="application/pdf,image/*" (change)="uploadDocument($event)" [disabled]="mediaUploading() || documentUploading() || privateDocumentUploading()" /></label>
                     </div>
                   }
+                  @if (documentUploading()) { <div class="upload-progress" role="status" aria-live="polite"><span class="upload-spinner" aria-hidden="true"></span><strong>{{ uploadProgress() }}</strong></div> }
                   @if (documentError()) { <p class="inline-error">{{ documentError() }}</p> }
                   <div class="asset-table">
                     @for (asset of draft.documents; track asset.assetId) {
@@ -598,6 +609,13 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
   `,
   styles: [
     `
+    .upload-progress { display: flex; align-items: center; gap: 1rem; padding: 1.1rem; margin: 1rem 0; border: 1px solid #345e48; border-radius: .75rem; background: #112b22; color: #dff8e9; }
+    .upload-progress p, .pending-upload p { margin: .35rem 0; font-size: .875rem; }
+    .upload-spinner { flex: 0 0 1.25rem; height: 1.25rem; border: 2px solid #345e48; border-top-color: #8be7b1; border-radius: 50%; animation: upload-spin 1s linear infinite; }
+    .pending-upload { margin: 1rem 0; padding: 1rem; border: 1px solid #345e48; border-radius: .75rem; }
+    @keyframes upload-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .upload-spinner { animation: none; } }
+
       .editor-shell { max-width:1500px; margin:0 auto; padding:1rem var(--pad-x) 5rem; }
       .editor-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; min-height:4.5rem; border-bottom:1px solid var(--border); }
       .title-block,.header-actions,.title-block > div { display:flex; align-items:center; gap:1rem; min-width:0; }
@@ -720,6 +738,8 @@ export class CollectionEditorComponent implements OnDestroy {
   readonly mediaUploading = signal(false);
   readonly mediaError = signal<string | null>(null);
   readonly documentUploading = signal(false);
+  readonly uploadProgress = signal('');
+  privateResumeAssetId: string | null = null;
   readonly documentError = signal<string | null>(null);
   readonly privateDocumentUploading = signal(false);
   readonly privateDocumentError = signal<string | null>(null);
@@ -1001,6 +1021,7 @@ export class CollectionEditorComponent implements OnDestroy {
       input.value = '';
       return;
     }
+    const mediaRole = this.mediaRole;
     this.mediaUploading.set(true);
     this.mediaError.set(null);
     try {
@@ -1008,13 +1029,13 @@ export class CollectionEditorComponent implements OnDestroy {
       const asset = await this.api.uploadAsset(collection.id, file, {
         assetId,
         kind: 'MEDIA',
-        role: this.mediaRole,
+        role: mediaRole,
         alt: this.mediaAlt.trim(),
-      });
-      this.draftModel.media.push({
-        assetId,
-        role: this.mediaRole,
-        alt: this.mediaAlt.trim(),
+      }, collection.assets, label => this.uploadProgress.set(label));
+      if (!this.draftModel.media.some(item => item.assetId === asset.assetId)) this.draftModel.media.push({
+        assetId: asset.assetId,
+        role: mediaRole,
+        alt: asset.alt || this.mediaAlt.trim(),
         uris: verifiedUris(asset),
         sha256: asset.actualSha256 || undefined,
         cid: asset.ipfsCid || undefined,
@@ -1025,7 +1046,7 @@ export class CollectionEditorComponent implements OnDestroy {
       this.changed();
       await this.saveNow(false, true);
     } catch (error) {
-      this.mediaError.set(formatError(error));
+      this.mediaError.set(uploadError(error));
     } finally {
       this.mediaUploading.set(false);
       input.value = '';
@@ -1051,11 +1072,11 @@ export class CollectionEditorComponent implements OnDestroy {
         kind: 'DOCUMENT',
         title: this.documentTitle.trim(),
         category: this.documentCategory.trim(),
-      });
-      this.draftModel.documents.push({
-        assetId,
-        title: this.documentTitle.trim(),
-        category: this.documentCategory.trim(),
+      }, collection.assets, label => this.uploadProgress.set(label));
+      if (!this.draftModel.documents.some(item => item.assetId === asset.assetId)) this.draftModel.documents.push({
+        assetId: asset.assetId,
+        title: asset.title || this.documentTitle.trim(),
+        category: asset.category || this.documentCategory.trim(),
         uris: verifiedUris(asset),
         sha256: asset.actualSha256 || undefined,
         cid: asset.ipfsCid || undefined,
@@ -1066,7 +1087,7 @@ export class CollectionEditorComponent implements OnDestroy {
       this.changed();
       await this.saveNow(false, true);
     } catch (error) {
-      this.documentError.set(formatError(error));
+      this.documentError.set(uploadError(error));
     } finally {
       this.documentUploading.set(false);
       input.value = '';
@@ -1086,31 +1107,52 @@ export class CollectionEditorComponent implements OnDestroy {
     this.privateDocumentUploading.set(true);
     this.privateDocumentError.set(null);
     try {
-      const assetId = uniqueAssetId(file.name, 'private-document');
+      const assetId = this.privateResumeAssetId || uniqueAssetId(file.name, 'private-document');
+      this.privateResumeAssetId = assetId;
       const asset = await this.api.uploadAsset(collection.id, file, {
         assetId,
         kind: 'DOCUMENT',
         title: this.privateDocumentTitle.trim(),
         category: this.privateDocumentCategory.trim(),
         visibility: 'PRIVATE',
-      });
-      this.draftModel.privateDocuments.push({
-        assetId,
-        title: this.privateDocumentTitle.trim(),
-        category: this.privateDocumentCategory.trim(),
+      }, collection.assets, label => this.uploadProgress.set(label));
+      if (!this.draftModel.privateDocuments.some(item => item.assetId === asset.assetId)) this.draftModel.privateDocuments.push({
+        assetId: asset.assetId,
+        title: asset.title || this.privateDocumentTitle.trim(),
+        category: asset.category || this.privateDocumentCategory.trim(),
         sha256: asset.actualSha256 || undefined,
         mimeType: asset.actualMimeType || undefined,
         byteSize: asset.actualByteSize || undefined,
       });
       this.privateDocumentTitle = '';
+      this.privateResumeAssetId = null;
       this.changed();
       await this.saveNow(false, true);
     } catch (error) {
-      this.privateDocumentError.set(formatError(error));
+      this.privateDocumentError.set(uploadError(error));
     } finally {
       this.privateDocumentUploading.set(false);
       input.value = '';
     }
+  }
+
+  pendingPrivateAssets(): CollectionAsset[] {
+    return (this.workspace()?.assets || []).filter(asset => asset.visibility === 'PRIVATE'
+      && asset.state !== 'VERIFIED' && !this.draftModel?.privateDocuments.some(item => item.assetId === asset.assetId));
+  }
+
+  resumePrivateUpload(asset: CollectionAsset): void {
+    this.privateResumeAssetId = asset.assetId;
+    this.privateDocumentTitle = asset.title || '';
+    this.privateDocumentCategory = asset.category || '';
+    this.privateDocumentError.set(null);
+  }
+
+  clearPrivateUploadSelection(): void {
+    this.privateResumeAssetId = null;
+    this.privateDocumentTitle = '';
+    this.privateDocumentCategory = 'unredacted-original';
+    this.privateDocumentError.set(null);
   }
 
   async openPrivateDocument(assetId: string): Promise<void> {
@@ -1878,4 +1920,9 @@ function assignChanged<T extends object, K extends keyof T>(
   if (target[key] === value) return;
   target[key] = value;
   changedFields.push(path);
+}
+
+function uploadError(error: unknown): string {
+  if (error instanceof Error && error.name === 'TimeoutError') return 'The upload check timed out. Your saved draft and upload declaration are retained. Select the same original to resume.';
+  return formatError(error);
 }

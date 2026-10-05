@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom, timeout } from 'rxjs';
 
 import { environment } from '../../environments/environment';
+import { uploadCollectionBytes } from './collection-upload-bytes';
 import { AdminSessionService } from './admin-session.service';
 import { AdminOperationApprovalService } from './admin-operation-approval.service';
 import {
@@ -180,17 +181,29 @@ export class CollectionApiService {
     collectionId: string,
     file: File,
     details: CollectionAssetDetails,
+    knownAssets: CollectionAsset[] = [],
+    progress: (label: string) => void = () => {},
   ): Promise<CollectionAsset> {
+    progress('Checking the original file…');
     const sha256 = await sha256File(file);
+    const mimeType = file.type || (/\.xlsx$/i.test(file.name)
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : '');
+    const existing = knownAssets.find(asset => asset.expectedSha256 === sha256
+      && asset.expectedByteSize === file.size && asset.expectedMimeType === mimeType
+      && asset.kind === details.kind && asset.visibility === (details.visibility || 'PUBLIC')
+      && (asset.title || '') === (details.title || '') && (asset.category || '') === (details.category || '')
+      && (asset.role || '') === (details.role || '') && (asset.alt || '') === (details.alt || ''));
+    const assetId = existing?.assetId || details.assetId;
+    progress(existing ? 'Resuming the saved upload…' : 'Preparing a secure upload…');
     const presigned = await firstValueFrom(
       this.http.post<PresignedAssetUpload>(
         `${this.base}/admin/collections/${encodeURIComponent(collectionId)}/assets/presign`,
         {
-          assetId: details.assetId,
+          assetId,
           kind: details.kind,
           filename: file.name,
           sha256,
-          mimeType: file.type,
+          mimeType,
           byteSize: file.size,
           role: details.role,
           title: details.title,
@@ -199,22 +212,18 @@ export class CollectionApiService {
           visibility: details.visibility || 'PUBLIC',
         },
         { headers: this.headers() },
-      ),
+      ).pipe(timeout(20_000)),
     );
-    const upload = await fetch(presigned.uploadUrl, {
-      method: presigned.method,
-      headers: presigned.headers,
-      body: file,
-    });
-    if (!upload.ok) {
-      throw new Error(`Object upload failed with HTTP ${upload.status}.`);
-    }
+    if (presigned.alreadyVerified) return presigned.asset;
+    progress('Uploading the file…');
+    await uploadCollectionBytes(file, presigned, percent => progress(`Uploading the file · ${percent}%`));
+    progress('Checking the file hash and scanning for malware…');
     return firstValueFrom(
       this.http.post<CollectionAsset>(
-        `${this.base}/admin/collections/${encodeURIComponent(collectionId)}/assets/${encodeURIComponent(details.assetId)}/complete`,
+        `${this.base}/admin/collections/${encodeURIComponent(collectionId)}/assets/${encodeURIComponent(assetId)}/complete`,
         {},
         { headers: this.headers() },
-      ),
+      ).pipe(timeout(45_000)),
     );
   }
 
@@ -535,6 +544,7 @@ export interface PrivateAssetDownload {
 }
 
 interface PresignedAssetUpload {
+  alreadyVerified?: boolean;
   objectKey: string;
   uploadUrl: string;
   method: 'PUT';
