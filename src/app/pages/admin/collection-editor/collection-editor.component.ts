@@ -191,7 +191,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                     <label>State / region<input type="text" [(ngModel)]="draft.property!.address.region" (ngModelChange)="changed()" /></label>
                     <label>Postal code<input type="text" [(ngModel)]="draft.property!.address.postalCode" (ngModelChange)="changed()" /></label>
                     <label>Country code<input type="text" [(ngModel)]="draft.property!.address.country" (ngModelChange)="changed()" maxlength="2" /></label>
-                    <label>Property type<input type="text" [(ngModel)]="draft.property!.propertyType" (ngModelChange)="changed()" /></label>
+                    <label>Property type<input type="text" [value]="draft.classification?.propertySubtype || 'Choose in Property type'" readonly /><span>Set once in Property type classification.</span></label>
                     <label>Year built<input type="number" [(ngModel)]="draft.property!.yearBuilt" (ngModelChange)="changed()" /></label>
                     <label>Bedrooms<input type="text" [(ngModel)]="draft.property!.bedrooms" (ngModelChange)="changed()" /></label>
                     <label>Bathrooms<input type="text" [(ngModel)]="draft.property!.bathrooms" (ngModelChange)="changed()" /></label>
@@ -959,11 +959,14 @@ export class CollectionEditorComponent implements OnDestroy {
     }
     if (this.activeSave) {
       if (!(await this.activeSave)) return false;
-      return force || submitForReview || this.saveState() === 'dirty'
+      return submitForReview || this.saveState() === 'dirty'
         ? this.saveNow(submitForReview, false)
         : this.saveState() !== 'error' && this.saveState() !== 'conflict';
     }
-    if (!force && !submitForReview && ['idle', 'saved'].includes(this.saveState())) return true;
+    // A clean forced save must retain the reviewed values and revision. In
+    // particular, sealing must not request a new oracle conversion or PUT.
+    const clean = ['idle', 'saved'].includes(this.saveState());
+    if (clean && (!submitForReview || this.workspace()!.state === 'REVIEW')) return true;
     const task = this.performSave(submitForReview);
     this.activeSave = task;
     try {
@@ -999,9 +1002,14 @@ export class CollectionEditorComponent implements OnDestroy {
     this.sealError.set(null);
     this.sealing.set(true);
     try {
-      if (!(await this.saveNow(false, true))) return;
+      if (!(await this.saveNow())) return;
       const collection = this.workspace();
       if (!collection) return;
+      if (!collection.readiness.ready) {
+        this.sealError.set('Resolve the current review checks before sealing. Any changed fields need approval of the saved revision.');
+        this.activeSection.set('review');
+        return;
+      }
       this.applyWorkspace(await this.api.seal(collection.id, collection.revision));
       this.activeSection.set('governance');
     } catch (error) {
@@ -1557,14 +1565,23 @@ export class CollectionEditorComponent implements OnDestroy {
     const collection = this.workspace();
     if (!collection || !this.draftModel) return false;
     const generation = this.editGeneration;
+    const cleanSubmission = submitForReview && ['idle', 'saved'].includes(this.saveState());
     this.saveState.set('saving');
     this.saveError.set(null);
     try {
-      const payload = cleanDraft(this.draftModel, collection.revision);
-      const conversion = await this.api.convertDisplayUnits(
-        displayUnitRequest(this.displayUnits),
-      );
-      applyDisplayUnitConversion(payload, conversion);
+      const payload = cleanSubmission
+        ? structuredClone(collection.dossier)
+        : cleanDraft(this.draftModel, collection.revision);
+      if (!cleanSubmission) {
+        const conversion = await this.api.convertDisplayUnits(
+          displayUnitRequest(this.displayUnits),
+        );
+        applyDisplayUnitConversion(payload, conversion);
+        if (payload.classification?.propertySubtype) {
+          payload.property ||= { address: {} };
+          payload.property.propertyType = payload.classification.propertySubtype;
+        }
+      }
       const saved = await this.api.update(collection.id, payload, collection.revision, submitForReview);
       if (generation === this.editGeneration) {
         this.applyWorkspace(saved);
