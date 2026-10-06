@@ -115,6 +115,108 @@ const SAMPLE_COIN_SPENDS: UnsignedCoinSpend[] = [
 
 const SAMPLE_SIG = '0x' + 'ab'.repeat(96);
 
+describe('ChiaWalletService Goby owner challenges', () => {
+  const owner = '0x' + 'cc'.repeat(48);
+  const challenge = '0x001122AAbb';
+  let service: ChiaWalletService;
+  let uninstall: () => void;
+  let calls: MockedWalletCall[];
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({providers: [{provide: ChiaWasmService, useValue: makeWasmStub()}]});
+    service = TestBed.inject(ChiaWalletService);
+    (service as any)._state.set({kind: 'connected', pubkey: owner, connection: 'goby'});
+  });
+
+  afterEach(() => {uninstall?.(); service.disconnect();});
+
+  function mock(response: (method: string) => unknown = method => method === 'getPublicKeys' ? [owner.slice(2)] : SAMPLE_SIG.slice(2)) {
+    const wallet = installMockWallet('chia', response);
+    uninstall = wallet.uninstall; calls = wallet.calls;
+    (window as any).chia.selectedAddress = 'txch1owner';
+    (window as any).chia.chainId = 'testnet11';
+  }
+
+  it('uses Goby signMessage with the connected key and original hex bytes', async () => {
+    mock(method => {
+      if (method === 'getPublicKeys') return [owner.slice(2)];
+      if (method === 'signMessage') return SAMPLE_SIG.slice(2);
+      return new Error(`method [${method}] doesn't has corresponding handler`);
+    });
+    await expectAsync(service.signMessage(challenge)).toBeResolvedTo(SAMPLE_SIG);
+    expect(calls.map(call => call.method)).toEqual(['getPublicKeys', 'signMessage', 'getPublicKeys']);
+    expect(calls[1]).toEqual({method: 'signMessage', params: {message: '001122AAbb', publicKey: owner.slice(2)}});
+  });
+
+  it('keeps compatibility with a valid flat signature response', async () => {
+    mock(method => method === 'getPublicKeys' ? [owner] : {signature: SAMPLE_SIG});
+    await expectAsync(service.signMessage(challenge)).toBeResolvedTo(SAMPLE_SIG);
+    expect((calls[1].params as any).publicKey).toBe(owner);
+  });
+
+  for (const bad of ['abc', '', {signature: 42}, {signature: 'ab'.repeat(95)}, {signature: 'zz'.repeat(96)}]) {
+    it('rejects an invalid signature without retrying another method', async () => {
+      mock(method => method === 'getPublicKeys' ? [owner] : bad);
+      await expectAsync(service.signMessage(challenge)).toBeRejectedWithError(/valid 96-byte/);
+      expect(calls.filter(call => call.method === 'signMessage').length).toBe(1);
+    });
+  }
+
+  it('rejects an invalid hex challenge without a wallet call', async () => {
+    mock();
+    await expectAsync(service.signMessage('0xabc')).toBeRejectedWithError(/hex-encoded sign-in challenge/);
+    expect(calls).toEqual([]);
+  });
+
+  it('rejects a stale selected public key before signing', async () => {
+    mock(() => ['dd'.repeat(48)]);
+    await expectAsync(service.signMessage(challenge)).toBeRejectedWithError(/account changed/);
+    expect(calls.map(call => call.method)).toEqual(['getPublicKeys']);
+  });
+
+  for (const change of ['provider', 'address', 'network', 'state']) {
+    it(`discards a signature after the ${change} changes during approval`, async () => {
+      mock(method => {
+        if (method === 'getPublicKeys') return [owner];
+        if (change === 'provider') (window as any).chia = {...(window as any).chia};
+        if (change === 'address') (window as any).chia.selectedAddress = 'txch1other';
+        if (change === 'network') (window as any).chia.chainId = 'mainnet';
+        if (change === 'state') service.disconnect();
+        return SAMPLE_SIG;
+      });
+      await expectAsync(service.signMessage(challenge)).toBeRejectedWithError(/account or network changed/);
+      expect(calls.filter(call => call.method === 'signMessage').length).toBe(1);
+    });
+  }
+
+  it('checks the selected public key again after signing', async () => {
+    let changed = false;
+    mock(method => {
+      if (method === 'getPublicKeys') return [changed ? 'dd'.repeat(48) : owner];
+      changed = true; return SAMPLE_SIG;
+    });
+    await expectAsync(service.signMessage(challenge)).toBeRejectedWithError(/account changed/);
+  });
+
+  it('preserves rejection without a fallback prompt', async () => {
+    const rejected = new Error('User rejected');
+    mock(method => method === 'getPublicKeys' ? [owner] : rejected);
+    await expectAsync(service.signMessage(challenge)).toBeRejectedWith(rejected);
+    expect(calls.map(call => call.method)).toEqual(['getPublicKeys', 'signMessage']);
+  });
+
+  it('times out a stalled sign-in prompt and ignores a late signature', fakeAsync(() => {
+    let resolve: (value: string) => void = () => {};
+    mock(method => method === 'getPublicKeys' ? [owner] : new Promise<string>(done => {resolve = done;}));
+    let error = '';
+    service.signMessage(challenge).catch(e => {error = e.message;});
+    flushMicrotasks(); tick(45_000); flushMicrotasks();
+    expect(error).toContain('Goby did not respond to the sign-in request');
+    resolve(SAMPLE_SIG); flushMicrotasks();
+    expect(calls.length).toBe(2);
+  }));
+});
+
 describe('ChiaWalletService.signSpendBundle', () => {
   let service: ChiaWalletService;
   let cleanup: Array<() => void> = [];
@@ -1326,4 +1428,3 @@ describe('ChiaWalletService.getCurrentAddress', () => {
     expect(addr).toBe('0x' + 'cd'.repeat(32));
   });
 });
-

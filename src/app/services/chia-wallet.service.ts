@@ -245,7 +245,7 @@ export class ChiaWalletService {
   }
 
   /**
-   * Sign an arbitrary message with the user's master BLS key.
+   * Sign a hex-encoded challenge with the connected owner's BLS key.
    *
    * Returns a 96-byte BLS signature, hex-encoded.  The backend verifies it
    * against the Solslot registration challenge + the reported pubkey.
@@ -261,11 +261,47 @@ export class ChiaWalletService {
     if (state.connection === 'goby') {
       const goby = (window as WindowWithChia).chia;
       if (!goby) throw new Error('Goby no longer available');
-      const sig = (await goby.request({
-        method: 'signMessageByAddress',
-        params: { message },
-      })) as { signature: string };
-      return normalizeHex(sig.signature);
+      const messageHex = message.replace(/^0x/i, '');
+      const publicKey = state.pubkey.replace(/^0x/i, '').toLowerCase();
+      if (!/^(?:[0-9a-f]{2})+$/i.test(messageHex) || !/^[0-9a-f]{96}$/.test(publicKey)) {
+        throw new Error('Reconnect Goby and request a fresh hex-encoded sign-in challenge.');
+      }
+      const selectedAddress = goby.selectedAddress;
+      const walletChain = goby.chainId;
+      let walletPublicKey = publicKey;
+      const requireCurrentOwner = () => {
+        if (this._state() !== state || (window as WindowWithChia).chia !== goby ||
+            goby.selectedAddress !== selectedAddress || goby.chainId !== walletChain) {
+          throw new Error('Goby account or network changed. Reconnect the reviewed vault owner and try again.');
+        }
+      };
+      const revalidate = async () => {
+        requireCurrentOwner();
+        const keys = await withChiaWalletPromptTimeout(
+          goby.request({ method: 'getPublicKeys', params: { limit: 1 } }),
+          CHIA_WALLET_PROMPT_TIMEOUT_MS,
+          'Goby did not return public keys. Close any stale wallet prompt, then retry.',
+        );
+        requireCurrentOwner();
+        if (!Array.isArray(keys) || typeof keys[0] !== 'string' ||
+            keys[0].replace(/^0x/i, '').toLowerCase() !== publicKey) {
+          throw new Error('Goby account changed. Reconnect the reviewed vault owner and try again.');
+        }
+        walletPublicKey = keys[0];
+      };
+      await revalidate();
+      const result = await withChiaWalletPromptTimeout(
+        goby.request({ method: 'signMessage', params: { message: messageHex, publicKey: walletPublicKey } }),
+        CHIA_WALLET_PROMPT_TIMEOUT_MS,
+        'Goby did not respond to the sign-in request. Close any stale wallet prompt, then retry.',
+      );
+      await revalidate();
+      const signature = typeof result === 'string' ? result :
+        (result as { signature?: unknown } | null)?.signature;
+      if (typeof signature !== 'string' || !/^(?:0x)?[0-9a-f]{192}$/i.test(signature)) {
+        throw new Error('Goby did not return a valid 96-byte CHIP-0002 owner signature.');
+      }
+      return normalizeHex(signature);
     }
 
     if (state.connection === 'sage' || state.connection === 'sage-walletconnect') {
@@ -925,6 +961,7 @@ interface ChiaInjected {
    * ``getPublicKeys`` round-trip.
    */
   selectedAddress?: string;
+  chainId?: string;
   isGoby?: boolean;
 }
 
