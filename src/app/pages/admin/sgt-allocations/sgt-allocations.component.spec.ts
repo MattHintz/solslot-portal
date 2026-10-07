@@ -6,6 +6,8 @@ import { GovernanceQueueService } from '../../../services/governance-queue.servi
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { GovernanceVaultVoteService } from '../../../services/governance-vault-vote.service';
 import { SessionService } from '../../../services/session.service';
+import { AdminSessionService } from '../../../services/admin-session.service';
+import { GovernanceProposalRecord } from '../../../services/governance-queue.service';
 import { SgtAllocationsComponent } from './sgt-allocations.component';
 
 describe('SgtAllocationsComponent', () => {
@@ -16,6 +18,18 @@ describe('SgtAllocationsComponent', () => {
   let vote: jasmine.SpyObj<GovernanceVaultVoteService>;
   const googleUnavailable = signal(false);
   const vaultSession = signal<any>(null);
+  const reviewer = signal<string | null>(null);
+  const grant = (): GovernanceProposalRecord => ({
+    id: 'GOV-REVIEW', kind: 'SGT_GRANT', state: 'DRAFT', title: 'Administrator starter grant',
+    bill: { sgtAmount: '10000', recipientVaultLauncherId: '0x' + 'ab'.repeat(32),
+      grantId: '0x' + 'cd'.repeat(32), reasonHash: '0x' + 'ef'.repeat(32) },
+    createdBy: '0x' + 'Aa'.repeat(20), revision: 1, queuePosition: 1,
+    createdAt: 1_900_000_000, updatedAt: 1_900_000_000,
+    proposalHash: '0x' + '12'.repeat(32), billClvmHex: '80',
+    activatedAt: null, completedAt: null, activationBundleId: null,
+    proposalCoinId: null, completionBundleId: null, publicationCoadminSlot: null,
+    executionBundleId: null, expectedOutputCoinIds: [], executionSubmittedAt: null,
+  });
 
   beforeEach(async () => {
     api = jasmine.createSpyObj<GovernanceQueueService>('GovernanceQueueService', [
@@ -40,6 +54,7 @@ describe('SgtAllocationsComponent', () => {
     });
     googleUnavailable.set(false);
     vaultSession.set(null);
+    reviewer.set('0x' + 'bb'.repeat(20));
     vote = jasmine.createSpyObj<GovernanceVaultVoteService>('GovernanceVaultVoteService', ['vote'], { googleVotingUnavailable: googleUnavailable });
     api.list.and.resolveTo([]);
     api.allocationOptions.and.resolveTo([
@@ -56,6 +71,7 @@ describe('SgtAllocationsComponent', () => {
         { provide: EvmWalletService, useValue: wallet },
         { provide: GovernanceVaultVoteService, useValue: vote },
         { provide: SessionService, useValue: { session: vaultSession } },
+        { provide: AdminSessionService, useValue: { subject: reviewer } },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(SgtAllocationsComponent);
@@ -69,6 +85,114 @@ describe('SgtAllocationsComponent', () => {
     expect(text).toContain('What SGT grants');
     expect(text).toContain('No administrator key');
     expect(text).toContain('No proposals prepared');
+  });
+
+  it('shows the saved full destination and grant terms before any review or wallet action', () => {
+    const proposal = grant();
+    component.proposals.set([proposal]);
+    fixture.detectChanges();
+    const details = (fixture.nativeElement as HTMLElement).querySelector('.allocation-review')!;
+    expect(details.textContent).toContain(proposal.bill['recipientVaultLauncherId'] as string);
+    expect(details.textContent).toContain('10000 SGT');
+    expect(details.textContent).toContain('Chia Testnet11');
+    expect(details.textContent).toContain('None · grant from company reserve');
+    expect(details.textContent).toContain('GOV-REVIEW');
+    expect(details.closest('details')).toBeNull();
+    expect(api.transition).not.toHaveBeenCalled();
+    expect(api.package).not.toHaveBeenCalled();
+    expect(api.sign).not.toHaveBeenCalled();
+    expect(api.submit).not.toHaveBeenCalled();
+  });
+
+  it('explains independent review to the author without making a rejected API call', async () => {
+    const proposal = grant();
+    reviewer.set(proposal.createdBy.toLowerCase());
+    component.proposals.set([proposal]);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const button = [...root.querySelectorAll('button')].find(item => item.textContent?.trim() === 'Mark reviewed')!;
+    expect(button.disabled).toBeTrue();
+    expect(root.textContent).toContain('Waiting for another administrator to review.');
+    expect(root.textContent).not.toContain('Send for review');
+    await component.markReady(proposal);
+    expect(api.transition).not.toHaveBeenCalled();
+  });
+
+  it('copies the exact full destination instead of a shortened display value', async () => {
+    const proposal = grant();
+    const clipboard = spyOn(navigator.clipboard, 'writeText').and.resolveTo();
+    component.error.set('Previous clipboard failure');
+    await component.copyRecipient(proposal);
+    expect(clipboard).toHaveBeenCalledOnceWith(proposal.bill['recipientVaultLauncherId'] as string);
+    expect(component.notice()).toContain('Full destination vault ID copied.');
+    expect(component.error()).toBeNull();
+  });
+
+  it('offers manual copy when clipboard permission is denied and clears stale success', async () => {
+    spyOn(navigator.clipboard, 'writeText').and.rejectWith(new Error('Permission denied'));
+    component.notice.set('Previous copy succeeded');
+    await component.copyRecipient(grant());
+    expect(component.notice()).toBeNull();
+    expect(component.error()).toContain('Select and copy the full vault ID shown');
+    expect(api.transition).not.toHaveBeenCalled();
+  });
+
+  it('lets a different administrator mark the exact saved revision reviewed without issuing SGT', async () => {
+    const proposal = grant();
+    api.transition.and.resolveTo({ ...proposal, state: 'READY', revision: 2 });
+    component.proposals.set([proposal]);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const button = [...root.querySelectorAll('button')].find(item => item.textContent?.trim() === 'Mark reviewed')!;
+    expect(button.disabled).toBeFalse();
+    button.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(api.transition).toHaveBeenCalledOnceWith(proposal, 'READY');
+    expect(component.proposals()[0].bill).toBe(proposal.bill);
+    expect(root.textContent).toContain('Review approvals');
+    expect(root.textContent).toContain(proposal.bill['recipientVaultLauncherId'] as string);
+    expect(api.package).not.toHaveBeenCalled();
+    expect(api.submit).not.toHaveBeenCalled();
+  });
+
+  it('blocks review of missing, malformed or zero destinations and missing amounts', async () => {
+    for (const bill of [
+      { sgtAmount: '10000' },
+      { sgtAmount: '10000', recipientVaultLauncherId: '0x1234' },
+      { sgtAmount: '10000', recipientVaultLauncherId: '0x' + '00'.repeat(32) },
+      { recipientVaultLauncherId: '0x' + 'ab'.repeat(32) },
+    ]) {
+      const proposal = { ...grant(), bill };
+      component.proposals.set([proposal]);
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      const button = [...root.querySelectorAll('button')].find(item => item.textContent?.trim() === 'Mark reviewed')!;
+      expect(button.disabled).toBeTrue();
+      await component.markReady(proposal);
+    }
+    expect(api.transition).not.toHaveBeenCalled();
+  });
+
+  it('stops review if the session expires or the author cannot be identified', async () => {
+    reviewer.set(null);
+    await component.markReady(grant());
+    expect(component.error()).toContain('Sign in');
+    reviewer.set('0x' + 'bb'.repeat(20));
+    await component.markReady({ ...grant(), createdBy: '' });
+    expect(component.error()).toContain('author is unavailable');
+    expect(api.transition).not.toHaveBeenCalled();
+  });
+
+  it('shows a sale destination with its actual payment instead of labeling it a free grant', () => {
+    const proposal: GovernanceProposalRecord = { ...grant(), kind: 'SGT_SALE' as const,
+      bill: { ...grant().bill, paymentAmount: '2500000000000', paymentRail: 'XCH' } };
+    component.proposals.set([proposal]);
+    fixture.detectChanges();
+    const details = (fixture.nativeElement as HTMLElement).querySelector('.allocation-review')!;
+    expect(details.textContent).toContain(proposal.bill['recipientVaultLauncherId'] as string);
+    expect(details.textContent).toContain('2.5 XCH company proceeds');
+    expect(details.textContent).not.toContain('None · grant');
   });
 
   it('reviews three current-stake grants and resumes a partially saved queue without duplicates', async () => {

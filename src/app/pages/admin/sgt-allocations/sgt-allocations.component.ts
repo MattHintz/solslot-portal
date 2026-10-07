@@ -11,6 +11,8 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { computeAddress } from 'ethers';
 
+import { environment } from '../../../../environments/environment';
+import { AdminSessionService } from '../../../services/admin-session.service';
 import { AdminWorkspaceNavComponent } from '../../../components/admin-workspace/admin-workspace-nav.component';
 import {
   GovernanceProposalKind,
@@ -193,7 +195,7 @@ import { formatError } from '../../../utils/format-error';
             <strong>{{ kind() === 'SGT_SALE' ? 'Sale decision' : 'Grant decision' }}</strong>
             <dl>
               <div><dt>SGT leaving reserve</dt><dd>{{ sgtAmount || 'Not entered' }}</dd></div>
-              <div><dt>Recipient vault</dt><dd class="mono">{{ shortAddress(recipientVaultLauncherId) }}</dd></div>
+              <div><dt>Recipient vault</dt><dd class="mono">{{ recipientVaultLauncherId.trim() || 'Not entered' }}</dd></div>
               <div>
                 <dt>Company proceeds</dt>
                 <dd>{{ kind() === 'SGT_SALE' ? (paymentAmount || 'Not entered') + ' ' + paymentRailLabel() : 'None' }}</dd>
@@ -236,10 +238,30 @@ import { formatError } from '../../../utils/format-error';
                     <p>
                       {{ proposalSummary(proposal) }}
                     </p>
+                    @if (proposal.kind !== 'FUNDED_REDEMPTION') {
+                      <section class="allocation-review" [attr.aria-label]="'Allocation details for ' + proposal.title">
+                        <dl>
+                          <div><dt>Amount</dt><dd>{{ proposal.bill['sgtAmount'] }} SGT</dd></div>
+                          <div><dt>Network</dt><dd>{{ allocationNetwork }}</dd></div>
+                          <div class="recipient-detail">
+                            <dt>Destination vault · full ID</dt>
+                            <dd class="mono">{{ recipientVault(proposal) || 'Unavailable — refresh before review' }}</dd>
+                            @if (recipientVault(proposal)) {
+                              <button type="button" class="copy-vault" (click)="copyRecipient(proposal)">Copy vault ID</button>
+                            }
+                          </div>
+                          <div><dt>Payment</dt><dd>{{ proposal.kind === 'SGT_GRANT' ? 'None · grant from company reserve' : saleSummary(proposal) }}</dd></div>
+                          <div><dt>Proposal ID</dt><dd class="mono">{{ proposal.id }}</dd></div>
+                        </dl>
+                      </section>
+                    }
+                    @if (proposal.state === 'DRAFT') {
+                      <p class="review-help">{{ reviewHelp(proposal) }}</p>
+                    }
                     <div class="queue-actions">
                       @if (proposal.state === 'DRAFT') {
-                        <button type="button" (click)="markReady(proposal)" [disabled]="busy()">
-                          Send for review
+                        <button type="button" (click)="markReady(proposal)" [disabled]="busy() || !!reviewBlocker(proposal)">
+                          Mark reviewed
                         </button>
                         <button type="button" class="text-button" (click)="cancel(proposal)" [disabled]="busy()">
                           Cancel
@@ -460,6 +482,15 @@ import { formatError } from '../../../utils/format-error';
       .queue-body { min-width:0; } .queue-title strong { font-size:14px; }
       .queue-body > p { margin-top:5px; color:#a9c2b8; font-size:12px; }
       .queue-actions { justify-content:flex-start; margin-top:12px; }
+      .allocation-review { margin-top:16px; padding:16px; border:1px solid #315f50; background:#0b201a; }
+      .allocation-review dl { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:0; }
+      .allocation-review dt { color:#a9c2b8; line-height:1.4; }
+      .allocation-review dd { color:#edf9f4; font-size:13px; line-height:1.6; }
+      .recipient-detail { grid-column:1 / -1; }
+      .recipient-detail dd { user-select:all; }
+      .copy-vault { margin-top:8px; padding:7px 10px; border:1px solid #3d7864; background:#102b22; color:#aaf1d0; }
+      .queue-body > .review-help { margin-top:14px; color:#b8d1c6; line-height:1.55; }
+      .queue-actions { flex-wrap:wrap; }
       .vault-vote { display:grid; gap:12px; width:100%; padding:14px; border:1px solid #315f50; background:#081a15; }
       .vault-vote > div:first-child { display:grid; gap:4px; }
       .vault-vote > div:first-child span { color:#9db8ad; font-size:11px; line-height:1.45; }
@@ -504,17 +535,20 @@ import { formatError } from '../../../utils/format-error';
       @media (max-width:620px) { .allocation-page { width:calc(100% - 22px); padding-top:24px; } .page-header,.section-heading { align-items:flex-start; flex-direction:column; } .reserve-note,.two-col,.decision-receipt dl { grid-template-columns:1fr; } .reserve-note div + div { border-left:0; border-top:1px solid #21483d; } }
       @media (max-width:620px) { .publication-summary { grid-template-columns:1fr; } .approval-list li,.submit-row { align-items:flex-start; flex-direction:column; } .sign-options { width:100%; flex-wrap:wrap; } }
       @media (max-width:620px) { .vault-vote__footer { align-items:stretch; flex-direction:column; } }
+      @media (max-width:620px) { .queue-title { align-items:flex-start; } .allocation-review { padding:12px; } .allocation-review dl { grid-template-columns:1fr; } }
     `,
   ],
 })
 export class SgtAllocationsComponent {
   private readonly api = inject(GovernanceQueueService);
+  private readonly adminSession = inject(AdminSessionService);
   private readonly wallet = inject(EvmWalletService);
   private readonly vote = inject(GovernanceVaultVoteService);
   readonly googleVotingUnavailable = this.vote.googleVotingUnavailable;
   private readonly vaultSession = inject(SessionService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly executionPolls = new Map<string, ReturnType<typeof setTimeout>>();
+  readonly allocationNetwork = environment.chiaNetwork === 'testnet11' ? 'Chia Testnet11' : 'Chia Mainnet';
 
   readonly proposals = signal<GovernanceProposalRecord[]>([]);
   readonly loading = signal(false);
@@ -677,7 +711,54 @@ export class SgtAllocationsComponent {
   }
 
   async markReady(proposal: GovernanceProposalRecord): Promise<void> {
+    if (this.busy()) return;
+    const blocker = this.reviewBlocker(proposal);
+    if (blocker) {
+      this.error.set(blocker);
+      return;
+    }
     await this.transition(proposal, 'READY', 'Proposal is ready for owner-plus-one approval.');
+  }
+
+  recipientVault(proposal: GovernanceProposalRecord): string {
+    const value = proposal.bill['recipientVaultLauncherId'];
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  reviewBlocker(proposal: GovernanceProposalRecord): string | null {
+    if (proposal.state !== 'DRAFT') return 'This proposal is no longer a draft. Refresh the queue.';
+    const reviewer = this.adminSession.subject();
+    if (!reviewer) return 'Sign in with an enrolled administrator wallet to review this proposal.';
+    if (!proposal.createdBy) return 'The proposal author is unavailable. Refresh before review.';
+    if (proposal.createdBy.toLowerCase() === reviewer.toLowerCase()) {
+      return 'Waiting for another administrator to review. You created this draft and cannot mark it reviewed.';
+    }
+    if (proposal.kind !== 'FUNDED_REDEMPTION' && (
+      !positiveInteger(String(proposal.bill['sgtAmount'] ?? '')) ||
+      !/^0x[0-9a-fA-F]{64}$/.test(this.recipientVault(proposal)) ||
+      /^0x0{64}$/i.test(this.recipientVault(proposal))
+    )) {
+      return 'The saved amount or destination vault is unavailable or invalid. Refresh before review.';
+    }
+    return null;
+  }
+
+  reviewHelp(proposal: GovernanceProposalRecord): string {
+    return this.reviewBlocker(proposal) ??
+      'Check the title, amount and full destination vault before marking reviewed. This records your review; wallet approvals and execution follow separately.';
+  }
+
+  async copyRecipient(proposal: GovernanceProposalRecord): Promise<void> {
+    const recipient = this.recipientVault(proposal);
+    if (!recipient) return;
+    this.error.set(null);
+    this.notice.set(null);
+    try {
+      await navigator.clipboard.writeText(recipient);
+      this.notice.set('Full destination vault ID copied. Compare it with the intended recipient.');
+    } catch {
+      this.error.set('Clipboard access is unavailable. Select and copy the full vault ID shown in the allocation details.');
+    }
   }
 
   async cancel(proposal: GovernanceProposalRecord): Promise<void> {
