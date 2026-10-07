@@ -78,10 +78,27 @@ describe('GovernanceQueueService', () => {
       `${environment.faucetApi}/admin/governance/proposals/GOV-3/publication/package`,
     );
     expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({ coadminSlot: 2 });
+    expect(request.request.body).toEqual({ coadminSlot: 2, renewExpired: false });
     expect(request.request.headers.get('Authorization')).toBe('Bearer admin-jwt');
     request.flush({ proposal: { id: 'GOV-3' }, actions: [], readyToSubmit: false });
     expect((await promise).proposal.id).toBe('GOV-3');
+  });
+
+  it('requests an explicit renewal without submitting a transaction', async () => {
+    const promise = service.package('GOV-3', 1, true);
+    const request = http.expectOne(`${environment.faucetApi}/admin/governance/proposals/GOV-3/publication/package`);
+    expect(request.request.body).toEqual({ coadminSlot: 1, renewExpired: true });
+    request.flush({ proposal: { id: 'GOV-3' }, actions: [], readyToSubmit: false });
+    expect((await promise).readyToSubmit).toBeFalse();
+  });
+
+  it('checks existing signatures through an authenticated read', async () => {
+    const promise = service.publicationStatus('GOV-3');
+    const request = http.expectOne(`${environment.faucetApi}/admin/governance/proposals/GOV-3/publication/status`);
+    expect(request.request.method).toBe('GET');
+    expect(request.request.headers.get('Authorization')).toBe('Bearer admin-jwt');
+    request.flush({ proposal:{ id:'GOV-3' }, actions:[], readyToSubmit:true });
+    expect((await promise).readyToSubmit).toBeTrue();
   });
 
   it('submits only the server-built publication package', async () => {

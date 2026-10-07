@@ -19,6 +19,7 @@ describe('SgtAllocationsComponent', () => {
   const googleUnavailable = signal(false);
   const vaultSession = signal<any>(null);
   const reviewer = signal<string | null>(null);
+  const authoritySlot = signal<number | null>(0);
   const grant = (): GovernanceProposalRecord => ({
     id: 'GOV-REVIEW', kind: 'SGT_GRANT', state: 'DRAFT', title: 'Administrator starter grant',
     bill: { sgtAmount: '10000', recipientVaultLauncherId: '0x' + 'ab'.repeat(32),
@@ -38,6 +39,7 @@ describe('SgtAllocationsComponent', () => {
       'create',
       'transition',
       'package',
+      'publicationStatus',
       'sign',
       'submit',
       'reconcile',
@@ -52,6 +54,7 @@ describe('SgtAllocationsComponent', () => {
       isConnected: signal(false),
       address: signal<string | null>(null),
     });
+    authoritySlot.set(0);
     googleUnavailable.set(false);
     vaultSession.set(null);
     reviewer.set('0x' + 'bb'.repeat(20));
@@ -71,13 +74,77 @@ describe('SgtAllocationsComponent', () => {
         { provide: EvmWalletService, useValue: wallet },
         { provide: GovernanceVaultVoteService, useValue: vote },
         { provide: SessionService, useValue: { session: vaultSession } },
-        { provide: AdminSessionService, useValue: { subject: reviewer } },
+        { provide: AdminSessionService, useValue: { subject: reviewer, authoritySlot } },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(SgtAllocationsComponent);
     component = fixture.componentInstance;
     await fixture.whenStable();
     fixture.detectChanges();
+  });
+
+  it('restarts only an expired owner package for the same saved grant', async () => {
+    const proposal = { ...grant(), state: 'READY' as const, publicationCoadminSlot: 1,
+      publicationVotingDeadline: component.approvalClock() - 1 };
+    api.package.and.resolveTo({ proposal: { ...proposal, publicationVotingDeadline: component.approvalClock() + 300 },
+      votingDeadline: component.approvalClock() + 300, actions: [], readyToSubmit: false } as any);
+    component.proposals.set([proposal]);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const restart = [...root.querySelectorAll('button')].find(item => item.textContent?.trim() === 'Restart expired approvals')!;
+    expect(restart.disabled).toBeFalse();
+    expect(root.textContent).toContain('both administrators must sign again');
+    restart.click();
+    await fixture.whenStable();
+    expect(api.package).toHaveBeenCalledOnceWith(proposal.id, 1, true);
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.submit).not.toHaveBeenCalled();
+  });
+
+  it('shows the expired state to a coadministrator without permitting restart', async () => {
+    authoritySlot.set(1);
+    const proposal = { ...grant(), state: 'READY' as const, publicationCoadminSlot: 1,
+      publicationVotingDeadline: component.approvalClock() - 1 };
+    component.proposals.set([proposal]);
+    fixture.detectChanges();
+    const restart = [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')].find(item => item.textContent?.trim() === 'Restart expired approvals')!;
+    expect(restart.disabled).toBeTrue();
+    await component.preparePublication(proposal, true);
+    expect(api.package).not.toHaveBeenCalled();
+  });
+
+  it('counts down until expiry and prevents a stale wallet signature', async () => {
+    const proposal = { ...grant(), state: 'READY' as const, publicationCoadminSlot: 1,
+      publicationVotingDeadline: component.approvalClock() + 65 };
+    const publication = { proposal, votingDeadline: proposal.publicationVotingDeadline,
+      actions: [], reserveVoteAmount: '1000000', readyToSubmit: false } as any;
+    component.proposals.set([proposal]);
+    component.publications.set({ [proposal.id]: publication });
+    expect(component.approvalTimeRemaining(publication)).toContain('1:05 left');
+    component.approvalClock.set(publication.votingDeadline);
+    expect(component.approvalTimeRemaining(publication)).toBe('Approvals expired');
+    await component.signAction(proposal, {} as any, 'browser');
+    expect(wallet.connectInjected).not.toHaveBeenCalled();
+    expect(wallet.signAuthorityV3ChiaAction).not.toHaveBeenCalled();
+    expect(api.sign).not.toHaveBeenCalled();
+    expect(component.error()).toContain('Ask the owner to restart');
+  });
+
+  it('refreshes an existing approval using a read without renewing or opening a wallet', async () => {
+    const proposal = { ...grant(), state: 'READY' as const, publicationCoadminSlot: 1,
+      publicationVotingDeadline: component.approvalClock() + 100 };
+    const publication = { proposal, votingDeadline: proposal.publicationVotingDeadline,
+      actions: [], readyToSubmit: false } as any;
+    const updated = { ...publication, readyToSubmit: true };
+    api.publicationStatus.and.resolveTo(updated);
+    component.proposals.set([proposal]);
+    component.publications.set({ [proposal.id]: publication });
+    await component.approvalRefresh.refresh();
+    expect(api.publicationStatus).toHaveBeenCalledOnceWith(proposal.id);
+    expect(component.publicationFor(proposal)?.readyToSubmit).toBeTrue();
+    expect(api.package).not.toHaveBeenCalled();
+    expect(api.submit).not.toHaveBeenCalled();
+    expect(wallet.signAuthorityV3ChiaAction).not.toHaveBeenCalled();
   });
 
   it('explains SGT authority boundaries and starts with an empty queue', () => {
@@ -436,6 +503,7 @@ describe('SgtAllocationsComponent', () => {
     expect(button.disabled).toBeTrue();
     button.click();
     expect(vote.vote).not.toHaveBeenCalled();
+    authoritySlot.set(0);
     googleUnavailable.set(false);
     fixture.detectChanges();
     expect(button.disabled).toBeFalse();

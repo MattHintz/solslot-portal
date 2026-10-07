@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  NgZone,
   computed,
   inject,
   signal,
@@ -27,13 +28,16 @@ import {
 } from '../../../services/governance-queue.service';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { GovernanceVaultVoteService } from '../../../services/governance-vault-vote.service';
+import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
+import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
 import { SessionService } from '../../../services/session.service';
 import { formatError } from '../../../utils/format-error';
 
 @Component({
   selector: 'solslot-sgt-allocations',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, AdminWorkspaceNavComponent],
+  imports: [CommonModule, FormsModule, RouterLink, AdminWorkspaceNavComponent, AdminRefreshStatusComponent],
+  providers: [AdminStatusRefresh],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <solslot-admin-workspace-nav />
@@ -54,7 +58,7 @@ import { formatError } from '../../../utils/format-error';
       </header>
 
       <ol class="ux-steps" aria-label="SGT allocation process">
-        <li><span>01</span><div><strong>Choose the recipient</strong><p>Use the verified vault that will receive the SGT.</p></div></li>
+        <li><span>01</span><div><strong>Choose the recipient</strong><p>Use the confirmed vault that will receive the SGT.</p></div></li>
         <li><span>02</span><div><strong>Set the terms</strong><p>Choose a sale with payment, or a grant without payment.</p></div></li>
         <li><span>03</span><div><strong>Get team approval</strong><p>Two of three administrators must approve, including the owner.</p></div></li>
         <li><span>04</span><div><strong>Complete governance</strong><p>Publish, complete the committee vote, then follow delivery.</p></div></li>
@@ -82,11 +86,11 @@ import { formatError } from '../../../utils/format-error';
 
       <section class="publication" aria-labelledby="starter-grants-title">
         <h2 id="starter-grants-title">Administrator starter SGT</h2>
-        <p>After administrator onboarding and launch, create and enroll each administrator’s SGT vault, then enter those vault IDs below. Review the proposed amount for each person before adding the grants to the queue.</p>
+        <p>After administrator onboarding and launch, connect and confirm each administrator’s Solslot vault, then enter those vault IDs below. Review the proposed amount for each person before adding the grants to the queue.</p>
         <div class="ux-context"><strong>Starting from zero SGT is expected</strong><p>Daily-wallet enrollment comes first. The company reserve can sponsor a grant or sale proposal’s first vote. Every allocation still needs the owner plus one coadministrator and the required committee vote.</p><a routerLink="/admin/genesis">Open setup & launch</a></div>
         @for (slot of [0, 1, 2]; track slot) {
           <label>
-            <span>{{ slot === 0 ? 'Owner administrator' : 'Administrator ' + (slot + 1) }} enrolled vault ID</span>
+            <span>{{ slot === 0 ? 'Owner administrator' : 'Administrator ' + (slot + 1) }} confirmed vault ID</span>
             <input [ngModel]="starterVaults[slot]" (ngModelChange)="setStarterVault(slot, $event)" class="mono" placeholder="0x…" />
           </label>
         }
@@ -144,7 +148,7 @@ import { formatError } from '../../../utils/format-error';
             <label>
               <span>Recipient vault ID</span>
               <input [(ngModel)]="recipientVaultLauncherId" class="mono" placeholder="0x…" />
-              <small>The vault must have a current zkPassport approval. SGT is delivered to its protected vault address.</small>
+              <small>{{ kind() === 'SGT_GRANT' ? 'Use a confirmed Solslot vault. An ID check is not required to receive a grant.' : 'The vault must have a current zkPassport approval. SGT is delivered to its protected vault address.' }}</small>
             </label>
           </div>
 
@@ -278,9 +282,16 @@ import { formatError } from '../../../utils/format-error';
                             <option [ngValue]="2">Administrator 3</option>
                           </select>
                         </label>
-                        <button type="button" (click)="preparePublication(proposal)" [disabled]="busy()">
-                          Review approvals
-                        </button>
+                        @if (publicationExpired(proposal)) {
+                          <p>These wallet approvals expired. The proposal is retained. The owner can restart approvals; both administrators must sign again.</p>
+                          <button type="button" (click)="preparePublication(proposal, true)" [disabled]="busy() || !canRestartApprovals()">
+                            Restart expired approvals
+                          </button>
+                        } @else {
+                          <button type="button" (click)="preparePublication(proposal)" [disabled]="busy()">
+                            Review approvals
+                          </button>
+                        }
                       } @else if (proposal.state === 'ACTIVE') {
                         @if (canExecute(proposal)) {
                           @if (proposal.kind === 'FUNDED_REDEMPTION') {
@@ -369,6 +380,8 @@ import { formatError } from '../../../utils/format-error';
                     }
                     @if (publicationFor(proposal); as publication) {
                       <section class="publication" aria-label="Proposal publication approvals">
+                        <p>Draft review is complete. Each administrator must now sign the wallet approval below. Signatures record consent; the owner submits separately.</p>
+                        <p role="status">{{ approvalTimeRemaining(publication) }} · Voting deadline {{ publication.votingDeadline * 1000 | date:'short' }}</p>
                         <div class="publication-summary">
                           <div>
                             <span>Network</span>
@@ -382,7 +395,12 @@ import { formatError } from '../../../utils/format-error';
                             <span>Committee vote</span>
                             <strong>Starts after owner submission</strong>
                           </div>
+                          <div>
+                            <span>Company reserve temporarily locked for its vote</span>
+                            <strong>{{ publication.reserveVoteAmount }} SGT</strong>
+                          </div>
                         </div>
+                        <solslot-admin-refresh-status [state]="approvalRefresh" />
                         <ol class="approval-list">
                           @for (action of publication.actions; track action.actionId) {
                             <li>
@@ -394,10 +412,10 @@ import { formatError } from '../../../utils/format-error';
                                 <span class="signed">Approved</span>
                               } @else {
                                 <div class="sign-options">
-                                  <button type="button" (click)="signAction(proposal, action, 'browser')" [disabled]="busy()">
+                                  <button type="button" (click)="signAction(proposal, action, 'browser')" [disabled]="busy() || approvalExpired(publication)">
                                     Browser wallet
                                   </button>
-                                  <button type="button" (click)="signAction(proposal, action, 'mobile')" [disabled]="busy()">
+                                  <button type="button" (click)="signAction(proposal, action, 'mobile')" [disabled]="busy() || approvalExpired(publication)">
                                     Mobile / hardware
                                   </button>
                                 </div>
@@ -408,7 +426,7 @@ import { formatError } from '../../../utils/format-error';
                         @if (publication.readyToSubmit) {
                           <div class="submit-row">
                             <span>Both approvals are recorded. Only the owner wallet can submit.</span>
-                            <button type="button" class="primary" (click)="submitPublication(proposal)" [disabled]="busy() || !isOwnerWallet(publication)">
+                            <button type="button" class="primary" (click)="submitPublication(proposal)" [disabled]="busy() || approvalExpired(publication) || !isOwnerWallet(publication)">
                               Open committee vote
                             </button>
                           </div>
@@ -541,12 +559,14 @@ import { formatError } from '../../../utils/format-error';
 })
 export class SgtAllocationsComponent {
   private readonly api = inject(GovernanceQueueService);
+  readonly approvalRefresh = inject(AdminStatusRefresh);
   private readonly adminSession = inject(AdminSessionService);
   private readonly wallet = inject(EvmWalletService);
   private readonly vote = inject(GovernanceVaultVoteService);
   readonly googleVotingUnavailable = this.vote.googleVotingUnavailable;
   private readonly vaultSession = inject(SessionService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly zone = inject(NgZone);
   private readonly executionPolls = new Map<string, ReturnType<typeof setTimeout>>();
   readonly allocationNetwork = environment.chiaNetwork === 'testnet11' ? 'Chia Testnet11' : 'Chia Mainnet';
 
@@ -557,6 +577,7 @@ export class SgtAllocationsComponent {
   readonly notice = signal<string | null>(null);
   readonly kind = signal<Exclude<GovernanceProposalKind, 'FUNDED_REDEMPTION'>>('SGT_SALE');
   readonly publications = signal<Record<string, GovernancePublicationPackage>>({});
+  readonly approvalClock = signal(Math.floor(Date.now() / 1000));
   readonly coadmins = signal<Record<string, number>>({});
   readonly chainResults = signal<Record<string, GovernanceChainResult>>({});
   readonly voteAmounts = signal<Record<string, string>>({});
@@ -627,9 +648,17 @@ export class SgtAllocationsComponent {
   }
 
   constructor() {
+    const clock = this.zone.runOutsideAngular(() =>
+      setInterval(() => this.approvalClock.set(Math.floor(Date.now() / 1000)), 1000));
+    this.destroyRef.onDestroy(() => clearInterval(clock));
     this.destroyRef.onDestroy(() => {
       for (const timer of this.executionPolls.values()) clearTimeout(timer);
       this.executionPolls.clear();
+    });
+    this.approvalRefresh.start(() => this.readPublicationStatuses(), () => {
+      if (this.adminSession.isAuthenticated?.() === false) return 'Sign in again to check approvals.';
+      if (this.busy()) return 'Updates paused while your wallet action is in progress.';
+      return null;
     });
     void this.reload();
   }
@@ -777,9 +806,28 @@ export class SgtAllocationsComponent {
     return this.publications()[proposal.id] ?? null;
   }
 
-  async preparePublication(proposal: GovernanceProposalRecord): Promise<void> {
+  publicationExpired(proposal: GovernanceProposalRecord): boolean {
+    const deadline = this.publicationFor(proposal)?.votingDeadline ?? proposal.publicationVotingDeadline;
+    return deadline != null && deadline <= this.approvalClock();
+  }
+
+  approvalExpired(publication: GovernancePublicationPackage): boolean {
+    return publication.votingDeadline <= this.approvalClock();
+  }
+
+  approvalTimeRemaining(publication: GovernancePublicationPackage): string {
+    const seconds = Math.max(0, publication.votingDeadline - this.approvalClock());
+    return seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left to sign and submit` : 'Approvals expired';
+  }
+
+  canRestartApprovals(): boolean {
+    return this.adminSession.authoritySlot() === 0;
+  }
+
+  async preparePublication(proposal: GovernanceProposalRecord, renewExpired = false): Promise<void> {
+    if (renewExpired && (!this.publicationExpired(proposal) || !this.canRestartApprovals())) return;
     await this.runPublication(async () => {
-      const value = await this.api.package(proposal.id, this.coadminFor(proposal));
+      const value = await this.api.package(proposal.id, this.coadminFor(proposal), renewExpired);
       this.setPublication(value);
       this.notice.set('The exact owner-plus-one approval steps are ready.');
     });
@@ -791,6 +839,7 @@ export class SgtAllocationsComponent {
     mode: 'browser' | 'mobile',
   ): Promise<void> {
     await this.runPublication(async () => {
+      if (this.publicationExpired(proposal)) throw new Error('Approvals expired. Ask the owner to restart them before signing.');
       if (!this.wallet.isConnected()) {
         if (mode === 'browser') await this.wallet.connectInjected();
         else await this.wallet.connectWalletConnect();
@@ -823,6 +872,7 @@ export class SgtAllocationsComponent {
 
   async submitPublication(proposal: GovernanceProposalRecord): Promise<void> {
     await this.runPublication(async () => {
+      if (this.publicationExpired(proposal)) throw new Error('Approvals expired. Restart them before submitting.');
       const result = await this.api.submit(proposal.id, this.coadminFor(proposal));
       this.replaceProposal(result.proposal);
       this.publications.update((items) => {
@@ -1075,6 +1125,18 @@ export class SgtAllocationsComponent {
       paymentAmount: amount,
       expiresAt,
     });
+  }
+
+  private async readPublicationStatuses(): Promise<void> {
+    for (const publication of Object.values(this.publications())) {
+      if (publication.proposal.state !== 'READY' || this.approvalExpired(publication)
+          || publication.readyToSubmit || this.busy()) continue;
+      const value = await this.api.publicationStatus(publication.proposal.id);
+      // Do not overwrite a signature, restart, or navigation completed during this read.
+      if (this.destroyRef.destroyed || this.busy()
+          || this.publications()[publication.proposal.id] !== publication) return;
+      this.setPublication(value);
+    }
   }
 
   private setPublication(value: GovernancePublicationPackage): void {

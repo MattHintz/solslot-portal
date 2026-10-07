@@ -53,6 +53,7 @@ export interface GovernanceProposalRecord {
   proposalCoinId: string | null;
   completionBundleId: string | null;
   publicationCoadminSlot: number | null;
+  publicationVotingDeadline?: number | null;
   executionBundleId: string | null;
   expectedOutputCoinIds: string[];
   executionSubmittedAt: number | null;
@@ -243,11 +244,18 @@ export class GovernanceQueueService {
     );
   }
 
-  package(proposalId: string, coadminSlot: number): Promise<GovernancePublicationPackage> {
+  publicationStatus(proposalId: string): Promise<GovernancePublicationPackage> {
+    return firstValueFrom(this.http.get<GovernancePublicationPackage>(
+      `${this.base}/admin/governance/proposals/${encodeURIComponent(proposalId)}/publication/status`,
+      { headers: this.headers() },
+    ));
+  }
+
+  package(proposalId: string, coadminSlot: number, renewExpired = false): Promise<GovernancePublicationPackage> {
     return firstValueFrom(
       this.http.post<GovernancePublicationPackage>(
         `${this.base}/admin/governance/proposals/${encodeURIComponent(proposalId)}/publication/package`,
-        { coadminSlot },
+        { coadminSlot, renewExpired },
         { headers: this.headers() },
       ),
     );
