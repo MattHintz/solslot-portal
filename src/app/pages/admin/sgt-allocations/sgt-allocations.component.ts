@@ -3,7 +3,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  Injector,
   NgZone,
+  afterNextRender,
   computed,
   inject,
   signal,
@@ -282,7 +285,10 @@ import { formatError } from '../../../utils/format-error';
                             <option [ngValue]="2">Administrator 3</option>
                           </select>
                         </label>
-                        @if (publicationExpired(proposal)) {
+                        @if (proposal.savedPublication) {
+                          <p>The earlier submission is saved. Check its exact status before restarting approvals.</p>
+                          <button type="button" class="primary" (click)="checkSavedSubmission(proposal)" [disabled]="busy() || !canRestartApprovals()">Check saved submission</button>
+                        } @else if (publicationExpired(proposal)) {
                           <p>These wallet approvals expired. The proposal is retained. The owner can restart approvals; both administrators must sign again.</p>
                           <button type="button" (click)="preparePublication(proposal, true)" [disabled]="busy() || !canRestartApprovals()">
                             Restart expired approvals
@@ -379,9 +385,15 @@ import { formatError } from '../../../utils/format-error';
                       </section>
                     }
                     @if (publicationFor(proposal); as publication) {
-                      <section class="publication" aria-label="Proposal publication approvals">
+                      <section class="publication" aria-label="Proposal publication approvals" [attr.data-proposal-approval]="proposal.id">
                         <p>Draft review is complete. Each administrator must now sign the wallet approval below. Signatures record consent; the owner submits separately.</p>
-                        <p role="status">{{ approvalTimeRemaining(publication) }} · Voting deadline {{ publication.votingDeadline * 1000 | date:'short' }}</p>
+                        <div class="approval-window" role="status">
+                          <strong>{{ approvalTimeRemaining(publication) }}</strong>
+                          <span>Sign by {{ approvalDeadline(publication) * 1000 | date:'medium' }}. The committee vote lasts {{ publication.votingWindowSeconds / 60 }} minutes after submission.</span>
+                        </div>
+                        @if (actionProgress()) {
+                          <div class="action-progress" role="status" aria-live="polite"><span class="progress-spinner" aria-hidden="true"></span>{{ actionProgress() }}</div>
+                        }
                         <div class="publication-summary">
                           <div>
                             <span>Network</span>
@@ -403,29 +415,38 @@ import { formatError } from '../../../utils/format-error';
                         <solslot-admin-refresh-status [state]="approvalRefresh" />
                         <ol class="approval-list">
                           @for (action of publication.actions; track action.actionId) {
-                            <li>
+                            <li [class.your-approval]="isAssignedApproval(action) && !action.signed">
                               <div>
+                                @if (isAssignedApproval(action) && !action.signed) { <span class="your-approval-label">Your approval</span> }
                                 <strong>{{ action.title }}</strong>
                                 <span>{{ action.summary }}</span>
                               </div>
                               @if (action.signed) {
                                 <span class="signed">Approved</span>
-                              } @else {
+                              } @else if (isAssignedApproval(action)) {
                                 <div class="sign-options">
-                                  <button type="button" (click)="signAction(proposal, action, 'browser')" [disabled]="busy() || approvalExpired(publication)">
-                                    Browser wallet
+                                  <span>Choose how to open your wallet. Review and sign the request there.</span>
+                                  <button type="button" class="primary" (click)="signAction(proposal, action, 'browser')" [disabled]="busy() || approvalExpired(publication)">
+                                    Sign in browser wallet
                                   </button>
-                                  <button type="button" (click)="signAction(proposal, action, 'mobile')" [disabled]="busy() || approvalExpired(publication)">
-                                    Mobile / hardware
+                                  <button type="button" class="secondary" (click)="signAction(proposal, action, 'mobile')" [disabled]="busy() || approvalExpired(publication)">
+                                    Use mobile or hardware
                                   </button>
                                 </div>
+                              } @else {
+                                <span>Waiting for {{ action.signerSlot === 0 ? 'the owner' : 'the assigned coadministrator' }}</span>
                               }
                             </li>
                           }
                         </ol>
-                        @if (publication.readyToSubmit) {
+                        @if (publication.savedSubmission) {
                           <div class="submit-row">
-                            <span>Both approvals are recorded. Only the owner wallet can submit.</span>
+                            <span>The exact transaction is saved. Check it before starting another submission. Your approvals are retained.</span>
+                            <button type="button" class="primary" (click)="checkSavedSubmission(proposal)" [disabled]="busy() || !canRestartApprovals()">Check saved submission</button>
+                          </div>
+                        } @else if (bothApprovalsRecorded(publication)) {
+                          <div class="submit-row">
+                            <span>Both approvals are recorded. The owner can submit when ready. Final chain and fee checks run before submission.</span>
                             <button type="button" class="primary" (click)="submitPublication(proposal)" [disabled]="busy() || approvalExpired(publication) || !isOwnerWallet(publication)">
                               Open committee vote
                             </button>
@@ -531,7 +552,7 @@ import { formatError } from '../../../utils/format-error';
       select { min-height:40px; border:1px solid #315f50; background:#071914; color:#edf9f4; padding:0 10px; }
       .coadmin-choice { display:flex; align-items:center; gap:8px; }
       .coadmin-choice > span { color:#9ab4a9; font-size:11px; }
-      .publication { display:grid; gap:14px; margin-top:14px; padding:15px; border:1px solid #315f50; background:#081a15; }
+      .publication { display:grid; gap:14px; margin-top:14px; padding:15px; border:1px solid #315f50; background:#081a15; scroll-margin-top:136px; }
       .publication-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
       .publication-summary div { display:grid; gap:4px; }
       .publication-summary span { color:#88a89a; font-size:9px; text-transform:uppercase; }
@@ -541,7 +562,17 @@ import { formatError } from '../../../utils/format-error';
       .approval-list li > div:first-child { display:grid; gap:3px; }
       .approval-list li span { color:#91ada1; font-size:10px; line-height:1.4; }
       .signed { color:#70dfad !important; font-weight:700; text-transform:uppercase; }
-      .sign-options { display:flex; gap:7px; flex:0 0 auto; }
+      .sign-options { display:flex; gap:10px; flex-wrap:wrap; width:100%; min-width:0; }
+      .sign-options > span { width:100%; font-size:12px !important; }
+      .sign-options button { min-height:48px; padding:12px 18px; font-size:13px; }
+      .approval-list li.your-approval { display:grid; grid-template-columns:minmax(0,1fr); align-items:stretch; padding:20px 16px; margin:8px 0; border:1px solid #62d6a6; border-radius:8px; background:#102c22; }
+      .your-approval-label { color:#70dfad !important; text-transform:uppercase; font-weight:700; letter-spacing:.07em; }
+      .approval-window { display:grid; gap:6px; padding:14px; border:1px solid #37695a; border-radius:8px; background:#10271f; }
+      .approval-window span { color:#b4cfc3; font-size:12px; line-height:1.5; }
+      .action-progress { display:flex; align-items:center; gap:12px; padding:14px; background:#123529; border-radius:8px; font-size:13px; }
+      .progress-spinner { width:18px; height:18px; flex:0 0 auto; border:2px solid #37695a; border-top-color:#70dfad; border-radius:50%; animation:approval-spin 1s linear infinite; }
+      @keyframes approval-spin { to { transform:rotate(360deg); } }
+      @media (prefers-reduced-motion:reduce) { .progress-spinner { animation:none; } }
       .submit-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:12px; border-top:1px solid #21483d; }
       .submit-row > span { color:#9ab4a9; font-size:11px; }
       .text-button { border-color:transparent !important; background:transparent !important; color:#9eb7ad !important; }
@@ -551,7 +582,7 @@ import { formatError } from '../../../utils/format-error';
       .empty { display:grid; gap:5px; margin-top:18px; padding:24px 0; color:#91ada1; font-size:12px; }
       @media (max-width:900px) { .workspace-grid { grid-template-columns:1fr; } .proposal-form { padding:0 0 30px; border:0; border-bottom:1px solid #21483d; } }
       @media (max-width:620px) { .allocation-page { width:calc(100% - 22px); padding-top:24px; } .page-header,.section-heading { align-items:flex-start; flex-direction:column; } .reserve-note,.two-col,.decision-receipt dl { grid-template-columns:1fr; } .reserve-note div + div { border-left:0; border-top:1px solid #21483d; } }
-      @media (max-width:620px) { .publication-summary { grid-template-columns:1fr; } .approval-list li,.submit-row { align-items:flex-start; flex-direction:column; } .sign-options { width:100%; flex-wrap:wrap; } }
+      @media (max-width:620px) { .publication-summary { grid-template-columns:1fr; } .approval-list li,.submit-row { align-items:flex-start; flex-direction:column; } .sign-options button { width:100%; } }
       @media (max-width:620px) { .vault-vote__footer { align-items:stretch; flex-direction:column; } }
       @media (max-width:620px) { .queue-title { align-items:flex-start; } .allocation-review { padding:12px; } .allocation-review dl { grid-template-columns:1fr; } }
     `,
@@ -559,6 +590,8 @@ import { formatError } from '../../../utils/format-error';
 })
 export class SgtAllocationsComponent {
   private readonly api = inject(GovernanceQueueService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
   readonly approvalRefresh = inject(AdminStatusRefresh);
   private readonly adminSession = inject(AdminSessionService);
   private readonly wallet = inject(EvmWalletService);
@@ -573,6 +606,7 @@ export class SgtAllocationsComponent {
   readonly proposals = signal<GovernanceProposalRecord[]>([]);
   readonly loading = signal(false);
   readonly busy = signal(false);
+  readonly actionProgress = signal<string | null>(null);
   readonly error = signal<string | null>(null);
   readonly notice = signal<string | null>(null);
   readonly kind = signal<Exclude<GovernanceProposalKind, 'FUNDED_REDEMPTION'>>('SGT_SALE');
@@ -807,17 +841,36 @@ export class SgtAllocationsComponent {
   }
 
   publicationExpired(proposal: GovernanceProposalRecord): boolean {
-    const deadline = this.publicationFor(proposal)?.votingDeadline ?? proposal.publicationVotingDeadline;
+    const publication = this.publicationFor(proposal);
+    const deadline = publication ? this.approvalDeadline(publication)
+      : proposal.publicationApprovalExpiresAt ?? proposal.publicationVotingDeadline;
     return deadline != null && deadline <= this.approvalClock();
   }
 
+  approvalDeadline(publication: GovernancePublicationPackage): number {
+    return publication.approvalExpiresAt ?? publication.votingDeadline ?? 0;
+  }
+
   approvalExpired(publication: GovernancePublicationPackage): boolean {
-    return publication.votingDeadline <= this.approvalClock();
+    return this.approvalDeadline(publication) <= this.approvalClock();
   }
 
   approvalTimeRemaining(publication: GovernancePublicationPackage): string {
-    const seconds = Math.max(0, publication.votingDeadline - this.approvalClock());
-    return seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left to sign and submit` : 'Approvals expired';
+    const seconds = Math.max(0, this.approvalDeadline(publication) - this.approvalClock());
+    if (!seconds) return 'Approvals expired';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor(seconds % 3600 / 60);
+    return hours ? `${hours}h ${minutes}m left to sign and submit`
+      : `${minutes}:${String(seconds % 60).padStart(2, '0')} left to sign and submit`;
+  }
+
+  isAssignedApproval(action: GovernancePublicationAction): boolean {
+    return this.adminSession.authoritySlot() === action.signerSlot;
+  }
+
+  bothApprovalsRecorded(publication: GovernancePublicationPackage): boolean {
+    return publication.actions.length === 2
+      && [0, publication.coadminSlot].every(slot => publication.actions.some(action => action.signerSlot === slot && action.signed));
   }
 
   canRestartApprovals(): boolean {
@@ -825,11 +878,18 @@ export class SgtAllocationsComponent {
   }
 
   async preparePublication(proposal: GovernanceProposalRecord, renewExpired = false): Promise<void> {
+    if (proposal.savedPublication) return;
     if (renewExpired && (!this.publicationExpired(proposal) || !this.canRestartApprovals())) return;
     await this.runPublication(async () => {
+      this.actionProgress.set('Preparing the exact approval request…');
       const value = await this.api.package(proposal.id, this.coadminFor(proposal), renewExpired);
       this.setPublication(value);
       this.notice.set('The exact owner-plus-one approval steps are ready.');
+      afterNextRender(() => {
+        const section = [...this.host.nativeElement.querySelectorAll<HTMLElement>('[data-proposal-approval]')]
+          .find(element => element.dataset['proposalApproval'] === proposal.id);
+        section?.scrollIntoView({ block: 'start', behavior: 'instant' });
+      }, { injector: this.injector });
     });
   }
 
@@ -840,6 +900,8 @@ export class SgtAllocationsComponent {
   ): Promise<void> {
     await this.runPublication(async () => {
       if (this.publicationExpired(proposal)) throw new Error('Approvals expired. Ask the owner to restart them before signing.');
+      if (!this.isAssignedApproval(action)) throw new Error('This approval belongs to another administrator.');
+      this.actionProgress.set('Open your wallet and review the approval request. This signature does not submit a transaction.');
       if (!this.wallet.isConnected()) {
         if (mode === 'browser') await this.wallet.connectInjected();
         else await this.wallet.connectWalletConnect();
@@ -853,6 +915,7 @@ export class SgtAllocationsComponent {
         delegatedPuzzleHash: action.delegatedPuzzleHash,
         compressedPubkey: action.signerPublicKey,
       });
+      this.actionProgress.set('Saving your approval…');
       this.setPublication(
         await this.api.sign(
           proposal.id,
@@ -873,7 +936,18 @@ export class SgtAllocationsComponent {
   async submitPublication(proposal: GovernanceProposalRecord): Promise<void> {
     await this.runPublication(async () => {
       if (this.publicationExpired(proposal)) throw new Error('Approvals expired. Restart them before submitting.');
-      const result = await this.api.submit(proposal.id, this.coadminFor(proposal));
+      this.actionProgress.set('Checking the current chain and network fee, then submitting your approved proposal…');
+      let result;
+      try {
+        result = await this.api.submit(proposal.id, this.coadminFor(proposal));
+      } catch (error) {
+        // A dispatch receipt may have been saved before an ambiguous RPC error.
+        const publication = this.publicationFor(proposal);
+        if (publication) {
+          try { this.mergeSignatureStatus(publication, await this.api.publicationSignatureStatus(publication)); } catch { /* retain the exact displayed request */ }
+        }
+        throw error;
+      }
       this.replaceProposal(result.proposal);
       this.publications.update((items) => {
         const next = { ...items };
@@ -881,6 +955,19 @@ export class SgtAllocationsComponent {
         return next;
       });
       this.notice.set('Proposal observed in the Testnet11 mempool. Committee voting is open.');
+    });
+  }
+
+  async checkSavedSubmission(proposal: GovernanceProposalRecord): Promise<void> {
+    if (!this.canRestartApprovals()) return;
+    await this.runPublication(async () => {
+      this.actionProgress.set('Checking the exact saved transaction on Chia…');
+      const result = await this.api.checkPublicationSubmission(proposal.id);
+      this.replaceProposal(result.proposal);
+      this.publications.update(items => { const next = { ...items }; delete next[proposal.id]; return next; });
+      this.notice.set(result.chainState === 'EXPIRED'
+        ? 'The earlier transaction expired safely. Its history is retained. Review the current approvals before submitting again.'
+        : 'The saved transaction was found. Follow its committee status below.');
     });
   }
 
@@ -1130,13 +1217,24 @@ export class SgtAllocationsComponent {
   private async readPublicationStatuses(): Promise<void> {
     for (const publication of Object.values(this.publications())) {
       if (publication.proposal.state !== 'READY' || this.approvalExpired(publication)
-          || publication.readyToSubmit || this.busy()) continue;
-      const value = await this.api.publicationStatus(publication.proposal.id);
+          || this.busy()) continue;
+      const value = await this.api.publicationSignatureStatus(publication);
       // Do not overwrite a signature, restart, or navigation completed during this read.
       if (this.destroyRef.destroyed || this.busy()
           || this.publications()[publication.proposal.id] !== publication) return;
-      this.setPublication(value);
+      this.mergeSignatureStatus(publication, value);
     }
+  }
+
+  private mergeSignatureStatus(publication: GovernancePublicationPackage, value: Awaited<ReturnType<GovernanceQueueService['publicationSignatureStatus']>>): void {
+    if (value.proposal.id !== publication.proposal.id || value.proposal.revision !== publication.proposal.revision
+        || value.coadminSlot !== publication.coadminSlot || value.approvalExpiresAt !== (publication.approvalExpiresAt ?? null)) {
+      throw new Error('The approval request changed. Review the current request before signing.');
+    }
+    const actions = publication.actions.map(action => ({ ...action, signed: value.signedActions.some(saved =>
+      saved.actionId === action.actionId && saved.signerSlot === action.signerSlot && saved.messageHash === action.messageHash) }));
+    this.setPublication({ ...publication, proposal: value.proposal, actions,
+      votingDeadline: value.votingDeadline, savedSubmission: value.savedSubmission });
   }
 
   private setPublication(value: GovernancePublicationPackage): void {
@@ -1192,6 +1290,13 @@ export class SgtAllocationsComponent {
       this.error.set(formatError(error));
     } finally {
       this.busy.set(false);
+      this.actionProgress.set(null);
+      if (this.error()) {
+        afterNextRender(() => {
+          this.host.nativeElement.querySelector<HTMLElement>('.message.error')
+            ?.scrollIntoView({ block: 'center', behavior: 'instant' });
+        }, { injector: this.injector });
+      }
     }
   }
 

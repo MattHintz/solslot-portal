@@ -40,6 +40,8 @@ describe('SgtAllocationsComponent', () => {
       'transition',
       'package',
       'publicationStatus',
+      'publicationSignatureStatus',
+      'checkPublicationSubmission',
       'sign',
       'submit',
       'reconcile',
@@ -133,18 +135,61 @@ describe('SgtAllocationsComponent', () => {
   it('refreshes an existing approval using a read without renewing or opening a wallet', async () => {
     const proposal = { ...grant(), state: 'READY' as const, publicationCoadminSlot: 1,
       publicationVotingDeadline: component.approvalClock() + 100 };
-    const publication = { proposal, votingDeadline: proposal.publicationVotingDeadline,
-      actions: [], readyToSubmit: false } as any;
-    const updated = { ...publication, readyToSubmit: true };
-    api.publicationStatus.and.resolveTo(updated);
+    const publication = { proposal, coadminSlot:1, votingDeadline: proposal.publicationVotingDeadline,
+      actions: [0,1].map(signerSlot => ({ actionId:`action-${signerSlot}`, signerSlot, messageHash:`hash-${signerSlot}`, signed:false })), readyToSubmit: false } as any;
+    const updated = { proposal, coadminSlot:1, approvalExpiresAt:null, votingDeadline:proposal.publicationVotingDeadline, savedSubmission:false,
+      signedActions:publication.actions.map((action:any) => ({actionId:action.actionId,signerSlot:action.signerSlot,messageHash:action.messageHash})) };
+    api.publicationSignatureStatus.and.resolveTo(updated);
     component.proposals.set([proposal]);
     component.publications.set({ [proposal.id]: publication });
     await component.approvalRefresh.refresh();
-    expect(api.publicationStatus).toHaveBeenCalledOnceWith(proposal.id);
-    expect(component.publicationFor(proposal)?.readyToSubmit).toBeTrue();
+    expect(api.publicationSignatureStatus).toHaveBeenCalledOnceWith(publication);
+    expect(api.publicationStatus).not.toHaveBeenCalled();
+    expect(component.bothApprovalsRecorded(component.publicationFor(proposal)!)).toBeTrue();
     expect(api.package).not.toHaveBeenCalled();
     expect(api.submit).not.toHaveBeenCalled();
     expect(wallet.signAuthorityV3ChiaAction).not.toHaveBeenCalled();
+  });
+
+  it('shows prominent buttons only for the assigned administrator and a separate 24-hour window', () => {
+    authoritySlot.set(1);
+    const proposal={...grant(),state:'READY' as const,publicationCoadminSlot:1,publicationApprovalExpiresAt:component.approvalClock()+86400};
+    const publicKey='0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798';
+    const publication={proposal,coadminSlot:1,approvalExpiresAt:proposal.publicationApprovalExpiresAt,votingDeadline:null,votingWindowSeconds:300,
+      actions:[0,1].map(signerSlot=>({actionId:`action-${signerSlot}`,signerSlot,signerPublicKey:publicKey,title:`Approval ${signerSlot}`,signed:false}))} as any;
+    component.proposals.set([proposal]); component.publications.set({[proposal.id]:publication}); fixture.detectChanges();
+    const root=fixture.nativeElement as HTMLElement;
+    const buttons=[...root.querySelectorAll('button')].filter(button=>button.textContent?.trim()==='Sign in browser wallet');
+    expect(buttons.length).toBe(1);
+    expect(buttons[0].classList.contains('primary')).toBeTrue();
+    expect(buttons[0].closest('.your-approval')).not.toBeNull();
+    expect(root.textContent).toContain('Waiting for the owner');
+    expect(root.textContent).toContain('24h 0m left');
+    expect(root.textContent).toContain('5 minutes after submission');
+    expect(api.submit).not.toHaveBeenCalled();
+  });
+
+  it('ignores unrelated, wrong-slot and wrong-digest signatures', async () => {
+    const proposal={...grant(),state:'READY' as const,publicationCoadminSlot:1,publicationApprovalExpiresAt:component.approvalClock()+86400};
+    const publication={proposal,coadminSlot:1,approvalExpiresAt:proposal.publicationApprovalExpiresAt,votingDeadline:null,
+      actions:[0,1].map(signerSlot=>({actionId:`action-${signerSlot}`,signerSlot,messageHash:`hash-${signerSlot}`,signed:false}))} as any;
+    api.publicationSignatureStatus.and.resolveTo({proposal,coadminSlot:1,approvalExpiresAt:publication.approvalExpiresAt,votingDeadline:null,savedSubmission:false,
+      signedActions:[{actionId:'action-0',signerSlot:1,messageHash:'hash-0'},{actionId:'action-1',signerSlot:1,messageHash:'wrong'}]});
+    component.proposals.set([proposal]);component.publications.set({[proposal.id]:publication});
+    await component.approvalRefresh.refresh();
+    expect(component.publicationFor(proposal)?.actions.every(action=>!action.signed)).toBeTrue();
+    expect(api.submit).not.toHaveBeenCalled();
+  });
+
+  it('offers exact reconciliation before restarting an expired saved transaction', async () => {
+    const proposal={...grant(),state:'READY' as const,publicationCoadminSlot:1,publicationApprovalExpiresAt:component.approvalClock()-1,savedPublication:true};
+    component.proposals.set([proposal]);fixture.detectChanges();
+    const root=fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('Check saved submission');
+    expect(root.textContent).not.toContain('Restart expired approvals');
+    await component.preparePublication(proposal,true);
+    expect(api.package).not.toHaveBeenCalled();
+    expect(api.submit).not.toHaveBeenCalled();
   });
 
   it('explains SGT authority boundaries and starts with an empty queue', () => {

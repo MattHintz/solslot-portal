@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
@@ -54,6 +54,8 @@ export interface GovernanceProposalRecord {
   completionBundleId: string | null;
   publicationCoadminSlot: number | null;
   publicationVotingDeadline?: number | null;
+  publicationApprovalExpiresAt?: number | null;
+  savedPublication?: boolean;
   executionBundleId: string | null;
   expectedOutputCoinIds: string[];
   executionSubmittedAt: number | null;
@@ -106,13 +108,24 @@ export interface GovernancePublicationPackage {
   network: string;
   authorityRule: string;
   coadminSlot: number;
-  votingDeadline: number;
+  votingDeadline: number | null;
+  approvalExpiresAt?: number | null;
+  savedSubmission?: boolean;
   votingWindowSeconds: number;
   proposalHash: string;
   reserveVoteAmount: string;
   actions: GovernancePublicationAction[];
   readyToSubmit: boolean;
   expectedProposalCoinId: string | null;
+}
+
+export interface GovernancePublicationSignatureStatus {
+  proposal: GovernanceProposalRecord;
+  coadminSlot: number;
+  approvalExpiresAt: number | null;
+  votingDeadline: number | null;
+  savedSubmission: boolean;
+  signedActions: { actionId: string; signerSlot: number; messageHash: string }[];
 }
 
 export interface GovernanceVaultVotePrepare {
@@ -248,6 +261,23 @@ export class GovernanceQueueService {
     return firstValueFrom(this.http.get<GovernancePublicationPackage>(
       `${this.base}/admin/governance/proposals/${encodeURIComponent(proposalId)}/publication/status`,
       { headers: this.headers() },
+    ));
+  }
+
+  publicationSignatureStatus(publication: GovernancePublicationPackage): Promise<GovernancePublicationSignatureStatus> {
+    const owner = publication.actions.find(action => action.signerSlot === 0);
+    const coadmin = publication.actions.find(action => action.signerSlot === publication.coadminSlot);
+    if (!owner || !coadmin) return Promise.reject(new Error('Current approval steps are unavailable. Review approvals again.'));
+    return firstValueFrom(this.http.get<GovernancePublicationSignatureStatus>(
+      `${this.base}/admin/governance/proposals/${encodeURIComponent(publication.proposal.id)}/publication/signature-status`,
+      { headers: this.headers(), params: new HttpParams().set('ownerActionId', owner.actionId).set('coadminActionId', coadmin.actionId) },
+    ));
+  }
+
+  checkPublicationSubmission(proposalId: string): Promise<GovernanceChainResult> {
+    return firstValueFrom(this.http.post<GovernanceChainResult>(
+      `${this.base}/admin/governance/proposals/${encodeURIComponent(proposalId)}/publication/check-submission`,
+      {}, { headers: this.headers() },
     ));
   }
 

@@ -24,6 +24,17 @@ describe('GovernanceQueueService', () => {
 
   afterEach(() => http.verify());
 
+  it('checks only the displayed signature identifiers using an authenticated GET', async () => {
+    const publication={proposal:{id:'GOV-READ'},coadminSlot:1,actions:[{actionId:'owner',signerSlot:0},{actionId:'coadmin',signerSlot:1}]} as any;
+    const promise=service.publicationSignatureStatus(publication);
+    const request=http.expectOne(req=>req.url===`${environment.faucetApi}/admin/governance/proposals/GOV-READ/publication/signature-status`);
+    expect(request.request.method).toBe('GET');
+    expect(request.request.params.get('ownerActionId')).toBe('owner');
+    expect(request.request.params.get('coadminActionId')).toBe('coadmin');
+    expect(request.request.headers.get('Authorization')).toBe('Bearer admin-jwt');
+    request.flush({signedActions:[]});await promise;
+  });
+
   it('creates a typed sale with administrator authentication', async () => {
     const input = {
       kind: 'SGT_SALE' as const,
