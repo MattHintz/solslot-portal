@@ -1,3 +1,4 @@
+import { AdminSessionService } from '../../../services/admin-session.service';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ChiaSingletonReaderService } from '../../../services/chia-singleton-reader.service';
@@ -23,6 +24,7 @@ describe('TrustRootsComponent', () => {
       imports: [TrustRootsComponent],
       providers: [
         provideRouter([]),
+        { provide: AdminSessionService, useValue: { connectionNotice: () => '', logoutAndRedirect: jasmine.createSpy('logoutAndRedirect') } },
         { provide: ChiaSingletonReaderService, useValue: singleton },
         { provide: CoinsetService, useValue: coinset },
         { provide: SolslotProtocolArtifactService, useValue: artifactService },

@@ -43,7 +43,7 @@ export class JourneyTransport {
   delivered = 0;
   dropped = 0;
   state: 'idle' | 'sending' | 'retrying' | 'paused' = 'idle';
-  constructor(private endpoint: string, private release: string, private source: 'customer' | 'admin', private allowed: () => boolean, private sender: typeof fetch = (input, init) => fetch(input, init)) {}
+  constructor(private endpoint: string, private release: string, private source: 'customer' | 'admin', private allowed: () => boolean, private sender: typeof fetch = (input, init) => sendJourneyBatch(input, init, () => this.allowed() && !this.disposed)) {}
   record(input: JourneyInput): void {
     if (!this.allowed() || this.disposed || !/^[0-9a-f]{40}$/.test(this.release)) return;
     if (!SCREENS.includes(input.screen) || !ACTIONS.includes(input.action)) return;
@@ -90,4 +90,59 @@ export class JourneyTransport {
 export function journeyRequestId(value: string | null | undefined): string | undefined {
   if (!value || !/^[0-9a-f]{32}$/.test(value)) return undefined;
   return `${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20)}`;
+}
+
+// Uses the existing HTTP security boundary. Security cookies are never payload fields.
+const journeyBootstraps = new Map<string, Promise<void>>();
+function journeyXsrfToken(): string | null {
+  const entries = document.cookie.split(';').map(value => value.trim()).filter(value => value.startsWith('XSRF-TOKEN='));
+  if (entries.length !== 1) return null;
+  try {
+    const value = decodeURIComponent(entries[0].slice('XSRF-TOKEN='.length));
+    return /^v1\.[0-9]{10,12}\.[0-9a-f]{64}\.[0-9a-f]{64}$/.test(value) ? value : null;
+  } catch { return null; }
+}
+/** Same-origin intake only; one exact pre-API security rejection can renew its token. */
+export async function sendJourneyBatch(input: RequestInfo | URL, init: RequestInit = {}, allowed: () => boolean = () => true): Promise<Response> {
+  if (typeof location === 'undefined' || typeof document === 'undefined') throw new Error('journey_browser_required');
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.origin);
+  if (url.origin !== location.origin || !/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/alpha/journey-events')) {
+    throw new Error('journey_origin_required');
+  }
+  const bootstrap = new URL(url.href);
+  bootstrap.pathname = url.pathname.slice(0, -'/alpha/journey-events'.length) + '/protocol/artifact';
+  const renew = async () => {
+    let pending = journeyBootstraps.get(bootstrap.href);
+    if (!pending) {
+      pending = (async () => {
+        const response = await fetch(bootstrap.href, {method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: init.signal});
+        if (!response.ok || !journeyXsrfToken()) throw new Error('journey_security_unavailable');
+      })();
+      journeyBootstraps.set(bootstrap.href, pending);
+    }
+    try { await pending; } finally { if (journeyBootstraps.get(bootstrap.href) === pending) journeyBootstraps.delete(bootstrap.href); }
+  };
+  // Snapshot the bounded, allowlisted batch before any asynchronous security renewal.
+  const body = init.body;
+  const send = () => {
+    if (!allowed() || init.signal?.aborted) throw new Error('journey_cancelled');
+    const token = journeyXsrfToken();
+    if (!token) throw new Error('journey_security_unavailable');
+    const headers = new Headers(init.headers);
+    headers.set('X-XSRF-TOKEN', token);
+    return fetch(url.href, {...init, body, headers, credentials: 'same-origin', redirect: 'error'});
+  };
+  if (!allowed() || init.signal?.aborted) throw new Error('journey_cancelled');
+  if (!journeyXsrfToken()) await renew();
+  const response = await send();
+  if (response.status !== 403 || response.headers.get('X-Solslot-Http-Boundary') !== 'xsrf-v1') return response;
+  let rejectedBeforeApi = false;
+  try {
+    const text = await response.clone().text();
+    rejectedBeforeApi = text.length < 256 && JSON.parse(text)?.detail === 'Browser security check failed. Refresh Solslot and try again.';
+  } catch { /* An application or unreadable error never causes a security replay. */ }
+  if (!rejectedBeforeApi) return response;
+  if (!allowed() || init.signal?.aborted) throw new Error('journey_cancelled');
+  await renew();
+  return send();
 }

@@ -1,3 +1,4 @@
+import { AdminSessionService } from '../../../services/admin-session.service';
 import { computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -111,6 +112,7 @@ describe('OmnichainOwnershipActivationComponent', () => {
       imports: [OmnichainOwnershipActivationComponent],
       providers: [
         provideRouter([]),
+        { provide: AdminSessionService, useValue: { connectionNotice: () => '', logoutAndRedirect: jasmine.createSpy('logoutAndRedirect') } },
         { provide: OmnichainOwnershipActivationService, useValue: api },
         { provide: EvmWalletService, useValue: wallet },
       ],

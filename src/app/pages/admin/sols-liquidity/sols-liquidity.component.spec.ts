@@ -1,3 +1,4 @@
+import { AdminSessionService } from '../../../services/admin-session.service';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
@@ -19,6 +20,7 @@ describe('SolsLiquidityComponent', () => {
       imports: [SolsLiquidityComponent],
       providers: [
         provideRouter([]),
+        { provide: AdminSessionService, useValue: { connectionNotice: () => '', logoutAndRedirect: jasmine.createSpy('logoutAndRedirect') } },
         { provide: SolsMarketApiService, useValue: api },
       ],
     }).compileComponents();
