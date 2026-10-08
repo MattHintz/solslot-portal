@@ -80,7 +80,7 @@ import { formatError } from '../../../utils/format-error';
                 when available.  Review them against the approved deployment record before signing.
               </p>
               <div class="mt-4 flex flex-wrap gap-3">
-                <button type="button" class="btn btn--ghost text-xs" (click)="refreshProtocol()" [disabled]="loadingProtocol()">
+                <button type="button" class="btn btn--ghost text-xs" data-ux-action="check_status" (click)="refreshProtocol()" [disabled]="loadingProtocol()">
                   {{ loadingProtocol() ? 'Refreshing…' : 'Refresh /protocol' }}
                 </button>
                 @if (protocolLoadError()) {
@@ -142,16 +142,16 @@ import { formatError } from '../../../utils/format-error';
                 </p>
                 <div class="mt-4 flex flex-wrap gap-3">
                   @if (hasGoby()) {
-                    <button type="button" class="btn btn--ghost text-xs" (click)="connectChia('goby')" [disabled]="!!connectingChia()">
+                    <button type="button" class="btn btn--ghost text-xs" data-ux-action="connect_wallet" (click)="connectChia('goby')" [disabled]="!!connectingChia()">
                       Connect Goby
                     </button>
                   }
                   @if (hasSage()) {
-                    <button type="button" class="btn btn--ghost text-xs" (click)="connectChia('sage')" [disabled]="!!connectingChia()">
+                    <button type="button" class="btn btn--ghost text-xs" data-ux-action="connect_wallet" (click)="connectChia('sage')" [disabled]="!!connectingChia()">
                       Connect Sage
                     </button>
                   }
-                  <button type="button" class="btn btn--ghost text-xs" (click)="connectChia('sage-walletconnect')" [disabled]="!!connectingChia()">
+                  <button type="button" class="btn btn--ghost text-xs" data-ux-action="connect_wallet" (click)="connectChia('sage-walletconnect')" [disabled]="!!connectingChia()">
                     Sage WalletConnect
                   </button>
                 </div>
@@ -237,7 +237,7 @@ import { formatError } from '../../../utils/format-error';
           </label>
 
           <div class="flex flex-wrap items-center gap-3">
-            <button type="button" class="btn btn--primary" (click)="submitLaunch()" [disabled]="!canSubmit()">
+            <button type="button" class="btn btn--primary" data-ux-action="submit_proposal" (click)="submitLaunch()" [disabled]="!canSubmit()">
               {{ submitButtonLabel() }}
             </button>
             @if (!walletConnected()) {

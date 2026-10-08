@@ -127,7 +127,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
               <span class="eyebrow">Team checklist</span>
               <h3 id="team-actions-title">Complete the required steps</h3>
             </div>
-            <button type="button" class="quiet-button" [disabled]="busy()" (click)="refreshCase()">
+            <button type="button" class="quiet-button" [disabled]="busy()" data-ux-action="check_status" (click)="refreshCase()">
               Refresh
             </button>
           </div>
@@ -270,7 +270,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
                       type="button"
                       class="secondary-button"
                       [disabled]="busy() || !evmReceiptConfirmed"
-                      (click)="signSafeApproval('injected')"
+                      data-ux-action="review_approval" (click)="signSafeApproval('injected')"
                     >
                       Sign with browser wallet
                     </button>
@@ -278,7 +278,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
                       type="button"
                       class="primary-button"
                       [disabled]="busy() || !evmReceiptConfirmed"
-                      (click)="signSafeApproval('walletconnect')"
+                      data-ux-action="review_approval" (click)="signSafeApproval('walletconnect')"
                     >
                       Sign with mobile or hardware
                     </button>
@@ -390,10 +390,10 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
                       </span>
                     } @else if (canSignChiaAction(action)) {
                       <div class="compact-buttons">
-                        <button type="button" (click)="signChiaAction(action, 'injected')">
+                        <button type="button" data-ux-action="review_approval" (click)="signChiaAction(action, 'injected')">
                           Browser
                         </button>
-                        <button type="button" (click)="signChiaAction(action, 'walletconnect')">
+                        <button type="button" data-ux-action="review_approval" (click)="signChiaAction(action, 'walletconnect')">
                           Mobile
                         </button>
                       </div>
@@ -433,7 +433,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
                   type="button"
                   class="primary-button"
                   [disabled]="busy() || !offlineChiaResultText.trim()"
-                  (click)="submitOfflineChiaResult(offline)"
+                  data-ux-action="submit_proposal" (click)="submitOfflineChiaResult(offline)"
                 >
                   Verify signed result
                 </button>
@@ -453,7 +453,7 @@ type ChiaPhase = 'PREPARE' | 'CANCEL' | 'COMPLETE';
                   type="button"
                   class="primary-button"
                   [disabled]="busy() || !chiaReceiptConfirmed"
-                  (click)="submitChia(chia)"
+                  data-ux-action="submit_proposal" (click)="submitChia(chia)"
                 >
                   {{ chia.phase === 'COMPLETE' ? 'Finish Testnet11 change' : chia.phase === 'CANCEL' ? 'Submit cancellation' : 'Start Testnet11 safety lock' }}
                 </button>

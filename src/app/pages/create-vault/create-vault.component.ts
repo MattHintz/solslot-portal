@@ -62,7 +62,7 @@ type Phase =
       <div class="mt-8 flex flex-wrap gap-3">
         <button
           class="btn btn--primary"
-          (click)="start()"
+          data-ux-action="verify_id" (click)="start()"
           [disabled]="phase() !== 'idle' && phase() !== 'error' && phase() !== 'done'"
           type="button"
         >

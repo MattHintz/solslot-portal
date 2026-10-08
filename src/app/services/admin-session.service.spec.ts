@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { SigningKey, Wallet } from 'ethers';
@@ -199,6 +200,37 @@ describe('AdminSessionService', () => {
     );
     expect(service.isAuthenticated()).toBeFalse();
     expect(sessionStorage.getItem(storageKey)).toBeNull();
+  });
+
+  for (const status of [0, 503, 429]) {
+    it(`retains an unexpired session across transient refresh ${status}`, async () => {
+      const service = configure(), envelope = await signedEnvelope();
+      await service.loginWithWallet({...envelope, signatureKind: 'eip712'});
+      const backend = TestBed.inject(AdminBackendAuthService);
+      (backend.refresh as jasmine.Spy).and.rejectWith(new HttpErrorResponse({status}));
+      await (service as any).refreshApiSession();
+      expect(service.isAuthenticated()).toBeTrue();
+      expect(service.requireJwt()).toBe(envelope.jwt);
+      expect(service.connectionNotice()).toContain('Reconnecting');
+    });
+  }
+  it('clears a session when the server rejects refresh credentials', async () => {
+    const service = configure(), envelope = await signedEnvelope();
+    await service.loginWithWallet({...envelope, signatureKind: 'eip712'});
+    (TestBed.inject(AdminBackendAuthService).refresh as jasmine.Spy).and.rejectWith(new HttpErrorResponse({status:401}));
+    await (service as any).refreshApiSession();
+    expect(service.isAuthenticated()).toBeFalse();
+  });
+  it('never resurrects a session logged out during an in-flight refresh', async () => {
+    const service = configure(), envelope = await signedEnvelope();
+    await service.loginWithWallet({...envelope, signatureKind: 'eip712'});
+    let finish!: (value: any) => void;
+    (TestBed.inject(AdminBackendAuthService).refresh as jasmine.Spy).and.returnValue(new Promise(resolve => finish = resolve));
+    const refreshing = (service as any).refreshApiSession();
+    service.logout();
+    finish({jwt: envelope.jwt, expires_at: envelope.expiresAt, authority_slot: 0});
+    await refreshing;
+    expect(service.isAuthenticated()).toBeFalse();
   });
 
   function configure(): AdminSessionService {

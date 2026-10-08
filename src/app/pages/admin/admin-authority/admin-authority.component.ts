@@ -416,11 +416,11 @@ type ChangeFlowKind = Extract<AdminKeyChangeKind, 'ROUTINE' | 'RECOVERY_KIT'>;
               </div>
             } @else {
               <div class="wallet-options" aria-label="Replacement wallet connection choices">
-                <button type="button" [disabled]="busy()" (click)="connectReplacementWallet('injected')">
+                <button type="button" [disabled]="busy()" data-ux-action="connect_wallet" (click)="connectReplacementWallet('injected')">
                   <strong>Browser wallet</strong>
                   <span>MetaMask, Coinbase Wallet, or another installed wallet</span>
                 </button>
-                <button type="button" [disabled]="busy()" (click)="connectReplacementWallet('walletconnect')">
+                <button type="button" [disabled]="busy()" data-ux-action="connect_wallet" (click)="connectReplacementWallet('walletconnect')">
                   <strong>Mobile or hardware wallet</strong>
                   <span>WalletConnect, Tangem, or a compatible signing wallet</span>
                 </button>
@@ -463,7 +463,7 @@ type ChangeFlowKind = Extract<AdminKeyChangeKind, 'ROUTINE' | 'RECOVERY_KIT'>;
                 type="button"
                 class="primary-action"
                 [disabled]="busy() || !changeReceiptConfirmed"
-                (click)="submitPreparedChange(current)"
+                data-ux-action="submit_proposal" (click)="submitPreparedChange(current)"
               >
                 {{ busy() ? 'Submitting...' : 'Start protected change' }}
               </button>

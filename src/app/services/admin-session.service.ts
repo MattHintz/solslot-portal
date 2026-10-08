@@ -5,6 +5,8 @@ import { environment } from '../../environments/environment';
 import { Eip712TypedData } from './solslot-api.service';
 import { SolslotProtocolArtifactService } from './solslot-protocol-artifact.service';
 import { AdminBackendAuthService } from './admin-backend-auth.service';
+import { HttpErrorResponse } from '@angular/common/http';
+import { JourneyTelemetryService } from './journey-telemetry.service';
 
 /** Lowercase V2 key intentionally ignores every pre-ceremony session. */
 const STORAGE_KEY = 'solslot_admin_session_v3';
@@ -36,6 +38,9 @@ export class AdminSessionService implements OnDestroy {
   private readonly router = inject(Router);
   private readonly protocolArtifact = inject(SolslotProtocolArtifactService);
   private readonly backendAuth = inject(AdminBackendAuthService);
+  private readonly journey = inject(JourneyTelemetryService);
+  readonly connectionNotice = signal('');
+  private refreshFailures = 0;
   private readonly _state = signal<AdminSessionState>(this.load());
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -97,6 +102,8 @@ export class AdminSessionService implements OnDestroy {
     this._state.set({ kind: 'anonymous' });
     this.clearExpiryTimer();
     this.clearRefreshTimer();
+    this.refreshFailures = 0;
+    this.connectionNotice.set('');
     if (typeof window !== 'undefined') sessionStorage.removeItem(STORAGE_KEY);
   }
 
@@ -312,6 +319,7 @@ export class AdminSessionService implements OnDestroy {
     if (state.kind !== 'authenticated') return;
     try {
       const refreshed = await this.backendAuth.refresh(state.jwt);
+      if (this._state() !== state) return;
       const next: AuthenticatedAdminState = {
         ...state,
         jwt: refreshed.jwt,
@@ -323,8 +331,21 @@ export class AdminSessionService implements OnDestroy {
       this.persist(next);
       this.scheduleExpiry(next.expiresAt);
       this.scheduleRefresh(next.expiresAt);
-    } catch {
-      this.logout();
+      this.refreshFailures = 0;
+      this.connectionNotice.set('');
+      this.journey.record({action: 'sign_in', stage: 'refresh', phase: 'completed'});
+    } catch (error) {
+      if (this._state() !== state) return;
+      if (isTransientSessionRefreshError(error) && Date.now() < state.expiresAt * 1000) {
+        this.connectionNotice.set('Reconnecting securely. Your current session and unsaved work are kept until the session expires.');
+        const delay = Math.min(30_000, 5000 * 2 ** this.refreshFailures++);
+        this.clearRefreshTimer();
+        this.refreshTimer = setTimeout(() => void this.refreshApiSession(), delay);
+        if (this.refreshFailures === 1) this.journey.record({action: 'sign_in', stage: 'refresh', phase: 'waiting', error_code: 'network'});
+      } else {
+        this.logout();
+        this.journey.record({action: 'sign_in', stage: 'refresh', phase: 'failed', error_code: 'unauthorized'});
+      }
     }
   }
 
@@ -334,6 +355,11 @@ export class AdminSessionService implements OnDestroy {
       this.refreshTimer = null;
     }
   }
+}
+
+export function isTransientSessionRefreshError(error: unknown): boolean {
+  return error instanceof HttpErrorResponse && (error.status === 0 || error.status === 429 || error.status >= 500)
+    || error instanceof Error && error.name === 'TimeoutError';
 }
 
 export interface WalletLoginOptions extends EnvelopeFields {

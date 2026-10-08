@@ -178,7 +178,7 @@ const SPEND_ADMIN_ROSTER_UPDATE = 0x07;
               type="button"
               class="btn btn--ghost"
               [disabled]="connectingEvm() !== null"
-              (click)="connectInjected()"
+              data-ux-action="connect_wallet" (click)="connectInjected()"
             >
               {{ connectingEvm() === 'injected' ? 'Connecting…' : 'Connect injected' }}
             </button>
@@ -186,7 +186,7 @@ const SPEND_ADMIN_ROSTER_UPDATE = 0x07;
               type="button"
               class="btn btn--ghost"
               [disabled]="connectingEvm() !== null"
-              (click)="connectWalletConnect()"
+              data-ux-action="connect_wallet" (click)="connectWalletConnect()"
             >
               {{ connectingEvm() === 'walletconnect' ? 'Connecting…' : 'WalletConnect' }}
             </button>

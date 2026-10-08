@@ -380,7 +380,7 @@ interface RecoveryHandoffBundle {
                             type="button"
                             class="btn btn--ghost text-[0.65rem] py-1 px-3"
                             [disabled]="connectingChia()"
-                            (click)="connectChia('goby')"
+                            data-ux-action="connect_wallet" (click)="connectChia('goby')"
                           >
                             @if (connectingChia() === 'goby') {
                               Connecting…
@@ -394,7 +394,7 @@ interface RecoveryHandoffBundle {
                             type="button"
                             class="btn btn--ghost text-[0.65rem] py-1 px-3"
                             [disabled]="connectingChia()"
-                            (click)="connectChia('sage')"
+                            data-ux-action="connect_wallet" (click)="connectChia('sage')"
                           >
                             @if (connectingChia() === 'sage') {
                               Connecting…
@@ -408,7 +408,7 @@ interface RecoveryHandoffBundle {
                             type="button"
                             class="btn btn--ghost text-[0.65rem] py-1 px-3"
                             [disabled]="connectingChia()"
-                            (click)="connectChia('sage-walletconnect')"
+                            data-ux-action="connect_wallet" (click)="connectChia('sage-walletconnect')"
                           >
                             @if (connectingChia() === 'sage-walletconnect') {
                               Connecting…
@@ -609,7 +609,7 @@ interface RecoveryHandoffBundle {
                       type="button"
                       class="btn btn--ghost text-[0.65rem] py-1 px-3"
                       [disabled]="connectingChia()"
-                      (click)="connectChia('goby')"
+                      data-ux-action="connect_wallet" (click)="connectChia('goby')"
                     >
                       @if (connectingChia() === 'goby') {
                         Connecting…
@@ -623,7 +623,7 @@ interface RecoveryHandoffBundle {
                       type="button"
                       class="btn btn--ghost text-[0.65rem] py-1 px-3"
                       [disabled]="connectingChia()"
-                      (click)="connectChia('sage')"
+                      data-ux-action="connect_wallet" (click)="connectChia('sage')"
                     >
                       @if (connectingChia() === 'sage') {
                         Connecting…
@@ -637,7 +637,7 @@ interface RecoveryHandoffBundle {
                       type="button"
                       class="btn btn--ghost text-[0.65rem] py-1 px-3"
                       [disabled]="connectingChia()"
-                      (click)="connectChia('sage-walletconnect')"
+                      data-ux-action="connect_wallet" (click)="connectChia('sage-walletconnect')"
                     >
                       @if (connectingChia() === 'sage-walletconnect') {
                         Connecting…
@@ -835,7 +835,7 @@ interface RecoveryHandoffBundle {
                           type="button"
                           class="btn btn--ghost text-[0.65rem] py-1 px-3"
                           [disabled]="connectingEvm()"
-                          (click)="connectEvmAdminWallet('injected')"
+                          data-ux-action="connect_wallet" (click)="connectEvmAdminWallet('injected')"
                         >
                           @if (connectingEvm() === 'injected') {
                             Connecting…
@@ -848,7 +848,7 @@ interface RecoveryHandoffBundle {
                         type="button"
                         class="btn btn--ghost text-[0.65rem] py-1 px-3"
                         [disabled]="connectingEvm()"
-                        (click)="connectEvmAdminWallet('walletconnect')"
+                        data-ux-action="connect_wallet" (click)="connectEvmAdminWallet('walletconnect')"
                       >
                         @if (connectingEvm() === 'walletconnect') {
                           Connecting…
@@ -1007,7 +1007,7 @@ interface RecoveryHandoffBundle {
                 type="button"
                 class="btn btn--primary"
                 [disabled]="!walletConnected() || submitState().kind === 'signing' || submitState().kind === 'pushing'"
-                (click)="submitOnChain()"
+                data-ux-action="submit_proposal" (click)="submitOnChain()"
               >
                 @switch (submitState().kind) {
                   @case ('signing') { Waiting for wallet… }

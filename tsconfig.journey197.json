@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/**/*.d.ts",
+    "src/app/services/journey-transport.spec.ts",
+    "src/app/services/admin-session.service.spec.ts",
+    "src/app/services/admin-status-refresh.service.spec.ts",
+    "src/app/pages/admin/collection-editor/collection-editor.component.spec.ts",
+    "src/app/pages/admin/sgt-allocations/sgt-allocations.component.spec.ts"
+  ]
+}

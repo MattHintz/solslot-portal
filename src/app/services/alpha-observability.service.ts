@@ -1,30 +1,19 @@
-import { Injectable } from '@angular/core';
+import { JourneyTelemetryService } from './journey-telemetry.service';
+import { journeyScreen } from './journey-transport';
+import { Injectable, inject } from '@angular/core';
 import { environment } from '../../environments/environment';
 
 export type AlphaRail = 'XCH' | 'BASE_USDC' | 'VOUCHER_USDC';
 
 @Injectable({ providedIn: 'root' })
 export class AlphaObservabilityService {
+  private readonly journey = inject(JourneyTelemetryService);
   private readonly endpoint = environment.faucetApi.replace(/\/$/, '') + '/alpha';
   readonly correlationId = crypto.randomUUID();
 
   track(event: string, details: Record<string, unknown> = {}, rail?: AlphaRail): void {
-    const releaseSha = environment.solslotProtocol.adminPortalSourceSha;
-    const artifactHash = environment.solslotProtocol.artifactHash;
-    if (!/^[0-9a-f]{40}$/.test(releaseSha) || !/^0x[0-9a-f]{64}$/i.test(artifactHash)) return;
-    void fetch(`${this.endpoint}/telemetry`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      keepalive: true,
-      body: JSON.stringify({
-        event,
-        correlation_id: this.correlationId,
-        release_sha: releaseSha,
-        artifact_hash: artifactHash,
-        rail,
-        details,
-      }),
-    }).catch(() => undefined);
+    // Legacy callers cannot submit arbitrary detail values or raw routes.
+    this.journey.record({action: event.includes('WALLET') ? 'wallet_prompt' : 'button_pressed'});
   }
 
   async reportBug(input: {
@@ -54,8 +43,7 @@ export class AlphaObservabilityService {
       appVersion: environment.protocolVersion,
       experienceMode: environment.experienceMode,
       network: environment.chiaNetwork,
-      browser: navigator.userAgent.slice(0, 240),
-      route: location.pathname,
+      screen: journeyScreen(location.pathname),
     };
   }
 }

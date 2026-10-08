@@ -225,7 +225,7 @@ import { formatError } from '../../../utils/format-error';
                 type="button"
                 class="primary"
                 [disabled]="busy() || !trustedDeviceConfirmed"
-                (click)="signReviewed()"
+                data-ux-action="review_approval" (click)="signReviewed()"
               >
                 {{
                   busy()

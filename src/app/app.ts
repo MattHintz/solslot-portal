@@ -13,6 +13,7 @@ import { HeaderComponent } from './layout/header/header.component';
 import { FooterComponent } from './layout/footer/footer.component';
 import { AlphaDisclosureComponent } from './layout/alpha-disclosure/alpha-disclosure.component';
 import { AlphaObservabilityService } from './services/alpha-observability.service';
+import { JourneyTelemetryService } from './services/journey-telemetry.service';
 
 @Component({
   selector: 'app-root',
@@ -27,6 +28,9 @@ import { AlphaObservabilityService } from './services/alpha-observability.servic
         TESTNET, NO REAL INVESTMENT OR LEGAL RIGHT.
       </div>
     }
+    @if (journey.updateNeeded()) {
+      <aside class="release-notice" role="alert"><strong>This page needs a refresh.</strong> A page file could not load. Save any editable fields that still work before refreshing. Your saved records are retained.<button type="button" (click)="journey.updateNeeded.set(false)">Dismiss</button></aside>
+    }
     <main class="min-h-[calc(100vh-20rem)]">
       <router-outlet />
     </main>
@@ -35,6 +39,8 @@ import { AlphaObservabilityService } from './services/alpha-observability.servic
     }
   `,
   styles: `
+    .release-notice { padding:1rem;display:flex;flex-wrap:wrap;gap:.7rem;background:#24372c;color:#edf7ed;border-bottom:1px solid #8fbda0; }
+    .release-notice button { margin-left:auto;padding:.35rem .8rem;border:1px solid #8fbda0;border-radius:.4rem; }
     .admin-testnet-banner {
       position: sticky;
       top: 0;
@@ -51,6 +57,7 @@ import { AlphaObservabilityService } from './services/alpha-observability.servic
 export class App {
   private readonly injector = inject(EnvironmentInjector);
   private readonly alphaObservability = inject(AlphaObservabilityService);
+  readonly journey = inject(JourneyTelemetryService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   readonly adminRoute = signal(this.isAdminUrl(this.router.url));
@@ -61,9 +68,12 @@ export class App {
         filter((event): event is NavigationEnd => event instanceof NavigationEnd),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((event) => this.adminRoute.set(this.isAdminUrl(event.urlAfterRedirects)));
+      .subscribe((event) => {
+        this.adminRoute.set(this.isAdminUrl(event.urlAfterRedirects));
+        this.journey.record({action: 'screen_opened'});
+      });
     afterNextRender(() => {
-      this.alphaObservability.track('ALPHA_APP_OPENED', { route: location.pathname });
+      this.journey.initialize();
       void import('./services/chia-wallet.service').then(({ ChiaWalletService }) =>
         this.injector
           .get(ChiaWalletService)

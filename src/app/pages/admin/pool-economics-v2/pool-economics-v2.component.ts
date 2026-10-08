@@ -174,7 +174,7 @@ interface ParsedExecutionPackage {
             <button
               class="btn btn--ghost text-xs"
               type="button"
-              (click)="refreshChainState()"
+              data-ux-action="check_status" (click)="refreshChainState()"
               [disabled]="chainLoading()"
             >
               @if (chainLoading()) { Reading&hellip; } @else { Refresh }
@@ -318,7 +318,7 @@ interface ParsedExecutionPackage {
               <button
                 class="btn btn--ghost text-xs"
                 type="button"
-                (click)="refreshNavRegistryEvidence()"
+                data-ux-action="check_status" (click)="refreshNavRegistryEvidence()"
                 [disabled]="!canReadNavRegistryEvidence()"
               >
                 @if (navRegistryLoading()) { Reading&hellip; } @else { Read NAV registry }
@@ -1028,7 +1028,7 @@ interface ParsedExecutionPackage {
               <button
                 class="btn btn--primary text-xs"
                 type="button"
-                (click)="submitExecutionBundle()"
+                data-ux-action="submit_proposal" (click)="submitExecutionBundle()"
                 [disabled]="!canSubmitExecutionBundle()"
               >
                 @if (executionBusy() === 'submit') {

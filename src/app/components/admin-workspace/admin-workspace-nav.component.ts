@@ -56,6 +56,9 @@ import { AdminSessionService } from '../../services/admin-session.service';
       </div>
     </nav>
 
+    @if (sessionNotice()) {
+      <p class="session-notice" role="status" aria-live="polite">{{ sessionNotice() }}</p>
+    }
     @if (helpOpen()) {
       <div class="help-shell" (keydown.escape)="helpOpen.set(false)">
         <button
@@ -316,6 +319,7 @@ import { AdminSessionService } from '../../services/admin-session.service';
         font-size: 12px;
         line-height: 1.5;
       }
+      .session-notice { margin: 0; padding: 12px 24px; background: #18372d; color: #dbe9cf; font-size: 13px; }
       .sr-only {
         position: absolute;
         width: 1px;
@@ -356,6 +360,9 @@ export class AdminWorkspaceNavComponent {
   readonly signOutRequested = output<void>();
   readonly helpOpen = signal(false);
 
+  sessionNotice(): string {
+    return this.externalSignOut() ? '' : this.injector.get(AdminSessionService).connectionNotice?.() || '';
+  }
   signOut(): void {
     if (this.externalSignOut()) {
       this.signOutRequested.emit();

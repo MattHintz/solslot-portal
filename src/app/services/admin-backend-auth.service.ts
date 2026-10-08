@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { Eip712TypedData } from './solslot-api.service';
@@ -36,7 +36,7 @@ export class AdminBackendAuthService {
         `${this.base}/admin/auth/refresh`,
         {},
         { headers: new HttpHeaders({ Authorization: `Bearer ${jwt}` }) },
-      ),
+      ).pipe(timeout(15_000)),
     );
   }
 }

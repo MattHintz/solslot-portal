@@ -265,7 +265,7 @@ const ZERO_PROPERTY_REGISTRY_PUZZLE_HASH = '0x' + '0'.repeat(64);
               <button
                 class="btn btn--ghost"
                 type="button"
-                (click)="refreshChainEvidence()"
+                data-ux-action="check_status" (click)="refreshChainEvidence()"
                 [disabled]="chainEvidence()?.kind === 'checking'"
               >
                 @if (chainEvidence()?.kind === 'checking') {

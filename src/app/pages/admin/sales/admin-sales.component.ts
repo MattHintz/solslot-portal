@@ -163,16 +163,16 @@ type DeskFilter = 'ALL' | 'ATTENTION' | 'IN_PROGRESS' | 'COMPLETED';
                         <span class="action-label">Connect the wallet holding wUSDC.b</span>
                         <div class="wallet-actions">
                           @if (hasGoby()) {
-                            <button type="button" class="button button--compact" (click)="connectRedemptionWallet('goby')" [disabled]="!!connectingFundingWallet()">
+                            <button type="button" class="button button--compact" data-ux-action="connect_wallet" (click)="connectRedemptionWallet('goby')" [disabled]="!!connectingFundingWallet()">
                               Goby
                             </button>
                           }
                           @if (hasSage()) {
-                            <button type="button" class="button button--compact" (click)="connectRedemptionWallet('sage')" [disabled]="!!connectingFundingWallet()">
+                            <button type="button" class="button button--compact" data-ux-action="connect_wallet" (click)="connectRedemptionWallet('sage')" [disabled]="!!connectingFundingWallet()">
                               Sage
                             </button>
                           }
-                          <button type="button" class="button button--compact" (click)="connectRedemptionWallet('sage-walletconnect')" [disabled]="!!connectingFundingWallet()">
+                          <button type="button" class="button button--compact" data-ux-action="connect_wallet" (click)="connectRedemptionWallet('sage-walletconnect')" [disabled]="!!connectingFundingWallet()">
                             Sage mobile
                           </button>
                         </div>

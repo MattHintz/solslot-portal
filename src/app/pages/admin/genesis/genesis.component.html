@@ -94,7 +94,7 @@
               type="button"
               class="btn btn--primary"
               [disabled]="!!pending()"
-              (click)="signIn('injected')"
+              data-ux-action="review_approval" (click)="signIn('injected')"
             >
               Sign in with browser wallet
             </button>
@@ -102,7 +102,7 @@
               type="button"
               class="btn btn--ghost"
               [disabled]="!!pending()"
-              (click)="signIn('walletconnect')"
+              data-ux-action="review_approval" (click)="signIn('walletconnect')"
             >
               Sign in with mobile or hardware wallet
             </button>
@@ -215,7 +215,7 @@
               type="button"
               class="icon-button"
               title="Refresh readiness"
-              (click)="refreshStatus()"
+              data-ux-action="check_status" (click)="refreshStatus()"
             >
               <span aria-hidden="true">&#8635;</span>
               <span class="sr-only">Refresh readiness</span>

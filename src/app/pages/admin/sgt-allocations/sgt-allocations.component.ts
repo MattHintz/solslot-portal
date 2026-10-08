@@ -426,10 +426,10 @@ import { formatError } from '../../../utils/format-error';
                               } @else if (isAssignedApproval(action)) {
                                 <div class="sign-options">
                                   <span>Choose how to open your wallet. Review and sign the request there.</span>
-                                  <button type="button" class="primary" (click)="signAction(proposal, action, 'browser')" [disabled]="busy() || approvalExpired(publication)">
+                                  <button type="button" class="primary" data-ux-action="review_approval" (click)="signAction(proposal, action, 'browser')" [disabled]="busy() || approvalExpired(publication)">
                                     Sign in browser wallet
                                   </button>
-                                  <button type="button" class="secondary" (click)="signAction(proposal, action, 'mobile')" [disabled]="busy() || approvalExpired(publication)">
+                                  <button type="button" class="secondary" data-ux-action="review_approval" (click)="signAction(proposal, action, 'mobile')" [disabled]="busy() || approvalExpired(publication)">
                                     Use mobile or hardware
                                   </button>
                                 </div>
@@ -447,7 +447,7 @@ import { formatError } from '../../../utils/format-error';
                         } @else if (bothApprovalsRecorded(publication)) {
                           <div class="submit-row">
                             <span>Both approvals are recorded. The owner can submit when ready. Final chain and fee checks run before submission.</span>
-                            <button type="button" class="primary" (click)="submitPublication(proposal)" [disabled]="busy() || approvalExpired(publication) || !isOwnerWallet(publication)">
+                            <button type="button" class="primary" data-ux-action="submit_proposal" (click)="submitPublication(proposal)" [disabled]="busy() || approvalExpired(publication) || !isOwnerWallet(publication)">
                               Open committee vote
                             </button>
                           </div>

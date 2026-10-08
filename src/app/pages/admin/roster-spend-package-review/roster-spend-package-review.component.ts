@@ -476,7 +476,7 @@ import { coinId } from '../../../utils/chia-hash';
                 <button
                   class="btn btn--primary"
                   type="button"
-                  (click)="submitSignedBundleToRelay()"
+                  data-ux-action="submit_proposal" (click)="submitSignedBundleToRelay()"
                   [disabled]="!canSubmitSignedBundleToRelay()"
                 >
                   @if (broadcastSubmissionInFlight()) {

@@ -163,7 +163,7 @@ import { formatError } from '../../../utils/format-error';
                       type="button"
                       [disabled]="!canVote(snap) || voting() || !hasValidAmount()"
                       [title]="voteButtonTitle(snap)"
-                      (click)="submitVote()"
+                      data-ux-action="submit_proposal" (click)="submitVote()"
                     >
                       @if (voting()) { Casting&hellip; } @else { Vote YES }
                     </button>

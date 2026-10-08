@@ -109,7 +109,7 @@ import { formatError } from '../../../utils/format-error';
                 type="button"
                 class="primary"
                 [disabled]="busy() || !wallet.hasInjectedProvider()"
-                (click)="connectReplacement('injected')"
+                data-ux-action="connect_wallet" (click)="connectReplacement('injected')"
               >
                 Browser wallet
               </button>
@@ -117,7 +117,7 @@ import { formatError } from '../../../utils/format-error';
                 type="button"
                 class="secondary"
                 [disabled]="busy()"
-                (click)="connectReplacement('walletconnect')"
+                data-ux-action="connect_wallet" (click)="connectReplacement('walletconnect')"
               >
                 Mobile or hardware wallet
               </button>
@@ -203,7 +203,7 @@ import { formatError } from '../../../utils/format-error';
                 type="button"
                 class="primary"
                 [disabled]="busy() || !receiptConfirmed"
-                (click)="submitRecovery(request)"
+                data-ux-action="submit_proposal" (click)="submitRecovery(request)"
               >
                 {{ busy() ? 'Submitting...' : 'Submit protected recovery' }}
               </button>

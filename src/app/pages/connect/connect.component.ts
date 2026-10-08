@@ -50,7 +50,7 @@ import { environment } from '../../../environments/environment';
       <div class="mt-10 grid gap-6 md:grid-cols-3">
         <button
           class="card text-left hover:border-brand hover:shadow-glow transition disabled:opacity-60"
-          (click)="connectEvm()"
+          data-ux-action="connect_wallet" (click)="connectEvm()"
           [disabled]="busy()"
           type="button"
         >
@@ -70,7 +70,7 @@ import { environment } from '../../../environments/environment';
 
         <button
           class="card text-left hover:border-brand hover:shadow-glow transition disabled:opacity-60"
-          (click)="connectChia()"
+          data-ux-action="connect_wallet" (click)="connectChia()"
           [disabled]="busy()"
           type="button"
         >
@@ -91,7 +91,7 @@ import { environment } from '../../../environments/environment';
         @if (googleVaultEnabled) {
           <button
             class="card text-left hover:border-brand hover:shadow-glow transition disabled:opacity-60"
-            (click)="connectGoogle()"
+            data-ux-action="connect_wallet" (click)="connectGoogle()"
             [disabled]="busy()"
             type="button"
           >

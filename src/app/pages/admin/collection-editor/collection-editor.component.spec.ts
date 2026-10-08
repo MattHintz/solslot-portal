@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 
@@ -14,7 +15,7 @@ describe('CollectionEditor reviewed revision', () => {
   let collection: CollectionWorkspace;
 
   beforeEach(() => {
-    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal']);
+    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal', 'getPresale']);
     collection = {
       id: 'COL-TEST', state: 'REVIEW', revision: 7,
       dossier: {
@@ -40,6 +41,31 @@ describe('CollectionEditor reviewed revision', () => {
 
   afterEach(() => editor.ngOnDestroy());
 
+  it('caches an absent presale until its bounded expiry', async () => {
+    api.getPresale.and.rejectWith(new HttpErrorResponse({status:404}));
+    expect(await (editor as any).loadPresale('COL-TEST')).toBeNull();
+    expect(await (editor as any).loadPresale('COL-TEST')).toBeNull();
+    expect(api.getPresale).toHaveBeenCalledTimes(1);
+    (editor as any).absentPresale.until = 0;
+    await (editor as any).loadPresale('COL-TEST');
+    expect(api.getPresale).toHaveBeenCalledTimes(2);
+  });
+  it('does not cache a service outage as an absent presale', async () => {
+    api.getPresale.and.rejectWith(new HttpErrorResponse({status:503}));
+    await expectAsync((editor as any).loadPresale('COL-TEST')).toBeRejected();
+    await expectAsync((editor as any).loadPresale('COL-TEST')).toBeRejected();
+    expect(api.getPresale).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps invalid numeric fields editable without calling conversion or save', async () => {
+    editor.displayUnits.targetRaiseUsd = '$125,000';
+    editor.changed();
+    expect(await editor.saveNow()).toBeFalse();
+    expect(api.convertDisplayUnits).not.toHaveBeenCalled();
+    expect(api.update).not.toHaveBeenCalled();
+    expect(editor.saveError()).toContain('Target raise');
+    expect(editor.displayUnits.targetRaiseUsd).toBe('$125,000');
+  });
   it('skips PUT and oracle conversion for repeated clean forced saves', async () => {
     expect(await editor.saveNow(false, true)).toBeTrue();
     expect(await editor.saveNow(false, true)).toBeTrue();

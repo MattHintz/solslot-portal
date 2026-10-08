@@ -1,3 +1,5 @@
+import { JourneyTelemetryService } from '../../../services/journey-telemetry.service';
+import { journeyError } from '../../../services/journey-transport';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
@@ -93,9 +95,9 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
             </div>
             <div class="header-actions">
               <span class="save-state" role="status" aria-live="polite" [attr.data-state]="saveState()">{{ saveLabel() }}</span>
-              <button type="button" class="btn btn--ghost" (click)="reload()">Refresh</button>
+              <button type="button" class="btn btn--ghost" data-ux-action="check_status" (click)="reload(true)">Refresh</button>
               @if (canEdit()) {
-                <button type="button" class="btn btn--primary" [disabled]="saveState() === 'saving' || saveState() === 'conflict'" (click)="saveNow()">Save</button>
+                <button type="button" class="btn btn--primary" [disabled]="saveState() === 'saving' || saveState() === 'conflict'" data-ux-action="save_draft" (click)="saveNow()">Save</button>
               }
             </div>
           </header>
@@ -407,12 +409,12 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                     <div class="issue-list">@for (issue of collection.readiness.issues; track $index) { <button type="button" (click)="openIssue(issue.path)"><strong>{{ issue.message }}</strong><span class="mono">{{ issue.path }}</span></button> }</div>
                   }
                   <div class="review-actions">
-                    @if (isOwner() && canEdit()) { <button class="btn btn--ghost" type="button" (click)="submitForReview()">Submit current revision</button> }
+                    @if (isOwner() && canEdit()) { <button class="btn btn--ghost" type="button" data-ux-action="submit_proposal" (click)="submitForReview()">Submit current revision</button> }
                     @if (!isOwner() && collection.state === 'REVIEW') {
-                      <button class="btn btn--ghost" type="button" (click)="submitReview('CHANGES_REQUESTED')" [disabled]="reviewBusy()">Request changes</button>
-                      <button class="btn btn--primary" type="button" (click)="submitReview('APPROVED')" [disabled]="reviewBusy()">Approve revision {{ collection.revision }}</button>
+                      <button class="btn btn--ghost" type="button" data-ux-action="submit_proposal" (click)="submitReview('CHANGES_REQUESTED')" [disabled]="reviewBusy()">Request changes</button>
+                      <button class="btn btn--primary" type="button" data-ux-action="submit_proposal" (click)="submitReview('APPROVED')" [disabled]="reviewBusy()">Approve revision {{ collection.revision }}</button>
                     }
-                    @if (isOwner() && (collection.state === 'DRAFT' || collection.state === 'REVIEW')) { <button class="btn btn--primary" type="button" (click)="seal()" [disabled]="!collection.readiness.ready || sealing()">{{ sealing() ? 'Sealing…' : 'Seal immutable dossier' }}</button> }
+                    @if (isOwner() && (collection.state === 'DRAFT' || collection.state === 'REVIEW')) { <button class="btn btn--primary" type="button" data-ux-action="seal" (click)="seal()" [disabled]="!collection.readiness.ready || sealing()">{{ sealing() ? 'Sealing…' : 'Seal immutable dossier' }}</button> }
                     @if (sealError()) { <span class="inline-error">{{ sealError() }}</span> }
                   </div>
                   @if (!isOwner() && collection.state === 'REVIEW') {
@@ -439,7 +441,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                   <div class="section-head"><span>Refundable reservation receipts</span><h2>Voucher presale</h2></div>
                   @if (presale(); as campaign) {
                     <div class="review-actions">
-                      <button type="button" class="btn btn--ghost" (click)="refreshPresale()" [disabled]="presaleBusy()">Refresh chain status</button>
+                      <button type="button" class="btn btn--ghost" data-ux-action="check_status" (click)="refreshPresale()" [disabled]="presaleBusy()">Refresh chain status</button>
                       @if (isOwner() && campaign.state === 'PRESALE' && campaign.phaseTransition.status === 'NOT_SUBMITTED') {
                         <button type="button" class="btn btn--primary" (click)="launchPresale()" [disabled]="presaleBusy() || !canLaunchPresale(campaign)">Launch governed sales</button>
                       }
@@ -495,7 +497,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                         <label>Refund deadline<input type="datetime-local" [(ngModel)]="presaleForm.refundDeadline" /></label>
                         <label>Launch deadline<input type="datetime-local" [(ngModel)]="presaleForm.launchDeadline" /></label>
                       </fieldset>
-                      <div class="review-actions"><button type="button" class="btn btn--primary" (click)="createPresale()" [disabled]="presaleBusy()">{{ presaleBusy() ? 'Preparing…' : 'Create governed presale' }}</button></div>
+                      <div class="review-actions"><button type="button" class="btn btn--primary" data-ux-action="create_presale" (click)="createPresale()" [disabled]="presaleBusy()">{{ presaleBusy() ? 'Preparing…' : 'Create governed presale' }}</button></div>
                     }
                   }
                   @if (presaleError()) { <span class="inline-error">{{ presaleError() }}</span> }
@@ -544,7 +546,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                       </section>
                     }
                     @if (publishResult(); as result) { <section class="publish-result" [attr.data-kind]="result.kind"><strong>{{ publishResultTitle(result) }}</strong><span>{{ publishResultDetail(result) }}</span></section> }
-                    @if (collection.anchorEvidence.length) { <button class="btn btn--ghost" type="button" (click)="refreshEvidence()">Refresh chain reconstruction</button> }
+                    @if (collection.anchorEvidence.length) { <button class="btn btn--ghost" type="button" data-ux-action="check_status" (click)="refreshEvidence()">Refresh chain reconstruction</button> }
                     @if (collection.state === 'PUBLISHED' && isOwner()) {
                       <section class="amendment-panel">
                         <div class="section-head section-head--small"><span>Owner-signed, not SGT-governed</span><h2>Operational update</h2></div>
@@ -699,6 +701,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
   ],
 })
 export class CollectionEditorComponent implements OnDestroy {
+  private readonly journey = inject(JourneyTelemetryService);
   readonly refresh = inject(AdminStatusRefresh);
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(CollectionApiService);
@@ -777,6 +780,8 @@ export class CollectionEditorComponent implements OnDestroy {
   private editGeneration = 0;
   private activeSave: Promise<boolean> | null = null;
   private saveQueued = false;
+  private absentPresale: {id: string; until: number} | null = null;
+  private contextLoadedAt = 0;
 
   constructor() {
     this.refresh.start(() => this.reload(), () => {
@@ -791,7 +796,7 @@ export class CollectionEditorComponent implements OnDestroy {
     if (this.saveTimer) clearTimeout(this.saveTimer);
   }
 
-  async reload(): Promise<void> {
+  async reload(forceContext = false): Promise<void> {
     if (this.draftModel && ['dirty', 'saving', 'error', 'conflict'].includes(this.saveState())) {
       if (!(await this.saveNow(false, true))) return;
     }
@@ -805,14 +810,17 @@ export class CollectionEditorComponent implements OnDestroy {
     this.loading.set(!this.workspace());
     this.loadError.set(null);
     try {
+      if (forceContext) this.absentPresale = null;
+      const reuseContext = !forceContext && this.contextLoadedAt > Date.now() - 60_000;
       const [feature, profiles, collection, presale] = await Promise.all([
-        this.api.featureStatus(),
-        this.api.profiles(),
+        reuseContext ? Promise.resolve(this.feature()) : this.api.featureStatus(),
+        reuseContext ? Promise.resolve(this.profiles()) : this.api.profiles(),
         this.api.get(id),
         this.loadPresale(id),
       ]);
       this.feature.set(feature);
       this.profiles.set(profiles);
+      if (!reuseContext) this.contextLoadedAt = Date.now();
       if (generation === this.editGeneration) this.applyWorkspace(collection);
       this.presale.set(presale);
     } catch (error) {
@@ -1316,6 +1324,7 @@ export class CollectionEditorComponent implements OnDestroy {
         throw new Error('Schedule must satisfy open < close <= refund deadline <= launch deadline.');
       }
       await this.api.createPresale(collection, schedule);
+      this.absentPresale = null;
     } catch (error) {
       this.presaleError.set(formatError(error));
     } finally {
@@ -1573,9 +1582,9 @@ export class CollectionEditorComponent implements OnDestroy {
         ? structuredClone(collection.dossier)
         : cleanDraft(this.draftModel, collection.revision);
       if (!cleanSubmission) {
-        const conversion = await this.api.convertDisplayUnits(
-          displayUnitRequest(this.displayUnits),
-        );
+        const request = displayUnitRequest(this.displayUnits);
+        validateDisplayRequest(request);
+        const conversion = await this.api.convertDisplayUnits(request);
         applyDisplayUnitConversion(payload, conversion);
         if (payload.classification?.propertySubtype) {
           payload.property ||= { address: {} };
@@ -1591,8 +1600,10 @@ export class CollectionEditorComponent implements OnDestroy {
         this.saveQueued = true;
       }
       this.saveState.set(this.saveQueued ? 'dirty' : 'saved');
+      this.journey.record({action:'save_draft',phase:'completed'});
       return true;
     } catch (error) {
+      this.journey.record({action:'save_draft',phase:'failed',error_code: error instanceof DisplayUnitValidationError ? 'validation' : error instanceof HttpErrorResponse ? journeyError(error.status) : 'unknown'});
       if (error instanceof HttpErrorResponse && error.status === 409) {
         try {
           const latest = await this.api.get(collection.id);
@@ -1618,13 +1629,20 @@ export class CollectionEditorComponent implements OnDestroy {
   }
 
   private async loadPresale(collectionId: string): Promise<PresaleSeries | null> {
+    if (this.absentPresale?.id === collectionId && this.absentPresale.until > Date.now()) return null;
     try {
-      return await this.api.getPresale(collectionId);
+      const result = await this.api.getPresale(collectionId);
+      this.absentPresale = null;
+      this.presaleError.set(null);
+      return result;
     } catch (error) {
-      if (error instanceof HttpErrorResponse && error.status === 404) return null;
+      if (error instanceof HttpErrorResponse && error.status === 404) {
+        this.absentPresale = {id: collectionId, until: Date.now() + 300_000};
+        return null;
+      }
       if (error instanceof HttpErrorResponse && error.status === 503) {
         this.presaleError.set('Reservations are currently paused. You can still prepare and review this property.');
-        return null;
+        throw error;
       }
       throw error;
     }
@@ -1942,4 +1960,19 @@ function assignChanged<T extends object, K extends keyof T>(
 function uploadError(error: unknown): string {
   if (error instanceof Error && error.name === 'TimeoutError') return 'The upload check timed out. Your saved draft and upload declaration are retained. Select the same original to resume.';
   return formatError(error);
+}
+
+class DisplayUnitValidationError extends Error {}
+
+/** Presentation feedback only; canonical amounts and oracle pricing remain server-owned. */
+function validateDisplayRequest(request: ReturnType<typeof displayUnitRequest>): void {
+  const labels: Record<string,string> = { marketValue:'Market value',targetRaise:'Target raise',minimumInvestment:'Minimum investment',debtBalance:'Debt balance',monthlyGrossRent:'Monthly gross rent',annualOperatingExpense:'Annual operating expense',projectedReturn:'Projected fixed return',technologyFee:'Technology fee',debtRate:'Debt rate' };
+  for (const [group, values, places] of [['money',request.money,2],['percentages',request.percentages,2],['ownershipShares',request.ownershipShares,4]] as const) {
+    for (const [name,value] of Object.entries(values)) {
+      const label = labels[name] || (name.startsWith('deed.') ? `Deed ${Number(name.slice(5))+1} ownership` : name.startsWith('plannedUse.') ? `Planned use ${Number(name.slice(11))+1}` : 'Amount');
+      if (value.length > 40 || !/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) throw new DisplayUnitValidationError(`${label}: use a non-negative number without commas, currency symbols or exponent notation. Your fields are retained.`);
+      if ((value.split('.')[1] || '').length > places) throw new DisplayUnitValidationError(`${label}: use at most ${places} decimal places. Your fields are retained.`);
+      if (group !== 'money' && Number(value) > (name === 'technologyFee' ? 10 : 100)) throw new DisplayUnitValidationError(`${label}: the maximum is ${name === 'technologyFee' ? 10 : 100}%. Your fields are retained.`);
+    }
+  }
 }

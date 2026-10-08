@@ -102,10 +102,10 @@ import { formatError } from '../../../utils/format-error';
               </div>
               @if (!wallet.isConnected()) {
                 <div class="connect-actions">
-                  <button type="button" class="btn btn--ghost" (click)="connectInjected()" [disabled]="busy()">
+                  <button type="button" class="btn btn--ghost" data-ux-action="connect_wallet" (click)="connectInjected()" [disabled]="busy()">
                     Browser wallet
                   </button>
-                  <button type="button" class="btn btn--ghost" (click)="connectWalletConnect()" [disabled]="busy()">
+                  <button type="button" class="btn btn--ghost" data-ux-action="connect_wallet" (click)="connectWalletConnect()" [disabled]="busy()">
                     WalletConnect
                   </button>
                 </div>
@@ -117,7 +117,7 @@ import { formatError } from '../../../utils/format-error';
                 <button
                   type="button"
                   class="btn btn--primary action-button"
-                  (click)="sign(approval)"
+                  data-ux-action="review_approval" (click)="sign(approval)"
                   [disabled]="
                     busy() ||
                     !walletHasApproval() ||

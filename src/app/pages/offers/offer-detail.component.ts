@@ -126,7 +126,7 @@ import { AUTH_TYPE_BLS, AUTH_TYPE_SECP256K1, AUTH_TYPE_SECP256R1 } from '../../u
                 </a>
               }
               @case ('wait_for_vault_confirmation') {
-                <button class="btn btn--primary w-full" type="button" (click)="refreshVault()">
+                <button class="btn btn--primary w-full" type="button" data-ux-action="check_status" (click)="refreshVault()">
                   Refresh vault
                 </button>
               }
@@ -140,7 +140,7 @@ import { AUTH_TYPE_BLS, AUTH_TYPE_SECP256K1, AUTH_TYPE_SECP256R1 } from '../../u
                 </a>
               }
               @case ('refresh_chain_state') {
-                <button class="btn btn--primary w-full" type="button" (click)="refreshVault()">
+                <button class="btn btn--primary w-full" type="button" data-ux-action="check_status" (click)="refreshVault()">
                   Refresh chain state
                 </button>
               }

@@ -9,6 +9,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
+import { JourneyTelemetryService } from '../../../services/journey-telemetry.service';
 import { AdminBackendAuthService } from '../../../services/admin-backend-auth.service';
 import { formatError } from '../../../utils/format-error';
 
@@ -98,7 +99,7 @@ import { formatError } from '../../../utils/format-error';
               <button
                 class="connect-option"
                 type="button"
-                (click)="connectInjected()"
+                data-ux-action="connect_wallet" (click)="connectInjected()"
                 [disabled]="busy()"
               >
                 <span aria-hidden="true">01</span>
@@ -110,7 +111,7 @@ import { formatError } from '../../../utils/format-error';
               <button
                 class="connect-option"
                 type="button"
-                (click)="connectWalletConnect()"
+                data-ux-action="connect_wallet" (click)="connectWalletConnect()"
                 [disabled]="busy()"
               >
                 <span aria-hidden="true">02</span>
@@ -128,7 +129,7 @@ import { formatError } from '../../../utils/format-error';
             <button
               class="primary-action"
               type="button"
-              (click)="signIn()"
+              data-ux-action="review_approval" (click)="signIn()"
               [disabled]="busy()"
             >
               {{ busy() ? 'Waiting for wallet...' : 'Continue securely' }}
@@ -203,6 +204,7 @@ export class AdminLoginComponent {
   private readonly evm = inject(EvmWalletService);
   private readonly session = inject(AdminSessionService);
   private readonly backendAuth = inject(AdminBackendAuthService);
+  private readonly journey = inject(JourneyTelemetryService);
   private readonly router = inject(Router);
   private readonly activatedRoute = inject(ActivatedRoute);
 
@@ -229,6 +231,7 @@ export class AdminLoginComponent {
       await this.evm.connectInjected();
       this.status.set('');
     } catch (e) {
+      this.journey.noteAssetFailure(e);
       this.error.set(formatError(e));
     } finally {
       this.busy.set(false);
@@ -246,6 +249,7 @@ export class AdminLoginComponent {
       });
       this.status.set('');
     } catch (e) {
+      this.journey.noteAssetFailure(e);
       this.error.set(formatError(e));
     } finally {
       this.busy.set(false);
@@ -293,6 +297,7 @@ export class AdminLoginComponent {
       this.status.set('Signed in. Opening your task list...');
       await this.router.navigate([this.targetUrl()]);
     } catch (e) {
+      this.journey.noteAssetFailure(e);
       this.error.set(formatError(e));
       this.status.set('');
     } finally {

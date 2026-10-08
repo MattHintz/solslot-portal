@@ -186,7 +186,7 @@ import { formatError } from '../../../utils/format-error';
                 <button
                   type="button"
                   class="button button--quiet"
-                  (click)="sign()"
+                  data-ux-action="review_approval" (click)="sign()"
                   [disabled]="busy() || refresh.refreshing() || expired(item) || item.status === 'consumed' || !reviewReady(item)"
                 >
                   Approve this request
