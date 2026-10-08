@@ -43,7 +43,7 @@ export class JourneyTransport {
   delivered = 0;
   dropped = 0;
   state: 'idle' | 'sending' | 'retrying' | 'paused' = 'idle';
-  constructor(private endpoint: string, private release: string, private source: 'customer' | 'admin', private allowed: () => boolean, private sender: typeof fetch = fetch) {}
+  constructor(private endpoint: string, private release: string, private source: 'customer' | 'admin', private allowed: () => boolean, private sender: typeof fetch = (input, init) => fetch(input, init)) {}
   record(input: JourneyInput): void {
     if (!this.allowed() || this.disposed || !/^[0-9a-f]{40}$/.test(this.release)) return;
     if (!SCREENS.includes(input.screen) || !ACTIONS.includes(input.action)) return;
