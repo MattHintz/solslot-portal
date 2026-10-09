@@ -107,6 +107,15 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
           @if (feature()?.metadataConfigured && !feature()?.recovery?.healthy) {
             <p class="inline-error" role="status">Recovery check pending. Your fields are retained; saving resumes when recovery is healthy.</p>
           }
+          @if (pricingPending()) {
+            <aside class="section-note" role="status" aria-live="polite">
+              <strong>Pricing pending</strong>
+              <span>Your dollar figures can be saved while price conversion is pending. A current signed XCH price is required before sealing or issuing SmartDeeds.</span>
+              @if (canEdit()) {
+                <button type="button" class="btn btn--ghost" data-ux-action="check_status" [disabled]="!['idle', 'saved'].includes(saveState())" (click)="refreshPricing()">Refresh pricing</button>
+              }
+            </aside>
+          }
 
           @if (saveState() === 'conflict') {
             <section class="conflict-bar">
@@ -414,7 +423,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                       <button class="btn btn--ghost" type="button" data-ux-action="submit_proposal" (click)="submitReview('CHANGES_REQUESTED')" [disabled]="reviewBusy()">Request changes</button>
                       <button class="btn btn--primary" type="button" data-ux-action="submit_proposal" (click)="submitReview('APPROVED')" [disabled]="reviewBusy()">Approve revision {{ collection.revision }}</button>
                     }
-                    @if (isOwner() && (collection.state === 'DRAFT' || collection.state === 'REVIEW')) { <button class="btn btn--primary" type="button" data-ux-action="seal" (click)="seal()" [disabled]="!collection.readiness.ready || sealing()">{{ sealing() ? 'Sealing…' : 'Seal immutable dossier' }}</button> }
+                    @if (isOwner() && (collection.state === 'DRAFT' || collection.state === 'REVIEW')) { <button class="btn btn--primary" type="button" data-ux-action="seal" (click)="seal()" [disabled]="!collection.readiness.ready || pricingPending() || sealing()">{{ sealing() ? 'Sealing…' : 'Seal immutable dossier' }}</button> }
                     @if (sealError()) { <span class="inline-error">{{ sealError() }}</span> }
                   </div>
                   @if (!isOwner() && collection.state === 'REVIEW') {
@@ -836,6 +845,18 @@ export class CollectionEditorComponent implements OnDestroy {
     return state === 'DRAFT' || state === 'REVIEW';
   }
 
+  pricingPending(): boolean {
+    const offering = this.draftModel?.offering;
+    return Boolean(offering?.targetRaiseMinor && offering.targetRaiseMinor !== '0' && !offering.parValueMojos);
+  }
+
+  async refreshPricing(): Promise<void> {
+    if (!this.canEdit() || !['idle', 'saved'].includes(this.saveState())) return;
+    this.editGeneration += 1;
+    this.saveState.set('dirty');
+    await this.saveNow();
+  }
+
   assetClassLabel(assetClass: string): string {
     const labels: Record<string, string> = {
       'RWA-RE-RES': 'Residential',
@@ -1013,6 +1034,11 @@ export class CollectionEditorComponent implements OnDestroy {
       if (!(await this.saveNow())) return;
       const collection = this.workspace();
       if (!collection) return;
+      if (this.pricingPending()) {
+        this.sealError.set('Your dollar figures are saved. Refresh pricing after the signed XCH price feed is available, then review the updated revision before sealing.');
+        this.activeSection.set('economics');
+        return;
+      }
       if (!collection.readiness.ready) {
         this.sealError.set('Resolve the current review checks before sealing. Any changed fields need approval of the saved revision.');
         this.activeSection.set('review');
@@ -1584,7 +1610,17 @@ export class CollectionEditorComponent implements OnDestroy {
       if (!cleanSubmission) {
         const request = displayUnitRequest(this.displayUnits);
         validateDisplayRequest(request);
-        const conversion = await this.api.convertDisplayUnits(request);
+        let conversion: CollectionDisplayUnitConversion;
+        try {
+          conversion = await this.api.convertDisplayUnits(request);
+        } catch (error) {
+          if (!request.deriveXchPar || !isUnavailableCollectionPrice(error)) throw error;
+          // Draft dollar values do not require a protocol price. Use the same
+          // authenticated server conversion without par derivation, clearing
+          // prior collection and deed par values below. Never reuse stale par.
+          conversion = await this.api.convertDisplayUnits({ ...request, deriveXchPar: false });
+          this.journey.record({action:'api_request',stage:'preparing_request',phase:'waiting',error_code:'unavailable',http_status:422});
+        }
         applyDisplayUnitConversion(payload, conversion);
         if (payload.classification?.propertySubtype) {
           payload.property ||= { address: {} };
@@ -1647,6 +1683,17 @@ export class CollectionEditorComponent implements OnDestroy {
       throw error;
     }
   }
+}
+
+function isUnavailableCollectionPrice(error: unknown): boolean {
+  if (!(error instanceof HttpErrorResponse) || error.status !== 422) return false;
+  const detail = error.error?.detail;
+  return typeof detail === 'string' && [
+    'SOLSLOT_PAYMENT_ORACLE_ROUNDS_PATH is not configured',
+    'payment oracle snapshot is unavailable',
+    'payment oracle snapshot cannot be read',
+    'no live, quorum-authorized oracle round exists for this asset',
+  ].includes(detail);
 }
 
 function normalizeDraft(value: PropertyDossierDraftV1): PropertyDossierDraftV1 {

@@ -111,4 +111,107 @@ describe('CollectionEditor reviewed revision', () => {
     expect(api.seal).not.toHaveBeenCalled();
     expect(editor.sealError()).toContain('changed fields need approval');
   });
+
+  for (const detail of [
+    'SOLSLOT_PAYMENT_ORACLE_ROUNDS_PATH is not configured',
+    'payment oracle snapshot is unavailable',
+    'payment oracle snapshot cannot be read',
+    'no live, quorum-authorized oracle round exists for this asset',
+  ]) {
+    it(`saves dollar values without stale par when ${detail}`, async () => {
+      collection.dossier.offering = { targetRaiseMinor: '1000000', parValueMojos: '123' };
+      collection.dossier.deedAllocation = [
+        { deedId: 'A', sharePpm: 500000, parValueMojos: '61' },
+        { deedId: 'B', sharePpm: 500000, parValueMojos: '62' },
+      ];
+      (editor as any).applyWorkspace(collection);
+      api.convertDisplayUnits.and.callFake(async request => {
+        if (request.deriveXchPar) throw new HttpErrorResponse({status:422,error:{detail}});
+        return {
+          moneyMinor: { targetRaise: '7500000' }, percentageBps: {projectedReturn:'1500'},
+          ownershipPpm: {'deed.0':500000,'deed.1':500000}, governanceQuorum:'500000',
+          xchParMojos:null, xchOracle:null,
+        };
+      });
+      api.update.and.callFake(async (_id, dossier) => ({
+        ...collection, state:'DRAFT', revision:8, dossier,
+        readiness:{ready:false,issues:[{code:'DOSSIER_INVALID',path:'/offering/parValueMojos',message:'Field required'}]},
+      } as CollectionWorkspace));
+      editor.displayUnits.targetRaiseUsd = '75000';
+      editor.changed();
+      expect(await editor.saveNow()).toBeTrue();
+      const saved = api.update.calls.mostRecent().args[1];
+      expect(saved.offering!.targetRaiseMinor).toBe('7500000');
+      expect(saved.offering!.projectedReturnBps).toBe('1500');
+      expect(saved.offering!.parValueMojos).toBeUndefined();
+      expect(saved.deedAllocation.every(deed => deed.parValueMojos === undefined)).toBeTrue();
+      expect(editor.pricingPending()).toBeTrue();
+      expect(editor.saveState()).toBe('saved');
+      expect(api.convertDisplayUnits.calls.allArgs().map(args => args[0].deriveXchPar)).toEqual([true,false]);
+      await editor.saveNow(false,true);
+      expect(api.convertDisplayUnits).toHaveBeenCalledTimes(2);
+      expect(api.update).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  for (const error of [
+    new HttpErrorResponse({status:422,error:{detail:'oracle signature verification failed'}}),
+    new HttpErrorResponse({status:422,error:{detail:'payment oracle snapshot is invalid JSON'}}),
+    new HttpErrorResponse({status:401,error:{detail:'SOLSLOT_PAYMENT_ORACLE_ROUNDS_PATH is not configured'}}),
+    new HttpErrorResponse({status:0}),
+  ]) {
+    it(`does not reinterpret unrelated conversion failures as pending pricing (${error.status}: ${error.error?.detail || 'network'})`, async () => {
+      api.convertDisplayUnits.and.rejectWith(error);
+      editor.displayUnits.targetRaiseUsd = '75000';
+      editor.changed();
+      expect(await editor.saveNow()).toBeFalse();
+      expect(api.convertDisplayUnits).toHaveBeenCalledTimes(1);
+      expect(api.update).not.toHaveBeenCalled();
+      expect(editor.saveState()).toBe('error');
+      expect(editor.displayUnits.targetRaiseUsd).toBe('75000');
+    });
+  }
+
+  it('does not save when the fallback server conversion fails its signed rules check', async () => {
+    api.convertDisplayUnits.and.callFake(async request => {
+      throw new HttpErrorResponse({status:request.deriveXchPar ? 422 : 503,error:{detail:request.deriveXchPar
+        ? 'SOLSLOT_PAYMENT_ORACLE_ROUNDS_PATH is not configured' : 'Signed genesis economics are not available yet.'}});
+    });
+    editor.displayUnits.targetRaiseUsd = '75000';
+    editor.changed();
+    expect(await editor.saveNow()).toBeFalse();
+    expect(api.update).not.toHaveBeenCalled();
+    expect(editor.saveError()).toContain('Signed genesis economics');
+  });
+
+  it('blocks sealing a saved dollar-only draft even if a stale readiness response says ready', async () => {
+    collection.dossier.offering = {targetRaiseMinor:'7500000'};
+    (editor as any).applyWorkspace(collection);
+    await editor.seal();
+    expect(api.seal).not.toHaveBeenCalled();
+    expect(editor.sealError()).toContain('signed XCH price feed');
+    expect(editor.activeSection()).toBe('economics');
+  });
+
+  it('refreshes pricing explicitly and requires review of the newly priced revision', async () => {
+    collection.dossier.offering = {targetRaiseMinor:'7500000'};
+    (editor as any).applyWorkspace(collection);
+    api.convertDisplayUnits.and.resolveTo({
+      moneyMinor:{targetRaise:'7500000'},percentageBps:{},ownershipPpm:{},governanceQuorum:'500000',
+      xchParMojos:{collection:'3000000000000000',deeds:{}},
+      xchOracle:{priceUsdMinorPerXch:'2500',validUntil:2000000000,roundHash:'0x'+'a'.repeat(64)},
+    });
+    api.update.and.callFake(async (_id,dossier) => ({
+      ...collection,revision:8,dossier,readiness:{ready:false,issues:[{
+        code:'INDEPENDENT_REVIEW_REQUIRED',path:'/review',message:'Approve revision 8',
+      }]},
+    } as CollectionWorkspace));
+    await editor.refreshPricing();
+    expect(editor.pricingPending()).toBeFalse();
+    expect(api.convertDisplayUnits).toHaveBeenCalledTimes(1);
+    expect(api.update.calls.mostRecent().args[1].offering!.parValueMojos).toBe('3000000000000000');
+    await editor.seal();
+    expect(api.seal).not.toHaveBeenCalled();
+    expect(editor.sealError()).toContain('changed fields need approval');
+  });
 });
