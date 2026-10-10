@@ -15,7 +15,7 @@ describe('CollectionEditor reviewed revision', () => {
   let collection: CollectionWorkspace;
 
   beforeEach(() => {
-    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal', 'getPresale']);
+    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal', 'getPresale', 'xchPricing', 'featureStatus', 'profiles', 'get']);
     collection = {
       id: 'COL-TEST', state: 'REVIEW', revision: 7,
       dossier: {
@@ -30,7 +30,7 @@ describe('CollectionEditor reviewed revision', () => {
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'COL-TEST' } } } },
       { provide: CollectionApiService, useValue: api },
       { provide: AdminSessionService, useValue: { isAuthenticated: () => true } },
-      { provide: AdminStatusRefresh, useValue: { start: () => undefined } },
+      { provide: AdminStatusRefresh, useValue: { start: () => undefined, now: () => Date.now() } },
       { provide: CollectionMintCoordinatorService, useValue: { trustedProtocolTreasuryPuzzleHash: () => null } },
       { provide: PropertyAmendmentService, useValue: {} },
     ] });
@@ -40,6 +40,27 @@ describe('CollectionEditor reviewed revision', () => {
   });
 
   afterEach(() => editor.ngOnDestroy());
+
+  it('opens the property workspace while its price status is still loading', async () => {
+    editor.workspace.set(null);
+    api.featureStatus.and.resolveTo(editor.feature()!);
+    api.profiles.and.resolveTo(editor.profiles()!);
+    api.get.and.resolveTo(collection);
+    api.getPresale.and.rejectWith(new HttpErrorResponse({status:404}));
+    let finishPrice!: (value: Awaited<ReturnType<CollectionApiService['xchPricing']>>) => void;
+    api.xchPricing.and.returnValue(new Promise(resolve => { finishPrice = resolve; }));
+
+    await editor.reload();
+
+    expect(editor.loading()).toBeFalse();
+    expect(editor.workspace()!.id).toBe('COL-TEST');
+    expect(editor.priceChecking()).toBeTrue();
+    expect(api.update).not.toHaveBeenCalled();
+    expect(api.convertDisplayUnits).not.toHaveBeenCalled();
+    finishPrice({status:'unavailable',checkedAt:1,quote:null});
+    await Promise.resolve();
+    expect(editor.priceChecking()).toBeFalse();
+  });
 
   it('caches an absent presale until its bounded expiry', async () => {
     api.getPresale.and.rejectWith(new HttpErrorResponse({status:404}));
@@ -213,5 +234,42 @@ describe('CollectionEditor reviewed revision', () => {
     await editor.seal();
     expect(api.seal).not.toHaveBeenCalled();
     expect(editor.sealError()).toContain('changed fields need approval');
+  });
+
+  it('updates the XCH estimate automatically without changing saved USD terms or revision', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const quote = {priceUsdMinorPerXch:'200',observedAt:now,validUntil:now+300,sequence:'1',roundHash:'0x'+'a'.repeat(64),sourceCount:2,signerCount:2};
+    api.xchPricing.and.resolveTo({status:'available',checkedAt:now,quote});
+    await editor.checkXchPricing();
+    expect(editor.xchEstimate('303000')).toBe('1,515');
+    api.xchPricing.and.resolveTo({status:'available',checkedAt:now,quote:{...quote,priceUsdMinorPerXch:'300',sequence:'2'}});
+    await editor.checkXchPricing(true);
+    expect(editor.xchEstimate('303000')).toBe('1,010');
+    expect(editor.workspace()!.revision).toBe(7);
+    expect(api.update).not.toHaveBeenCalled();
+    expect(api.convertDisplayUnits).not.toHaveBeenCalled();
+    expect(api.seal).not.toHaveBeenCalled();
+  });
+
+  it('does not present an expired quote or cached estimate after a failed read', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    editor.xchPricing.set({status:'available',checkedAt:now,quote:{priceUsdMinorPerXch:'200',observedAt:now-400,validUntil:now-1,sequence:'1',roundHash:'0x'+'a'.repeat(64),sourceCount:2,signerCount:2}});
+    expect(editor.currentXchQuote()).toBeNull();
+    expect(editor.xchEstimate('303000')).toBe('—');
+    api.xchPricing.and.rejectWith(new HttpErrorResponse({status:503}));
+    await editor.checkXchPricing(true);
+    expect(editor.xchPricing()).toBeNull();
+  });
+
+  it('throttles status checks and preserves unsaved fields', async () => {
+    api.xchPricing.and.resolveTo({status:'unavailable',checkedAt:1,quote:null});
+    editor.draftModel!.summary = 'Unsaved input retained';
+    editor.changed();
+    await editor.checkXchPricing();
+    await editor.checkXchPricing();
+    expect(api.xchPricing).toHaveBeenCalledTimes(1);
+    expect(editor.draftModel!.summary).toBe('Unsaved input retained');
+    expect(editor.saveState()).toBe('dirty');
+    expect(api.update).not.toHaveBeenCalled();
   });
 });

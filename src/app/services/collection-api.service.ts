@@ -45,6 +45,14 @@ export class CollectionApiService {
     );
   }
 
+  xchPricing(): Promise<CollectionXchPricing> {
+    return firstValueFrom(
+      this.http.get<CollectionXchPricing>(`${this.base}/admin/collections/pricing/xch`, {
+        headers: this.headers(),
+      }).pipe(timeout(10_000)),
+    );
+  }
+
   list(options: { state?: CollectionState; owner?: string } = {}): Promise<CollectionListResponse> {
     const query = new URLSearchParams();
     if (options.state) query.set('state', options.state);
@@ -376,6 +384,20 @@ export interface CollectionDisplayUnitConversion {
     priceUsdMinorPerXch: string;
     validUntil: number;
     roundHash: string;
+  } | null;
+}
+
+export interface CollectionXchPricing {
+  status: 'available' | 'unavailable';
+  checkedAt: number;
+  quote: {
+    priceUsdMinorPerXch: string;
+    observedAt: number;
+    validUntil: number;
+    sequence: string;
+    roundHash: string;
+    sourceCount: number;
+    signerCount: number;
   } | null;
 }
 

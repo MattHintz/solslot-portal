@@ -19,6 +19,7 @@ import {
   CollectionFeatureStatus,
   CollectionProfiles,
   CollectionWorkspace,
+  CollectionXchPricing,
   PresaleSeries,
 } from '../../../services/collection-api.service';
 import {
@@ -107,13 +108,21 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
           @if (feature()?.metadataConfigured && !feature()?.recovery?.healthy) {
             <p class="inline-error" role="status">Recovery check pending. Your fields are retained; saving resumes when recovery is healthy.</p>
           }
-          @if (pricingPending()) {
-            <aside class="section-note" role="status" aria-live="polite">
-              <strong>Pricing pending</strong>
-              <span>Your dollar figures can be saved while price conversion is pending. A current signed XCH price is required before sealing or issuing SmartDeeds.</span>
-              @if (canEdit()) {
-                <button type="button" class="btn btn--ghost" data-ux-action="check_status" [disabled]="!['idle', 'saved'].includes(saveState())" (click)="refreshPricing()">Refresh pricing</button>
+          @if (draft.offering?.targetRaiseMinor && draft.offering?.targetRaiseMinor !== '0') {
+            <aside class="section-note price-status" role="status" aria-live="polite">
+              <strong>{{ priceChecking() ? 'Checking XCH pricing…' : currentXchQuote() ? 'XCH pricing · updates automatically' : 'XCH pricing pending' }}</strong>
+              @if (currentXchQuote(); as quote) {
+                <span>1 XCH = {{ +quote.priceUsdMinorPerXch / 100 | currency:'USD' }} · Price as of {{ quote.observedAt * 1000 | date:'shortTime' }} · Quote expires {{ quote.validUntil * 1000 | date:'shortTime' }}</span>
+                <span>Raise equivalent: approximately {{ xchEstimate(draft.offering?.targetRaiseMinor) }} XCH. Your dollar terms stay fixed.</span>
+                <small>Powered by <a href="https://www.coingecko.com/en/api" target="_blank" rel="noopener">CoinGecko</a> · <a href="https://www.livecoinwatch.com/" target="_blank" rel="noopener">Live Coin Watch</a>.</small>
+              } @else {
+                <span>Waiting for a current verified XCH price. Checking automatically; your dollar figures can still be saved.</span>
               }
+              @if (pricingPending() && canEdit()) {
+                <span>Apply current pricing to this draft before review and sealing.</span>
+                <button type="button" class="btn btn--ghost" data-ux-action="check_status" [disabled]="!currentXchQuote() || !['idle', 'saved'].includes(saveState())" (click)="refreshPricing()">Apply pricing to draft</button>
+              }
+              <small>Price checks do not change a saved or sealed record. Each new XCH payment uses a fresh quote.</small>
             </aside>
           }
 
@@ -628,6 +637,10 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
     @media (prefers-reduced-motion: reduce) { .upload-spinner { animation: none; } }
 
       .editor-shell { max-width:1500px; margin:0 auto; padding:1rem var(--pad-x) 5rem; }
+      .editor-shell .price-status { font-size:.875rem; line-height:1.5; gap:.5rem; }
+      .price-status small { font-size:14px; }
+      .price-status a { text-decoration:underline; text-underline-offset:3px; }
+      .price-status button { align-self:flex-start; max-width:100%; }
       .editor-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; min-height:4.5rem; border-bottom:1px solid var(--border); }
       .title-block,.header-actions,.title-block > div { display:flex; align-items:center; gap:1rem; min-width:0; }
       .title-block > a { color:var(--accent); font-size:.68rem; }
@@ -769,6 +782,9 @@ export class CollectionEditorComponent implements OnDestroy {
   readonly presale = signal<PresaleSeries | null>(null);
   readonly presaleBusy = signal(false);
   readonly presaleError = signal<string | null>(null);
+  readonly xchPricing = signal<CollectionXchPricing | null>(null);
+  readonly priceChecking = signal(false);
+  private priceCheckedAt = 0;
 
   draftModel: PropertyDossierDraftV1 | null = null;
   displayUnits: CollectionDisplayUnits = emptyCollectionDisplayUnits();
@@ -832,6 +848,8 @@ export class CollectionEditorComponent implements OnDestroy {
       if (!reuseContext) this.contextLoadedAt = Date.now();
       if (generation === this.editGeneration) this.applyWorkspace(collection);
       this.presale.set(presale);
+      // Price availability must not keep a valid workspace behind its loader.
+      void this.checkXchPricing();
     } catch (error) {
       if (!this.workspace()) this.loadError.set(formatError(error));
       throw error;
@@ -850,11 +868,43 @@ export class CollectionEditorComponent implements OnDestroy {
     return Boolean(offering?.targetRaiseMinor && offering.targetRaiseMinor !== '0' && !offering.parValueMojos);
   }
 
+  currentXchQuote(): CollectionXchPricing['quote'] {
+    const quote = this.xchPricing()?.quote;
+    return quote && quote.validUntil * 1000 > this.refresh.now() ? quote : null;
+  }
+
+  xchEstimate(usdMinor: string | undefined): string {
+    const quote = this.currentXchQuote();
+    if (!quote || !usdMinor || !/^\d+$/.test(usdMinor) || !/^[1-9]\d*$/.test(quote.priceUsdMinorPerXch)) return '—';
+    const rate = BigInt(quote.priceUsdMinorPerXch);
+    const mojos = (BigInt(usdMinor) * 1_000_000_000_000n + rate - 1n) / rate;
+    // A readable four-place estimate; server quotes retain exact mojo precision.
+    const display = (mojos + 50_000_000n) / 100_000_000n;
+    const whole = new Intl.NumberFormat('en-US').format(display / 10_000n);
+    const fraction = (display % 10_000n).toString().padStart(4, '0').replace(/0+$/, '');
+    return `${whole}${fraction ? '.' + fraction : ''}`;
+  }
+
+  async checkXchPricing(force = false): Promise<void> {
+    if (this.priceChecking() || (!force && this.priceCheckedAt > Date.now() - 30_000)) return;
+    this.priceChecking.set(true);
+    try {
+      this.xchPricing.set(await this.api.xchPricing());
+    } catch {
+      // Never display an expired or unverified cached amount after a failed read.
+      this.xchPricing.set(null);
+    } finally {
+      this.priceCheckedAt = Date.now();
+      this.priceChecking.set(false);
+    }
+  }
+
   async refreshPricing(): Promise<void> {
     if (!this.canEdit() || !['idle', 'saved'].includes(this.saveState())) return;
     this.editGeneration += 1;
     this.saveState.set('dirty');
     await this.saveNow();
+    await this.checkXchPricing(true);
   }
 
   assetClassLabel(assetClass: string): string {
