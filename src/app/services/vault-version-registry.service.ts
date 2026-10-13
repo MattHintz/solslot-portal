@@ -1,22 +1,7 @@
-/**
- * Chain reader for the vault-version registry singleton.
- *
- * Walks the registry lineage from its launcher id (in
- * ``environment.solslotProtocol.vaultVersionRegistryLauncherId``) and parses
- * the current state from the most recently spent non-launcher coin's puzzle
- * reveal.  No backend is used — only coinset.org + the WASM CLVM SDK.
- *
- * The registry's inner puzzle is curried with the canonical vault descriptor
- * (VAULT_INNER_MOD_HASH, CANONICAL_PARAMS_HASH, VAULT_VERSION).  Because the
- * inner puzzle is immutable across registry spends, the parent of the current
- * coin reveals the same full puzzle as the current coin itself, so we can
- * recover the state from a spent ancestor.
- *
- * Returns ``null`` when:
- *   - the registry launcher id is not configured (not deployed yet),
- *   - the launcher is not found on chain,
- *   - the registry has never been spent after launch (eve is the current coin),
- *   - the WASM SDK is not ready.
+/** Reads the registry's confirmed successor, including the last publish transition.
+ * A spent parent's reveal describes its INPUT; the solution and current output
+ * hash are needed to reconstruct the current descriptor. Eve without a verified
+ * reveal remains unavailable, never guessed from application configuration.
  */
 import { Injectable, inject } from '@angular/core';
 
@@ -25,19 +10,14 @@ import { bytesToHex, hexToBytes } from '../utils/chia-hash';
 import { ChiaSingletonReaderService, SingletonLineage } from './chia-singleton-reader.service';
 import { ChiaWasmService } from './chia-wasm.service';
 import { CoinsetService } from './coinset.service';
+import { reconstructSingletonOutput, OutputProgram } from './singleton-output-state';
 import type { RegistryState } from './vault-version-detection';
 
 interface ClvmShape {
   deserialize(bytes: Uint8Array): ProgramShape;
 }
 
-interface ProgramShape {
-  treeHash(): Uint8Array;
-  uncurry(): { program: ProgramShape; args: ProgramShape } | undefined;
-  toList(): ProgramShape[] | undefined;
-  toAtom(): Uint8Array;
-  toInt(): bigint;
-}
+type ProgramShape = OutputProgram;
 
 export interface RegistryReadResult {
   /** Canonical state parsed from the on-chain registry. */
@@ -65,7 +45,7 @@ export function parseRegistryFullPuzzleReveal(
   if (!fullUncurried) {
     throw new Error('registry puzzle reveal is not curried');
   }
-  const fullArgs = fullUncurried.args.toList();
+  const fullArgs = fullUncurried.args;
   if (!fullArgs || fullArgs.length !== 2) {
     throw new Error('registry puzzle reveal does not have singleton wrapper args');
   }
@@ -82,7 +62,7 @@ export function parseRegistryFullPuzzleReveal(
       )}`,
     );
   }
-  const args = innerUncurried.args.toList();
+  const args = innerUncurried.args;
   if (!args || args.length !== 8) {
     throw new Error(`registry inner puzzle expects 8 curried args, got ${args?.length ?? 0}`);
   }
@@ -96,10 +76,15 @@ export function parseRegistryFullPuzzleReveal(
   //   5: VAULT_INNER_MOD_HASH
   //   6: CANONICAL_PARAMS_HASH
   //   7: VAULT_VERSION
+  const version = args[7].toInt();
+  if (args[5].toAtom().length !== 32 || args[6].toAtom().length !== 32 ||
+      version < 0n || version > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error('Registry descriptor cannot be represented safely.');
+  }
   return {
     vaultInnerModHash: bytesToHex(args[5].toAtom()),
     canonicalParamsHash: bytesToHex(args[6].toAtom()),
-    vaultVersion: Number(args[7].toInt()),
+    vaultVersion: Number(version),
   };
 }
 
@@ -151,12 +136,17 @@ export class VaultVersionRegistryService {
     }
     const clvm: ClvmShape = new Clvm();
     const registryModHash = hexToBytes(environment.solslotProtocol.vaultVersionRegistryModHash);
-    return parseRegistryFullPuzzleReveal(clvm, registryModHash, hexToBytes(ps.puzzleReveal));
+    const current = lineage.nodes[lineage.nodes.length - 1];
+    if (!current || current.spentBlockIndex !== null || current.parentCoinId !== parent.coinId) {
+      throw new Error('Registry lineage changed. Refresh chain status.');
+    }
+    const reveal = reconstructSingletonOutput(clvm, hexToBytes(ps.puzzleReveal), hexToBytes(ps.solution),
+      hexToBytes(parent.puzzleHash), hexToBytes(current.puzzleHash), 'registry', registryModHash);
+    return parseRegistryFullPuzzleReveal(clvm, registryModHash, reveal);
   }
 
   /**
-   * Return the lineage node whose puzzle reveal is the current state coin's
-   * full puzzle.  This is the most recently spent non-launcher node; if the
+   * Return the spent input whose transition created the current state coin.  This is the most recently spent non-launcher node; if the
    * registry is still at the eve coin, the only spent node is the launcher and
    * we cannot yet recover the inner puzzle from chain.
    */

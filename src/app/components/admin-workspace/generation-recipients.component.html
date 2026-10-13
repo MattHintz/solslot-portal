@@ -1,0 +1,76 @@
+<section aria-labelledby="generation-recipients-title">
+  <header>
+    <span class="eyebrow">Setup & launch · Chia Testnet11</span>
+    <h1 id="generation-recipients-title">Your team’s SGT vaults</h1>
+    <p>Confirm each administrator’s receiving vault before genesis. Each vault receives 10,000 test SGT at launch. No private ID check is required to receive SGT.</p>
+  </header>
+  <ol class="steps" aria-label="Launch preparation">
+    <li>Team & recovery</li><li>Frozen preparation</li><li aria-current="step">Recipient vaults</li><li>Genesis review</li><li>Chain confirmation</li>
+  </ol>
+  <solslot-admin-refresh-status [state]="refresh" />
+  @if(error()){<p class="notice error" role="alert">{{error()}}</p>}
+  @if(review(); as state){
+    <div class="totals" aria-label="Initial SGT distribution">
+      <div><strong>30,000 SGT</strong><span>Three holder vaults</span></div>
+      <div><strong>970,000 SGT</strong><span>Nonvoting reserve</span></div>
+      <div><strong>15,000 SGT</strong><span>Initial voting quorum</span></div>
+    </div>
+    <div class="recipients">
+      @for(recipient of state.recipients;track recipient.administratorSlot){
+        <article [class.assigned]="recipient.administratorSlot===state.assignedSlot">
+          <header class="recipient-heading">
+            <div><span class="eyebrow">Administrator {{recipient.administratorSlot}} {{recipient.administratorSlot===state.assignedSlot?'· Your action':''}}</span><h2>{{recipient.name}}</h2></div>
+            <strong class="allocation">10,000 SGT</strong>
+          </header>
+          <dl>
+            <dt>Receiving vault · Testnet11</dt><dd class="hash">{{recipient.recipientVault}}</dd>
+            <dt>SGT custody destination</dt><dd class="hash">{{recipient.recipientPuzzle}}</dd>
+            <dt>Administrator signing wallet</dt><dd class="hash">{{recipient.wallet}}</dd>
+          </dl>
+          <div class="state" role="status">
+            @if(recipient.errorCode==='NODE_UNAVAILABLE'){<strong>Confirmation service is temporarily unavailable.</strong><span>Your saved consent is retained. Check again when the node reconnects.</span>}
+            @else if(!recipient.confirmed && recipient.creation?.transactionId){<strong><span class="spinner" aria-hidden="true"></span>Confirming your receiving vault</strong><span>We’re checking the saved transaction automatically. Next: acknowledge this destination for your 10,000-SGT genesis grant.</span>}
+            @else if(!recipient.confirmed && recipient.creation){<strong>Creation is ready for review</strong><span>Check the receiving destination and fee limit below, then submit this saved launch.</span>}
+            @else if(!recipient.confirmed){<strong>Create your SGT receiving vault</strong><span>Review the reserved Testnet11 destination, create it, then acknowledge it. SGT is issued later during genesis.</span>}
+            @else if(recipient.acknowledgedAt){<strong>Destination acknowledged</strong><span>Confirmed in block {{recipient.confirmedHeight | number}}. Genesis will recheck this vault before issuance.</span>}
+            @else{<strong>Vault confirmed · Destination approval next</strong><span>Review the full destination above, then acknowledge it with your administrator wallet.</span>}
+            @if(recipient.lastCheckedAt){<small>Vault evidence checked {{recipient.lastCheckedAt * 1000 | date:'medium'}}</small>}
+          </div>
+          @if(recipient.administratorSlot===state.assignedSlot){
+            @if(recipient.creation; as operation){
+              <div class="notice" aria-label="Saved recipient creation review">
+                <strong>Reserved vault creation · Testnet11</strong>
+                <p>This creates one receiving vault. It does not issue SGT, check your ID, or change another administrator’s destination. Change returns to the existing funding wallet.</p>
+                <dl><dt>Saved action</dt><dd class="hash">{{operation.operationId}}</dd>
+                  <dt>Maximum sponsored network fee</dt><dd>{{operation.feeCapMojos}} mojos · paid by the existing test fee fund</dd>
+                  @if(operation.transactionId){<dt>Saved transaction</dt><dd class="hash">{{operation.transactionId}}</dd>}
+                  @if(operation.lastCheckedAt){<dt>Transaction last checked</dt><dd>{{operation.lastCheckedAt * 1000 | date:'medium'}}</dd>}
+                </dl>
+                @if(operation.errorCode){<p role="status">The saved launch needs a network check. Its destination and fee ceiling are retained; a new transaction is not authorized.</p>}
+                @if(operation.stage==='CONFIRMED'){<p role="status">Creation confirmed in block {{operation.confirmedHeight | number}}. We’re verifying the exact receiving output.</p>}
+              </div>
+            }
+            <div class="actions">
+              @if(!recipient.confirmed && !recipient.creation && state.creationAvailable){
+                <button type="button" class="primary" [disabled]="!!pending()" (click)="prepareCreation()">{{pending()==='PREPARING'?'Preparing your exact launch…':'Review my vault creation'}}</button>
+              }
+              @if(!recipient.confirmed && recipient.creation && !recipient.creation.transactionId && state.creationAvailable){
+                <button type="button" class="primary" [disabled]="!!pending()" (click)="submitCreation()">{{pending()==='SUBMITTING'?'Submitting the saved launch…':uncertainCreation()?'Retry this saved launch':'Create this receiving vault'}}</button>
+              }
+              <button type="button" [disabled]="!!pending()" (click)="check()">{{pending()==='CHECKING'?'Checking confirmation…':'Check my vault confirmation'}}</button>
+              @if(recipient.confirmed && !recipient.acknowledgedAt){<button type="button" class="primary" [disabled]="!!pending()" (click)="acknowledge()">{{pending()==='SIGNING'?'Approve in your wallet…':pending()==='SAVING'?'Saving acknowledgement…':'Acknowledge my 10,000-SGT destination'}}</button>}
+            </div>
+            @if(!recipient.confirmed && !recipient.creation && !state.creationAvailable){<p class="waiting">Creation opens after the reviewed deployment passes its launch and native admission checks.</p>}
+            @if(pending()==='PREPARING' || pending()==='SUBMITTING'){<p class="notice" role="status"><span class="spinner" aria-hidden="true"></span>{{pending()==='PREPARING'?'Preparing only the frozen destination shown above. This step does not broadcast.':'Submitting your saved Testnet11 launch. Keep this page open or return later; the same transaction will resume.'}}</p>}
+            @if(pending()==='SIGNING'){<p class="notice" role="status"><span class="spinner" aria-hidden="true"></span>Open your connected administrator wallet and approve “Solslot SGT recipient.” This records your receiving destination; it sends no transaction.</p>}
+          } @else if(!recipient.acknowledgedAt){<p class="waiting">Assigned to {{recipient.name}}. Sign in with that administrator’s wallet to complete their step.</p>}
+          <details><summary>Identity authority</summary><p>This protects administrator access. It is separate from the SGT receiving vault.</p><code>{{recipient.identityAuthority}}</code></details>
+        </article>
+      }
+    </div>
+    @if(state.recipientPreparationComplete){<p class="notice" role="status"><strong>All three destinations are acknowledged.</strong> Next: final source, recovery and genesis review. Launch is complete only when the exact grants and reserve are confirmed on chain.</p>}
+    <details><summary>Frozen preparation</summary><dl><dt>Deployment generation</dt><dd class="hash">{{state.generationId}}</dd><dt>Preparation manifest</dt><dd class="hash">{{state.preparationManifest}}</dd><dt>Your reserved funding input</dt><dd class="hash">{{mine()?.fundingCoinId}}</dd></dl><p>Changing the preparation requires new destination acknowledgements.</p></details>
+  } @else {
+    <p class="notice" role="status">{{refresh.refreshing()?'Loading the reviewed launch preparation…':'The reviewed preparation is not available yet. Your existing launch evidence is preserved.'}}</p>
+  }
+</section>

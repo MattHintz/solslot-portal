@@ -374,6 +374,10 @@ export class VaultLaunchSpendService {
    * @throws if the local vault mod hash or canonical params hash differ from
    *   the registry's published values.
    */
+  currentVaultInnerModHash(): string {
+    return bytesToHex(this.clvm().deserialize(hexToBytes(VAULT_CURRENT_INNER_PUZZLE_HEX)).treeHash());
+  }
+
   assertMatchesRegistry(args: {
     params: CanonicalVaultParams;
     registryVaultInnerModHash: string;

@@ -12,6 +12,7 @@ export class AdminStatusRefresh {
   private disposed = false;
   private failures = 0;
   private read: () => Promise<void> = async () => {};
+  private active: () => boolean = () => false;
   private blocked: () => string | null = () => null;
 
   readonly refreshing = signal(false);
@@ -48,7 +49,8 @@ export class AdminStatusRefresh {
     });
   }
 
-  start(read: () => Promise<void>, blocked: () => string | null = () => null): void {
+  start(read: () => Promise<void>, blocked: () => string | null = () => null, active: () => boolean = () => false): void {
+    this.active = active;
     this.read = read;
     this.blocked = blocked;
     if (!this.clock) this.zone.runOutsideAngular(() => {
@@ -75,7 +77,7 @@ export class AdminStatusRefresh {
       }
     } finally {
       this.refreshing.set(false);
-      this.schedule(Math.min(60_000, 15_000 * 2 ** this.failures));
+      this.schedule(Math.min(60_000, (this.active() ? 5_000 : 30_000) * 2 ** this.failures));
     }
   }
 

@@ -7,17 +7,18 @@
     "start": "ng serve",
     "dev:stack": "node scripts/dev-stack.mjs",
     "prepare:google-vault-runtime": "node scripts/prepare-google-vault-runtime.mjs",
-    "build": "npm run prepare:google-vault-runtime && ng build",
-    "build:ceremony": "npm run prepare:google-vault-runtime && ng build --configuration ceremony",
-    "build:ceremony-locked": "npm run prepare:google-vault-runtime && ng build --configuration ceremony-locked",
+    "build": "npm run security:chia-runtime && npm run prepare:google-vault-runtime && ng build",
+    "build:ceremony": "npm run security:chia-runtime && npm run prepare:google-vault-runtime && ng build --configuration ceremony",
+    "build:ceremony-locked": "npm run security:chia-runtime && npm run prepare:google-vault-runtime && ng build --configuration ceremony-locked",
     "security:eip712-exports": "python3 scripts/check_eip712_wasm_exports.py",
     "security:google-bls": "node scripts/check_google_bls_vector.mjs",
     "security:headers": "python3 scripts/check_static_headers.py",
     "release:recovery-manifest": "node scripts/write-recovery-page-manifest.mjs",
     "watch": "ng build --watch --configuration development",
-    "test": "npm run prepare:google-vault-runtime && ng test",
+    "test": "npm run security:chia-runtime && npm run prepare:google-vault-runtime && ng test",
     "postinstall": "node scripts/copy-chia-wasm.mjs",
-    "copy-chia-wasm": "node scripts/copy-chia-wasm.mjs"
+    "copy-chia-wasm": "node scripts/copy-chia-wasm.mjs",
+    "security:chia-runtime": "node scripts/check-chia-runtime.mjs"
   },
   "prettier": {
     "printWidth": 100,

@@ -1,0 +1,232 @@
+<main class="generation-desk">
+  <header>
+    <p class="eyebrow">SOLSLOT · TESTNET11 GOVERNANCE</p>
+    <h1>Committee desk</h1>
+    <p>Follow administrator consent, holder voting and execution in one place.</p>
+    <nav aria-label="Committee navigation"><a routerLink="/admin/genesis">Setup &amp; launch</a><a routerLink="/admin/collections">Properties</a><a href="/my-solslot">My Solslot</a></nav>
+  </header>
+  <ol class="stages" aria-label="Governance stages">
+    <li><span>01</span><div><strong>Administrator consent</strong><small>24 hours to approve publication</small></div></li>
+    <li><span>02</span><div><strong>Holder vote</strong><small>One hour from confirmed opening</small></div></li>
+    <li><span>03</span><div><strong>On-chain delay</strong><small>24 hours for upgrades and reopening</small></div></li>
+    <li><span>04</span><div><strong>Execute &amp; confirm</strong><small>Separate from approval and voting</small></div></li>
+  </ol>
+  <solslot-admin-refresh-status [state]="refresh" />
+  <solslot-generation-sols-batches [maximumFee]="operations()?.maximumFeeMojos ?? '0'" [executionEnabled]="!!operations()?.executionEnabled" />
+  <solslot-generation-consents [snapshot]="snapshot()" [isCurrent]="isCurrent()"
+    [available]="!!operations()?.available" [maximumFee]="operations()?.maximumFeeMojos ?? '0'" (preparedPause)="resumeSaved($event)" (sponsorReview)="sponsorshipConsent.set($event)" />
+  <solslot-generation-ballots [snapshot]="snapshot()" [consent]="sponsorshipConsent()" [isCurrent]="isCurrent()"
+    [available]="!!operations()?.available" [maximumFee]="operations()?.maximumFeeMojos ?? '0'" (prepared)="resumeSaved($event)" />
+  @if(reviewRequest() || preparedAction()){
+    <section class="status-card action-review" aria-labelledby="action-review-title" [attr.aria-busy]="!!pendingAction()">
+      <p class="eyebrow">Review chain action · Testnet11</p>
+      <h2 id="action-review-title">{{operationLabel(preparedAction()?.kind || reviewRequest()!.kind)}}</h2>
+      @if(reviewedParameters(); as p){
+        <p><strong>Approved fee: {{p.values[2]/100 | number:'1.0-2'}}% total</strong> · {{p.values[4]/100 | number:'1.0-2'}}% to SGT rewards · {{p.values[3]/100 | number:'1.0-2'}}% to the protocol.</p>
+        <dl class="evidence"><dt>Valuation validity</dt><dd>{{p.values[0] | number}} seconds</dd>
+          <dt>Maximum price age</dt><dd>{{p.values[1] | number}} seconds</dd>
+          <dt>Reward period</dt><dd>{{p.values[5] | number}} seconds</dd>
+          <dt>Parameter revision</dt><dd>{{p.revision}} → {{p.revision+1}}</dd></dl>
+      }
+      @if(reviewedProof(); as proof){
+        <p>This exercises the successor’s read-only PROVE_STATE instruction and keeps the governance state unchanged. It does not mint, vote, or install code.</p>
+        <dl class="evidence"><dt>Component</dt><dd>{{proof.componentId}}</dd><dt>Active module</dt><dd>{{proof.moduleHash}}</dd>
+          <dt>Active version</dt><dd>{{proof.version}}</dd><dt>State to preserve</dt><dd>{{proof.stateHash}}</dd></dl>
+      }
+      @if(reviewedStatuteBill(); as fact){
+        <solslot-generation-asset-intent [bill]="fact" />
+      }
+      @if(reviewedRedemptionBill(); as funding){
+        <solslot-generation-asset-intent [bill]="funding" />
+      }
+      @if(reviewedStakes(); as stakes){
+        <p>Return these complete voting coins to their unchanged owners. No owner signature is needed for closed stakes. Paying the network fee adds no voting weight.</p>
+        <details><summary>Exact selected input coins ({{stakes.coinIds.length}})</summary><ul>
+          @for(coinId of stakes.coinIds; track coinId){<li><code>{{coinId}}</code></li>}
+        </ul></details>
+      }
+      @if(reviewedReward(); as reward){
+        <p>Conserve these mature fee inputs into permanent claims for the authenticated {{reward.eligibleSupply | number}} distributed SGT.
+          Reserve and undelivered escrow are excluded. Claims stay available during a pause and have no withdrawal or expiry.</p>
+        <dl class="evidence"><dt>Reward asset</dt><dd>{{reward.assetId}}</dd><dt>Statutes authority</dt><dd>{{reward.statutesLauncherId}}</dd>
+          <dt>Holder snapshot</dt><dd>{{reward.holdingsRoot}}</dd><dt>Ledger sequence</dt><dd>{{reward.ledgerSequence}}</dd>
+          <dt>Parameter values</dt><dd>{{reward.valuesHash}}</dd></dl>
+        <details><summary>Exact funding ({{reward.feeCoinIds.length}} complete coins)</summary><ul>
+          @for(id of reward.feeCoinIds;track id){<li><code>{{id}}</code></li>}
+        </ul></details>
+      }
+      @if(reviewedClaim(); as claim){
+        <p>Pay this confirmed reward to its unchanged recipient vault. This needs no private ID check or owner signature.</p>
+        <dl class="evidence"><dt>Recipient vault</dt><dd>{{claim.vaultLauncherId}}</dd><dt>Unchanged owner</dt><dd>{{claim.ownerPuzzleHash}}</dd>
+          <dt>Reward amount</dt><dd>{{claim.amount | number}} {{claim.assetId==='0x0000000000000000000000000000000000000000000000000000000000000000'?'TXCH mojos':'CAT base units'}}</dd><dt>Reward asset</dt><dd>{{claim.assetId}}</dd>
+          <dt>Claim coin</dt><dd>{{claim.claimCoinId}}</dd><dt>Funded batch</dt><dd>{{claim.epochId}}</dd></dl>
+      }
+      @if(preparedAction()?.review?.kind==='PAUSE_NEW_OPERATIONS'){
+        <p>The two recorded administrator signatures authorize only the selected new-operation scope. SGT voting, transfers, unlocks, funded redemptions and earned claims stay available.</p>
+        <dl class="evidence"><dt>Exact pause scope</dt><dd>{{$any(preparedAction()!.review).scope}}</dd><dt>Reviewed pause epoch</dt><dd>{{$any(preparedAction()!.review).pauseEpoch}}</dd></dl>
+      }
+      @if(pendingAction()){<p role="status"><span class="spinner" aria-hidden="true"></span>{{pendingAction()==='PREPARING'?'Checking confirmed inputs and saving your exact action…':'Submitting the saved action. Confirmation will update here automatically…'}}</p>}
+      @if(actionError()){<p class="notice" role="status">{{actionError()}}</p>}
+      @if(preparedAction(); as op){
+        <p>{{operationMessage(op)}}</p>
+        <dl class="evidence"><dt>Maximum network fee</dt><dd>{{op.feeCapMojos}} mojos · existing test fee fund</dd>
+          <dt>Exact reviewed intent</dt><dd>{{op.intentHash}}</dd><dt>Saved operation</dt><dd>{{op.operationId}}</dd></dl>
+        <p class="muted">This executes the displayed chain step. Paying its network fee adds no voting weight and cannot change the approved proposal.</p>
+        @if(!operations()?.executionEnabled){<p class="notice">Chain submission is disabled for this deployment. This preparation has not been sent.</p>}
+        @if(op.kind==='MINT_COLLECTION'){
+          <p>This mint belongs to its exact sealed collection batch. Follow submission and inventory confirmation there.</p>
+          <a class="primary-link" [routerLink]="['/admin/collections',$any(op.review).collectionId]">Open the collection mint →</a>
+        }@else if(!op.transactionId && op.stage==='PREPARED'){
+          @if(uncertainSubmission()===op.operationId){<p role="status">The last response was lost. Retrying uses this same saved operation and cannot create a replacement transaction.</p>}
+          <button class="primary-button" type="button" [disabled]="!!pendingAction() || !operations()?.executionEnabled || operationsError()" (click)="submitReviewed()">{{uncertainSubmission()===op.operationId?'Retry this saved submission':'Submit '+operationLabel(op.kind).toLowerCase()}}</button>
+        }
+      } @else if(!pendingAction()) {
+        <button type="button" (click)="prepareReview()">Retry preparing this same action</button>
+      }
+    </section>
+  }
+  <section class="status-card" [attr.aria-busy]="refresh.refreshing()" aria-labelledby="generation-status-heading">
+    <div class="status-heading"><h2 id="generation-status-heading">{{headline()}}</h2>
+      @if(status()?.lastCheckedAt; as checked){<span class="last-confirmed">Chain checked {{checked * 1000 | date:'MMM d, h:mm:ss a'}}</span>}
+    </div>
+    @if(!snapshot()) {
+      @if(status()?.status==='NOT_READY'){
+        <p>The three recipient vaults and the new generation must be confirmed before proposals can open.</p>
+        <a class="primary-link" routerLink="/admin/genesis">Open Setup &amp; launch →</a>
+      } @else if(status()?.status==='ERROR') {
+        <p role="status">We couldn’t verify the chain yet. Checks will retry automatically; no wallet action is needed.</p>
+      } @else {
+        <p role="status"><span class="spinner" aria-hidden="true"></span>Reading the confirmed state. This does not open your wallet.</p>
+        <p class="muted">If the node is unavailable, your saved progress remains available when it reconnects.</p>
+      }
+    } @else if(snapshot(); as s) {
+      @if(!isCurrent()) {<p class="notice" role="status">The latest check is pending or unavailable. These are the last verified results; they do not mean the proposal or your vote disappeared.</p>}
+      <dl class="balances">
+        <div><dt>Distributed holder SGT</dt><dd>{{s.supply.distributed | number}}</dd></div>
+        <div><dt>{{s.proposal ? 'Opening quorum' : 'Next proposal quorum'}}</dt><dd>{{(s.proposal?.requiredVotes ?? s.supply.nextProposalQuorum) | number}} <small>SGT</small></dd></div>
+        <div><dt>Nonvoting reserve</dt><dd>{{s.supply.reserve | number}}</dd></div>
+      </dl>
+      <p class="muted">Quorum is 50% of distributed holder SGT, rounded up. Reserve and undelivered escrow do not vote. Paying fees adds no voting weight.</p>
+      <solslot-generation-rewards-form [snapshot]="s" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
+        (epochReviewed)="reviewReward('CLOSE_REWARD_EPOCH',$event)" (claimReviewed)="reviewReward('CLAIM_SGT_REWARD',$event)" (progressReviewed)="reviewReward('ADVANCE_SGT_REWARDS',$event)" />
+      @if(s.stateProof.supported){
+        <article class="proposal"><p class="eyebrow">Governed upgrade rehearsal</p><h3>Test the activated code</h3>
+          <p>The successor exposes PROVE_STATE. Prepare a read-only chain action to test that instruction against the confirmed module and current governance state.</p>
+          <button type="button" class="primary-button" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available" (click)="reviewAction('PROVE_STATE')">Review upgraded state proof</button>
+        </article>
+      }
+      @if(s.closedStakes.length){
+        <article class="proposal" aria-labelledby="closed-stakes-title"><p class="eyebrow">Voting stakes · closed proposals</p>
+          <h3 id="closed-stakes-title">Return closed voting stakes</h3>
+          <p>Select complete coins to return to their existing owners. Unlocking stays available during a scoped pause.</p>
+          @if(s.proposal){<p class="notice">Unlocked outputs become eligible at the next proposal. To vote in the current opening snapshot, reuse an eligible closed stake before unlocking it.</p>}
+          @for(stake of s.closedStakes; track stake.coinId){
+            <label class="component"><span><input type="checkbox" [checked]="selectedStakes().includes(stake.coinId)"
+              [disabled]="!!pendingAction() || !isCurrent()" (change)="selectStake(stake.coinId,$any($event.target).checked)" />
+              {{stake.amount | number}} SGT · complete coin</span><code>{{stake.coinId}}</code>
+              <span>Unchanged owner</span><code>{{stake.ownerPuzzleHash}}</code></label>
+          }
+          @if(s.closedStakesTruncated){<p class="muted">Showing 32 of {{s.closedStakeCount}} closed stakes. The next batch appears after confirmation.</p>}
+          <button type="button" class="primary-button" [disabled]="!selectedStakes().length || !isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
+            (click)="reviewAction('UNLOCK_STAKES')">Review selected stake unlocks</button>
+        </article>
+      }
+      @if(s.proposal; as p){
+        <article class="proposal">
+          <p class="eyebrow">{{proposalLabel(p.kind)}}</p><h3>{{p.yesWeight | number}} of {{p.requiredVotes | number}} SGT required</h3>
+          <solslot-generation-asset-intent [bill]="p" />
+          <progress [value]="p.yesWeight" [max]="p.eligibleSupply" aria-label="Confirmed yes votes"></progress>
+          <p>Opening eligible supply: {{p.eligibleSupply | number}} SGT. This denominator stays fixed for this proposal.</p>
+          @if(p.votingClosesAt; as closes){<p class="deadline"><strong>Voting closes {{closes * 1000 | date:'MMM d, h:mm:ss a'}}</strong></p>}
+          @else {<p>Waiting for the confirmed opening timestamp. The one-hour window is measured on chain.</p>}
+          @if(votingClosed()){<p>The displayed voting window has ended. Finalization still requires chain confirmation.</p>}
+          @if(!p.openedAt || votingClosed()){
+            <button type="button" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
+              (click)="reviewAction(p.openedAt?'FINALIZE_VOTE':'ANCHOR_VOTE')">{{p.openedAt?'Review vote finalization':'Review opening confirmation'}}</button>
+          }
+          <p>{{p.selectionRule}}</p>
+          <details><summary>Proposal &amp; consent evidence</summary><dl class="evidence">
+            <dt>Proposal</dt><dd>{{p.proposalId}}</dd><dt>Opening holdings root</dt><dd>{{p.eligibleHoldingsRoot}}</dd>
+            <dt>Publication consent expired</dt><dd>{{p.publicationExpiresAt * 1000 | date:'MMM d, h:mm:ss a'}}. This is separate from the voting deadline.</dd>
+          </dl></details>
+        </article>
+      }
+      @for(action of s.approvedActions; track action.proposalId){
+        <article class="proposal">
+          <p class="eyebrow">Holder vote complete</p><h3>{{proposalLabel(action.kind)}}</h3>
+          <p>The vote approved this exact action. Execution is a separate chain step.</p>
+          <solslot-generation-asset-intent [bill]="action" />
+          @if(action.upgrade; as upgrade){
+            <dl class="evidence"><dt>Source manifest</dt><dd>{{upgrade.sourceManifestHash}}</dd></dl>
+            @for(change of upgrade.changes; track change.componentId){<div class="component"><strong>Component version {{change.nextVersion}}</strong><code>{{change.componentId}}</code><span>Approved successor module</span><code>{{change.newModuleHash}}</code><span>Current state and assets must be preserved.</span></div>}
+          }
+          @if(action.kind==='UPGRADE' || action.kind==='REOPEN'){
+            <button type="button" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
+              (click)="reviewAction(action.kind==='UPGRADE'?'RATIFY_UPGRADE':'RATIFY_REOPENING',action)">Review {{action.kind==='UPGRADE'?'upgrade':'reopening'}} ratification</button>
+          }
+          @if(action.kind==='PARAMETERS' && action.parameters){
+            <button type="button" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
+              (click)="reviewAction('APPLY_PARAMETERS',action)">Review voted parameters</button>
+          }
+          @if(action.kind==='STATUTES' && action.statutes; as fact){
+            <solslot-generation-asset-intent [bill]="action" />
+            <button type="button" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
+              (click)="reviewAction('APPLY_STATUTES',action)">Review voted economic fact</button>
+          }
+          @if(action.kind==='FUND_REDEMPTION' && action.redemption){
+            <button type="button" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available || redemptionFundingPaused()"
+              (click)="reviewAction('FUND_REDEMPTION',action)">Review permanent claim funding</button>
+          }
+        </article>
+      }
+      @if(s.approvedActionsTruncated){<p class="notice">Showing the latest 32 approved actions. Older approved actions remain on chain.</p>}
+      @for(delay of s.delays; track delay.ticketId){
+        <article class="waiting"><span class="spinner" aria-hidden="true"></span><div>
+          <h3>{{delay.kind==='UPGRADE_ACTIVATION' ? 'Code activation' : 'Reopening paused operations'}}</h3>
+          <p>Earliest activation: <strong>{{delay.activationNotBefore * 1000 | date:'MMM d, h:mm:ss a'}}</strong></p>
+          <p class="muted">The network enforces this delay. Reaching the displayed time does not itself execute the action.</p>
+          @if(delay.kind==='UPGRADE_ACTIVATION' && s.pendingUpgrade; as upgrade){
+            <button type="button" [disabled]="!delayReady(delay.activationNotBefore) || !!pendingAction() || !!s.proposal || s.pauseMask>=16"
+              (click)="reviewAction('ACTIVATE_UPGRADE',upgrade)">Review code activation</button>
+          } @else if(delay.kind==='EMERGENCY_REOPENING'){
+            <button type="button" [disabled]="!delayReady(delay.activationNotBefore) || !!pendingAction()" (click)="reviewAction('REOPEN_OPERATIONS')">Review reopening</button>
+          }
+        </div></article>
+      }
+      @if(s.pauseMask){<p class="notice">A scoped pause is active. Holder voting, ordinary transfers, unlocks, funded redemptions and earned claims remain protected.</p>}
+      @if(s.exchangeFees; as fee){
+        <article class="proposal"><h3>Confirmed exchange fee</h3>
+          <p><strong>{{fee.totalBps / 100 | number:'1.0-2'}}% total</strong> · {{fee.sgtRewardsBps / 100 | number:'1.0-2'}}% to SGT rewards · {{fee.protocolBps / 100 | number:'1.0-2'}}% to the protocol.</p>
+          <p class="muted">Read from the confirmed parameter authority. A later change requires administrator publication consent and a holder vote.</p>
+        </article>
+      }
+      <details class="network"><summary>Confirmed network state</summary>
+        <dl class="evidence"><dt>Total SGT</dt><dd>{{s.supply.total | number}}</dd><dt>Locked in voting</dt><dd>{{s.supply.locked | number}}</dd>
+          <dt>Undelivered escrow</dt><dd>{{s.supply.undeliveredEscrow | number}}</dd><dt>Generation</dt><dd>{{s.generationId}}</dd></dl>
+        @for(component of s.components; track component.componentId){<div class="component"><strong>Component version {{component.version}}</strong><code>{{component.componentId}}</code><span>Active module</span><code>{{component.moduleHash}}</code></div>}
+      </details>
+    }
+  </section>
+  @if(operations()?.operations?.length || operationsError()){
+    <section class="status-card saved-operations" aria-labelledby="saved-operations-title">
+      <h2 id="saved-operations-title">Saved chain actions</h2>
+      @if(operationsError()){<p class="notice" role="status">We couldn’t refresh the saved action history. Previous results remain below. If your admin session expired, sign in again; do not resubmit a transaction.</p>}
+      @for(op of operations()?.operations; track op.operationId){
+        <article class="operation" [attr.aria-busy]="!!op.transactionId && op.stage!=='CONFIRMED'">
+          <div class="status-heading"><h3>{{operationLabel(op.kind)}}</h3>
+            <span class="operation-stage">{{op.stage==='CONFIRMED' ? 'Confirmed' : op.transactionId ? 'Checking confirmation' : 'Awaiting review'}}</span></div>
+          <p role="status">@if(op.transactionId && op.stage!=='CONFIRMED'){<span class="spinner" aria-hidden="true"></span>}{{operationMessage(op)}}</p>
+          @if(!op.transactionId && op.stage==='PREPARED'){
+            @if(op.kind!=='CREATE_RECIPIENT_VAULT'){<button type="button" [disabled]="!!pendingAction()" (click)="resumeSaved(op)">Review this saved action</button>}
+            @else{<a routerLink="/admin/genesis">View recipient setup</a>}
+          }
+          @if(op.lastCheckedAt; as checked){<small class="muted">Last checked {{checked * 1000 | date:'MMM d, h:mm:ss a'}}</small>}
+          <details><summary>Saved action receipt</summary><dl class="evidence">
+            <dt>Operation</dt><dd>{{op.operationId}}</dd><dt>Transaction</dt><dd>{{op.transactionId || 'Not submitted'}}</dd>
+            <dt>Maximum authorized fee</dt><dd>{{op.feeCapMojos}} mojos · Testnet11</dd>
+          </dl></details>
+        </article>
+      }
+    </section>
+  }
+</main>

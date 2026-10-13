@@ -35,6 +35,7 @@ import {
 import { formatError } from '../../../utils/format-error';
 import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
 import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
+import { GenerationCollectionMintComponent } from '../../../components/admin-workspace/generation-collection-mint.component';
 
 type EditorSection =
   | 'classification'
@@ -69,6 +70,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
     ProjectTeamFormComponent,
     ProjectTeamSummaryComponent,
     AdminRefreshStatusComponent,
+    GenerationCollectionMintComponent,
   ],
   providers: [AdminStatusRefresh],
   template: `
@@ -112,7 +114,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
               <strong>Pricing pending</strong>
               <span>Your dollar figures can be saved while price conversion is pending. A current signed XCH price is required before sealing or issuing SmartDeeds.</span>
               @if (canEdit()) {
-                <button type="button" class="btn btn--ghost" data-ux-action="check_status" [disabled]="!['idle', 'saved'].includes(saveState())" (click)="refreshPricing()">Refresh pricing</button>
+                <button type="button" class="btn btn--ghost" data-ux-action="save_draft" [disabled]="!['idle', 'saved'].includes(saveState())" (click)="refreshPricing()">Apply pricing to draft</button>
               }
             </aside>
           }
@@ -221,6 +223,11 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                     <fieldset class="stacked" [disabled]="!canEdit()">
                       @for (key of requiredDiligenceKeys(); track key) {
                         <article class="repeat-row diligence-row">
+                          @if (canonicalDiligenceSection(key); as section) {
+                            <strong>{{ humanize(key) }}</strong>
+                            <p>Uses the saved {{ section === 'property' ? 'property details' : section === 'operations' ? 'occupancy details' : 'financial details' }}. Values and unresolved details are shown in the preview.</p>
+                            <button type="button" class="secondary" (click)="activeSection.set(section)">View source fields</button>
+                          } @else {
                           <div class="field-grid">
                             <label class="span-2">{{ humanize(key) }}
                               <textarea rows="3" [ngModel]="diligenceValue(key)" (ngModelChange)="setDiligenceValue(key, $event)"></textarea>
@@ -228,6 +235,7 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                             <label>As-of date<input type="date" [ngModel]="diligenceDate(key)" (ngModelChange)="setDiligenceDate(key, $event)" /></label>
                             <label>Unit / basis<input type="text" [ngModel]="diligenceUnit(key)" (ngModelChange)="setDiligenceUnit(key, $event)" /></label>
                           </div>
+                          }
                         </article>
                       }
                     </fieldset>
@@ -271,8 +279,18 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                     <label>Target raise ($)<input type="text" inputmode="decimal" [(ngModel)]="displayUnits.targetRaiseUsd" (ngModelChange)="changed()" placeholder="500000.00" /></label>
                     <label>Currency<input type="text" value="USD" readonly /></label>
                     <label>Minimum investment ($)<input type="text" inputmode="decimal" [(ngModel)]="displayUnits.minimumInvestmentUsd" (ngModelChange)="changed()" placeholder="500.00" /></label>
+                    @if (draft.purpose === 'TEST_ONLY') {
+                      <label>FSRE share of market value (%)<input type="number" min="0.01" max="100" step="0.01" [ngModel]="fsrePercent()" (ngModelChange)="setFsrePercent($event)" /></label>
+                      <label>Outside term (months)<input type="number" min="1" max="120" [ngModel]="draft.fsreTerms?.outsideTermMonths" (ngModelChange)="setFsreMonth('outsideTermMonths', $event)" /></label>
+                      <label>Projected duration, from (months)<input type="number" min="1" max="120" [ngModel]="draft.fsreTerms?.projectedMonthsMin" (ngModelChange)="setFsreMonth('projectedMonthsMin', $event)" /></label>
+                      <label>Projected duration, to (months)<input type="number" min="1" max="120" [ngModel]="draft.fsreTerms?.projectedMonthsMax" (ngModelChange)="setFsreMonth('projectedMonthsMax', $event)" /></label>
+                      <p class="span-2 field-help">FSRE participation is relative to market value. It is not an annualized interest rate or a guaranteed cash return.</p>
+                      <label>Valuation basis<select [(ngModel)]="draft.valuationBasis" (ngModelChange)="changed()"><option [ngValue]="undefined">Choose basis</option><option value="TO_BE_BUILT">To be built</option><option value="AS_IS">As is</option></select></label>
+                      <label>Valuation evidence<select [(ngModel)]="draft.valuationEvidence" (ngModelChange)="changed()"><option [ngValue]="undefined">Choose evidence status</option><option value="USER_CONFIRMED">User confirmed; report unresolved</option><option value="REPORT_REVIEWED">Report reviewed</option></select></label>
+                    } @else {
                     <label>Projected return (%)<input type="text" inputmode="decimal" [(ngModel)]="displayUnits.projectedReturnPercent" (ngModelChange)="changed()" placeholder="6.00" /></label>
                     <label>Term, months<input type="text" inputmode="numeric" [(ngModel)]="draft.offering!.termMonths" (ngModelChange)="changed()" /></label>
+                    }
                     <label>Asset class<input type="text" [value]="draft.offering!.assetClass || 'Choose in Classification'" readonly /></label>
                     <label>Jurisdiction<input type="text" [(ngModel)]="draft.offering!.jurisdiction" (ngModelChange)="changed()" placeholder="US-TX" /></label>
                     <label class="span-2">Protocol treasury<input class="mono" type="text" [value]="draft.offering!.royaltyPuzhash || 'Signed ceremony treasury unavailable'" readonly /></label>
@@ -443,7 +461,17 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                     }
                     <div class="comment-form"><textarea rows="3" [(ngModel)]="commentBody" placeholder="Add a review comment"></textarea><label class="check-row"><input type="checkbox" [(ngModel)]="commentBlocking" />Blocks sealing</label><button type="button" (click)="addComment()" [disabled]="!commentBody.trim()">Comment</button></div>
                   </section>
+                  @if (draft.purpose === 'TEST_ONLY') {
+                    <aside class="section-note"><strong>Test edition — unresolved details stay visible</strong><span>Mark each missing legal or diligence field explicitly. Filling it later requires a new revision and review.</span></aside>
+                    @for (unknown of draft.unknownFields || []; track $index) {
+                      <div class="repeat-row"><label>Unresolved detail<select [(ngModel)]="unknown.path" (ngModelChange)="changed()" [disabled]="!canEdit()">@for (choice of unknownChoices(); track choice.path) { <option [value]="choice.path">{{ choice.label }}</option> }</select></label><label>Why unresolved<textarea [(ngModel)]="unknown.reason" (ngModelChange)="changed()" [disabled]="!canEdit()"></textarea></label><button (click)="removeUnknown($index)" [disabled]="!canEdit()">Remove resolved item</button></div>
+                    }
+                    <button class="btn btn--ghost" (click)="addUnknown()" [disabled]="!canEdit()">Add unresolved field</button>
+                  }
                   <div class="preview-band"><pp-property-dossier [workspace]="previewWorkspace()" /></div>
+                  @if (draft.purpose === 'TEST_ONLY' && isOwner() && canEdit()) {
+                    <button class="btn btn--primary" (click)="acknowledgePreview()" [disabled]="reviewBusy() || !['idle', 'saved'].includes(saveState())">{{ reviewBusy() ? 'Saving preview review…' : 'I reviewed this public preview' }}</button>
+                  }
                 }
 
                 @case ('presale') {
@@ -535,6 +563,9 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                   @if (collection.state === 'DRAFT' || collection.state === 'REVIEW') {
                     <section class="locked-state"><strong>Seal the dossier first</strong><span>Proposal hashes cannot be prepared from mutable metadata.</span></section>
                   } @else {
+                    @if(collection.dossier.purpose === 'TEST_ONLY'){
+                      <solslot-generation-collection-mint [collection]="collection" />
+                    }@else{
                     <dl class="commitment-grid"><div><dt>Metadata root</dt><dd class="mono">{{ collection.metadataRoot }}</dd></div><div><dt>Anchor ID</dt><dd class="mono">{{ collection.metadataAnchorId || 'Assigned by first proposal' }}</dd></div><div><dt>Payload</dt><dd>{{ collection.canonicalByteSize | number }} bytes</dd></div><div><dt>Network</dt><dd>{{ feature()?.network || 'testnet11' }}</dd></div></dl>
                     <div class="wallet-binding"><div><strong>Owner signing member</strong><span class="mono">{{ ownerMemberHash() || 'Not derived' }}</span></div><button type="button" (click)="deriveOwnerHash()" [disabled]="ownerHashBusy()">{{ ownerHashBusy() ? 'Deriving…' : 'Derive from wallet' }}</button></div>
                     @if (governanceError()) { <p class="inline-error">{{ governanceError() }}</p> }
@@ -556,7 +587,8 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                     }
                     @if (publishResult(); as result) { <section class="publish-result" [attr.data-kind]="result.kind"><strong>{{ publishResultTitle(result) }}</strong><span>{{ publishResultDetail(result) }}</span></section> }
                     @if (collection.anchorEvidence.length) { <button class="btn btn--ghost" type="button" data-ux-action="check_status" (click)="refreshEvidence()">Refresh chain reconstruction</button> }
-                    @if (collection.state === 'PUBLISHED' && isOwner()) {
+                    }
+                    @if (collection.state === 'PUBLISHED' && isOwner() && collection.dossier.purpose !== 'TEST_ONLY') {
                       <section class="amendment-panel">
                         <div class="section-head section-head--small"><span>Owner-signed, not SGT-governed</span><h2>Operational update</h2></div>
                         @if (!amendmentOpen()) {
@@ -798,7 +830,7 @@ export class CollectionEditorComponent implements OnDestroy {
       if (['dirty', 'saving', 'error', 'conflict'].includes(this.saveState())) return 'Updates paused to protect your unsaved fields.';
       if (this.mediaUploading() || this.documentUploading() || this.privateDocumentUploading() || this.proposalBusy() || this.sealing() || this.reviewBusy() || this.presaleBusy() || this.amendmentBusy() || this.amendmentOpen() || this.mintPreview()) return 'Updates paused while you review or complete an action.';
       return null;
-    });
+    }, () => this.workspace()?.deeds.some(deed => !['PLANNED', 'EXECUTED'].includes(deed.proposalState)) ?? false);
   }
 
   ngOnDestroy(): void {
@@ -847,11 +879,25 @@ export class CollectionEditorComponent implements OnDestroy {
 
   pricingPending(): boolean {
     const offering = this.draftModel?.offering;
-    return Boolean(offering?.targetRaiseMinor && offering.targetRaiseMinor !== '0' && !offering.parValueMojos);
+    return Boolean(offering?.targetRaiseMinor && offering.targetRaiseMinor !== '0' &&
+      (!offering.parValueMojos || (this.draftModel?.purpose === 'TEST_ONLY' &&
+        (!this.draftModel.pricingRoundHash || this.workspace()?.readiness.issues.some(i => i.code === 'PRICING_RECEIPT_REQUIRED')))));
   }
 
   async refreshPricing(): Promise<void> {
     if (!this.canEdit() || !['idle', 'saved'].includes(this.saveState())) return;
+    if (this.draftModel?.purpose === 'TEST_ONLY') {
+      if (!this.isOwner() || !this.workspace()) return;
+      this.saveState.set('saving');
+      this.saveError.set(null);
+      try {
+        this.applyWorkspace(await this.api.applyTestPricing(this.workspace()!));
+      } catch (error) {
+        this.saveError.set(formatError(error));
+        this.saveState.set(error instanceof HttpErrorResponse && error.status === 409 ? 'conflict' : 'error');
+      }
+      return;
+    }
     this.editGeneration += 1;
     this.saveState.set('dirty');
     await this.saveNow();
@@ -910,6 +956,7 @@ export class CollectionEditorComponent implements OnDestroy {
       draft.property.propertyType = classification.propertySubtype;
     }
     this.syncTrustedTreasury();
+    this.addCanonicalDiligenceReferences();
     this.changed();
   }
 
@@ -926,6 +973,7 @@ export class CollectionEditorComponent implements OnDestroy {
     const typed = overlay as 'affordable-housing' | 'senior-housing';
     if (selected && !overlays.includes(typed)) overlays.push(typed);
     if (!selected) this.draftModel!.classification!.programOverlays = overlays.filter((item) => item !== typed);
+    this.addCanonicalDiligenceReferences();
     this.changed();
   }
 
@@ -943,20 +991,42 @@ export class CollectionEditorComponent implements OnDestroy {
   }
 
   diligenceValue(key: string): string { return this.diligenceItem(key).value || ''; }
+  canonicalDiligenceSection(key: string): EditorSection | null {
+    if (this.draftModel?.purpose !== 'TEST_ONLY') return null;
+    return ({valuation: 'economics', 'as-completed-valuation': 'economics', debt: 'economics',
+      occupancy: 'operations', 'building-details': 'property'} as Record<string, EditorSection>)[key] || null;
+  }
   diligenceDate(key: string): string { return this.diligenceItem(key).asOfDate || ''; }
   diligenceUnit(key: string): string { return this.diligenceItem(key).unit || ''; }
 
-  setDiligenceValue(key: string, value: string): void { this.diligenceItem(key).value = value; this.changed(); }
-  setDiligenceDate(key: string, value: string): void { this.diligenceItem(key).asOfDate = value || undefined; this.changed(); }
-  setDiligenceUnit(key: string, value: string): void { this.diligenceItem(key).unit = value || undefined; this.changed(); }
+  private addCanonicalDiligenceReferences(): void {
+    if (this.draftModel?.purpose !== 'TEST_ONLY') return;
+    const references: Record<string, string[]> = {
+      valuation: ['/valuation', '/valuationBasis', '/valuationEvidence'],
+      'as-completed-valuation': ['/valuation', '/valuationBasis', '/valuationEvidence'],
+      debt: ['/capital'], occupancy: ['/operations/occupancyStatus'], 'building-details': ['/property'],
+    };
+    // Only explicit classification edits call this. Rendering and background
+    // refresh cannot change metadata or invalidate a review. Existing entries,
+    // including conflicting copied values, remain visible to server validation.
+    for (const key of this.requiredDiligenceKeys()) {
+      if (references[key] && !this.draftModel.diligence.some(item => item.key === key)) {
+        this.draftModel.diligence.push({key, references: [...references[key]], evidenceAssetIds: []});
+      }
+    }
+  }
 
-  private diligenceItem(key: string): PropertyDossierDraftV1['diligence'][number] {
+  setDiligenceValue(key: string, value: string): void { this.diligenceItem(key, true).value = value; this.changed(); }
+  setDiligenceDate(key: string, value: string): void { this.diligenceItem(key, true).asOfDate = value || undefined; this.changed(); }
+  setDiligenceUnit(key: string, value: string): void { this.diligenceItem(key, true).unit = value || undefined; this.changed(); }
+
+  private diligenceItem(key: string, create = false): PropertyDossierDraftV1['diligence'][number] {
     const draft = this.draftModel;
     if (!draft) return { key, evidenceAssetIds: [] };
     let item = draft.diligence.find((candidate) => candidate.key === key);
     if (!item) {
       item = { key, evidenceAssetIds: [] };
-      draft.diligence.push(item);
+      if (create) draft.diligence.push(item);
     }
     return item;
   }
@@ -1428,6 +1498,47 @@ export class CollectionEditorComponent implements OnDestroy {
     }
   }
 
+  fsrePercent(): number | undefined { const value = this.draftModel?.fsreTerms?.participationBps; return value === undefined ? undefined : value / 100; }
+  setFsrePercent(value: number | null): void {
+    if (!this.draftModel || !this.canEdit()) return;
+    this.draftModel.fsreTerms ||= {structure: 'FSRE', returnBasis: 'MARKET_VALUE'};
+    this.draftModel.fsreTerms.participationBps = value === null ? undefined : Math.round(value * 100);
+    this.changed();
+  }
+  setFsreMonth(field: 'outsideTermMonths' | 'projectedMonthsMin' | 'projectedMonthsMax', value: number | null): void {
+    if (!this.draftModel || !this.canEdit()) return;
+    this.draftModel.fsreTerms ||= {structure: 'FSRE', returnBasis: 'MARKET_VALUE'};
+    this.draftModel.fsreTerms[field] = value ?? undefined;
+    this.changed();
+  }
+  unknownChoices(): Array<{path: string; label: string}> {
+    const fields = [
+      ['valuation/asOfDate', 'Appraisal date'], ['valuation/source', 'Appraiser or report source'],
+      ['capital/debtBalanceMinor', 'Current debt / payoff'], ['capital/debtRateBps', 'Current debt rate'],
+      ['operations/occupancyStatus', 'Occupancy'], ['operations/monthlyGrossRentMinor', 'Monthly gross rent'],
+      ['operations/annualOperatingExpenseMinor', 'Annual operating expense'],
+      ['legal/issuerLegalName', 'Issuer legal name'], ['legal/securityStructure', 'Legal structure'],
+      ['legal/collateralSummary', 'Collateral'], ['legal/filingStatus', 'Filing status'], ['legal/transferPolicy', 'Transfer policy'],
+    ];
+    return [...fields.map(([path, label]) => ({path: '/' + path, label})),
+      ...this.requiredDiligenceKeys().map(key => ({path: '/diligence/' + key, label: 'Diligence: ' + key.replaceAll('-', ' ')}))];
+  }
+  addUnknown(): void {
+    if (!this.draftModel || !this.canEdit()) return;
+    this.draftModel.unknownFields ||= [];
+    this.draftModel.unknownFields.push({path: '/legal/issuerLegalName', status: 'UNKNOWN', reason: ''});
+    this.changed();
+  }
+  removeUnknown(index: number): void { if (!this.canEdit()) return; this.draftModel?.unknownFields?.splice(index, 1); this.changed(); }
+  async acknowledgePreview(): Promise<void> {
+    const collection = this.workspace();
+    if (!collection || !this.isOwner() || !['idle', 'saved'].includes(this.saveState())) return;
+    this.reviewBusy.set(true);
+    try { this.applyWorkspace(await this.api.acknowledgePreview(collection)); }
+    catch (error) { this.saveError.set(formatError(error)); }
+    finally { this.reviewBusy.set(false); }
+  }
+
   previewWorkspace(): CollectionWorkspace {
     const collection = this.workspace();
     if (!collection || !this.draftModel) throw new Error('Collection preview is unavailable.');
@@ -1609,6 +1720,9 @@ export class CollectionEditorComponent implements OnDestroy {
         : cleanDraft(this.draftModel, collection.revision);
       if (!cleanSubmission) {
         const request = displayUnitRequest(this.displayUnits);
+        // Test editions bind a saved signed receipt through an explicit pricing
+        // action. Typing a note or background status refresh cannot reprice it.
+        if (payload.purpose === 'TEST_ONLY') request.deriveXchPar = false;
         validateDisplayRequest(request);
         let conversion: CollectionDisplayUnitConversion;
         try {
@@ -1698,7 +1812,7 @@ function isUnavailableCollectionPrice(error: unknown): boolean {
 
 function normalizeDraft(value: PropertyDossierDraftV1): PropertyDossierDraftV1 {
   const draft = structuredClone(value);
-  draft.schemaVersion = PROPERTY_DOSSIER_SCHEMA;
+  draft.schemaVersion ||= PROPERTY_DOSSIER_SCHEMA;
   draft.media ||= [];
   draft.documents ||= [];
   draft.risks ||= [];
@@ -1799,6 +1913,10 @@ function applyDisplayUnitConversion(
   draft: PropertyDossierDraftV1,
   conversion: CollectionDisplayUnitConversion,
 ): void {
+  const savedPricing = draft.purpose === 'TEST_ONLY' ? {
+    target: draft.offering?.targetRaiseMinor, par: draft.offering?.parValueMojos,
+    shares: draft.deedAllocation.map(d => d.sharePpm), pars: draft.deedAllocation.map(d => d.parValueMojos),
+  } : null;
   draft.valuation ||= {};
   draft.offering ||= {};
   draft.operations ||= {};
@@ -1810,9 +1928,9 @@ function applyDisplayUnitConversion(
   draft.valuation.marketValueMinor = conversion.moneyMinor['marketValue'];
   draft.offering.targetRaiseMinor = conversion.moneyMinor['targetRaise'];
   draft.offering.minimumInvestmentMinor = conversion.moneyMinor['minimumInvestment'];
-  draft.offering.projectedReturnBps = conversion.percentageBps['projectedReturn'];
+  draft.offering.projectedReturnBps = draft.purpose === 'TEST_ONLY' ? undefined : conversion.percentageBps['projectedReturn'];
   draft.offering.royaltyBps = conversion.percentageBps['technologyFee'];
-  draft.offering.governanceQuorum = conversion.governanceQuorum;
+  draft.offering.governanceQuorum = draft.purpose === 'TEST_ONLY' ? undefined : conversion.governanceQuorum;
   draft.capital.debtBalanceMinor = conversion.moneyMinor['debtBalance'];
   draft.capital.debtRateBps = conversion.percentageBps['debtRate'];
   draft.operations.monthlyGrossRentMinor = conversion.moneyMinor['monthlyGrossRent'];
@@ -1825,11 +1943,22 @@ function applyDisplayUnitConversion(
     deed.parValueMojos = conversion.xchParMojos?.deeds[`deed.${index}`];
   });
   draft.offering.parValueMojos = conversion.xchParMojos?.collection;
+  if (savedPricing) {
+    const sameEconomics = savedPricing.target === draft.offering.targetRaiseMinor &&
+      savedPricing.shares.length === draft.deedAllocation.length &&
+      draft.deedAllocation.every((deed, i) => deed.sharePpm === savedPricing.shares[i]);
+    if (sameEconomics) {
+      draft.offering.parValueMojos = savedPricing.par;
+      draft.deedAllocation.forEach((deed, i) => deed.parValueMojos = savedPricing.pars[i]);
+    } else {
+      draft.pricingRoundHash = undefined;
+    }
+  }
 }
 
 function cleanDraft(value: PropertyDossierDraftV1, revision: number): PropertyDossierDraftV1 {
   const cleaned = stripEmpty(structuredClone(value)) as PropertyDossierDraftV1;
-  cleaned.schemaVersion = PROPERTY_DOSSIER_SCHEMA;
+  cleaned.schemaVersion ||= PROPERTY_DOSSIER_SCHEMA;
   cleaned.revision = revision;
   cleaned.media ||= [];
   cleaned.documents ||= [];

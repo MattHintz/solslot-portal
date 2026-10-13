@@ -1,3 +1,4 @@
+import { deploymentGeneration } from '../utils/deployment-generation';
 import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { computeAddress, SigningKey, verifyTypedData } from 'ethers';
@@ -10,6 +11,7 @@ import { JourneyTelemetryService } from './journey-telemetry.service';
 
 /** Lowercase V2 key intentionally ignores every pre-ceremony session. */
 const STORAGE_KEY = 'solslot_admin_session_v3';
+export const adminSessionStorageKey = () => STORAGE_KEY + (deploymentGeneration() ? ':generation:' + deploymentGeneration() : '');
 
 const ADMIN_LOGIN_TYPES = [
   { name: 'owner', type: 'address' },
@@ -41,6 +43,7 @@ export class AdminSessionService implements OnDestroy {
   private readonly journey = inject(JourneyTelemetryService);
   readonly connectionNotice = signal('');
   private refreshFailures = 0;
+  private readonly storageKey = adminSessionStorageKey();
   private readonly _state = signal<AdminSessionState>(this.load());
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -104,7 +107,7 @@ export class AdminSessionService implements OnDestroy {
     this.clearRefreshTimer();
     this.refreshFailures = 0;
     this.connectionNotice.set('');
-    if (typeof window !== 'undefined') sessionStorage.removeItem(STORAGE_KEY);
+    if (typeof window !== 'undefined') sessionStorage.removeItem(this.storageKey);
   }
 
   logoutAndRedirect(): void {
@@ -157,13 +160,13 @@ export class AdminSessionService implements OnDestroy {
       typedData: state.typedData,
       jwt: state.jwt,
     };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+    sessionStorage.setItem(this.storageKey, JSON.stringify(persisted));
   }
 
   /** Restore only a complete envelope that still verifies now. */
   private load(): AdminSessionState {
     if (typeof window === 'undefined') return { kind: 'anonymous' };
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(this.storageKey);
     if (!raw) return { kind: 'anonymous' };
 
     try {
@@ -190,7 +193,7 @@ export class AdminSessionService implements OnDestroy {
         jwt: parsed.jwt,
       };
     } catch {
-      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(this.storageKey);
       return { kind: 'anonymous' };
     }
   }
@@ -214,6 +217,8 @@ export class AdminSessionService implements OnDestroy {
     }
 
     const typedData = input.typedData;
+    const generation = deploymentGeneration();
+    const loginTypes = [...ADMIN_LOGIN_TYPES, ...(generation ? [{name:'generationId',type:'bytes32'}] : [])];
     if (
       typedData.primaryType !== 'SolslotAdminLogin' ||
       !sameKeys(typedData.domain, ['chainId', 'name', 'version']) ||
@@ -224,8 +229,9 @@ export class AdminSessionService implements OnDestroy {
       JSON.stringify(typedData.types['EIP712Domain']) !==
         JSON.stringify(EIP712_DOMAIN_TYPES) ||
       JSON.stringify(typedData.types['SolslotAdminLogin']) !==
-        JSON.stringify(ADMIN_LOGIN_TYPES) ||
-      !sameKeys(typedData.message, ['authType', 'issuedAt', 'nonce', 'owner', 'scope']) ||
+        JSON.stringify(loginTypes) ||
+      !sameKeys(typedData.message, ['authType', 'issuedAt', 'nonce', 'owner', 'scope', ...(generation ? ['generationId'] : [])]) ||
+      (typedData.message['generationId'] || null) !== generation ||
       normalizeAddress(String(typedData.message['owner'] || '')) !==
         normalizeAddress(input.address) ||
       !/^0x[0-9a-f]{64}$/i.test(String(typedData.message['nonce'] || '')) ||
@@ -286,6 +292,7 @@ export class AdminSessionService implements OnDestroy {
       String(jwtPayload['sub'] || '').toLowerCase() !== address ||
       jwtPayload['scope'] !== 'admin' ||
       jwtPayload['auth_type'] !== 'evm' ||
+      (jwtPayload['generation_id'] || null) !== generation ||
       Number(jwtPayload['exp']) !== input.expiresAt ||
       Number(jwtPayload['authority_slot']) !== input.authoritySlot ||
       normalizePubkey(String(jwtPayload['compressed_pubkey'] || '')) !== pubkey

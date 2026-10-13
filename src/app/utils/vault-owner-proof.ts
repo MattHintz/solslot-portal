@@ -4,6 +4,8 @@
  * Module hash: protocol vault_singleton_inner_v2.clsp, bound by the release sources.
  */
 import { getBytes, hexlify, sha256 } from 'ethers';
+import { deploymentGeneration } from './deployment-generation';
+import { GENERATION_CUSTODY_MODULE_HASH } from './generation-vault-module';
 
 export const VAULT_OWNER_MODULE_HASH =
   '0x104a7d0356d628b9073bf39f550a3b41163008381e2db3b8d2327ffe20216903';
@@ -13,6 +15,10 @@ export const VAULT_SINGLETON_LAUNCHER_HASH =
   '0xeff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9';
 export const EMPTY_VAULT_IDENTITY_ROOT =
   '0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a';
+
+export function currentVaultOwnerModuleHash(): string {
+  return deploymentGeneration() ? GENERATION_CUSTODY_MODULE_HASH : VAULT_OWNER_MODULE_HASH;
+}
 
 export interface VaultOwnerBinding {
   authType: 1 | 2 | 3;
@@ -72,7 +78,7 @@ export function canonicalOwnedVaultHash(
   const singletonHash = bytes32(VAULT_SINGLETON_MODULE_HASH);
   const launcherHash = bytes32(VAULT_SINGLETON_LAUNCHER_HASH);
   const struct = pair(atom(singletonHash), pair(atom(bytes32(launcherId)), atom(launcherHash)));
-  const inner = curry(bytes32(VAULT_OWNER_MODULE_HASH), [
+  const inner = curry(bytes32(currentVaultOwnerModuleHash()), [
     struct, atom(key), atom(Uint8Array.of(owner.authType)),
     atom(atom(key)), atom(bytes32(identityRoot)), atom(bytes32(coordinates.bridgePolicyHash)),
     atom(singletonHash), atom(bytes32(coordinates.poolLauncherId)), atom(launcherHash),

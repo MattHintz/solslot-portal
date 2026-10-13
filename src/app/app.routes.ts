@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { adminAuthGuard } from './services/admin-auth.guard';
+import { deploymentGeneration } from './utils/deployment-generation';
 
 export const routes: Routes = [
   {
@@ -229,6 +230,7 @@ export const routes: Routes = [
     // open to any SGT holder, not just allowlisted admins.
     path: 'committee',
     loadComponent: () =>
+      deploymentGeneration() ? import('./pages/admin/committee/generation-committee.component').then(m => m.GenerationCommitteeComponent) :
       import('./pages/admin/committee/committee.component').then(
         (m) => m.CommitteeComponent,
       ),

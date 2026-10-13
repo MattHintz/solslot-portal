@@ -1,0 +1,270 @@
+{
+  "review": {
+    "authorityCoin": {
+      "amount": 1,
+      "parent_coin_info": "0x3ecaaec67274da5002276699c4adbaa54817dfa73c9d8e2582feea1851db8632",
+      "puzzle_hash": "0x4de636865eb8a7571864f7d799f2aa63f7f2e77cd96201742373eea32551508f"
+    },
+    "authorityCoinId": "0xbb31413c7fff502c4b932ffc0f21ee64644420973663873dee2f4e3fe04a9a29",
+    "authorityDelegatedHash": "0xab8cc893b700349d26d005f18b20840aa1459ff964be7cbefc8af4e3e8addf4c",
+    "authorityInnerHash": "0x73991486e4cc169a427fbdab01b54900a16bd5cff1a570c0f37e15fd78703c22",
+    "authorityLauncherId": "0x3ecaaec67274da5002276699c4adbaa54817dfa73c9d8e2582feea1851db8632",
+    "authorityPuzzleHash": "0x4de636865eb8a7571864f7d799f2aa63f7f2e77cd96201742373eea32551508f",
+    "authorityVersion": 1,
+    "billHash": "0x9940cb417e3ad479d8f30167bb6221f50681f94c4e0478c7a99edfd59b859898",
+    "coadministratorSlot": 1,
+    "createdAt": 1000,
+    "eligibleSupply": 30000,
+    "eligibleTotal": 1000000,
+    "expectedInputs": {
+      "components": {
+        "0xce79e2a4183f0790fa27fbb3dc84c827c01020e0d8a5874b1d8973de48ba2d3e": "0x78c85bd6c0cb7534f965f36cfeef18645293f164665f00d81459b54c6cc4eea6"
+      },
+      "governance": "0x9bf92b5486cf63e9fb98503557b8fb296e13176a812a1345e2a14ef2a0064f4d",
+      "holdings": "0xe4b89101ed93bdfc84233ef96e129ccf5231e687256f71f8ad5a2874434a3fb4",
+      "registry": "0x00a1ed3c34edef4b0426d1eb1d06385b5047172ecdc330f1a09fad5b41ccfad4"
+    },
+    "expiresAt": 87400,
+    "feeCapMojos": "1000",
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "governanceNonce": 0,
+    "holdingsRoot": "0x01f6635c5157d0bef2a15f5bba4f50e0b17ceaa54e5a3ab601b218e5592f1b12",
+    "identityCoins": [
+      {
+        "amount": 3,
+        "parent_coin_info": "0x07d1ab46c0ee0d58c81981da015c71f5ce1292d7416d4108a29241171041475c",
+        "puzzle_hash": "0xa443ad0d51c5965b726ea56cf2d5742748ae32b1255624f5f3d518f778d30369"
+      },
+      {
+        "amount": 5,
+        "parent_coin_info": "0xaf24a9170a5de349c971d17ef73ddcb5002f9e6a6f1aeba029eee623af239ff6",
+        "puzzle_hash": "0x78e96902e5ba64fa890290c6c6e05f6342ddd58e118f775b7aaae4e418fac96c"
+      },
+      {
+        "amount": 7,
+        "parent_coin_info": "0x9bf2ab7979606709fbe22fca26ae462f3447abd70249076782b5891d72894a40",
+        "puzzle_hash": "0x3fc72fd62c2a2beed5a7f43c10e61b27ad668f0c8bfb947218138b5ac352bc9f"
+      }
+    ],
+    "identityCustodies": [
+      "0x829f7ec444e86ba7c3e439d24881fbcddee8c86b41c13215da0d3c7358f7e9e7",
+      "0xab2ccdb90ad738a33315e4dbc51f9e002b7a88ff8216b19ef0e4d14c3e557a24",
+      "0xbb2fd2abda2ea4f508496a28dc6d37cd41c43af353d59053498c033098bad65c"
+    ],
+    "identityLauncherIds": [
+      "0x07d1ab46c0ee0d58c81981da015c71f5ce1292d7416d4108a29241171041475c",
+      "0xaf24a9170a5de349c971d17ef73ddcb5002f9e6a6f1aeba029eee623af239ff6",
+      "0x9bf2ab7979606709fbe22fca26ae462f3447abd70249076782b5891d72894a40"
+    ],
+    "identityPuzzles": [
+      "0xa443ad0d51c5965b726ea56cf2d5742748ae32b1255624f5f3d518f778d30369",
+      "0x78e96902e5ba64fa890290c6c6e05f6342ddd58e118f775b7aaae4e418fac96c",
+      "0x3fc72fd62c2a2beed5a7f43c10e61b27ad668f0c8bfb947218138b5ac352bc9f"
+    ],
+    "issuedAt": 1000,
+    "kind": "PUBLICATION_APPROVAL",
+    "network": "testnet11",
+    "pauseEpoch": 0,
+    "proposal": {
+      "billHash": "0x9940cb417e3ad479d8f30167bb6221f50681f94c4e0478c7a99edfd59b859898",
+      "kind": "STATUTES",
+      "statutes": {
+        "componentId": "0xce79e2a4183f0790fa27fbb3dc84c827c01020e0d8a5874b1d8973de48ba2d3e",
+        "key": "0x6666666666666666666666666666666666666666666666666666666666666666",
+        "launcherId": "0xd2587fca36b4a192953aa109d8b3f7cdadf4ac8eedf1f2d95b21660cc7e8b16e",
+        "nextRoot": "0xd8232f068d3f8831281899f6a4821a56c24459f8f006a42d3d7dd922a2bb66d1",
+        "previousRoot": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+        "record": [
+          "0x6666666666666666666666666666666666666666666666666666666666666666",
+          75000000000,
+          75000000000,
+          1,
+          0,
+          4294967296,
+          1
+        ],
+        "recordKind": "COLLECTION",
+        "revision": 0
+      }
+    },
+    "proposalId": "0xa63d3fa0dfd33945332ffae3d6092430dc151164754dc0a26d8ab9deb15efe5f",
+    "request": {
+      "coadministratorSlot": 1,
+      "expectedInputs": {
+        "components": {
+          "0xce79e2a4183f0790fa27fbb3dc84c827c01020e0d8a5874b1d8973de48ba2d3e": "0x78c85bd6c0cb7534f965f36cfeef18645293f164665f00d81459b54c6cc4eea6"
+        },
+        "governance": "0x9bf92b5486cf63e9fb98503557b8fb296e13176a812a1345e2a14ef2a0064f4d",
+        "holdings": "0xe4b89101ed93bdfc84233ef96e129ccf5231e687256f71f8ad5a2874434a3fb4",
+        "registry": "0x00a1ed3c34edef4b0426d1eb1d06385b5047172ecdc330f1a09fad5b41ccfad4"
+      },
+      "feeCapMojos": 1000,
+      "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+      "kind": "PUBLICATION_APPROVAL",
+      "parameters": null,
+      "proposalKind": "STATUTES",
+      "requestKey": "one",
+      "scope": null,
+      "statutes": {
+        "componentId": "0xce79e2a4183f0790fa27fbb3dc84c827c01020e0d8a5874b1d8973de48ba2d3e",
+        "currentRecords": [],
+        "key": "0x6666666666666666666666666666666666666666666666666666666666666666",
+        "launcherId": "0xd2587fca36b4a192953aa109d8b3f7cdadf4ac8eedf1f2d95b21660cc7e8b16e",
+        "nextRoot": "0xd8232f068d3f8831281899f6a4821a56c24459f8f006a42d3d7dd922a2bb66d1",
+        "previousRoot": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+        "record": [
+          "0x6666666666666666666666666666666666666666666666666666666666666666",
+          75000000000,
+          75000000000,
+          1,
+          0,
+          4294967296,
+          1
+        ],
+        "recordKind": "COLLECTION",
+        "revision": 0
+      },
+      "upgrade": null
+    },
+    "requestDigest": "0xb91e2ec4f144c3aa0b64c19d358529ed4abec6dad60044bc71e1ce36338e2f30",
+    "requestKey": "one",
+    "requiredVotes": 15000,
+    "scope": null,
+    "sourceManifestHash": "0x71cd394c55bedded2fd7159638acaff6201e886f7a20db8d15f58c4b0937741f",
+    "targetPuzzleHash": "0x84bb04d1cea53d9c39d6eb7f12718960befdb09c6c20163761dd36816e4739a5",
+    "packageId": "0x3597192787c3e3c5495d8a5d4eb6a6b86b24504f615553d579763dd42f2b8a90",
+    "stage": "AWAITING_APPROVALS",
+    "signatures": [],
+    "challenges": [
+      {
+        "coinId": "0xf2029f8c2f5e9233254a1c6c78db4bcfc6bbb16716c969b1c9ac0dc1584c6289",
+        "delegatedPuzzleHash": "0x680ced3034a073161d4489d2473500d6e4367c0d40d42634e99cf606fa43c784",
+        "digest": "0x5c645c419c6d32f60c4b63ae58e4d61190e4d39c92b86a2b1f18b88dcb418c0c",
+        "publicKey": "0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+        "slot": 0,
+        "typedData": {
+          "domain": {
+            "name": "Chia Coin Spend",
+            "salt": "0x37a90eb5185a9c4439a91ddc98bbadce7b4feba060d50116a067de66bf236615",
+            "version": "1"
+          },
+          "message": {
+            "coin_id": "0xf2029f8c2f5e9233254a1c6c78db4bcfc6bbb16716c969b1c9ac0dc1584c6289",
+            "delegated_puzzle_hash": "0x680ced3034a073161d4489d2473500d6e4367c0d40d42634e99cf606fa43c784"
+          },
+          "primaryType": "ChiaCoinSpend",
+          "types": {
+            "ChiaCoinSpend": [
+              {
+                "name": "coin_id",
+                "type": "bytes32"
+              },
+              {
+                "name": "delegated_puzzle_hash",
+                "type": "bytes32"
+              }
+            ],
+            "EIP712Domain": [
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "version",
+                "type": "string"
+              },
+              {
+                "name": "salt",
+                "type": "bytes32"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "coinId": "0x326c0206660793bb0e631bf188ff0cfe1ad65b21f29fe88771893da477b0ce9b",
+        "delegatedPuzzleHash": "0xe40bf6f9c16f215e50e2c1c767bfbf00f0eb02862a0bcb7dde59ea2030170229",
+        "digest": "0xeebef107914d94ab161e0fe2d5598901cda7311823b168cfa85de144615d73b7",
+        "publicKey": "0x024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
+        "slot": 1,
+        "typedData": {
+          "domain": {
+            "name": "Chia Coin Spend",
+            "salt": "0x37a90eb5185a9c4439a91ddc98bbadce7b4feba060d50116a067de66bf236615",
+            "version": "1"
+          },
+          "message": {
+            "coin_id": "0x326c0206660793bb0e631bf188ff0cfe1ad65b21f29fe88771893da477b0ce9b",
+            "delegated_puzzle_hash": "0xe40bf6f9c16f215e50e2c1c767bfbf00f0eb02862a0bcb7dde59ea2030170229"
+          },
+          "primaryType": "ChiaCoinSpend",
+          "types": {
+            "ChiaCoinSpend": [
+              {
+                "name": "coin_id",
+                "type": "bytes32"
+              },
+              {
+                "name": "delegated_puzzle_hash",
+                "type": "bytes32"
+              }
+            ],
+            "EIP712Domain": [
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "version",
+                "type": "string"
+              },
+              {
+                "name": "salt",
+                "type": "bytes32"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "pollAfterSeconds": 5
+  },
+  "request": {
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "requestKey": "one",
+    "kind": "PUBLICATION_APPROVAL",
+    "coadministratorSlot": 1,
+    "expectedInputs": {
+      "registry": "0x00a1ed3c34edef4b0426d1eb1d06385b5047172ecdc330f1a09fad5b41ccfad4",
+      "governance": "0x9bf92b5486cf63e9fb98503557b8fb296e13176a812a1345e2a14ef2a0064f4d",
+      "holdings": "0xe4b89101ed93bdfc84233ef96e129ccf5231e687256f71f8ad5a2874434a3fb4",
+      "components": {
+        "0xce79e2a4183f0790fa27fbb3dc84c827c01020e0d8a5874b1d8973de48ba2d3e": "0x78c85bd6c0cb7534f965f36cfeef18645293f164665f00d81459b54c6cc4eea6"
+      }
+    },
+    "feeCapMojos": 1000,
+    "proposalKind": "STATUTES",
+    "upgrade": null,
+    "parameters": null,
+    "statutes": {
+      "componentId": "0xce79e2a4183f0790fa27fbb3dc84c827c01020e0d8a5874b1d8973de48ba2d3e",
+      "launcherId": "0xd2587fca36b4a192953aa109d8b3f7cdadf4ac8eedf1f2d95b21660cc7e8b16e",
+      "revision": 0,
+      "recordKind": "COLLECTION",
+      "key": "0x6666666666666666666666666666666666666666666666666666666666666666",
+      "record": [
+        "0x6666666666666666666666666666666666666666666666666666666666666666",
+        75000000000,
+        75000000000,
+        1,
+        0,
+        4294967296,
+        1
+      ],
+      "previousRoot": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+      "nextRoot": "0xd8232f068d3f8831281899f6a4821a56c24459f8f006a42d3d7dd922a2bb66d1",
+      "currentRecords": []
+    },
+    "scope": null
+  }
+}

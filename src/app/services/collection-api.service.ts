@@ -67,6 +67,28 @@ export class CollectionApiService {
     );
   }
 
+  sourceDraft(collectionId: string): Promise<CollectionSourceSummary> {
+    return firstValueFrom(this.http.get<CollectionSourceSummary>(`${this.base}/admin/collection-source/${encodeURIComponent(collectionId)}`,
+      {headers: this.headers()}).pipe(timeout(20_000)));
+  }
+
+  createTestEdition(source: CollectionSourceSummary): Promise<CollectionWorkspace> {
+    return firstValueFrom(this.http.post<CollectionWorkspace>(`${this.base}/admin/collections/test-editions`,
+      {sourceCollectionId: source.collectionId, sourceRevision: source.revision, sourceDraftHash: source.draftHash},
+      {headers: this.headers()}).pipe(timeout(20_000)));
+  }
+
+  acknowledgePreview(collection: CollectionWorkspace): Promise<CollectionWorkspace> {
+    return firstValueFrom(this.http.post<CollectionWorkspace>(`${this.base}/admin/collections/${encodeURIComponent(collection.id)}/preview-acknowledgements`,
+      {draftHash: collection.draftHash}, {headers: this.headers(collection.revision)}).pipe(timeout(20_000)));
+  }
+
+  applyTestPricing(collection: CollectionWorkspace): Promise<CollectionWorkspace> {
+    return firstValueFrom(this.http.post<CollectionWorkspace>(
+      `${this.base}/admin/collections/${encodeURIComponent(collection.id)}/pricing/apply`, {},
+      {headers: this.headers(collection.revision)}).pipe(timeout(20_000)));
+  }
+
   get(collectionId: string): Promise<CollectionWorkspace> {
     return firstValueFrom(
       this.http.get<CollectionWorkspace>(
@@ -332,7 +354,11 @@ async function sha256File(file: File): Promise<string> {
 
 export type CollectionState = 'DRAFT' | 'REVIEW' | 'SEALED' | 'PUBLISHED';
 
+export interface CollectionSourceSummary {collectionId: string; revision: number; title: string; draftHash: string; generationId: string;}
+
 export interface CollectionFeatureStatus {
+  generationId?: string | null;
+  testEditionsEnabled?: boolean;
   metadataConfigured?: boolean;
   recovery?: { healthy: boolean; checkedAt: number | null; restoredAt: number | null };
   metadataEnabled: boolean;
@@ -480,6 +506,8 @@ export interface AnchorEvidence {
 }
 
 export interface CollectionWorkspace {
+  generationId?: string | null;
+  draftHash?: string;
   id: string;
   slug: string;
   ownerSubject: string;

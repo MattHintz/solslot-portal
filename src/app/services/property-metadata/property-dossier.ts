@@ -251,7 +251,17 @@ export interface DraftDeedAllocationV1 {
 }
 
 export interface PropertyDossierDraftV1 {
-  schemaVersion: typeof PROPERTY_DOSSIER_SCHEMA;
+  schemaVersion: typeof PROPERTY_DOSSIER_SCHEMA | 'solslot.testnet-property-dossier.v1';
+  purpose?: 'TEST_ONLY';
+  network?: 'testnet11';
+  generationId?: string;
+  pricingRoundHash?: string;
+  provenance?: { sourceCollectionId: string; sourceRevision: number; sourceDraftHash: string; sourceGenerationId: string };
+  unknownFields?: Array<{path: string; status: 'UNKNOWN'; reason: string}>;
+  fsreTerms?: { structure: 'FSRE'; returnBasis: 'MARKET_VALUE'; participationBps?: number;
+    outsideTermMonths?: number; projectedMonthsMin?: number; projectedMonthsMax?: number };
+  valuationBasis?: 'TO_BE_BUILT' | 'AS_IS';
+  valuationEvidence?: 'USER_CONFIRMED' | 'REPORT_REVIEWED';
   collectionId: string;
   revision: number;
   title: string;
@@ -279,6 +289,7 @@ export interface PropertyDossierDraftV1 {
   diligence: Array<{
     key: string;
     value?: string;
+    references?: string[];
     unit?: string;
     asOfDate?: string;
     evidenceAssetIds: string[];

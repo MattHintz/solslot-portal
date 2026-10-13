@@ -693,7 +693,7 @@ export class SgtAllocationsComponent {
       if (this.adminSession.isAuthenticated?.() === false) return 'Sign in again to check approvals.';
       if (this.busy()) return 'Updates paused while your wallet action is in progress.';
       return null;
-    });
+    }, () => Object.keys(this.publications()).length > 0 || this.proposals().some(item => item.state === 'ACTIVE'));
     void this.reload();
   }
 

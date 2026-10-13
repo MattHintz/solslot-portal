@@ -1,3 +1,4 @@
+import {GenerationFinalLaunchComponent} from '../../../components/admin-workspace/generation-final-launch.component';
 import { ZkPassportPrivacyComponent } from '../../../components/zkpassport-privacy/zkpassport-privacy.component';
 import { CommonModule } from '@angular/common';
 import {
@@ -37,6 +38,8 @@ import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { formatError } from '../../../utils/format-error';
 import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
 import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
+import { GenerationRecipientsComponent } from '../../../components/admin-workspace/generation-recipients.component';
+import { deploymentGeneration } from '../../../utils/deployment-generation';
 
 type WalletKind = 'injected' | 'walletconnect';
 type PendingDecision =
@@ -75,13 +78,14 @@ interface LaunchStage {
 @Component({
   selector: 'solslot-admin-genesis',
   standalone: true,
-  imports: [CommonModule, FormsModule, AdminWorkspaceNavComponent, ZkPassportPrivacyComponent, AdminRefreshStatusComponent],
+  imports: [CommonModule, FormsModule, AdminWorkspaceNavComponent, ZkPassportPrivacyComponent, AdminRefreshStatusComponent, GenerationRecipientsComponent, GenerationFinalLaunchComponent],
   providers: [AdminStatusRefresh],
   templateUrl: './genesis.component.html',
   styleUrl: './genesis.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GenesisComponent implements OnInit, OnDestroy {
+  readonly generationId=deploymentGeneration();
   readonly refresh = inject(AdminStatusRefresh);
   private readonly launch = inject(AdminLaunchService);
   private readonly router = inject(Router);
@@ -210,6 +214,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
         this.workspace.set(null);
       }
     });
+    if (this.generationId && this.workspace() && !this.workspace()?.session.setup) return;
     if (this.workspace()) this.refresh.updated();
     this.refresh.start(async () => {
       // Reuse status reads, never the primary action or any signing/broadcast method.
@@ -224,6 +229,7 @@ export class GenesisComponent implements OnInit, OnDestroy {
         throw error;
       }
     }, () => {
+      if (this.generationId && this.workspace() && !this.workspace()?.session.setup) return 'Recipient preparation has its own status updates.';
       if (!this.workspace()) return 'Sign in to resume launch updates.';
       if (this.pending() || this.pendingDecision()) return 'Updates paused while you review or sign an action.';
       if (document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')) return 'Updates paused while you edit this form.';
@@ -951,6 +957,9 @@ export class GenesisComponent implements OnInit, OnDestroy {
   private async reloadWorkspace(reissueOwner = false): Promise<void> {
     const workspace = await this.launch.workspace();
     this.workspace.set(workspace);
+    if(this.generationId && !workspace.session.setup){
+      this.stopProgressPolling();this.stopRailPolling();this.stopRehearsalPolling();return;
+    }
     try {
       const rail = await this.launch.railOwnership();
       this.railOwnership.set(rail);

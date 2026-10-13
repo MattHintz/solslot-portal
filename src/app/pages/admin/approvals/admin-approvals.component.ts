@@ -279,7 +279,8 @@ export class AdminApprovalsComponent {
   constructor() {
     this.refresh.start(() => this.loadApprovals(), () => this.busy()
       ? 'Updates paused while your action is in progress.'
-      : this.session.isAuthenticated?.() === false ? 'Sign in again to resume updates.' : null);
+      : this.session.isAuthenticated?.() === false ? 'Sign in again to resume updates.' : null,
+      () => this.operations().length > 0);
   }
 
   async reload(): Promise<void> {

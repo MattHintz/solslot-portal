@@ -1,0 +1,62 @@
+<section class="consent-desk ballot-desk" aria-labelledby="holder-title" [attr.aria-busy]="!!busy()">
+  <header><p class="eyebrow">Step 2 · holder signatures</p><h2 id="holder-title">Sponsor and vote with your SGT</h2>
+    <p>Select complete holdings. Each holder keeps custody; fee sponsorship adds no voting weight.</p></header>
+  <solslot-admin-refresh-status [state]="refresh" />
+  @if(busy()){<p class="active-wait" role="status"><span class="spinner" aria-hidden="true"></span>
+    {{busy()==='SIGNING'?'Open '+signingWallet()+' and approve the pending SGT signature request.':busy()==='PREPARING'?'Checking the confirmed holdings and saving your exact selection…':'Saving the exact signed transaction. Submission is a separate step…'}}</p>}
+  @if(error()){<p class="notice" role="status">{{error()}}</p>}
+  @if(pending() && !busy()){<button type="button" (click)="retry()">Recover this same holder review</button>}
+  @if(catalog(); as c){
+    <div class="select-holdings"><h3>Select SGT inputs</h3>
+      <p>{{c.eligibleSupply | number}} eligible holder SGT · {{quorum() | number}} quorum at 50%. Reserve and undelivered escrow are excluded.</p>
+      <p>Signatures lock each entire selected coin to this proposal. Transferred, split, merged or newly delivered outputs can vote on the next proposal. Select one input per vault for each action.</p>
+      @for(h of c.holdings; track h.coinId){<label class="holding"><input type="checkbox" [checked]="coinIds().includes(h.coinId)" [disabled]="!canSelect()"
+          (change)="choose(h.coinId,$any($event.target).checked)" /><span><strong>{{h.name}} · {{h.amount | number}} SGT</strong>
+          <small>Destination vault</small><code>{{h.vaultLauncherId}}</code></span></label>}
+      @if(!c.holdings.length){<p>No eligible inputs from the confirmed administrator vaults are available for this proposal.</p>}
+      @if(c.truncated){<p>Only the first 96 available inputs are shown. This view covers the frozen genesis roster.</p>}
+      <p class="weight">Selected: {{selectedWeight() | number}} SGT</p>
+      @if(consent(); as p){<p>Selected publication: {{proposalLabel(p.proposal!.kind)}} · approve by {{p.expiresAt*1000 | date:'MMM d, h:mm a'}}.</p>
+        <button class="primary" type="button" [disabled]="!canOpen()" (click)="create('OPEN_PROPOSAL')">Review sponsorship and open voting</button>}
+      @if(snapshot()?.proposal){<button class="primary" type="button" [disabled]="!canVote()" (click)="create('CAST_VOTE')">Review selected holdings and vote yes</button>}
+    </div>
+  }
+  @for(r of reviews(); track r.packageId){
+    <article class="review" [class.expired]="expired(r)"><p class="eyebrow">{{r.kind==='OPEN_PROPOSAL'?'Proposal sponsorship':'Holder vote'}} · Testnet11</p>
+      <h3>{{proposalLabel(r.proposal.kind)}} · {{r.selectedWeight | number}} SGT</h3>
+      <solslot-generation-asset-intent [bill]="r.proposal" />
+      @if(r.proposal.upgrade; as u){
+        <p>Approve these code changes with current state preserved. Activation requires a separate 24-hour on-chain wait after ratification.</p>
+        <dl><dt>Reviewed source manifest</dt><dd>{{u.sourceManifestHash}}</dd></dl>
+        @for(c of u.changes; track c.componentId){<dl><dt>Component</dt><dd>{{c.componentId}}</dd>
+          <dt>Current module</dt><dd>{{c.oldModuleHash}}</dd><dt>Proposed module</dt><dd>{{c.newModuleHash}}</dd>
+          <dt>Successor version</dt><dd>{{c.nextVersion}} · compatibility {{c.compatibility}} · preserve state</dd></dl>}
+      }
+      @if(r.proposal.parameters; as p){
+        <p>Approve the exact replacement parameter values below.</p>
+        <dl><dt>Parameter authority</dt><dd>{{p.launcherId}}</dd><dt>Current revision</dt><dd>{{p.revision}}</dd>
+          <dt>NAV interval</dt><dd>{{p.values[0]}} seconds</dd><dt>Oracle interval</dt><dd>{{p.values[1]}} seconds</dd>
+          <dt>Total exchange fee</dt><dd>{{p.values[2] / 100 | number:'1.0-2'}}%</dd>
+          <dt>Protocol share</dt><dd>{{p.values[3] / 100 | number:'1.0-2'}}%</dd><dt>SGT rewards share</dt><dd>{{p.values[4] / 100 | number:'1.0-2'}}%</dd>
+          <dt>Reward epoch</dt><dd>{{p.values[5]}} seconds</dd></dl>
+      }
+      @if(r.proposal.kind==='REOPEN'){
+        <p>Reopen only these paused operations after holder ratification and a separate 24-hour on-chain wait:</p>
+        <ul>@for(scope of scopes; track scope.mask){@if(includesScope(r.proposal.scope,scope.mask)){<li>{{scope.label}}</li>}}</ul>
+        <p>SGT voting, transfers, unlocks, funded redemptions and earned claims stay available throughout the wait.</p>
+      }
+      <p>{{r.requiredVotes | number}} required of {{r.eligibleSupply | number}} eligible SGT. {{r.votingClosesAt?'The original voting deadline remains fixed.':'The one-hour voting window begins at confirmed opening.'}}</p>
+      <p class="deadline">{{expired(r)?'Signing window ended':'Sign by'}} {{r.expiresAt*1000 | date:'MMM d, h:mm a'}} · your local time</p>
+      @for(row of r.holders; track row.request.sgtCoinId){<div class="assigned-action"><div>
+          <strong>{{row.context.holding.current.coin.amount | number}} SGT · {{walletLabel(row)}}</strong><small>Holder vault</small><code>{{row.context.vault.launcherId}}</code>
+          <small>{{signed(r,row)?'Signature recorded':assigned(row)?'Your selected holding':'Waiting for this holder wallet'}}</small></div>
+        @if(signed(r,row)){<span class="approved">✓ Signed</span>}
+        @else if(assigned(row) && !expired(r)){<button class="primary" type="button" [disabled]="!!busy() || !available() || !isCurrent()" (click)="sign(r,row)">Approve SGT {{r.kind==='OPEN_PROPOSAL'?'sponsorship':'vote'}} in {{walletLabel(row)}}</button>}
+      </div>}
+      @if(r.stage==='READY' && !expired(r)){<p role="status">All selected holder signatures are saved. Review the exact transaction next.</p>
+        <button class="primary" type="button" [disabled]="!!busy()" (click)="assemble(r)">Review signed transaction for submission</button>}
+      <details><summary>Exact proposal and network fee</summary><dl><dt>Proposal</dt><dd>{{r.proposalId}}</dd><dt>Bill</dt><dd>{{r.proposal.billHash}}</dd>
+        <dt>Opening snapshot</dt><dd>{{r.snapshotRoot}}</dd><dt>Maximum network fee</dt><dd>{{r.feeCapMojos}} mojos</dd></dl></details>
+    </article>
+  }
+</section>

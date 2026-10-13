@@ -1,0 +1,86 @@
+<section class="consent-desk" aria-labelledby="consent-title" [attr.aria-busy]="!!busy()">
+  <header><p class="eyebrow">Step 1 · administrator consent</p><h2 id="consent-title">Review and approve the exact action</h2>
+    <p>Both assigned administrators approve here. Publication consent gives holders 24 hours to open the vote; it does not execute the proposal.</p></header>
+  <solslot-admin-refresh-status [state]="refresh" />
+  @if(busy()){
+    <p class="active-wait" role="status"><span class="spinner" aria-hidden="true"></span>
+      {{busy()==='SIGNING'?'Open your administrator wallet and approve the pending signature request.':busy()==='PREPARING'?'Checking the exact confirmed inputs and saving your review…':'Saving the reviewed pause. Submission is a separate step…'}}</p>
+  }
+  @if(error()){<p class="notice" role="status">{{error()}}</p>}
+  @if(request() && !selected() && !busy()){<button type="button" (click)="prepareSameReview()">Recover this saved review</button>}
+  @for(r of reviews(); track r.packageId){
+    <article class="review" [class.expired]="expired(r)">
+      <p class="eyebrow">{{r.kind==='PUBLICATION_APPROVAL'?'Proposal publication':'Scoped emergency pause'}} · Testnet11</p>
+      <h3>{{r.kind==='PUBLICATION_APPROVAL'?'Approve '+proposalLabel(r.proposal!.kind)+' publication':'Pause selected new operations'}}</h3>
+      <p class="deadline">{{expired(r)?'Review expired':'Approve by'}} {{r.expiresAt*1000 | date:'MMM d, h:mm a'}} · your local time</p>
+      @if(r.kind==='PUBLICATION_APPROVAL'){
+        <p>{{r.eligibleSupply | number}} eligible holder SGT · {{r.requiredVotes | number}} required. The one-hour vote begins at confirmed opening.</p>
+        <solslot-generation-asset-intent [bill]="r.proposal!" />
+        @if(r.mintSource; as m){<h4>{{m.canonicalMetadata.title}}</h4>
+          <p>Sealed revision {{m.request.revision}} · {{m.funding.length}} deeds. This exact saved batch includes the approved preview, dollar economics, sealed XCH price receipt and fixed launcher funding.</p>
+          <dl><dt>Metadata root</dt><dd><code>{{m.request.metadataRoot}}</code></dd>
+            <dt>Approved preview</dt><dd><code>{{m.request.previewHash}}</code></dd><dt>Saved batch</dt><dd><code>{{m.packageId}}</code></dd></dl>}
+        @if(r.proposal!.upgrade; as u){
+          <p>Changes keep the current state and require a separate 24-hour on-chain wait after ratification.</p>
+          <details><summary>Exact code changes and source manifest</summary><code>{{u.sourceManifestHash}}</code>
+            @for(c of u.changes; track c.componentId){<dl><dt>Component</dt><dd>{{c.componentId}}</dd><dt>Current module</dt><dd>{{c.oldModuleHash}}</dd>
+              <dt>Successor module</dt><dd>{{c.newModuleHash}}</dd><dt>Successor version</dt><dd>{{c.nextVersion}} · compatibility {{c.compatibility}} · preserve state</dd></dl>}
+          </details>
+        }
+        @if(r.proposal!.kind==='REOPEN'){
+          <p>Reopen only these paused operations after holder ratification and a separate 24-hour on-chain wait:</p>
+          <ul>@for(scope of scopes; track scope.mask){@if(includesScope(r.scope,scope.mask)){<li>{{scope.label}}</li>}}</ul>
+        }
+      }@else{
+        <ul>@for(scope of scopes; track scope.mask){@if(includesScope(r.scope,scope.mask)){<li>{{scope.label}}</li>}}</ul>
+        <p>SGT voting, transfers, unlocks, funded redemptions and earned claims stay available. Reopening needs holder ratification and 24 hours on chain.</p>
+      }
+      @for(c of r.challenges; track c.slot){
+        <div class="assigned-action"><div><strong>{{role(c.slot)}}</strong><code>{{c.publicKey}}</code>
+          <small>{{approved(r,c.slot)?'Approval recorded':assigned(r,c.slot)?'Your assigned action':'Waiting for this administrator'}}</small></div>
+          @if(approved(r,c.slot)){<span class="approved">✓ Approved</span>}
+          @else if(assigned(r,c.slot) && !expired(r)){
+            <button class="primary" type="button" [disabled]="!!busy() || !available() || !isCurrent()" (click)="sign(r)">Approve {{r.kind==='PUBLICATION_APPROVAL'?'publication':'this pause'}} in wallet</button>
+          }
+        </div>
+      }
+      @if(r.stage==='READY' && !expired(r)){
+        @if(r.kind==='PAUSE_NEW_OPERATIONS'){<button class="primary" type="button" [disabled]="!!busy()" (click)="reviewPause(r)">Review exact pause for submission</button>}
+        @else{<p class="next-action" role="status">Publication approvals recorded. Next: holders sponsor the proposal with at least 10,000 SGT to open its vote. These approvals add no voting weight.</p>
+          <button class="primary" type="button" [disabled]="!!busy()" (click)="sponsorReview.emit(r)">Select holder sponsorship for this proposal</button>}
+      }
+      <details><summary>Authority and saved review</summary><dl><dt>Exact package</dt><dd>{{r.packageId}}</dd><dt>Administrator authority</dt><dd>{{r.authorityLauncherId}}</dd>
+        <dt>Current authority version</dt><dd>{{r.authorityVersion}}</dd><dt>Proposal</dt><dd>{{r.proposalId ?? 'Scoped pause'}}</dd>
+        <dt>Maximum network fee</dt><dd>{{r.feeCapMojos}} mojos</dd></dl></details>
+    </article>
+  }
+  @if(mintSource(); as m){<div class="new-review prepare-kind"><h3>Prepare publication of this test edition</h3>
+    <p>{{m.canonicalMetadata.title}} · {{m.funding.length}} SmartDeeds. Both administrators approve the same sealed batch before holders sponsor and vote. Preparing this review does not open a wallet or send a transaction.</p>
+    <label>Second administrator<select [value]="coadministrator()" [disabled]="!!busy()" (change)="coadministrator.set(+$any($event.target).value)">
+      <option value="1">Coadministrator 2</option><option value="2">Coadministrator 3</option></select></label>
+    <button type="button" class="primary" [disabled]="!canMint() || !!request() && !selected()" (click)="createMint()">Prepare exact test mint publication</button>
+    @if(!canMint() && !busy()){<p>Use the saved approval above, or wait for fresh authority with no active vote, pending upgrade or mint pause before preparing another review.</p>}
+  </div>}
+  @if(showGeneralActions()){<details class="new-review"><summary>Prepare a new reviewed action</summary>
+    <label>Second administrator<select [value]="coadministrator()" [disabled]="!!busy()" (change)="coadministrator.set(+$any($event.target).value)">
+      <option value="1">Coadministrator 2</option><option value="2">Coadministrator 3</option></select></label>
+    <div class="prepare-kind"><h3>Governed upgrade rehearsal</h3><p>Install the reviewed successor that adds read-only PROVE_STATE. Token identities, supply and current assets stay unchanged.</p>
+      <label>Reviewed successor source-manifest hash<input type="text" spellcheck="false" autocomplete="off" [value]="sourceManifest()"
+        [disabled]="!!busy()" (input)="sourceManifest.set($any($event.target).value.trim())" placeholder="0x…" /></label>
+      <button type="button" [disabled]="!canUpgrade()" (click)="create('PUBLICATION_APPROVAL')">Prepare upgrade publication review</button>
+    </div>
+    <div class="prepare-kind"><h3>Scoped emergency pause</h3><p>Select the new operations to pause. Protected operations cannot be selected.</p>
+      @for(scope of scopes; track scope.mask){<label class="check"><input type="checkbox" [checked]="includesScope(pauseScope(),scope.mask)" [disabled]="!!busy()"
+        (change)="toggleScope(scope.mask,$any($event.target).checked)" /> {{scope.label}}</label>}
+      <button type="button" [disabled]="!canPrepare() || !pauseScope()" (click)="create('PAUSE_NEW_OPERATIONS')">Prepare pause for two approvals</button>
+    </div>
+    <solslot-generation-redemption-form [disabled]="!canFundRedemption()" (prepared)="createRedemption($event)" />
+    @if(snapshot()?.pauseMask){<div class="prepare-kind"><h3>Reopen paused operations</h3>
+      <p>Holders can vote on reopening even while new proposals are paused. Reopening requires administrator publication consent, a holder vote and 24 hours on chain.</p>
+      @for(scope of scopes; track scope.mask){@if(includesScope(snapshot()!.pauseMask,scope.mask)){
+        <label class="check"><input type="checkbox" [checked]="includesScope(reopenScope(),scope.mask)" [disabled]="!!busy()"
+          (change)="toggleReopen(scope.mask,$any($event.target).checked)" /> {{scope.label}}</label>}}
+      <button type="button" [disabled]="!canReopen()" (click)="create('PUBLICATION_APPROVAL','REOPEN')">Prepare reopening publication review</button>
+    </div>}
+  </details>}
+</section>

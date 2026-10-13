@@ -1,0 +1,278 @@
+{
+  "review": {
+    "authorityCoin": {
+      "amount": 1,
+      "parent_coin_info": "0x3ecaaec67274da5002276699c4adbaa54817dfa73c9d8e2582feea1851db8632",
+      "puzzle_hash": "0x4de636865eb8a7571864f7d799f2aa63f7f2e77cd96201742373eea32551508f"
+    },
+    "authorityCoinId": "0xbb31413c7fff502c4b932ffc0f21ee64644420973663873dee2f4e3fe04a9a29",
+    "authorityDelegatedHash": "0x210ee8faf88de2fe5739ee1fbc1e9cd975a59278d0b1707709865f3570f4b794",
+    "authorityInnerHash": "0x73991486e4cc169a427fbdab01b54900a16bd5cff1a570c0f37e15fd78703c22",
+    "authorityLauncherId": "0x3ecaaec67274da5002276699c4adbaa54817dfa73c9d8e2582feea1851db8632",
+    "authorityPuzzleHash": "0x4de636865eb8a7571864f7d799f2aa63f7f2e77cd96201742373eea32551508f",
+    "authorityVersion": 1,
+    "billHash": "0x8501b02a17ba13545919a46cd0c1a36a2531807d7bfbba126d74e9b2f4eaa59c",
+    "coadministratorSlot": 1,
+    "createdAt": 1000,
+    "eligibleSupply": 30000,
+    "eligibleTotal": 1000000,
+    "expectedInputs": {
+      "components": {},
+      "governance": "0xa185ff4281b4bd117916ee80b68b6cc6c6925a4d10e7c363654743803f4aa03f",
+      "holdings": "0xe4b89101ed93bdfc84233ef96e129ccf5231e687256f71f8ad5a2874434a3fb4",
+      "registry": "0xbe9fe5242e39796564ff10484e28c3e407b1ddcce087c969861f24417985daf3"
+    },
+    "expiresAt": 87400,
+    "feeCapMojos": "1000",
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "governanceNonce": 0,
+    "holdingsRoot": "0x01f6635c5157d0bef2a15f5bba4f50e0b17ceaa54e5a3ab601b218e5592f1b12",
+    "identityCoins": [
+      {
+        "amount": 3,
+        "parent_coin_info": "0x07d1ab46c0ee0d58c81981da015c71f5ce1292d7416d4108a29241171041475c",
+        "puzzle_hash": "0xa443ad0d51c5965b726ea56cf2d5742748ae32b1255624f5f3d518f778d30369"
+      },
+      {
+        "amount": 5,
+        "parent_coin_info": "0xaf24a9170a5de349c971d17ef73ddcb5002f9e6a6f1aeba029eee623af239ff6",
+        "puzzle_hash": "0x78e96902e5ba64fa890290c6c6e05f6342ddd58e118f775b7aaae4e418fac96c"
+      },
+      {
+        "amount": 7,
+        "parent_coin_info": "0x9bf2ab7979606709fbe22fca26ae462f3447abd70249076782b5891d72894a40",
+        "puzzle_hash": "0x3fc72fd62c2a2beed5a7f43c10e61b27ad668f0c8bfb947218138b5ac352bc9f"
+      }
+    ],
+    "identityCustodies": [
+      "0x829f7ec444e86ba7c3e439d24881fbcddee8c86b41c13215da0d3c7358f7e9e7",
+      "0xab2ccdb90ad738a33315e4dbc51f9e002b7a88ff8216b19ef0e4d14c3e557a24",
+      "0xbb2fd2abda2ea4f508496a28dc6d37cd41c43af353d59053498c033098bad65c"
+    ],
+    "identityLauncherIds": [
+      "0x07d1ab46c0ee0d58c81981da015c71f5ce1292d7416d4108a29241171041475c",
+      "0xaf24a9170a5de349c971d17ef73ddcb5002f9e6a6f1aeba029eee623af239ff6",
+      "0x9bf2ab7979606709fbe22fca26ae462f3447abd70249076782b5891d72894a40"
+    ],
+    "identityPuzzles": [
+      "0xa443ad0d51c5965b726ea56cf2d5742748ae32b1255624f5f3d518f778d30369",
+      "0x78e96902e5ba64fa890290c6c6e05f6342ddd58e118f775b7aaae4e418fac96c",
+      "0x3fc72fd62c2a2beed5a7f43c10e61b27ad668f0c8bfb947218138b5ac352bc9f"
+    ],
+    "issuedAt": 1000,
+    "kind": "PUBLICATION_APPROVAL",
+    "network": "testnet11",
+    "pauseEpoch": 0,
+    "proposal": {
+      "billHash": "0x8501b02a17ba13545919a46cd0c1a36a2531807d7bfbba126d74e9b2f4eaa59c",
+      "kind": "FUND_REDEMPTION",
+      "redemption": {
+        "allocations": [
+          {
+            "deedCommitment": "0x1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+            "deedLauncherId": "0x1515151515151515151515151515151515151515151515151515151515151515",
+            "paymentAmount": 50001,
+            "sharePpm": 500000
+          },
+          {
+            "deedCommitment": "0x2020202020202020202020202020202020202020202020202020202020202020",
+            "deedLauncherId": "0xc8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8",
+            "paymentAmount": 50000,
+            "sharePpm": 500000
+          }
+        ],
+        "collectionId": "0x5050505050505050505050505050505050505050505050505050505050505050",
+        "deedLauncherPuzzleHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+        "paymentAssetId": "0x58925a27339266acba6e85961ecd2adc9be13db0b24a230fc09288f4e5dbc85e",
+        "settlementId": "0x5151515151515151515151515151515151515151515151515151515151515151",
+        "totalPaymentAmount": 100001,
+        "treasuryCoinId": "0x2c7d6ac120717ec2d38ff6667fcb862fe79f968b72978585e21c29bfbf740efb",
+        "treasuryParentId": "0x774ab46c77ebf555e8683af3ad9a6c7637f2d75550e9bfc41182dcc07019b4ef"
+      }
+    },
+    "proposalId": "0x334bc4016a75606d595fc12a29e7dfb9bd283d28f0fb5680129fc9d35bea29ff",
+    "request": {
+      "coadministratorSlot": 1,
+      "expectedInputs": {
+        "components": {},
+        "governance": "0xa185ff4281b4bd117916ee80b68b6cc6c6925a4d10e7c363654743803f4aa03f",
+        "holdings": "0xe4b89101ed93bdfc84233ef96e129ccf5231e687256f71f8ad5a2874434a3fb4",
+        "registry": "0xbe9fe5242e39796564ff10484e28c3e407b1ddcce087c969861f24417985daf3"
+      },
+      "feeCapMojos": 1000,
+      "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+      "kind": "PUBLICATION_APPROVAL",
+      "parameters": null,
+      "proposalKind": "FUND_REDEMPTION",
+      "redemption": {
+        "allocations": [
+          {
+            "deedCommitment": "0x1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+            "deedLauncherId": "0x1515151515151515151515151515151515151515151515151515151515151515",
+            "paymentAmount": 50001,
+            "sharePpm": 500000
+          },
+          {
+            "deedCommitment": "0x2020202020202020202020202020202020202020202020202020202020202020",
+            "deedLauncherId": "0xc8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8",
+            "paymentAmount": 50000,
+            "sharePpm": 500000
+          }
+        ],
+        "collectionId": "0x5050505050505050505050505050505050505050505050505050505050505050",
+        "deedLauncherPuzzleHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+        "paymentAssetId": "0x58925a27339266acba6e85961ecd2adc9be13db0b24a230fc09288f4e5dbc85e",
+        "settlementId": "0x5151515151515151515151515151515151515151515151515151515151515151",
+        "totalPaymentAmount": 100001,
+        "treasuryCoinId": "0x2c7d6ac120717ec2d38ff6667fcb862fe79f968b72978585e21c29bfbf740efb",
+        "treasuryParentId": "0x774ab46c77ebf555e8683af3ad9a6c7637f2d75550e9bfc41182dcc07019b4ef"
+      },
+      "requestKey": "one",
+      "scope": null,
+      "upgrade": null
+    },
+    "requestDigest": "0x2694843789f413e4083c4ea4c1899d9e7e8e4ee1f9e5d5ee4e8df7535fca179d",
+    "requestKey": "one",
+    "requiredVotes": 15000,
+    "scope": null,
+    "sourceManifestHash": "0x71cd394c55bedded2fd7159638acaff6201e886f7a20db8d15f58c4b0937741f",
+    "targetPuzzleHash": "0xcaf3ac995c6b8e09b67fc98efc9453d9c76adba76c498e47068461a161d7657f",
+    "packageId": "0x5e9021b05d15ae48427c81d33973bc8084d4ed80b5450e0ed5cf24e7f7818665",
+    "stage": "AWAITING_APPROVALS",
+    "signatures": [],
+    "challenges": [
+      {
+        "coinId": "0xf2029f8c2f5e9233254a1c6c78db4bcfc6bbb16716c969b1c9ac0dc1584c6289",
+        "delegatedPuzzleHash": "0xe83a71f5ce1b6ef127c1f64a809a0162b1c812f82a85fb2d475fb9dc394ca05c",
+        "digest": "0x8a9a3ab37d02cbf939082ad69b8995cfcf715bb81dcb89ce5185982a1225fa69",
+        "publicKey": "0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+        "slot": 0,
+        "typedData": {
+          "domain": {
+            "name": "Chia Coin Spend",
+            "salt": "0x37a90eb5185a9c4439a91ddc98bbadce7b4feba060d50116a067de66bf236615",
+            "version": "1"
+          },
+          "message": {
+            "coin_id": "0xf2029f8c2f5e9233254a1c6c78db4bcfc6bbb16716c969b1c9ac0dc1584c6289",
+            "delegated_puzzle_hash": "0xe83a71f5ce1b6ef127c1f64a809a0162b1c812f82a85fb2d475fb9dc394ca05c"
+          },
+          "primaryType": "ChiaCoinSpend",
+          "types": {
+            "ChiaCoinSpend": [
+              {
+                "name": "coin_id",
+                "type": "bytes32"
+              },
+              {
+                "name": "delegated_puzzle_hash",
+                "type": "bytes32"
+              }
+            ],
+            "EIP712Domain": [
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "version",
+                "type": "string"
+              },
+              {
+                "name": "salt",
+                "type": "bytes32"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "coinId": "0x326c0206660793bb0e631bf188ff0cfe1ad65b21f29fe88771893da477b0ce9b",
+        "delegatedPuzzleHash": "0x2544fa7e95171414ac3a260535c4930ee8328d4af3213bbd1100cc7ff2496cab",
+        "digest": "0x79c89bbddd5fef5b6744b831af01516ea2011e6391cae4128d04da83f2bba3c7",
+        "publicKey": "0x024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
+        "slot": 1,
+        "typedData": {
+          "domain": {
+            "name": "Chia Coin Spend",
+            "salt": "0x37a90eb5185a9c4439a91ddc98bbadce7b4feba060d50116a067de66bf236615",
+            "version": "1"
+          },
+          "message": {
+            "coin_id": "0x326c0206660793bb0e631bf188ff0cfe1ad65b21f29fe88771893da477b0ce9b",
+            "delegated_puzzle_hash": "0x2544fa7e95171414ac3a260535c4930ee8328d4af3213bbd1100cc7ff2496cab"
+          },
+          "primaryType": "ChiaCoinSpend",
+          "types": {
+            "ChiaCoinSpend": [
+              {
+                "name": "coin_id",
+                "type": "bytes32"
+              },
+              {
+                "name": "delegated_puzzle_hash",
+                "type": "bytes32"
+              }
+            ],
+            "EIP712Domain": [
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "version",
+                "type": "string"
+              },
+              {
+                "name": "salt",
+                "type": "bytes32"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "pollAfterSeconds": 5
+  },
+  "request": {
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "requestKey": "one",
+    "kind": "PUBLICATION_APPROVAL",
+    "coadministratorSlot": 1,
+    "expectedInputs": {
+      "registry": "0xbe9fe5242e39796564ff10484e28c3e407b1ddcce087c969861f24417985daf3",
+      "governance": "0xa185ff4281b4bd117916ee80b68b6cc6c6925a4d10e7c363654743803f4aa03f",
+      "holdings": "0xe4b89101ed93bdfc84233ef96e129ccf5231e687256f71f8ad5a2874434a3fb4",
+      "components": {}
+    },
+    "feeCapMojos": 1000,
+    "proposalKind": "FUND_REDEMPTION",
+    "upgrade": null,
+    "parameters": null,
+    "redemption": {
+      "treasuryCoinId": "0x2c7d6ac120717ec2d38ff6667fcb862fe79f968b72978585e21c29bfbf740efb",
+      "treasuryParentId": "0x774ab46c77ebf555e8683af3ad9a6c7637f2d75550e9bfc41182dcc07019b4ef",
+      "collectionId": "0x5050505050505050505050505050505050505050505050505050505050505050",
+      "settlementId": "0x5151515151515151515151515151515151515151515151515151515151515151",
+      "paymentAssetId": "0x58925a27339266acba6e85961ecd2adc9be13db0b24a230fc09288f4e5dbc85e",
+      "totalPaymentAmount": 100001,
+      "allocations": [
+        {
+          "deedLauncherId": "0x1515151515151515151515151515151515151515151515151515151515151515",
+          "deedCommitment": "0x1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+          "sharePpm": 500000,
+          "paymentAmount": 50001
+        },
+        {
+          "deedLauncherId": "0xc8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8",
+          "deedCommitment": "0x2020202020202020202020202020202020202020202020202020202020202020",
+          "sharePpm": 500000,
+          "paymentAmount": 50000
+        }
+      ],
+      "deedLauncherPuzzleHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
+    },
+    "scope": null
+  },
+  "billClvm": "0xff8f46554e445f524544454d5054494f4effa0774ab46c77ebf555e8683af3ad9a6c7637f2d75550e9bfc41182dcc07019b4efffa05050505050505050505050505050505050505050505050505050505050505050ffa05151515151515151515151515151515151515151515151515151515151515151ffa058925a27339266acba6e85961ecd2adc9be13db0b24a230fc09288f4e5dbc85eff830186a1ffffffa01515151515151515151515151515151515151515151515151515151515151515ffa01f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1fff8307a120ff8300c35180ffffa0c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8ffa02020202020202020202020202020202020202020202020202020202020202020ff8307a120ff8300c3508080ffa05b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5bffa02c7d6ac120717ec2d38ff6667fcb862fe79f968b72978585e21c29bfbf740efb80"
+}

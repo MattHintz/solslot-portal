@@ -1,0 +1,246 @@
+{
+  "review": {
+    "authorityCoin": {
+      "amount": 1,
+      "parent_coin_info": "0x3ecaaec67274da5002276699c4adbaa54817dfa73c9d8e2582feea1851db8632",
+      "puzzle_hash": "0x4de636865eb8a7571864f7d799f2aa63f7f2e77cd96201742373eea32551508f"
+    },
+    "authorityCoinId": "0xbb31413c7fff502c4b932ffc0f21ee64644420973663873dee2f4e3fe04a9a29",
+    "authorityDelegatedHash": "0x74bba4f971758d869f97494ebac059f0fa27f091d449609445f4d0695d927565",
+    "authorityInnerHash": "0x73991486e4cc169a427fbdab01b54900a16bd5cff1a570c0f37e15fd78703c22",
+    "authorityLauncherId": "0x3ecaaec67274da5002276699c4adbaa54817dfa73c9d8e2582feea1851db8632",
+    "authorityPuzzleHash": "0x4de636865eb8a7571864f7d799f2aa63f7f2e77cd96201742373eea32551508f",
+    "authorityVersion": 1,
+    "billHash": "0x494c80a92b5daff4f5157f3e1c00fa3c970a8a2885caa586bbe74b7533d24af3",
+    "coadministratorSlot": 1,
+    "createdAt": 1000,
+    "eligibleSupply": 30000,
+    "eligibleTotal": 1000000,
+    "expectedInputs": {
+      "components": {},
+      "governance": "0x9bf92b5486cf63e9fb98503557b8fb296e13176a812a1345e2a14ef2a0064f4d",
+      "holdings": "0xe4b89101ed93bdfc84233ef96e129ccf5231e687256f71f8ad5a2874434a3fb4",
+      "registry": "0x00a1ed3c34edef4b0426d1eb1d06385b5047172ecdc330f1a09fad5b41ccfad4"
+    },
+    "expiresAt": 87400,
+    "feeCapMojos": "1000",
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "governanceNonce": 0,
+    "holdingsRoot": "0x01f6635c5157d0bef2a15f5bba4f50e0b17ceaa54e5a3ab601b218e5592f1b12",
+    "identityCoins": [
+      {
+        "amount": 3,
+        "parent_coin_info": "0x07d1ab46c0ee0d58c81981da015c71f5ce1292d7416d4108a29241171041475c",
+        "puzzle_hash": "0xa443ad0d51c5965b726ea56cf2d5742748ae32b1255624f5f3d518f778d30369"
+      },
+      {
+        "amount": 5,
+        "parent_coin_info": "0xaf24a9170a5de349c971d17ef73ddcb5002f9e6a6f1aeba029eee623af239ff6",
+        "puzzle_hash": "0x78e96902e5ba64fa890290c6c6e05f6342ddd58e118f775b7aaae4e418fac96c"
+      },
+      {
+        "amount": 7,
+        "parent_coin_info": "0x9bf2ab7979606709fbe22fca26ae462f3447abd70249076782b5891d72894a40",
+        "puzzle_hash": "0x3fc72fd62c2a2beed5a7f43c10e61b27ad668f0c8bfb947218138b5ac352bc9f"
+      }
+    ],
+    "identityCustodies": [
+      "0x829f7ec444e86ba7c3e439d24881fbcddee8c86b41c13215da0d3c7358f7e9e7",
+      "0xab2ccdb90ad738a33315e4dbc51f9e002b7a88ff8216b19ef0e4d14c3e557a24",
+      "0xbb2fd2abda2ea4f508496a28dc6d37cd41c43af353d59053498c033098bad65c"
+    ],
+    "identityLauncherIds": [
+      "0x07d1ab46c0ee0d58c81981da015c71f5ce1292d7416d4108a29241171041475c",
+      "0xaf24a9170a5de349c971d17ef73ddcb5002f9e6a6f1aeba029eee623af239ff6",
+      "0x9bf2ab7979606709fbe22fca26ae462f3447abd70249076782b5891d72894a40"
+    ],
+    "identityPuzzles": [
+      "0xa443ad0d51c5965b726ea56cf2d5742748ae32b1255624f5f3d518f778d30369",
+      "0x78e96902e5ba64fa890290c6c6e05f6342ddd58e118f775b7aaae4e418fac96c",
+      "0x3fc72fd62c2a2beed5a7f43c10e61b27ad668f0c8bfb947218138b5ac352bc9f"
+    ],
+    "issuedAt": 1000,
+    "kind": "PUBLICATION_APPROVAL",
+    "network": "testnet11",
+    "pauseEpoch": 0,
+    "proposal": {
+      "billHash": "0x494c80a92b5daff4f5157f3e1c00fa3c970a8a2885caa586bbe74b7533d24af3",
+      "kind": "UPGRADE",
+      "registryNonce": 0,
+      "upgrade": {
+        "changes": [
+          {
+            "compatibility": 1,
+            "componentId": "0x8a778d36d79dc06f38b0e5719609613091c7068ad0586e2683424c87589991eb",
+            "newModuleHash": "0x13800cce50435ae930c73138489094f3f3f48074e26819a9e3aa59457a5c0b7d",
+            "nextVersion": 2,
+            "oldModuleHash": "0x7f6b034da88342eb111684fb03144b3cf4637edde44e522dd0d4caf2d4a69d58",
+            "transition": "PRESERVE_STATE"
+          }
+        ],
+        "sourceManifestHash": "0x5151515151515151515151515151515151515151515151515151515151515151"
+      }
+    },
+    "proposalId": "0x46419435ede20b514ae197999dc3fb8b99b3307979cb8e4db40c67dc247adf80",
+    "request": {
+      "coadministratorSlot": 1,
+      "expectedInputs": {
+        "components": {},
+        "governance": "0x9bf92b5486cf63e9fb98503557b8fb296e13176a812a1345e2a14ef2a0064f4d",
+        "holdings": "0xe4b89101ed93bdfc84233ef96e129ccf5231e687256f71f8ad5a2874434a3fb4",
+        "registry": "0x00a1ed3c34edef4b0426d1eb1d06385b5047172ecdc330f1a09fad5b41ccfad4"
+      },
+      "feeCapMojos": 1000,
+      "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+      "kind": "PUBLICATION_APPROVAL",
+      "parameters": null,
+      "proposalKind": "UPGRADE",
+      "requestKey": "one",
+      "scope": null,
+      "upgrade": {
+        "changes": [
+          {
+            "compatibility": 1,
+            "componentId": "0x8a778d36d79dc06f38b0e5719609613091c7068ad0586e2683424c87589991eb",
+            "newModuleHash": "0x13800cce50435ae930c73138489094f3f3f48074e26819a9e3aa59457a5c0b7d",
+            "nextVersion": 2,
+            "oldModuleHash": "0x7f6b034da88342eb111684fb03144b3cf4637edde44e522dd0d4caf2d4a69d58",
+            "transition": "PRESERVE_STATE"
+          }
+        ],
+        "sourceManifestHash": "0x5151515151515151515151515151515151515151515151515151515151515151"
+      }
+    },
+    "requestDigest": "0x6bd3cf886e65198145478bcdfcd9950d41f2a169ac4aaf5aa278175efb1f648e",
+    "requestKey": "one",
+    "requiredVotes": 15000,
+    "scope": null,
+    "sourceManifestHash": "0x71cd394c55bedded2fd7159638acaff6201e886f7a20db8d15f58c4b0937741f",
+    "targetPuzzleHash": "0x84bb04d1cea53d9c39d6eb7f12718960befdb09c6c20163761dd36816e4739a5",
+    "packageId": "0x4ae02fd1ea6468266f1d5eba85d741f71fd7e88e4c8f5da128cbb69fdf93bd16",
+    "stage": "AWAITING_APPROVALS",
+    "signatures": [],
+    "challenges": [
+      {
+        "coinId": "0xf2029f8c2f5e9233254a1c6c78db4bcfc6bbb16716c969b1c9ac0dc1584c6289",
+        "delegatedPuzzleHash": "0x1cd34227fe2a75eefd6df2f16096eedbab4b769d8b18d981bbb2b9651a8ff2d9",
+        "digest": "0x6a5b52f1cf59851e3800f102529393be5d2f8dfa556bb229d57ba2bdd47f1ae3",
+        "publicKey": "0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+        "slot": 0,
+        "typedData": {
+          "domain": {
+            "name": "Chia Coin Spend",
+            "salt": "0x37a90eb5185a9c4439a91ddc98bbadce7b4feba060d50116a067de66bf236615",
+            "version": "1"
+          },
+          "message": {
+            "coin_id": "0xf2029f8c2f5e9233254a1c6c78db4bcfc6bbb16716c969b1c9ac0dc1584c6289",
+            "delegated_puzzle_hash": "0x1cd34227fe2a75eefd6df2f16096eedbab4b769d8b18d981bbb2b9651a8ff2d9"
+          },
+          "primaryType": "ChiaCoinSpend",
+          "types": {
+            "ChiaCoinSpend": [
+              {
+                "name": "coin_id",
+                "type": "bytes32"
+              },
+              {
+                "name": "delegated_puzzle_hash",
+                "type": "bytes32"
+              }
+            ],
+            "EIP712Domain": [
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "version",
+                "type": "string"
+              },
+              {
+                "name": "salt",
+                "type": "bytes32"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "coinId": "0x326c0206660793bb0e631bf188ff0cfe1ad65b21f29fe88771893da477b0ce9b",
+        "delegatedPuzzleHash": "0x33809907d76bef5003a7dc4b95881d52f4f0096ee3e2c2b1a179e9e92cb5bb8f",
+        "digest": "0x71c167ad686dc287a494b143582820aa6c8d821b9f16f8a884f80100ba581392",
+        "publicKey": "0x024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
+        "slot": 1,
+        "typedData": {
+          "domain": {
+            "name": "Chia Coin Spend",
+            "salt": "0x37a90eb5185a9c4439a91ddc98bbadce7b4feba060d50116a067de66bf236615",
+            "version": "1"
+          },
+          "message": {
+            "coin_id": "0x326c0206660793bb0e631bf188ff0cfe1ad65b21f29fe88771893da477b0ce9b",
+            "delegated_puzzle_hash": "0x33809907d76bef5003a7dc4b95881d52f4f0096ee3e2c2b1a179e9e92cb5bb8f"
+          },
+          "primaryType": "ChiaCoinSpend",
+          "types": {
+            "ChiaCoinSpend": [
+              {
+                "name": "coin_id",
+                "type": "bytes32"
+              },
+              {
+                "name": "delegated_puzzle_hash",
+                "type": "bytes32"
+              }
+            ],
+            "EIP712Domain": [
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "version",
+                "type": "string"
+              },
+              {
+                "name": "salt",
+                "type": "bytes32"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "pollAfterSeconds": 5
+  },
+  "request": {
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "requestKey": "one",
+    "kind": "PUBLICATION_APPROVAL",
+    "coadministratorSlot": 1,
+    "expectedInputs": {
+      "registry": "0x00a1ed3c34edef4b0426d1eb1d06385b5047172ecdc330f1a09fad5b41ccfad4",
+      "governance": "0x9bf92b5486cf63e9fb98503557b8fb296e13176a812a1345e2a14ef2a0064f4d",
+      "holdings": "0xe4b89101ed93bdfc84233ef96e129ccf5231e687256f71f8ad5a2874434a3fb4",
+      "components": {}
+    },
+    "feeCapMojos": 1000,
+    "proposalKind": "UPGRADE",
+    "upgrade": {
+      "sourceManifestHash": "0x5151515151515151515151515151515151515151515151515151515151515151",
+      "changes": [
+        {
+          "componentId": "0x8a778d36d79dc06f38b0e5719609613091c7068ad0586e2683424c87589991eb",
+          "oldModuleHash": "0x7f6b034da88342eb111684fb03144b3cf4637edde44e522dd0d4caf2d4a69d58",
+          "newModuleHash": "0x13800cce50435ae930c73138489094f3f3f48074e26819a9e3aa59457a5c0b7d",
+          "nextVersion": 2,
+          "compatibility": 1,
+          "transition": "PRESERVE_STATE"
+        }
+      ]
+    },
+    "parameters": null,
+    "scope": null
+  }
+}

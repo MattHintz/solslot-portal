@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "purpose": "PINNED_ADMIN_WALLET_REVIEW_RUNTIME",
+  "files": {
+    "chia_wallet_sdk_wasm_bg.js": {
+      "bytes": 1890893,
+      "sha256": "8e0f4f1babf20891d500edadadda4dfef6c11eabad61483fc04d2d50ada871a2"
+    },
+    "chia_wallet_sdk_wasm_bg.wasm": {
+      "bytes": 4827666,
+      "sha256": "89ed323a034df2f074f637314d1b1c727113dc6100568d94d722fcdce45cdf48"
+    }
+  }
+}

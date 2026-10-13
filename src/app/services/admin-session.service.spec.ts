@@ -1,3 +1,4 @@
+import { environment } from '../../environments/environment';
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
@@ -42,6 +43,30 @@ describe('AdminSessionService', () => {
     TestBed.resetTestingModule();
     sessionStorage.clear();
     localStorage.clear();
+  });
+
+  it('isolates new-generation admin signatures, API tokens, and saved sessions', async()=>{
+    const runtime=environment.solslotProtocol as {generationId?: string};
+    const prior=runtime.generationId, generation='0x'+'cd'.repeat(32);
+    const old=await signedEnvelope();
+    sessionStorage.setItem(storageKey,JSON.stringify(persisted(old)));
+    try {
+      runtime.generationId=generation;
+      const service=configure();
+      expect(service.isAuthenticated()).toBeFalse();
+      expect(sessionStorage.getItem(storageKey)).toBeTruthy();
+      await expectAsync(service.loginWithWallet({...old,signatureKind:'eip712'})).toBeRejectedWithError(/envelope/);
+      const envelope=await signedEnvelope(undefined,11155111,generation);
+      await expectAsync(service.loginWithWallet({...envelope,jwt:old.jwt,signatureKind:'eip712'})).toBeRejectedWithError(/API session/);
+      await service.loginWithWallet({...envelope,signatureKind:'eip712'});
+      expect(service.requireSession().address).toBe(wallet.address.toLowerCase());
+      TestBed.resetTestingModule();
+      expect(configure().isAuthenticated()).toBeTrue();
+      runtime.generationId='0x'+'ef'.repeat(32);
+      TestBed.resetTestingModule();
+      expect(configure().isAuthenticated()).toBeFalse();
+      expect(sessionStorage.getItem(storageKey)).toBeTruthy();
+    } finally {if(prior===undefined) delete runtime.generationId; else runtime.generationId=prior;}
   });
 
   it('persists only a fully verified EIP-712 session', async () => {
@@ -250,6 +275,7 @@ describe('AdminSessionService', () => {
   async function signedEnvelope(
     expiresAt = Math.floor(Date.now() / 1_000) + 3_600,
     chainId = 11155111,
+    generation: string | null = null,
   ): Promise<{
     address: string;
     pubkey: string;
@@ -289,6 +315,10 @@ describe('AdminSessionService', () => {
         scope: 'admin',
       },
     };
+    if (generation) {
+      typedData.types['SolslotAdminLogin'].push({name:'generationId',type:'bytes32'});
+      typedData.message['generationId']=generation;
+    }
     const signature = await wallet.signTypedData(
       typedData.domain,
       { SolslotAdminLogin: typedData.types['SolslotAdminLogin'] },
@@ -300,7 +330,7 @@ describe('AdminSessionService', () => {
       expiresAt,
       signature,
       typedData,
-      jwt: unsignedJwt(wallet.address, pubkey, expiresAt),
+      jwt: unsignedJwt(wallet.address, pubkey, expiresAt, generation),
       authoritySlot: 0,
     };
   }
@@ -317,7 +347,7 @@ describe('AdminSessionService', () => {
     };
   }
 
-  function unsignedJwt(address: string, compressedPubkey: string, expiresAt: number): string {
+  function unsignedJwt(address: string, compressedPubkey: string, expiresAt: number, generation: string | null = null): string {
     const encode = (value: unknown) =>
       btoa(JSON.stringify(value))
         .replace(/=/g, '')
@@ -328,6 +358,7 @@ describe('AdminSessionService', () => {
       scope: 'admin',
       auth_type: 'evm',
       authority_slot: 0,
+      ...(generation ? {generation_id:generation} : {}),
       compressed_pubkey: compressedPubkey.toLowerCase(),
       exp: expiresAt,
     })}.test-signature`;

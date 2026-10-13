@@ -1,0 +1,195 @@
+{
+  "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+  "network": "testnet11",
+  "assignedSlot": 1,
+  "enabled": true,
+  "review": {
+    "actionEnvelope": "AE-SOLSLOT-SYNTHETIC-LAUNCH",
+    "artifactHash": "0xf3d432ce381dbc810adef11be5e600f5c8694e901dea4ecb1a27012bdb5fa938",
+    "assemblyHash": "0x8f9e6254934063ec5ae94dca47257e3fb367a46e8d7bcb89e9a12801abe8256b",
+    "backupReceiptHash": "0x5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+    "certificateHash": "0x7fd5f63e501a32572569d71a523085ee56780d67ab4062ded9a00fbcddaefacc",
+    "exchangeFees": {
+      "protocolBps": 70,
+      "sgtRewardsBps": 30,
+      "totalBps": 100
+    },
+    "expectedOutputs": [
+      {
+        "amount": 1,
+        "parent_coin_info": "0xf28c8ae83653a0868eaab2b67dd61225e5a11b46ad4da009304505285a0ffc16",
+        "puzzle_hash": "0x7833c8409afbeb0faa58a437ce23875fa28845eff16d43dbd89cab91023ce531"
+      },
+      {
+        "amount": 1,
+        "parent_coin_info": "0xc7f18dd0565439f8f24bc7d5e24d4043c182c2c6dc0587494252cd6c50e48e35",
+        "puzzle_hash": "0x3b84062c33599a1c576b9ee389c42f5022eaad5f51a2c49db0c6d59d9d9514c6"
+      },
+      {
+        "amount": 1,
+        "parent_coin_info": "0xe12c4824f41bced167f9b23a61cb1b786dc8bd9b9b0f6dbf39f8dec36667160a",
+        "puzzle_hash": "0x0840b2635c19216d16fe6823b33fc264529b3e76adaa8d99dbe8e87b5ec160a1"
+      },
+      {
+        "amount": 1,
+        "parent_coin_info": "0xd2587fca36b4a192953aa109d8b3f7cdadf4ac8eedf1f2d95b21660cc7e8b16e",
+        "puzzle_hash": "0x2fd2fc7fa59598c86e57a7af50542db321af5e6f20ca9d4dbab880d3ea36424c"
+      },
+      {
+        "amount": 1,
+        "parent_coin_info": "0x8107b20ff7f271b8d6068becd18052a120db99b0135d949537a6de41719ad901",
+        "puzzle_hash": "0xfa1dc2d09c1275ff2ef4fe9c75e5b682ab67a0826835cb72bc3035979eb14d2a"
+      },
+      {
+        "amount": 1,
+        "parent_coin_info": "0xf68a45789bff7d4d00e0944fd30405103c759cfc4cf1f857a3ae9cdcb2f7f80c",
+        "puzzle_hash": "0x1cf2761c33630eee827f86c7aa168a01006fead25309c57ffe213c58c8a5b0fe"
+      },
+      {
+        "amount": 1,
+        "parent_coin_info": "0x3ecaaec67274da5002276699c4adbaa54817dfa73c9d8e2582feea1851db8632",
+        "puzzle_hash": "0xaf7dd521682f3c8b79dc594d9f5993dfe5f0d4687b6bcd635467e05f28ec9196"
+      },
+      {
+        "amount": 3,
+        "parent_coin_info": "0x07d1ab46c0ee0d58c81981da015c71f5ce1292d7416d4108a29241171041475c",
+        "puzzle_hash": "0xa443ad0d51c5965b726ea56cf2d5742748ae32b1255624f5f3d518f778d30369"
+      },
+      {
+        "amount": 5,
+        "parent_coin_info": "0xaf24a9170a5de349c971d17ef73ddcb5002f9e6a6f1aeba029eee623af239ff6",
+        "puzzle_hash": "0x78e96902e5ba64fa890290c6c6e05f6342ddd58e118f775b7aaae4e418fac96c"
+      },
+      {
+        "amount": 7,
+        "parent_coin_info": "0x9bf2ab7979606709fbe22fca26ae462f3447abd70249076782b5891d72894a40",
+        "puzzle_hash": "0x3fc72fd62c2a2beed5a7f43c10e61b27ad668f0c8bfb947218138b5ac352bc9f"
+      },
+      {
+        "amount": 1,
+        "parent_coin_info": "0x13715f0619f2c9e800dff30cb1df4f26bf87c7031fe13a8f73ca0d1333f7351c",
+        "puzzle_hash": "0xed91e57f90a6c658b49254e182f81e14fdd540104d0eaadef60dbf32056f5df6"
+      },
+      {
+        "amount": 10000,
+        "parent_coin_info": "0x8dc9a01ea483bcdfbe23544482d82bfa8a14edaa545f90e0f0fea6ffec770619",
+        "puzzle_hash": "0x44ad908b98a15d28fd115cf44188d672347f37bb64ce38b463163171cd88977d"
+      },
+      {
+        "amount": 10000,
+        "parent_coin_info": "0x8dc9a01ea483bcdfbe23544482d82bfa8a14edaa545f90e0f0fea6ffec770619",
+        "puzzle_hash": "0x6db88752fb424efb8e2ebba600ad9df9c72a14236c8617d0617e7a2a8affa0f6"
+      },
+      {
+        "amount": 10000,
+        "parent_coin_info": "0x8dc9a01ea483bcdfbe23544482d82bfa8a14edaa545f90e0f0fea6ffec770619",
+        "puzzle_hash": "0xfcb91ba6e8f597dd0d4c7bd290599f711968667860b15bc0859843254e3e2b1c"
+      },
+      {
+        "amount": 970000,
+        "parent_coin_info": "0x8dc9a01ea483bcdfbe23544482d82bfa8a14edaa545f90e0f0fea6ffec770619",
+        "puzzle_hash": "0xc815b751e05e96c19d01d397474d780f849121049b0321682a2213c2ab2e6ae0"
+      }
+    ],
+    "expiresAt": 1791915242,
+    "feeCapMojos": 100,
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "issuedAt": 1791828842,
+    "network": "testnet11",
+    "preparationManifest": "0x95e65f512e2bb84a0ba9ff5693e3c34336aa409f2b70702ecce272add8637acd",
+    "readAnchorHash": "0xf36b45e12860ba4f6ecc0d348ee1e1c463f6457b71c864608f43194f611bc019",
+    "recipients": [
+      {
+        "administratorSlot": 1,
+        "amount": 10000,
+        "fundingCoinId": "0x8c9fec76e6d02bb78f6c0c55779a1a1ddd65552671c6f5db6163fb4be47ec5b6",
+        "identityAuthority": "0x07d1ab46c0ee0d58c81981da015c71f5ce1292d7416d4108a29241171041475c",
+        "name": "Test administrator 1",
+        "recipientPuzzle": "0xd6d960f0d858dbafd0c951b8777fc819ba9ed8d9d0576609314777fc45c52fba",
+        "recipientVault": "0xdeccfe3b8feff8c540631fef72bff6755a2d927a4286add4148cfda3be01ff44",
+        "wallet": "0x1a642f0e3c3af545e7acbd38b07251b3990914f1"
+      },
+      {
+        "administratorSlot": 2,
+        "amount": 10000,
+        "fundingCoinId": "0x81caa1f4ad93dbc60bf6305d3400593dd1626b62831705adbc12499f9abf00d1",
+        "identityAuthority": "0xaf24a9170a5de349c971d17ef73ddcb5002f9e6a6f1aeba029eee623af239ff6",
+        "name": "Test administrator 2",
+        "recipientPuzzle": "0xc380eb23a0f4d9f3ed2fc14da356f106d161b784b10451bede282f0f607d007e",
+        "recipientVault": "0x02c802ed9b3acb59c1eaf99b66680f9bb2a85cba539bbd19c560ad850580ca98",
+        "wallet": "0x5050a4f4b3f9338c3472dcc01a87c76a144b3c9c"
+      },
+      {
+        "administratorSlot": 3,
+        "amount": 10000,
+        "fundingCoinId": "0x9dee3aeecc39113706b8f8dd5d8dc8ecd9b4e9b208aa26ceab1967b00f234b3f",
+        "identityAuthority": "0x9bf2ab7979606709fbe22fca26ae462f3447abd70249076782b5891d72894a40",
+        "name": "Test administrator 3",
+        "recipientPuzzle": "0x804686fd07add05050fb882997b24fc22abc2b062807bd5cdf42be31611b43bf",
+        "recipientVault": "0xe93fc5d4a008e2f5ca731feaa766ffc0da05f87f5e7297f8805670833328086b",
+        "wallet": "0x3325a78425f17a7e487eb5666b2bfd93abb06c70"
+      }
+    ],
+    "releaseExpiresAt": 1791915242,
+    "releaseManifestHash": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+    "restoreReceiptHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+    "securityReviewHash": "0x5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
+    "sgtOutputs": [
+      {
+        "amount": 10000,
+        "coinId": "0x801bf8a75cc23c4e1414fdcd498049790e2daa7d83c1e6025803db649647eb71",
+        "kind": "HOLDER",
+        "ownerPuzzleHash": "0xd6d960f0d858dbafd0c951b8777fc819ba9ed8d9d0576609314777fc45c52fba",
+        "puzzleHash": "0x44ad908b98a15d28fd115cf44188d672347f37bb64ce38b463163171cd88977d"
+      },
+      {
+        "amount": 10000,
+        "coinId": "0xb45502d3dae6a1f60cd28053920e2a60ae9abdf6870c11ad55e434d8087ac35c",
+        "kind": "HOLDER",
+        "ownerPuzzleHash": "0xc380eb23a0f4d9f3ed2fc14da356f106d161b784b10451bede282f0f607d007e",
+        "puzzleHash": "0x6db88752fb424efb8e2ebba600ad9df9c72a14236c8617d0617e7a2a8affa0f6"
+      },
+      {
+        "amount": 10000,
+        "coinId": "0x48ac60ee4408b59d6f147014c1981135dfc31fbe1cef6d89185aa067375d84ae",
+        "kind": "HOLDER",
+        "ownerPuzzleHash": "0x804686fd07add05050fb882997b24fc22abc2b062807bd5cdf42be31611b43bf",
+        "puzzleHash": "0xfcb91ba6e8f597dd0d4c7bd290599f711968667860b15bc0859843254e3e2b1c"
+      },
+      {
+        "amount": 970000,
+        "coinId": "0xaac01a95f2d86983d987f140d19b9268fbbb93c460701fa91dddc4166909a4a4",
+        "kind": "RESERVE",
+        "ownerPuzzleHash": "0x5151515151515151515151515151515151515151515151515151515151515151",
+        "puzzleHash": "0xc815b751e05e96c19d01d397474d780f849121049b0321682a2213c2ab2e6ae0"
+      }
+    ],
+    "sgtTailHash": "0x9e7ff112da5806b9f888c6d31c0948ebd4056bc10b0b4acdf33016b52b85dd91",
+    "sourceCommits": {
+      "adminPortal": "1212121212121212121212121212121212121212",
+      "api": "1212121212121212121212121212121212121212",
+      "customerWeb": "1212121212121212121212121212121212121212",
+      "evm": "1212121212121212121212121212121212121212",
+      "keyOfSolomon": "1212121212121212121212121212121212121212",
+      "legacyBackend": "1212121212121212121212121212121212121212",
+      "omnichain": "1212121212121212121212121212121212121212",
+      "protocol": "1212121212121212121212121212121212121212",
+      "samuel": "1212121212121212121212121212121212121212"
+    },
+    "supply": {
+      "distributed": 30000,
+      "quorum": 15000,
+      "reserve": 970000,
+      "total": 1000000
+    },
+    "reviewId": "0x9c66fea852d9dacbe10af15f9dd107713416be46334a7f4c3aec939b8f1afc46",
+    "approvedSlots": [],
+    "launchComplete": false,
+    "confirmedHeight": null,
+    "lastCheckedAt": null,
+    "errorCode": null
+  },
+  "operation": null,
+  "nextAction": "APPROVE_EXACT_LAUNCH",
+  "pollAfterSeconds": 5
+}

@@ -2,103 +2,14 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import { appConfig } from './app/app.config';
 import { App } from './app/app';
 
-// ─────────────────────────────────────────────────────────────────────────
-// Chia Wallet SDK WASM bootstrap.
-//
-// We use the same pattern proven in production by solslot's portal
-// (research/solslot-frontend/slui/src/main.ts):
-//
-//   1. The .wasm binary lives under the Angular assets root:
-//      assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm.  The URL is resolved
-//      relative to document.baseURI so hosted builds under /solslot-admin/
-//      fetch /solslot-admin/assets/... while local dev still fetches /assets/....
-//
-//   2. The JS "glue" — wasm-bindgen's exported bindings — comes from npm
-//      via a direct deep import of the package's
-//      `chia_wallet_sdk_wasm_bg.js`.  We deliberately bypass the package's
-//      own `chia_wallet_sdk_wasm.js` entrypoint because that file does
-//      `import * as wasm from "./chia_wallet_sdk_wasm_bg.wasm"`, which
-//      Angular's esbuild-based @angular/build:application builder cannot
-//      resolve (no built-in WASM loader; vite-plugin-wasm doesn't apply
-//      here).  Hand-instantiating sidesteps that entirely.
-//
-//   3. After fetching + instantiating the .wasm, we call
-//      __wbg_set_wasm() (a wasm-bindgen helper exported by the glue) to
-//      complete the bidirectional wiring, then stash the SDK object on
-//      `window.ChiaSDK` so ChiaWasmService can pick it up via DI without
-//      having to await module imports inside Angular's injector.
-//
-// We deliberately bootstrap Angular *after* WASM init resolves.  This adds
-// roughly 100–300ms to first paint on cold load (5.4MB binary, decoded on
-// the main thread) but means every Angular service can synchronously
-// assume the SDK is ready when it asks for it via ChiaWasmService.
-// ─────────────────────────────────────────────────────────────────────────
-
-const WASM_ASSET_PATH = 'assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm';
-
-function wasmAssetUrl(): string {
-  return new URL(WASM_ASSET_PATH, document.baseURI).toString();
-}
+import {initializeVerifiedChiaRuntime,verifiedChiaRuntime} from './app/utils/verified-chia-runtime';
 
 async function initializeChiaWasm(): Promise<void> {
-  try {
-    // Dynamic import (NOT static `import * as`).  Static namespace
-    // imports of the wasm-bindgen JS glue let esbuild tree-shake any
-    // export that isn't referenced by name from app code — including
-    // the auto-generated `__wbindgen_closure_wrapper<N>` callbacks
-    // whose ids change every rebuild of the underlying Rust crate.
-    // When the WASM module then asks for those callbacks at
-    // ``WebAssembly.instantiate`` time (passing ``wasmExports`` as
-    // ``./chia_wallet_sdk_wasm_bg.js``), instantiation fails with
-    // ``LinkError: function import requires a callable`` because the
-    // tree-shaker dropped them.
-    //
-    // Dynamic imports are evaluated at runtime, so esbuild can't prove
-    // any export is unused → all exports are preserved.  This makes
-    // the bootstrap robust against arbitrary local rebuilds of the
-    // chia-wallet-sdk-wasm package (which we do for upstream-PR
-    // verification or local feature development).
-    //
-    // Cost: a single extra microtask before fetch starts; negligible.
-    // @ts-ignore — deep-import path; types come from chia_wallet_sdk_wasm.d.ts.
-    const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
-
-    const wasmUrl = wasmAssetUrl();
-    const response = await fetch(wasmUrl);
-    if (!response.ok) {
-      throw new Error(
-        `[main] Failed to fetch ${wasmUrl}: ${response.status} ${response.statusText}`,
-      );
-    }
-    const bytes = await response.arrayBuffer();
-
-    // wasm-bindgen's emitted glue treats `./chia_wallet_sdk_wasm_bg.js`
-    // as the host module name during instantiation; pass the imported
-    // namespace through so the WASM's imported callbacks resolve.
-    const result = await WebAssembly.instantiate(bytes, {
-      './chia_wallet_sdk_wasm_bg.js': wasmExports as unknown as WebAssembly.ModuleImports,
-    });
-
-    const setWasm = (wasmExports as { __wbg_set_wasm?: (w: WebAssembly.Exports) => void })
-      .__wbg_set_wasm;
-    if (typeof setWasm !== 'function') {
-      throw new Error(
-        '[main] chia_wallet_sdk_wasm_bg.js is missing __wbg_set_wasm. ' +
-          'Did the SDK package format change?',
-      );
-    }
-    setWasm(result.instance.exports);
-
-    (window as unknown as { ChiaSDK: unknown }).ChiaSDK = wasmExports;
-    console.info('[main] Chia WASM ready.');
-  } catch (err) {
-    console.error('[main] Chia WASM init failed:', err);
-    // Re-throw so tests + dev tooling see the failure surface; in
-    // production the app will still bootstrap (no Chia ops will work
-    // until the user reloads, which is the same behaviour as a network
-    // failure during initial load).
-    throw err;
+  if (Object.prototype.hasOwnProperty.call(window,'ChiaSDK')) {
+    throw new Error('Unexpected Chia runtime existed before verified initialization.');
   }
+  await initializeVerifiedChiaRuntime();
+  Object.defineProperty(window,'ChiaSDK',{value:verifiedChiaRuntime(),writable:false,configurable:false});
 }
 
 initializeChiaWasm()

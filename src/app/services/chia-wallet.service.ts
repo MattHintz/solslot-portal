@@ -5,6 +5,9 @@ import { ChiaWasmService } from './chia-wasm.service';
 import { GoogleBlsWalletService } from './google-bls-wallet.service';
 import { environment } from '../../environments/environment';
 import { mojoAmountToSafeNumber } from '../utils/mojo-amount';
+import { deploymentGeneration } from '../utils/deployment-generation';
+import { GenerationSgtContext,GenerationSgtRequest,inspectGenerationSgt,executeGenerationSgtBls,snapshotGenerationReview } from '../utils/generation-sgt-review';
+import { verifiedChiaRuntime } from '../utils/verified-chia-runtime';
 
 type WalletConnectSignClient = Awaited<ReturnType<typeof SignClient.init>>;
 interface ChiaWalletConnectSession {
@@ -347,6 +350,7 @@ export class ChiaWalletService {
   async signSpendBundle(
     coinSpends: ReadonlyArray<UnsignedCoinSpend>,
   ): Promise<SignedSpendBundle> {
+    if(deploymentGeneration())throw new Error('Review the exact new-generation action before requesting a wallet signature.');
     const state = this._state();
     if (state.kind !== 'connected') {
       throw new Error('signSpendBundle: wallet not connected');
@@ -392,6 +396,44 @@ export class ChiaWalletService {
     }
 
     throw new Error(`signSpendBundle: unsupported connection: ${state.connection}`);
+  }
+
+  /** New-generation whole-holding authorization; generic spend signing cannot enter this branch. */
+  async signGenerationSgt(raw:GenerationSgtRequest, context:GenerationSgtContext,
+    revalidate:()=>Promise<void>):Promise<SignedSpendBundle> {
+    raw=snapshotGenerationReview(raw);context=snapshotGenerationReview(context);
+    const state=this._state();
+    if(state.kind!=='connected' || state.connection==='google' || context.owner.authType!==1 ||
+      normalizeHex(state.pubkey).toLowerCase()!==context.owner.publicKey || environment.chiaNetwork!=='testnet11')
+      throw new Error('Connect the reviewed Sage or Goby owner on Testnet11.');
+    inspectGenerationSgt(raw,context);
+    const bridge=state.connection==='goby'?(window as WindowWithChia).chia:this.getSageBridge();
+    const session=this.sageWcSession, chain=bridge?.chainId, address=bridge?.selectedAddress;
+    const assertCurrent=()=>{
+      const currentBridge=state.connection==='goby'?(window as WindowWithChia).chia:this.getSageBridge();
+      if(!bridge || this._state()!==state || currentBridge!==bridge || bridge.chainId!==chain || bridge.selectedAddress!==address ||
+        (state.connection==='sage-walletconnect' && (session!==this.sageWcSession || !session || !sessionHasChiaChain(session,'chia:testnet'))) ||
+        (chain!==undefined && !['testnet','testnet11','chia:testnet','chia:testnet11'].includes(chain)) ||
+        (address!==undefined && !address.startsWith('txch1')))
+        throw new Error('The wallet account or network changed. Reconnect on Testnet11 and review this holding again.');
+    };
+    assertCurrent();await revalidate();assertCurrent();
+    const keys=state.connection==='goby' ? await withChiaWalletPromptTimeout(
+      bridge!.request({method:'getPublicKeys',params:{limit:1}}),CHIA_WALLET_PROMPT_TIMEOUT_MS,'Open Goby to reconnect your reviewed key.') :
+      await this.requestSageWalletConnectPublicKeys(bridge!);
+    assertCurrent();
+    if(!Array.isArray(keys) || !keys.some(k=>typeof k==='string' && normalizeHex(k).toLowerCase()===context.owner.publicKey))
+      throw new Error('The wallet no longer exposes the reviewed owner key. Reconnect and review again.');
+    await revalidate();assertCurrent();
+    const intent=executeGenerationSgtBls(raw,context,verifiedChiaRuntime());
+    const spends=intent.signingCoinSpends;
+    const wire=spends.map(s=>({coin:{parent_coin_info:normalizeHex(s.coin.parentCoinInfo),puzzle_hash:normalizeHex(s.coin.puzzleHash),amount:s.coin.amount},
+      puzzle_reveal:normalizeHex(s.puzzleReveal),solution:normalizeHex(s.solution)}));
+    const signed=await withChiaWalletPromptTimeout(this.invokeSignCoinSpends(bridge,state.connection==='goby'?['signCoinSpends','chip0002_signCoinSpends']:
+      ['chip0002_signCoinSpends','chia_signCoinSpends'],wire,spends),180000,
+      'The SGT signature is still waiting in your wallet. Open Sage or Goby, check the pending request, then return here.');
+    assertCurrent();await revalidate();inspectGenerationSgt(raw,context);
+    return {...signed,coinSpends:spends};
   }
 
   /**

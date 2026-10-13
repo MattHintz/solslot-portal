@@ -8,6 +8,7 @@ import {
   CollectionApiService,
   CollectionFeatureStatus,
   CollectionState,
+  CollectionSourceSummary,
   CollectionWorkspace,
 } from '../../../services/collection-api.service';
 import { formatError } from '../../../utils/format-error';
@@ -65,6 +66,19 @@ type StateFilter = 'ALL' | CollectionState;
             <span>You can complete and review the property now. No SmartDeed can be published yet.</span>
           </section>
         }
+      }
+
+      @if (feature()?.testEditionsEnabled) {
+        <section class="notice" aria-label="Create a test edition from the preserved property draft">
+          <div><strong>Use an existing draft for a test mint</strong><p>The original and its private files stay preserved. Public media is selected separately.</p></div>
+          <label>Original collection ID<input [(ngModel)]="sourceId" (ngModelChange)="sourceReview.set(null)" placeholder="COL-…" [disabled]="creating()" /></label>
+          <button class="btn btn--ghost" (click)="reviewSource()" [disabled]="creating() || !sourceId.trim()">Review source draft</button>
+          @if (sourceReview(); as source) {
+            <div><strong>{{ source.title }}</strong><p>Revision {{ source.revision }} · {{ source.collectionId }}</p><p>Test-only edition in the current generation. No seal, publication or mint is performed here.</p></div>
+            <button class="btn btn--primary" (click)="createEdition()" [disabled]="creating() || !feature()?.metadataEnabled">{{ creating() ? 'Opening test edition…' : 'Create or resume test edition' }}</button>
+          }
+          @if (createError()) { <p role="alert">{{ createError() }}</p> }
+        </section>
       }
 
       <nav class="filter-bar" aria-label="Collection state filter">
@@ -231,6 +245,8 @@ export class CollectionsComponent {
   });
 
   newTitle = '';
+  sourceId = '';
+  readonly sourceReview = signal<CollectionSourceSummary | null>(null);
 
   constructor() {
     this.refresh.start(() => this.reload(), () => {
@@ -257,6 +273,25 @@ export class CollectionsComponent {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  async reviewSource(): Promise<void> {
+    if (this.creating()) return;
+    this.creating.set(true); this.createError.set(null); this.sourceReview.set(null);
+    try { this.sourceReview.set(await this.api.sourceDraft(this.sourceId.trim())); }
+    catch (error) { this.createError.set(formatError(error)); }
+    finally { this.creating.set(false); }
+  }
+
+  async createEdition(): Promise<void> {
+    const source = this.sourceReview();
+    if (!source || this.creating()) return;
+    this.creating.set(true); this.createError.set(null);
+    try {
+      const edition = await this.api.createTestEdition(source);
+      await this.router.navigate(['/admin/collections', edition.id]);
+    } catch (error) { this.createError.set(formatError(error)); }
+    finally { this.creating.set(false); }
   }
 
   async create(): Promise<void> {

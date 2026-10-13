@@ -1,0 +1,857 @@
+{
+  "source": {
+    "billHash": "0xf6087ac69d858c168f6247277d92552f9e06cb81df1e1d92e2a886e34e63d10b",
+    "canonicalMetadata": {
+      "capital": {
+        "currency": "USD",
+        "plannedUses": []
+      },
+      "classification": {
+        "assetClass": "RWA-RE-RES",
+        "programOverlays": [],
+        "projectStage": "stabilized",
+        "propertySubtype": "duplex"
+      },
+      "collectionId": "HARBOR-17",
+      "dataSources": [
+        {
+          "asOfDate": "2026-07-01",
+          "name": "North Bay Valuation LLC",
+          "url": "https://assets.example/harbor-17/appraisal.pdf"
+        }
+      ],
+      "deedAllocation": [
+        {
+          "deedId": "TEST-1",
+          "parValueMojos": "141176470588236",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-2",
+          "parValueMojos": "141176470588236",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-3",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-4",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-5",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-6",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-7",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-8",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-9",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-10",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-11",
+          "parValueMojos": "141176470588236",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-12",
+          "parValueMojos": "141176470588236",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-13",
+          "parValueMojos": "141176470588236",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-14",
+          "parValueMojos": "141176470588236",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-15",
+          "parValueMojos": "141176470588236",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-16",
+          "parValueMojos": "141176470588236",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-17",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-18",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-19",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-20",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-21",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-22",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-23",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-24",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        },
+        {
+          "deedId": "TEST-25",
+          "parValueMojos": "141176470588235",
+          "sharePpm": 40000
+        }
+      ],
+      "diligence": [
+        {
+          "evidenceAssetIds": [],
+          "key": "building-details",
+          "references": [
+            "/property"
+          ]
+        },
+        {
+          "evidenceAssetIds": [],
+          "key": "comparable-sales",
+          "references": [],
+          "value": "Reviewed"
+        },
+        {
+          "evidenceAssetIds": [],
+          "key": "debt",
+          "references": [
+            "/capital"
+          ]
+        },
+        {
+          "evidenceAssetIds": [],
+          "key": "insurance",
+          "references": [],
+          "value": "Reviewed"
+        },
+        {
+          "evidenceAssetIds": [],
+          "key": "occupancy",
+          "references": [
+            "/operations/occupancyStatus"
+          ]
+        },
+        {
+          "evidenceAssetIds": [],
+          "key": "operating-history",
+          "references": [],
+          "value": "Reviewed"
+        },
+        {
+          "evidenceAssetIds": [],
+          "key": "property-condition",
+          "references": [],
+          "value": "Reviewed"
+        },
+        {
+          "evidenceAssetIds": [],
+          "key": "title",
+          "references": [],
+          "value": "Reviewed"
+        },
+        {
+          "evidenceAssetIds": [],
+          "key": "valuation",
+          "references": [
+            "/valuation",
+            "/valuationBasis",
+            "/valuationEvidence"
+          ]
+        }
+      ],
+      "disclosures": [
+        "Projected returns are not guaranteed.",
+        "TESTNET ONLY: no real investment, ownership or legal rights."
+      ],
+      "documents": [
+        {
+          "assetId": "appraisal-2026",
+          "byteSize": 200,
+          "category": "valuation",
+          "cid": "bafyappraisal",
+          "mimeType": "application/pdf",
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "title": "Independent appraisal",
+          "uris": [
+            "https://assets.example/harbor-17/appraisal.pdf",
+            "ipfs://bafyappraisal"
+          ]
+        }
+      ],
+      "fsreTerms": {
+        "outsideTermMonths": 14,
+        "participationBps": 1500,
+        "projectedMonthsMax": 12,
+        "projectedMonthsMin": 10,
+        "returnBasis": "MARKET_VALUE",
+        "structure": "FSRE"
+      },
+      "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+      "history": [],
+      "legal": {},
+      "media": [
+        {
+          "alt": "Front exterior of 17 Harbor Street",
+          "assetId": "hero-exterior",
+          "byteSize": 100,
+          "cid": "bafyhero123",
+          "mimeType": "image/jpeg",
+          "role": "hero",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "uris": [
+            "https://assets.example/harbor-17/exterior.jpg",
+            "ipfs://bafyhero123"
+          ]
+        }
+      ],
+      "network": "testnet11",
+      "offering": {
+        "assetClass": "RWA-RE-RES",
+        "currency": "USD",
+        "jurisdiction": "US-CA",
+        "parValueMojos": "3529411764705883",
+        "royaltyBps": "100",
+        "royaltyPuzhash": "0x3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "targetRaiseMinor": "7500000"
+      },
+      "operations": {
+        "annualOperatingExpenseMinor": "2190000",
+        "currency": "USD",
+        "monthlyGrossRentMinor": "585000",
+        "occupancyStatus": "leased"
+      },
+      "pricingRoundHash": "0xe18ea5dc161d551bce8f921bdbad9adf454c720513b29b5a01a381f3660d1255",
+      "projectTeam": {
+        "builderIsSponsor": false,
+        "builderStatus": "not-applicable",
+        "sponsor": {
+          "legalName": "Harbor Project Sponsor LLC"
+        }
+      },
+      "property": {
+        "address": {
+          "city": "Oakland",
+          "country": "US",
+          "line1": "17 Harbor Street",
+          "postalCode": "94607",
+          "region": "CA"
+        },
+        "bathrooms": "2",
+        "bedrooms": "4",
+        "interiorSquareFeet": "2410",
+        "propertyType": "duplex",
+        "yearBuilt": 1928
+      },
+      "provenance": {
+        "sourceCollectionId": "PRIVATE-SOURCE",
+        "sourceDraftHash": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+        "sourceGenerationId": "archived-test-generation",
+        "sourceRevision": 38
+      },
+      "purpose": "TEST_ONLY",
+      "revision": 2,
+      "risks": [
+        {
+          "detail": "A secondary market may not develop.",
+          "riskId": "liquidity",
+          "severity": "high",
+          "title": "Limited liquidity"
+        }
+      ],
+      "schemaVersion": "solslot.testnet-property-dossier.v1",
+      "summary": "Two-unit residential property with a documented renovation plan.",
+      "title": "127 Eastmoreland St \u2014 Testnet Edition",
+      "unknownFields": [
+        {
+          "path": "/valuation/asOfDate",
+          "reason": "Controlling evidence remains unresolved.",
+          "status": "UNKNOWN"
+        },
+        {
+          "path": "/valuation/source",
+          "reason": "Controlling evidence remains unresolved.",
+          "status": "UNKNOWN"
+        },
+        {
+          "path": "/capital/debtBalanceMinor",
+          "reason": "Controlling evidence remains unresolved.",
+          "status": "UNKNOWN"
+        },
+        {
+          "path": "/capital/debtRateBps",
+          "reason": "Controlling evidence remains unresolved.",
+          "status": "UNKNOWN"
+        },
+        {
+          "path": "/legal/issuerLegalName",
+          "reason": "Controlling evidence remains unresolved.",
+          "status": "UNKNOWN"
+        },
+        {
+          "path": "/legal/securityStructure",
+          "reason": "Controlling evidence remains unresolved.",
+          "status": "UNKNOWN"
+        },
+        {
+          "path": "/legal/collateralSummary",
+          "reason": "Controlling evidence remains unresolved.",
+          "status": "UNKNOWN"
+        },
+        {
+          "path": "/legal/filingStatus",
+          "reason": "Controlling evidence remains unresolved.",
+          "status": "UNKNOWN"
+        },
+        {
+          "path": "/legal/transferPolicy",
+          "reason": "Controlling evidence remains unresolved.",
+          "status": "UNKNOWN"
+        }
+      ],
+      "valuation": {
+        "currency": "USD",
+        "marketValueMinor": "155000000",
+        "method": "to-be-built appraisal"
+      },
+      "valuationBasis": "TO_BE_BUILT",
+      "valuationEvidence": "USER_CONFIRMED"
+    },
+    "collectionCommitment": "0xcb288b2630d2909e6a8e8323a428429dc6fd5b19d255b387c94a6d6172d39559",
+    "createdAt": 1000,
+    "editionHash": "0xbaea80f9240c113be59447f55bee9136bf127478e80133fb3249b85df42738dc",
+    "editionProgram": "0xff89544553545f4f4e4c59ffa00707070707070707070707070707070707070707070707070707070707070707ffa0cb288b2630d2909e6a8e8323a428429dc6fd5b19d255b387c94a6d6172d39559ffa05f90e687ac67586a1be9e9f49a33381856c2ddfbbfb3ab7448e39298ce3c8035ffa08def2267a790a58fc3a93e3315ad39fe4be68671a7f2f84353f02cee8fffd8cbffa00cacfba9ddcfc79d434c000462cdf0c885e927c4e90a13f56a390e38844de574ffa0e18ea5dc161d551bce8f921bdbad9adf454c720513b29b5a01a381f3660d1255ff64ff01ff8555532d4341ffffffa0f883ef89b2aacc858c2527b5208806cd44fce61b9687ce734f2719b1678891edff83009c40ff830493e0ff8700806635614b4c80ffffa0f63f0a97bdefc695f779322d3cc1542e50e608c792a667dbe3898c650f3ca549ff83009c40ff830493e0ff8700806635614b4c80ffffa06b81220512e864177932c7c9f073e852a0d0496b6d8f865dc27e10318663fa4aff83009c40ff830493e0ff8700806635614b4b80ffffa0d4801175a62c11c8aae313cffcaf7adb204859d7f80c798309d0164e76c145c8ff83009c40ff830493e0ff8700806635614b4b80ffffa05c6e91e05b9d5d07c02aa859e4033cd392e9d1b1a6cc946d71460959d9aee503ff83009c40ff830493e0ff8700806635614b4b80ffffa0c3d0cf640f67c36a7235daa66defc615f06ab1abaca2634a32b85a45826841a2ff83009c40ff830493e0ff8700806635614b4b80ffffa057183c1976534cddd3b39abe98d9f8d21f0a8e279463e9bd0782ebff5db893bdff83009c40ff830493e0ff8700806635614b4b80ffffa0bb33ce7e79679652cf2fa2279db3b4b4cfb4f99f41bc9c9eff9d6fa5efafac20ff83009c40ff830493e0ff8700806635614b4b80ffffa0a9c4a2a7c669e77aaa0056e63e1a8f73a3e8cb1caccd5e41c9d9ea6a746c1eebff83009c40ff830493e0ff8700806635614b4b80ffffa0b50b5d881159ac2966d11d2deaa5686e890125975acbf2903585b909829f6670ff83009c40ff830493e0ff8700806635614b4b80ffffa0f5540e00680fd64067f67f95a194058ba3ef432400151888edf55628c8581211ff83009c40ff830493e0ff8700806635614b4c80ffffa0354b41d1929c11caf0f2eed1ba31cab6b6afd1c61b11b85927f14514532305dfff83009c40ff830493e0ff8700806635614b4c80ffffa0e892b8859adb627a8fb3e3326a722204d55d9f59955a59025190d2da4c6892e1ff83009c40ff830493e0ff8700806635614b4c80ffffa037d2d3fec4ed7318443f3445a31fa790d6b8db5b1c6c9f8d9aa448d446f524bfff83009c40ff830493e0ff8700806635614b4c80ffffa02b9bc2a9dd6fce9e930e26b00c8e56cf50f15e2263fa75af7bd39b3581263204ff83009c40ff830493e0ff8700806635614b4c80ffffa0d7d52c36382f30e8164ca8f87582f742af8793109e4a68e2e93b65076cf88220ff83009c40ff830493e0ff8700806635614b4c80ffffa04a67d636e83b90269bd6c39fabe2bde6e9c113e0d05931aa3e8a37dc91996d60ff83009c40ff830493e0ff8700806635614b4b80ffffa01a8df82d796faa8413e685896ecb1e50521392fe3ce70cca7c59cad583dc389dff83009c40ff830493e0ff8700806635614b4b80ffffa0b107ac66fc273fb24e232adb70e8c9d0ff4cf756105c6794a52e7f246226750aff83009c40ff830493e0ff8700806635614b4b80ffffa0c923bd4872d9b20a83f0b72d6d0c5f56472f054df3f303289d0dc1cfcd57b76eff83009c40ff830493e0ff8700806635614b4b80ffffa0ce8ffe0d560b525d78e1fef4efd8932265e50799a4011b61c11dea9867415a20ff83009c40ff830493e0ff8700806635614b4b80ffffa0c90dc27b863685275eedca852bc9eda3963b2050bb508d7d63167094c8cf5d23ff83009c40ff830493e0ff8700806635614b4b80ffffa00faf7280d09836d7ba5a9dbb33e755e21fd805a365b63bb3cd0bfb5efde8a927ff83009c40ff830493e0ff8700806635614b4b80ffffa0d0b3e0f0701e80db3f5e1ed83d28ab5c180227b54747e6530fa9b55950f36039ff83009c40ff830493e0ff8700806635614b4b80ffffa0f63b713338ecf7095f8b17201f8572534454cb75a7ad55488b5e6d080df632d4ff83009c40ff830493e0ff8700806635614b4b808080",
+    "funding": [
+      {
+        "coin": {
+          "amount": 2,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xf883ef89b2aacc858c2527b5208806cd44fce61b9687ce734f2719b1678891ed",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xff20c1b820cadae7a33ff192d4ca687840ed22404bc649bb4c8d4c6c00199100",
+        "launcherId": "0xd292cb272d0cce05dcd96563dea9b8719906b6d88de38c2435190d542611df1c"
+      },
+      {
+        "coin": {
+          "amount": 3,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xf63f0a97bdefc695f779322d3cc1542e50e608c792a667dbe3898c650f3ca549",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xe23044a6c979174586a017f8a916f178c782c9a6481b732245c6756b23b2297a",
+        "launcherId": "0xdc6ac072ca488eece5400af1e9af651f115db3f7c00057836e1481130aefd53f"
+      },
+      {
+        "coin": {
+          "amount": 4,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0x6b81220512e864177932c7c9f073e852a0d0496b6d8f865dc27e10318663fa4a",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x6b50c637ebaad0dec7e22bc3ee85f2a29531c2272fe8d4f9253093574a0683ea",
+        "launcherId": "0x5383185aac4732a22d20700c38d4981fa2c5b7b9553694db2e7c126486ecceb5"
+      },
+      {
+        "coin": {
+          "amount": 5,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xd4801175a62c11c8aae313cffcaf7adb204859d7f80c798309d0164e76c145c8",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x2c7b19f86e1708ea4fcb170442e8fcea0d1e2178b4d8485db42f780c700faa56",
+        "launcherId": "0x79724a5855f9e7b29381830a5825652eab397ec156cf3ae307d0c019b468724a"
+      },
+      {
+        "coin": {
+          "amount": 6,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0x5c6e91e05b9d5d07c02aa859e4033cd392e9d1b1a6cc946d71460959d9aee503",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x442c782d4ef77aca03a3035e22d83fc51c128f6b920432b7133efe7c8b9f4793",
+        "launcherId": "0x4bbea2600cccedb97eacf11270ae0b55f264699d750e931feb06282bbec48d5e"
+      },
+      {
+        "coin": {
+          "amount": 7,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xc3d0cf640f67c36a7235daa66defc615f06ab1abaca2634a32b85a45826841a2",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xcc94b6d9daf7cf00c01369f411fc7d416fb0e371b14e20e0b460c5c3f0b0912f",
+        "launcherId": "0xcb488fba6368adac2f783447542da7f7a93525fddd157851711897093b98611a"
+      },
+      {
+        "coin": {
+          "amount": 8,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0x57183c1976534cddd3b39abe98d9f8d21f0a8e279463e9bd0782ebff5db893bd",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x62644ccd819b135a44c27b47aa4ec5cb5411098e779d79075f5882ef8b2f6bc0",
+        "launcherId": "0x7c65bdd16f94ae0b26bb1f650e82c3ba95ff14b63f4fca4f3a47f0d580e3d67c"
+      },
+      {
+        "coin": {
+          "amount": 9,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xbb33ce7e79679652cf2fa2279db3b4b4cfb4f99f41bc9c9eff9d6fa5efafac20",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xf16412b642eba397d9b8d02e10852b869273e6821dbd12b3b36c18746c037701",
+        "launcherId": "0x651ad35e9b9b477088ccff303b287cb1d8b69b7261fa0dc87a9b019fef495edd"
+      },
+      {
+        "coin": {
+          "amount": 10,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xa9c4a2a7c669e77aaa0056e63e1a8f73a3e8cb1caccd5e41c9d9ea6a746c1eeb",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xb01c327c456cb5f0316700c89f58aa0c9ad41d3d5563a118d1ac7ab8c4f73270",
+        "launcherId": "0x7b8f67897fa2c899d36939470bf1e9a62da456e4362d9e0c92c8eff99059c75c"
+      },
+      {
+        "coin": {
+          "amount": 11,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xb50b5d881159ac2966d11d2deaa5686e890125975acbf2903585b909829f6670",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xb5bc3eb0530806c480c9f810e373ca1882ed34edca20158f29f1c91d6c2cb79a",
+        "launcherId": "0x483789eb9023bffa52a3b0dc118b9086dca0e4f507fba35df6697f0b5a1e273c"
+      },
+      {
+        "coin": {
+          "amount": 12,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xf5540e00680fd64067f67f95a194058ba3ef432400151888edf55628c8581211",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xbbf2d1b99577b44e18352b5020f6476993df288e42559d5bf60e6617811c3d5f",
+        "launcherId": "0x8148d58f8b4c8df59a91b0c2c27d8d7bc697d9990fe8125c2592e06331997e97"
+      },
+      {
+        "coin": {
+          "amount": 13,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0x354b41d1929c11caf0f2eed1ba31cab6b6afd1c61b11b85927f14514532305df",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x08d48ce381f5f8671a9f5540c195fce94d9f6f65088a8809862c370d32577697",
+        "launcherId": "0x7c93e057f3d4ae4785c808d15d6d151dd185d071934ec5aa10f9dfb84c0b78bf"
+      },
+      {
+        "coin": {
+          "amount": 14,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xe892b8859adb627a8fb3e3326a722204d55d9f59955a59025190d2da4c6892e1",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x6351bc2a9e6fdf86c4e0fb942263f8a28b0aa08c383e1f4ecfad10a299931a44",
+        "launcherId": "0x75926fb6157cff015065a79b2753023656e90bde0635c5270ff31157ceafacf6"
+      },
+      {
+        "coin": {
+          "amount": 15,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0x37d2d3fec4ed7318443f3445a31fa790d6b8db5b1c6c9f8d9aa448d446f524bf",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x7b05094b481c6b9e3811010476ba6aaa9572667519411a0300b84ed689e4d981",
+        "launcherId": "0x03f52ae154b129921ab7e8f91b75ce78e5f54ea28e0e1bf3be534639cbcdee52"
+      },
+      {
+        "coin": {
+          "amount": 16,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0x2b9bc2a9dd6fce9e930e26b00c8e56cf50f15e2263fa75af7bd39b3581263204",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x1d3f6aa472e14802e56abe221732280051d76eb78e406625ef40f519a4713a3c",
+        "launcherId": "0xa5f387cb1b9de86eaf3cc4ff26a0e5e8c50c2627121f77273679cb22835d1a54"
+      },
+      {
+        "coin": {
+          "amount": 17,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xd7d52c36382f30e8164ca8f87582f742af8793109e4a68e2e93b65076cf88220",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x816d9d09c4e8f92cc6176a2e613074058954b5886cd92e594402061671d40f5e",
+        "launcherId": "0xd2dd3d1b1f6ae6b5b6b7152a1862b85cf914cf8a192575157fe7419698a40bea"
+      },
+      {
+        "coin": {
+          "amount": 18,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0x4a67d636e83b90269bd6c39fabe2bde6e9c113e0d05931aa3e8a37dc91996d60",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xf960e0ddc71763b32889fed9b2190980a45f6027b812c1fc7e59cf233919ee1d",
+        "launcherId": "0x8e6f0377b0c6827e9b53b02392a855bdfa20143ab033b33e116fcde8f3c6fe25"
+      },
+      {
+        "coin": {
+          "amount": 19,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0x1a8df82d796faa8413e685896ecb1e50521392fe3ce70cca7c59cad583dc389d",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xf8ae749a4f3179b3c01966e41efed7c83679a4493e7a93592d4d2107f289c780",
+        "launcherId": "0x24ad3b6a1a17c1cea89c2b9f5e15952c3c98e02f79c1c3d50c19b2ce3d353deb"
+      },
+      {
+        "coin": {
+          "amount": 20,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xb107ac66fc273fb24e232adb70e8c9d0ff4cf756105c6794a52e7f246226750a",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x9255da3374ba9ea72da0aedb44637f0669b4b4496ad5c4a018ef24e26ab2abe1",
+        "launcherId": "0x3c6c8ac4cf5595b48021f97e9b86301b2264fc06925a46a0bf7534a9771e99f2"
+      },
+      {
+        "coin": {
+          "amount": 21,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xc923bd4872d9b20a83f0b72d6d0c5f56472f054df3f303289d0dc1cfcd57b76e",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xad3e553b04af62f3900d9a83e92fa3d70f6bc195cb6011cff3df128fdcbf3eae",
+        "launcherId": "0x554b5d780d5fc16fdd405834ce00388b95f532d0d30e78c655fcfe2253beb1cf"
+      },
+      {
+        "coin": {
+          "amount": 22,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xce8ffe0d560b525d78e1fef4efd8932265e50799a4011b61c11dea9867415a20",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x36f8179d85b8886b2942e34e1543863439b2092ee6ecd1da20b1ff048ca5bbf7",
+        "launcherId": "0x30aaa7791dc6a3e5edecf0787267474affde5c7276206eff513af6997c966f7c"
+      },
+      {
+        "coin": {
+          "amount": 23,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xc90dc27b863685275eedca852bc9eda3963b2050bb508d7d63167094c8cf5d23",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x37c748e7f9a18c6cd901b295970f16a109ce71bcd2503509a6f827b294df066b",
+        "launcherId": "0xcea3b8bf04ca90465e33a722fec31aa0538a3c879f0c51a8219b8ce038e4a501"
+      },
+      {
+        "coin": {
+          "amount": 24,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0x0faf7280d09836d7ba5a9dbb33e755e21fd805a365b63bb3cd0bfb5efde8a927",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x1234b7acf20ac6989b927bfcecdb7d785ae915988aa9ba58a6ad4b2aa08b5310",
+        "launcherId": "0x326ae9d9fb4588d16bfdf4bf4d2cbfbf62b5c7d506036e334406a0d5192ee378"
+      },
+      {
+        "coin": {
+          "amount": 25,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xd0b3e0f0701e80db3f5e1ed83d28ab5c180227b54747e6530fa9b55950f36039",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0xffdc87cbc1877e040a5614db08cf4724b1dd5dec6c6b254a6112cbbeafef616c",
+        "launcherId": "0x1fa941f0780b337031f01897bdb9811931f9d754b1a12a42f798df7dca0e7dae"
+      },
+      {
+        "coin": {
+          "amount": 26,
+          "parent_coin_info": "0xef87e51bca0b1a3b0c6a79db10d97dd5c73cf9879412523df4638354fcc807b5",
+          "puzzle_hash": "0x00f62f82eb699e474ff5961c30abddf06362c1d6d621ee431754525dd7dc2b9c"
+        },
+        "coinId": "0xf63b713338ecf7095f8b17201f8572534454cb75a7ad55488b5e6d080df632d4",
+        "confirmedHeight": 10,
+        "inventoryCoinId": "0x7065f21f2e930d34e791eef669edf0ea54d1e91c5b60ba150d47afd849b44016",
+        "launcherId": "0xeff1a3b649d1b4353b6adb5fda1432ab7d343c56894ee2e34c1944d213444632"
+      }
+    ],
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "mintAuthority": {
+      "coinId": "0xda39d2afc36be12ed2d298138cdafc07c7fed59c725359c564cb22f61d563bdb",
+      "componentId": "0x3c4d0b7d6be594c35f03b103c2211244b74fbaf3c021d61952766a7e5020ce17",
+      "launcherId": "0x8107b20ff7f271b8d6068becd18052a120db99b0135d949537a6de41719ad901",
+      "moduleHash": "0x91a809cda212fbeeb683cc820d5ac1eaacddf8a09df2f60e49e837600a65f6ff",
+      "version": 1
+    },
+    "network": "testnet11",
+    "nextAction": "Your sealed edition and its fixed launcher funding are saved. Review publication separately.",
+    "publicationReady": false,
+    "purpose": "TEST_ONLY",
+    "request": {
+      "collectionId": "HARBOR-17",
+      "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+      "metadataRoot": "0x5f90e687ac67586a1be9e9f49a33381856c2ddfbbfb3ab7448e39298ce3c8035",
+      "previewHash": "0x8def2267a790a58fc3a93e3315ad39fe4be68671a7f2f84353f02cee8fffd8cb",
+      "revision": 2
+    },
+    "requestDigest": "0x92d34994b843ecbdd8355a59daf52a852f840b8d52fd90ed2d1eb194db242d58",
+    "stage": "SOURCE_REVIEWED",
+    "packageId": "0xe82c44f667626e9199582206a3e4db18cc77dc9172a5df7539b7d7eeef8a73c6"
+  },
+  "execution": {
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "network": "testnet11",
+    "sourceReviewId": "0xe82c44f667626e9199582206a3e4db18cc77dc9172a5df7539b7d7eeef8a73c6",
+    "operation": {
+      "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+      "network": "testnet11",
+      "operationId": "0x8b1f574ef44ab8fa2a44d888def1d1d9c792541b92b8ab0cd990da2a2a0e36b5",
+      "kind": "MINT_COLLECTION",
+      "intentHash": "0xe596a458fe73b4edbf8f613a341116cbe067bd07911e3cf3cc5b16c136c5fbb4",
+      "stage": "PREPARED",
+      "transactionId": null,
+      "feeCapMojos": "1000",
+      "createdAt": 1791766522,
+      "updatedAt": 1791766522,
+      "lastCheckedAt": null,
+      "errorCode": null,
+      "confirmedHeight": null,
+      "nextAction": "REVIEW_OPERATION",
+      "review": {
+        "collectionId": "HARBOR-17",
+        "expectedInputs": {
+          "components": {
+            "0x3c4d0b7d6be594c35f03b103c2211244b74fbaf3c021d61952766a7e5020ce17": "0xda39d2afc36be12ed2d298138cdafc07c7fed59c725359c564cb22f61d563bdb"
+          },
+          "governance": "0x88a33f9b4ec7271a1d3ba5b00328cf7588b6d6c1b0be088cc3fb6216db7cfcf6",
+          "holdings": "0xa84dc544bfb38b6144fb115c386e2532aeac2f23ce42cacb21e0d17cc6821dac",
+          "registry": "0x8a718dbdbe44bd663f22f66d8f05b76690147439560c9351c4604aadfa76cdca"
+        },
+        "feeCapMojos": 1000,
+        "funding": [
+          {
+            "coinId": "0xf883ef89b2aacc858c2527b5208806cd44fce61b9687ce734f2719b1678891ed",
+            "inventoryCoinId": "0xff20c1b820cadae7a33ff192d4ca687840ed22404bc649bb4c8d4c6c00199100",
+            "launcherId": "0xd292cb272d0cce05dcd96563dea9b8719906b6d88de38c2435190d542611df1c"
+          },
+          {
+            "coinId": "0xf63f0a97bdefc695f779322d3cc1542e50e608c792a667dbe3898c650f3ca549",
+            "inventoryCoinId": "0xe23044a6c979174586a017f8a916f178c782c9a6481b732245c6756b23b2297a",
+            "launcherId": "0xdc6ac072ca488eece5400af1e9af651f115db3f7c00057836e1481130aefd53f"
+          },
+          {
+            "coinId": "0x6b81220512e864177932c7c9f073e852a0d0496b6d8f865dc27e10318663fa4a",
+            "inventoryCoinId": "0x6b50c637ebaad0dec7e22bc3ee85f2a29531c2272fe8d4f9253093574a0683ea",
+            "launcherId": "0x5383185aac4732a22d20700c38d4981fa2c5b7b9553694db2e7c126486ecceb5"
+          },
+          {
+            "coinId": "0xd4801175a62c11c8aae313cffcaf7adb204859d7f80c798309d0164e76c145c8",
+            "inventoryCoinId": "0x2c7b19f86e1708ea4fcb170442e8fcea0d1e2178b4d8485db42f780c700faa56",
+            "launcherId": "0x79724a5855f9e7b29381830a5825652eab397ec156cf3ae307d0c019b468724a"
+          },
+          {
+            "coinId": "0x5c6e91e05b9d5d07c02aa859e4033cd392e9d1b1a6cc946d71460959d9aee503",
+            "inventoryCoinId": "0x442c782d4ef77aca03a3035e22d83fc51c128f6b920432b7133efe7c8b9f4793",
+            "launcherId": "0x4bbea2600cccedb97eacf11270ae0b55f264699d750e931feb06282bbec48d5e"
+          },
+          {
+            "coinId": "0xc3d0cf640f67c36a7235daa66defc615f06ab1abaca2634a32b85a45826841a2",
+            "inventoryCoinId": "0xcc94b6d9daf7cf00c01369f411fc7d416fb0e371b14e20e0b460c5c3f0b0912f",
+            "launcherId": "0xcb488fba6368adac2f783447542da7f7a93525fddd157851711897093b98611a"
+          },
+          {
+            "coinId": "0x57183c1976534cddd3b39abe98d9f8d21f0a8e279463e9bd0782ebff5db893bd",
+            "inventoryCoinId": "0x62644ccd819b135a44c27b47aa4ec5cb5411098e779d79075f5882ef8b2f6bc0",
+            "launcherId": "0x7c65bdd16f94ae0b26bb1f650e82c3ba95ff14b63f4fca4f3a47f0d580e3d67c"
+          },
+          {
+            "coinId": "0xbb33ce7e79679652cf2fa2279db3b4b4cfb4f99f41bc9c9eff9d6fa5efafac20",
+            "inventoryCoinId": "0xf16412b642eba397d9b8d02e10852b869273e6821dbd12b3b36c18746c037701",
+            "launcherId": "0x651ad35e9b9b477088ccff303b287cb1d8b69b7261fa0dc87a9b019fef495edd"
+          },
+          {
+            "coinId": "0xa9c4a2a7c669e77aaa0056e63e1a8f73a3e8cb1caccd5e41c9d9ea6a746c1eeb",
+            "inventoryCoinId": "0xb01c327c456cb5f0316700c89f58aa0c9ad41d3d5563a118d1ac7ab8c4f73270",
+            "launcherId": "0x7b8f67897fa2c899d36939470bf1e9a62da456e4362d9e0c92c8eff99059c75c"
+          },
+          {
+            "coinId": "0xb50b5d881159ac2966d11d2deaa5686e890125975acbf2903585b909829f6670",
+            "inventoryCoinId": "0xb5bc3eb0530806c480c9f810e373ca1882ed34edca20158f29f1c91d6c2cb79a",
+            "launcherId": "0x483789eb9023bffa52a3b0dc118b9086dca0e4f507fba35df6697f0b5a1e273c"
+          },
+          {
+            "coinId": "0xf5540e00680fd64067f67f95a194058ba3ef432400151888edf55628c8581211",
+            "inventoryCoinId": "0xbbf2d1b99577b44e18352b5020f6476993df288e42559d5bf60e6617811c3d5f",
+            "launcherId": "0x8148d58f8b4c8df59a91b0c2c27d8d7bc697d9990fe8125c2592e06331997e97"
+          },
+          {
+            "coinId": "0x354b41d1929c11caf0f2eed1ba31cab6b6afd1c61b11b85927f14514532305df",
+            "inventoryCoinId": "0x08d48ce381f5f8671a9f5540c195fce94d9f6f65088a8809862c370d32577697",
+            "launcherId": "0x7c93e057f3d4ae4785c808d15d6d151dd185d071934ec5aa10f9dfb84c0b78bf"
+          },
+          {
+            "coinId": "0xe892b8859adb627a8fb3e3326a722204d55d9f59955a59025190d2da4c6892e1",
+            "inventoryCoinId": "0x6351bc2a9e6fdf86c4e0fb942263f8a28b0aa08c383e1f4ecfad10a299931a44",
+            "launcherId": "0x75926fb6157cff015065a79b2753023656e90bde0635c5270ff31157ceafacf6"
+          },
+          {
+            "coinId": "0x37d2d3fec4ed7318443f3445a31fa790d6b8db5b1c6c9f8d9aa448d446f524bf",
+            "inventoryCoinId": "0x7b05094b481c6b9e3811010476ba6aaa9572667519411a0300b84ed689e4d981",
+            "launcherId": "0x03f52ae154b129921ab7e8f91b75ce78e5f54ea28e0e1bf3be534639cbcdee52"
+          },
+          {
+            "coinId": "0x2b9bc2a9dd6fce9e930e26b00c8e56cf50f15e2263fa75af7bd39b3581263204",
+            "inventoryCoinId": "0x1d3f6aa472e14802e56abe221732280051d76eb78e406625ef40f519a4713a3c",
+            "launcherId": "0xa5f387cb1b9de86eaf3cc4ff26a0e5e8c50c2627121f77273679cb22835d1a54"
+          },
+          {
+            "coinId": "0xd7d52c36382f30e8164ca8f87582f742af8793109e4a68e2e93b65076cf88220",
+            "inventoryCoinId": "0x816d9d09c4e8f92cc6176a2e613074058954b5886cd92e594402061671d40f5e",
+            "launcherId": "0xd2dd3d1b1f6ae6b5b6b7152a1862b85cf914cf8a192575157fe7419698a40bea"
+          },
+          {
+            "coinId": "0x4a67d636e83b90269bd6c39fabe2bde6e9c113e0d05931aa3e8a37dc91996d60",
+            "inventoryCoinId": "0xf960e0ddc71763b32889fed9b2190980a45f6027b812c1fc7e59cf233919ee1d",
+            "launcherId": "0x8e6f0377b0c6827e9b53b02392a855bdfa20143ab033b33e116fcde8f3c6fe25"
+          },
+          {
+            "coinId": "0x1a8df82d796faa8413e685896ecb1e50521392fe3ce70cca7c59cad583dc389d",
+            "inventoryCoinId": "0xf8ae749a4f3179b3c01966e41efed7c83679a4493e7a93592d4d2107f289c780",
+            "launcherId": "0x24ad3b6a1a17c1cea89c2b9f5e15952c3c98e02f79c1c3d50c19b2ce3d353deb"
+          },
+          {
+            "coinId": "0xb107ac66fc273fb24e232adb70e8c9d0ff4cf756105c6794a52e7f246226750a",
+            "inventoryCoinId": "0x9255da3374ba9ea72da0aedb44637f0669b4b4496ad5c4a018ef24e26ab2abe1",
+            "launcherId": "0x3c6c8ac4cf5595b48021f97e9b86301b2264fc06925a46a0bf7534a9771e99f2"
+          },
+          {
+            "coinId": "0xc923bd4872d9b20a83f0b72d6d0c5f56472f054df3f303289d0dc1cfcd57b76e",
+            "inventoryCoinId": "0xad3e553b04af62f3900d9a83e92fa3d70f6bc195cb6011cff3df128fdcbf3eae",
+            "launcherId": "0x554b5d780d5fc16fdd405834ce00388b95f532d0d30e78c655fcfe2253beb1cf"
+          },
+          {
+            "coinId": "0xce8ffe0d560b525d78e1fef4efd8932265e50799a4011b61c11dea9867415a20",
+            "inventoryCoinId": "0x36f8179d85b8886b2942e34e1543863439b2092ee6ecd1da20b1ff048ca5bbf7",
+            "launcherId": "0x30aaa7791dc6a3e5edecf0787267474affde5c7276206eff513af6997c966f7c"
+          },
+          {
+            "coinId": "0xc90dc27b863685275eedca852bc9eda3963b2050bb508d7d63167094c8cf5d23",
+            "inventoryCoinId": "0x37c748e7f9a18c6cd901b295970f16a109ce71bcd2503509a6f827b294df066b",
+            "launcherId": "0xcea3b8bf04ca90465e33a722fec31aa0538a3c879f0c51a8219b8ce038e4a501"
+          },
+          {
+            "coinId": "0x0faf7280d09836d7ba5a9dbb33e755e21fd805a365b63bb3cd0bfb5efde8a927",
+            "inventoryCoinId": "0x1234b7acf20ac6989b927bfcecdb7d785ae915988aa9ba58a6ad4b2aa08b5310",
+            "launcherId": "0x326ae9d9fb4588d16bfdf4bf4d2cbfbf62b5c7d506036e334406a0d5192ee378"
+          },
+          {
+            "coinId": "0xd0b3e0f0701e80db3f5e1ed83d28ab5c180227b54747e6530fa9b55950f36039",
+            "inventoryCoinId": "0xffdc87cbc1877e040a5614db08cf4724b1dd5dec6c6b254a6112cbbeafef616c",
+            "launcherId": "0x1fa941f0780b337031f01897bdb9811931f9d754b1a12a42f798df7dca0e7dae"
+          },
+          {
+            "coinId": "0xf63b713338ecf7095f8b17201f8572534454cb75a7ad55488b5e6d080df632d4",
+            "inventoryCoinId": "0x7065f21f2e930d34e791eef669edf0ea54d1e91c5b60ba150d47afd849b44016",
+            "launcherId": "0xeff1a3b649d1b4353b6adb5fda1432ab7d343c56894ee2e34c1944d213444632"
+          }
+        ],
+        "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+        "kind": "MINT_COLLECTION",
+        "metadataRoot": "0x5f90e687ac67586a1be9e9f49a33381856c2ddfbbfb3ab7448e39298ce3c8035",
+        "mintBill": {
+          "billHash": "0xf6087ac69d858c168f6247277d92552f9e06cb81df1e1d92e2a886e34e63d10b",
+          "kind": "MINT_TEST_ONLY",
+          "testMint": {
+            "collectionId": "0xcb288b2630d2909e6a8e8323a428429dc6fd5b19d255b387c94a6d6172d39559",
+            "deedCount": 25,
+            "editionHash": "0xbaea80f9240c113be59447f55bee9136bf127478e80133fb3249b85df42738dc",
+            "purpose": "TEST_ONLY"
+          }
+        },
+        "previewHash": "0x8def2267a790a58fc3a93e3315ad39fe4be68671a7f2f84353f02cee8fffd8cb",
+        "proposalId": "0xcc966e7ce688ff760efb1bb703597b130b747c63a21f44b6fdec32d2e430e9d2",
+        "requestKey": "mint:0xe82c44f667626e9199582206a3e4db18cc77dc9172a5df7539b7d7eeef8a73c6",
+        "sourceReviewId": "0xe82c44f667626e9199582206a3e4db18cc77dc9172a5df7539b7d7eeef8a73c6"
+      },
+      "pollAfterSeconds": 30
+    },
+    "inventory": {
+      "receipt": null,
+      "lastCheckedAt": null,
+      "errorCode": null
+    },
+    "pollAfterSeconds": 5
+  }
+}

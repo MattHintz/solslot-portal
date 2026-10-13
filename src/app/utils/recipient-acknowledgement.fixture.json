@@ -1,0 +1,86 @@
+{
+  "review": {
+    "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+    "preparationManifest": "0xbc01c0fd58e26b121616836c50e5f91bfc0bd19732f68b83a0e4097f88489d71",
+    "recipient": {
+      "administratorSlot": 1,
+      "name": "Test administrator 1",
+      "wallet": "0x1a642f0e3c3af545e7acbd38b07251b3990914f1",
+      "identityAuthority": "0x1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+      "recipientVault": "0xdfcc5775fc947696cd1f4212b5838b3e43dc8eda70ce2f28b677f7bdaa547857",
+      "recipientPuzzle": "0x3fa91c83482840279e4b124499077c1b4c6fb235d974855648cf2af90fb8957e",
+      "amount": 10000,
+      "confirmed": true,
+      "confirmationFresh": true,
+      "confirmedCoinId": "0xabababababababababababababababababababababababababababababababab",
+      "confirmedHeight": 100,
+      "lastCheckedAt": 1000,
+      "acknowledgedAt": null,
+      "errorCode": null,
+      "stage": "AWAITING_ACKNOWLEDGEMENT"
+    }
+  },
+  "typedData": {
+    "types": {
+      "EIP712Domain": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32"
+        }
+      ],
+      "SolslotSGTRecipient": [
+        {
+          "name": "preparationManifest",
+          "type": "bytes32"
+        },
+        {
+          "name": "network",
+          "type": "string"
+        },
+        {
+          "name": "administratorSlot",
+          "type": "uint8"
+        },
+        {
+          "name": "identityAuthority",
+          "type": "bytes32"
+        },
+        {
+          "name": "recipientVault",
+          "type": "bytes32"
+        },
+        {
+          "name": "recipientPuzzle",
+          "type": "bytes32"
+        },
+        {
+          "name": "amount",
+          "type": "uint64"
+        }
+      ]
+    },
+    "primaryType": "SolslotSGTRecipient",
+    "domain": {
+      "name": "Solslot SGT recipient",
+      "version": "1",
+      "salt": "0x0707070707070707070707070707070707070707070707070707070707070707"
+    },
+    "message": {
+      "preparationManifest": "0xbc01c0fd58e26b121616836c50e5f91bfc0bd19732f68b83a0e4097f88489d71",
+      "network": "testnet11",
+      "administratorSlot": 1,
+      "identityAuthority": "0x1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+      "recipientVault": "0xdfcc5775fc947696cd1f4212b5838b3e43dc8eda70ce2f28b677f7bdaa547857",
+      "recipientPuzzle": "0x3fa91c83482840279e4b124499077c1b4c6fb235d974855648cf2af90fb8957e",
+      "amount": 10000
+    }
+  }
+}

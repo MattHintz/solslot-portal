@@ -58,6 +58,9 @@ export class CollectionMintCoordinatorService {
     deed: CollectionDeed,
     ownerMemberHash: string,
   ): Promise<CollectionMintPreview> {
+    if (workspace.generationId || workspace.dossier.purpose === 'TEST_ONLY') {
+      throw new Error('Use the governed collection mint for this test edition. Legacy per-deed publication is unavailable.');
+    }
     verifyInventoryActivation(this.protocolArtifact.artifact);
     if (!['SEALED', 'PUBLISHED'].includes(workspace.state)) {
       throw new Error('The collection must be sealed before proposal preparation.');

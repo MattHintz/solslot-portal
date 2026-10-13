@@ -15,7 +15,7 @@ describe('CollectionEditor reviewed revision', () => {
   let collection: CollectionWorkspace;
 
   beforeEach(() => {
-    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal', 'getPresale']);
+    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal', 'getPresale', 'applyTestPricing']);
     collection = {
       id: 'COL-TEST', state: 'REVIEW', revision: 7,
       dossier: {
@@ -29,7 +29,7 @@ describe('CollectionEditor reviewed revision', () => {
     TestBed.configureTestingModule({ providers: [
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'COL-TEST' } } } },
       { provide: CollectionApiService, useValue: api },
-      { provide: AdminSessionService, useValue: { isAuthenticated: () => true } },
+      { provide: AdminSessionService, useValue: { isAuthenticated: () => true, subject: () => 'owner' } },
       { provide: AdminStatusRefresh, useValue: { start: () => undefined } },
       { provide: CollectionMintCoordinatorService, useValue: { trustedProtocolTreasuryPuzzleHash: () => null } },
       { provide: PropertyAmendmentService, useValue: {} },
@@ -40,6 +40,59 @@ describe('CollectionEditor reviewed revision', () => {
   });
 
   afterEach(() => editor.ngOnDestroy());
+
+  function testEdition(): void {
+    collection.ownerSubject = 'owner';
+    collection.dossier.purpose = 'TEST_ONLY';
+    collection.dossier.schemaVersion = 'solslot.testnet-property-dossier.v1';
+    collection.dossier.pricingRoundHash = '0x'+'a1'.repeat(32);
+    collection.dossier.offering = {targetRaiseMinor:'7500000',parValueMojos:'1000000',royaltyBps:'100'};
+    collection.dossier.deedAllocation = [{deedId:'ONE',sharePpm:1000000,parValueMojos:'1000000'}];
+    (editor as any).applyWorkspace(collection);
+    api.convertDisplayUnits.and.callFake(async request => ({
+      moneyMinor: {targetRaise: request.money['targetRaise'] === '80000' ? '8000000' : '7500000'},
+      percentageBps: {technologyFee:'100'}, ownershipPpm:{'deed.0':1000000}, governanceQuorum:'',
+      xchParMojos:null,xchOracle:null,
+    }));
+    api.update.and.callFake(async (_id,dossier) => ({...collection,revision:8,dossier}));
+  }
+
+  it('preserves test-edition pricing and its receipt when a note changes', async () => {
+    testEdition();
+    editor.draftModel!.summary = 'Clarified the project notes';
+    editor.changed();
+    expect(await editor.saveNow()).toBeTrue();
+    expect(api.convertDisplayUnits.calls.mostRecent().args[0].deriveXchPar).toBeFalse();
+    const saved=api.update.calls.mostRecent().args[1];
+    expect(saved.offering!.parValueMojos).toBe('1000000');
+    expect(saved.deedAllocation[0].parValueMojos).toBe('1000000');
+    expect(saved.pricingRoundHash).toBe(collection.dossier.pricingRoundHash);
+    expect(api.applyTestPricing).not.toHaveBeenCalled();
+  });
+
+  it('clears test-edition price commitments when the dollar economics change', async () => {
+    testEdition();editor.displayUnits.targetRaiseUsd='80000';editor.changed();
+    expect(await editor.saveNow()).toBeTrue();
+    const saved=api.update.calls.mostRecent().args[1];
+    expect(saved.offering!.targetRaiseMinor).toBe('8000000');
+    expect(saved.offering!.parValueMojos).toBeUndefined();
+    expect(saved.pricingRoundHash).toBeUndefined();
+    expect(editor.pricingPending()).toBeTrue();
+  });
+
+  it('applies a test price explicitly once and prevents duplicate clicks while waiting', async () => {
+    testEdition();
+    let finish!: (value:CollectionWorkspace)=>void;
+    api.applyTestPricing.and.returnValue(new Promise(resolve=>finish=resolve));
+    const first=editor.refreshPricing();
+    await editor.refreshPricing();
+    expect(api.applyTestPricing).toHaveBeenCalledOnceWith(collection);
+    expect(editor.saveState()).toBe('saving');
+    finish({...collection,revision:8});await first;
+    expect(editor.saveState()).toBe('saved');
+    expect(api.update).not.toHaveBeenCalled();
+    expect(api.convertDisplayUnits).not.toHaveBeenCalled();
+  });
 
   it('caches an absent presale until its bounded expiry', async () => {
     api.getPresale.and.rejectWith(new HttpErrorResponse({status:404}));
@@ -214,4 +267,66 @@ describe('CollectionEditor reviewed revision', () => {
     expect(api.seal).not.toHaveBeenCalled();
     expect(editor.sealError()).toContain('changed fields need approval');
   });
+  it('does not change metadata simply by displaying missing diligence', () => {
+    const before = JSON.stringify(editor.draftModel);
+    const previousSaveState = editor.saveState();
+    expect(editor.diligenceValue('missing-title')).toBe('');
+    expect(editor.diligenceDate('missing-title')).toBe('');
+    expect(editor.diligenceUnit('missing-title')).toBe('');
+    expect(JSON.stringify(editor.draftModel)).toBe(before);
+    expect(editor.saveState()).toBe(previousSaveState);
+  });
+
+  it('preserves test-only scope and the single FSRE source through form saves', async () => {
+    collection.dossier.schemaVersion = 'solslot.testnet-property-dossier.v1';
+    collection.dossier.purpose = 'TEST_ONLY';
+    collection.dossier.generationId = '0x'+'a1'.repeat(32);
+    collection.dossier.fsreTerms = {structure:'FSRE', returnBasis:'MARKET_VALUE', participationBps:1500,
+      outsideTermMonths:14, projectedMonthsMin:10, projectedMonthsMax:12};
+    (editor as any).applyWorkspace(collection);
+    api.convertDisplayUnits.and.resolveTo({moneyMinor:{targetRaise:'7500000'}, percentageBps:{projectedReturn:'1500'},
+      ownershipPpm:{}, governanceQuorum:'500000', xchParMojos:null, xchOracle:null});
+    api.update.and.callFake(async (_id, dossier) => ({...collection, dossier, revision:8}));
+    editor.draftModel!.summary = 'Explicit test edition'; editor.changed();
+    expect(await editor.saveNow()).toBeTrue();
+    const saved = api.update.calls.mostRecent().args[1];
+    expect(saved.schemaVersion).toBe('solslot.testnet-property-dossier.v1');
+    expect(saved.generationId).toBe(collection.dossier.generationId);
+    expect(saved.fsreTerms!.participationBps).toBe(1500);
+    expect(saved.offering!.projectedReturnBps).toBeUndefined();
+    expect(saved.offering!.governanceQuorum).toBeUndefined();
+  });
+
+  it('adds references for newly required canonical diligence only on a classification edit', () => {
+    editor.draftModel!.purpose = 'TEST_ONLY';
+    editor.draftModel!.classification = {assetClass:'RWA-RE-RES', projectStage:'ground-up', programOverlays:[]};
+    editor.profiles.set({assetClasses:[{id:'RWA-RE-RES',subtypes:[]}],
+      diligence:{common:['debt'],byAssetClass:{'RWA-RE-RES':['building-details']},
+        byProjectStage:{'ground-up':['as-completed-valuation']},byProgramOverlay:{}}} as any);
+    const previous = JSON.stringify(editor.draftModel);
+    expect(editor.requiredDiligenceKeys()).toEqual(['as-completed-valuation','building-details','debt']);
+    expect(editor.canonicalDiligenceSection('debt')).toBe('economics');
+    expect(JSON.stringify(editor.draftModel)).toBe(previous);
+    editor.classificationChanged();
+    expect(editor.draftModel!.diligence).toEqual([
+      {key:'as-completed-valuation',references:['/valuation','/valuationBasis','/valuationEvidence'],evidenceAssetIds:[]},
+      {key:'building-details',references:['/property'],evidenceAssetIds:[]},
+      {key:'debt',references:['/capital'],evidenceAssetIds:[]},
+    ]);
+    expect(editor.saveState()).toBe('dirty');
+    editor.classificationChanged();
+    expect(editor.draftModel!.diligence.length).toBe(3);
+  });
+
+  it('keeps conflicting diligence visible for validation instead of silently erasing it', () => {
+    editor.draftModel!.purpose = 'TEST_ONLY';
+    editor.draftModel!.classification = {assetClass:'RWA-RE-RES', projectStage:'ground-up', programOverlays:[]};
+    editor.profiles.set({assetClasses:[{id:'RWA-RE-RES',subtypes:[]}],
+      diligence:{common:['debt'],byAssetClass:{},byProjectStage:{},byProgramOverlay:{}}} as any);
+    editor.draftModel!.diligence = [{key:'debt',value:'Conflicting copied value',evidenceAssetIds:[]}];
+    editor.classificationChanged();
+    expect(editor.draftModel!.diligence[0].value).toBe('Conflicting copied value');
+    expect(editor.draftModel!.diligence[0].references).toBeUndefined();
+  });
+
 });

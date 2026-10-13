@@ -31,6 +31,12 @@ type DossierTab = 'overview' | 'economics' | 'legal' | 'documents' | 'updates' |
         </div>
       </header>
 
+      @if (dossier().purpose === 'TEST_ONLY') {
+        <section class="dossier-section" role="note"><strong>Testnet edition — no real investment, ownership or legal rights.</strong>
+          <p>This edition includes unresolved diligence. A production offering requires a new qualified revision and review.</p>
+          @for (item of dossier().unknownFields || []; track item.path) { <p><strong>{{ unresolvedLabel(item.path) }}</strong> — {{ item.reason }}</p> }
+        </section>
+      }
       <pp-project-team-summary [team]="dossier().projectTeam" />
 
       @if (hero(); as asset) {
@@ -94,9 +100,13 @@ type DossierTab = 'overview' | 'economics' | 'legal' | 'documents' | 'updates' |
           <section class="dossier-section">
             <div class="section-heading"><span class="section-label">Issuance snapshot</span><h2>Economics</h2></div>
             <dl class="metric-grid">
-              <div><dt>Market value</dt><dd>{{ money(dossier().valuation?.marketValueMinor, dossier().valuation?.currency) }}</dd><small>As of {{ dossier().valuation?.asOfDate || 'pending' }}</small></div>
+              <div><dt>{{ dossier().valuationBasis === 'TO_BE_BUILT' ? 'To-be-built appraisal' : 'Market value' }}</dt><dd>{{ money(dossier().valuation?.marketValueMinor, dossier().valuation?.currency) }}</dd><small>As of {{ dossier().valuation?.asOfDate || 'pending' }}</small>
+                @if (dossier().valuationEvidence === 'USER_CONFIRMED') { <small>User-confirmed amount · appraisal report details require review</small> }
+              </div>
               <div><dt>Target raise</dt><dd>{{ money(dossier().offering?.targetRaiseMinor, dossier().offering?.currency) }}</dd><small>{{ dossier().offering?.assetClass || 'Asset class pending' }}</small></div>
-              <div><dt>Projected return</dt><dd>{{ bps(dossier().offering?.projectedReturnBps) }}</dd><small>{{ dossier().offering?.termMonths || '—' }} month term</small></div>
+              @if (dossier().fsreTerms; as terms) {
+                <div><dt>FSRE share of market value</dt><dd>{{ terms.participationBps === undefined ? 'Pending' : (terms.participationBps / 100) + '%' }}</dd><small>{{ terms.outsideTermMonths || 'Pending' }} month outside term · {{ terms.projectedMonthsMin || 'Pending' }}–{{ terms.projectedMonthsMax || 'Pending' }} months projected</small></div>
+              } @else { <div><dt>Projected return</dt><dd>{{ bps(dossier().offering?.projectedReturnBps) }}</dd><small>{{ dossier().offering?.termMonths || '—' }} month term</small></div> }
               <div><dt>Gross rent</dt><dd>{{ money(dossier().operations?.monthlyGrossRentMinor, dossier().operations?.currency) }}</dd><small>Monthly</small></div>
               <div><dt>Operating expense</dt><dd>{{ money(dossier().operations?.annualOperatingExpenseMinor, dossier().operations?.currency) }}</dd><small>Annual</small></div>
               <div><dt>Debt balance</dt><dd>{{ money(dossier().capital?.debtBalanceMinor, dossier().capital?.currency) }}</dd><small>{{ bps(dossier().capital?.debtRateBps) }} rate</small></div>
@@ -309,6 +319,11 @@ export class PropertyDossierComponent {
   readonly gallery = computed(() => this.media().filter((asset) => asset.role !== 'hero'));
   readonly documents = computed(() => this.dossier().documents.filter(isCompleteDocument));
   readonly address = computed(() => formatAddress(this.dossier()));
+
+  unresolvedLabel(path: string): string {
+    return path.replace(/^\//, '').replace('/', ': ').replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replaceAll('-', ' ').replace(/Minor$|Bps$/, '').trim();
+  }
 
   verificationLabel(): string {
     if (this.workspace().verification?.chainReconstructed === false) return 'Chain proof pending';

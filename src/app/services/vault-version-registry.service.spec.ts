@@ -39,7 +39,7 @@ class FakeProgram {
       int?: bigint;
       treeHash?: Uint8Array;
       listItems?: FakeProgram[];
-      uncurry?: { program: FakeProgram; args: FakeProgram };
+      uncurry?: { program: FakeProgram; args: FakeProgram[] };
     },
   ) {}
 
@@ -75,9 +75,12 @@ class FakeProgram {
     return this.opts.listItems;
   }
 
-  uncurry(): { program: FakeProgram; args: FakeProgram } | undefined {
+  uncurry(): { program: FakeProgram; args: FakeProgram[] } | undefined {
     return this.opts.uncurry;
   }
+
+  curry(_args: FakeProgram[]): FakeProgram { throw new Error("fake cannot reconstruct outputs"); }
+  serialize(): Uint8Array { throw new Error("fake cannot serialize outputs"); }
 
   treeHash(): Uint8Array {
     return this.opts.treeHash ?? this.toAtom();
@@ -119,12 +122,12 @@ function buildFakeRegistryReveal(
   ]);
   const innerMod = makeFakeAtom(registryModHash);
   const innerPuzzle = new FakeProgram({
-    uncurry: { program: innerMod, args: innerArgs },
+    uncurry: { program: innerMod, args: innerArgs.toList()! },
   });
   const singletonStruct = makeFakeList([makeFakeAtom(hexToBytes(b(0x05)))]);
   const fullArgs = makeFakeList([singletonStruct, innerPuzzle]);
   return new FakeProgram({
-    uncurry: { program: new FakeProgram({}), args: fullArgs },
+    uncurry: { program: new FakeProgram({}), args: fullArgs.toList()! },
   });
 }
 
@@ -162,11 +165,11 @@ describe('parseRegistryFullPuzzleReveal', () => {
   it('throws when the inner puzzle has the wrong number of args', () => {
     const innerArgs = makeFakeList([makeFakeAtom(registryModHash)]); // only 1 arg
     const innerPuzzle = new FakeProgram({
-      uncurry: { program: makeFakeAtom(registryModHash), args: innerArgs },
+      uncurry: { program: makeFakeAtom(registryModHash), args: innerArgs.toList()! },
     });
     const fullArgs = makeFakeList([makeFakeList([]), innerPuzzle]);
     const reveal = new FakeProgram({
-      uncurry: { program: new FakeProgram({}), args: fullArgs },
+      uncurry: { program: new FakeProgram({}), args: fullArgs.toList()! },
     });
     expect(() => parseRegistryFullPuzzleReveal(new FakeClvm(reveal), registryModHash, new Uint8Array(0))).toThrowError(
       /expects 8 curried args/,
@@ -279,26 +282,14 @@ describe('VaultVersionRegistryService', () => {
     expect(await service.getCurrentState()).toBeNull();
   });
 
-  it('returns state when the registry has been spent (non-launcher parent available)', async () => {
+  it('rejects a parent reveal that does not match confirmed chain evidence', async () => {
     const lineage = makeLineage(2, true);
     singleton.walkLineage.and.returnValue(Promise.resolve(lineage));
-    coinset.getPuzzleAndSolution.and.returnValue(
-      Promise.resolve({
-        coin: {
-          parent_coin_info: 'eve-coin-id',
-          puzzle_hash: 'eve-ph',
-          amount: 1,
-        },
-        puzzleReveal: '0xdeadbeef',
-        solution: '0xcafe',
-      }),
-    );
-    const result = await service.getCurrentState();
-    expect(result).not.toBeNull();
-    expect(result!.vaultInnerModHash).toBe(bytesToHex(state.vaultInnerModHash));
-    expect(result!.canonicalParamsHash).toBe(bytesToHex(state.canonicalParamsHash));
-    expect(result!.vaultVersion).toBe(2);
-    expect(coinset.getPuzzleAndSolution).toHaveBeenCalledWith('eve-coin-id', 200);
+    coinset.getPuzzleAndSolution.and.returnValue(Promise.resolve({
+      coin: { parent_coin_info: 'parent', puzzle_hash: '00'.repeat(32), amount: 1 },
+      puzzleReveal: '0xdeadbeef', solution: '0xcafe',
+    }));
+    await expectAsync(service.getCurrentState()).toBeRejected();
   });
 
   it('returns null when WASM is not ready', async () => {

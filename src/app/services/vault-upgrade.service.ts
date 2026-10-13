@@ -44,6 +44,7 @@ import {
   SingletonLineageProof,
   VaultMigrateSpendService,
 } from './vault-migrate-spend.service';
+import { reconstructSingletonOutput } from './singleton-output-state';
 import { RegistryState } from './vault-version-detection';
 import { VaultVersionRegistryService } from './vault-version-registry.service';
 
@@ -163,23 +164,22 @@ export class VaultUpgradeService {
       return null;
     }
     const clvm = this.clvm();
-    const parsed = this.launch.parseVault(clvm, hexToBytes(parentSpend.puzzleReveal));
+    if (current.spentBlockIndex !== null || current.parentCoinId !== parent.coinId) {
+      throw new Error('Vault lineage changed. Refresh chain status.');
+    }
+    const localModuleHash = this.launch.currentVaultInnerModHash();
+    const output = reconstructSingletonOutput(clvm, hexToBytes(parentSpend.puzzleReveal),
+      hexToBytes(parentSpend.solution), hexToBytes(parent.puzzleHash), hexToBytes(current.puzzleHash),
+      'vault', hexToBytes(localModuleHash));
+    const parsed = this.launch.parseVault(clvm, output);
 
     const vaultLineageProof = await this.lineageProofForCurrentCoin(lineage);
     const registry = await this.registryReader.getCurrentState();
     const p2VaultPuzzleHash = this.migrate.newP2VaultPuzzleHash(vaultLauncherId);
 
-    const currentModHash = this.launch.vaultInnerPuzzleHash(
-      vaultLauncherId,
-      parsed.identity,
-      parsed.params,
-    );
-    // The OLD vault can migrate iff its code is the current canonical code
-    // (which carries the ``m`` case).  We detect that by checking the local
-    // current-code reconstruction matches the vault's own code mod hash.
-    const canMigrateDeeds = registry
-      ? eqHex(parsed.vaultInnerModHash, registry.vaultInnerModHash)
-      : false;
+    // Migration support belongs to the OLD executable module. A successor
+    // advertised by the registry may differ; curried state hashes are not code hashes.
+    const canMigrateDeeds = eqHex(parsed.vaultInnerModHash, localModuleHash);
 
     const isOutdated = registry
       ? !eqHex(parsed.vaultInnerModHash, registry.vaultInnerModHash) ||
@@ -200,10 +200,7 @@ export class VaultUpgradeService {
       oldCanonicalParamsHash: parsed.canonicalParamsHash,
       registry,
       isOutdated,
-      // Migrate needs the OLD vault to expose ``m`` — i.e. its code equals the
-      // registry's published (current) code.  ``currentModHash`` is computed
-      // for the puzzle-hash check that 6b enforces at spend-build time.
-      canMigrateDeeds: canMigrateDeeds && eqHex(currentModHash, parsed.vaultInnerModHash),
+      canMigrateDeeds,
       p2VaultPuzzleHash,
     };
   }
@@ -464,6 +461,7 @@ interface ClvmShape {
 }
 
 interface ProgramShape {
+  toList(): ProgramShape[] | undefined;
   curry(args: ProgramShape[]): ProgramShape;
   treeHash(): Uint8Array;
   serialize(): Uint8Array;

@@ -18,7 +18,7 @@ describe('Read-only administrator refresh', () => {
     refresh = TestBed.inject(AdminStatusRefresh);
   });
 
-  it('refreshes immediately and every 15 seconds without overlapping a slow read', fakeAsync(() => {
+  it('refreshes immediately and every 30 seconds without overlapping a slow read', fakeAsync(() => {
     let release!: () => void;
     const read = jasmine.createSpy('status GET').and.callFake(() => new Promise<void>(resolve => release = resolve));
     refresh.start(read);
@@ -28,7 +28,7 @@ describe('Read-only administrator refresh', () => {
     expect(refresh.refreshing()).toBeTrue();
     release(); flushMicrotasks();
     expect(refresh.lastUpdated()).not.toBeNull();
-    tick(14_999); expect(read).toHaveBeenCalledTimes(1);
+    tick(29_999); expect(read).toHaveBeenCalledTimes(1);
     tick(1); expect(read).toHaveBeenCalledTimes(2);
     cleanup(); release(); flushMicrotasks();
   }));
@@ -66,15 +66,27 @@ describe('Read-only administrator refresh', () => {
     refresh.start(read); flushMicrotasks();
     const previous = refresh.lastUpdated();
     read.and.rejectWith(new Error('service unavailable'));
-    tick(15_000); expect(read).toHaveBeenCalledTimes(2);
+    tick(30_000); expect(read).toHaveBeenCalledTimes(2);
     expect(refresh.lastUpdated()).toBe(previous);
     expect(refresh.error()).toContain('retrying automatically');
-    tick(29_999); expect(read).toHaveBeenCalledTimes(2);
+    tick(59_999); expect(read).toHaveBeenCalledTimes(2);
     tick(1); expect(read).toHaveBeenCalledTimes(3);
     tick(60_000); expect(read).toHaveBeenCalledTimes(4);
     read.and.resolveTo(); tick(60_000);
     expect(refresh.error()).toBeNull();
-    tick(15_000); expect(read).toHaveBeenCalledTimes(6);
+    tick(30_000); expect(read).toHaveBeenCalledTimes(6);
+    cleanup();
+  }));
+
+  it('polls active stages at five seconds and returns to thirty seconds when idle', fakeAsync(() => {
+    const active = signal(true);
+    const read = jasmine.createSpy('cached status GET').and.resolveTo();
+    refresh.start(read, () => null, () => active()); flushMicrotasks();
+    tick(4999); expect(read).toHaveBeenCalledTimes(1);
+    tick(1); expect(read).toHaveBeenCalledTimes(2);
+    active.set(false); tick(5000); expect(read).toHaveBeenCalledTimes(3);
+    tick(29999); expect(read).toHaveBeenCalledTimes(3);
+    tick(1); expect(read).toHaveBeenCalledTimes(4);
     cleanup();
   }));
 

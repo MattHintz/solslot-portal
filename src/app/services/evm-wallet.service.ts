@@ -1,3 +1,9 @@
+import {FinalLaunchStatus} from './generation-final-launch.service';
+import {validateFinalLaunchSignature} from '../utils/generation-final-launch-review';
+import { deploymentGeneration } from '../utils/deployment-generation';
+import { validateRecipientAcknowledgement } from '../utils/recipient-acknowledgement';
+import type { RecipientConsentReview } from './generation-recipients.service';
+import { GenerationSgtContext,GenerationSgtRequest,inspectGenerationSgt,snapshotGenerationReview } from '../utils/generation-sgt-review';
 import { Injectable, signal, computed } from '@angular/core';
 import EthereumProvider from '@walletconnect/ethereum-provider';
 import {
@@ -9,6 +15,7 @@ import {
   getAddress,
   getBytes,
   isHexString,
+  verifyTypedData,
 } from 'ethers';
 import { environment } from '../../environments/environment';
 import { TESTNET11_GENESIS_CHALLENGE_HEX } from './eip712-leaf-hash.service';
@@ -328,6 +335,8 @@ export class EvmWalletService {
    * gas is spent on that EVM chain.
    */
   async signTypedData(typedData: Eip712TypedData): Promise<string> {
+    if(typedData.primaryType==='SolslotVaultSpend' && String(typedData.message['spend_case']).toLowerCase()==='0x67'+'00'.repeat(31))
+      throw new Error('Review the exact SGT holding and action before requesting a wallet signature.');
     if (!this.eip1193) throw new Error('Not connected');
     const address = this.address();
     if (!address) throw new Error('Not connected');
@@ -347,6 +356,35 @@ export class EvmWalletService {
       );
     }
     return this.signTypedDataOnChain(typedData, targetChainId);
+  }
+
+  async signGenerationSgt(raw:GenerationSgtRequest,context:GenerationSgtContext,
+    revalidate:()=>Promise<void>):Promise<string> {
+    raw=snapshotGenerationReview(raw);context=snapshotGenerationReview(context);
+    const provider=this.eip1193,address=this.address(),generation=deploymentGeneration();
+    if(!provider || !address || context.owner.authType!==3 || address.toLowerCase()!==context.owner.address)
+      throw new Error('Connect the reviewed EVM vault owner.');
+    const intent=inspectGenerationSgt(raw,context),typed=intent.vaultTypedData!;
+    const requireCurrent=()=>{
+      if(provider!==this.eip1193 || address!==this.address() || generation!==deploymentGeneration())
+        throw new Error('The wallet or deployment changed. Review the SGT action again.');
+    };
+    const beforeSigning=async()=>{
+      requireCurrent();await revalidate();requireCurrent();inspectGenerationSgt(raw,context);
+      if(this.connectionKind()!=='walletconnect'){
+        const accounts=await provider.request({method:'eth_accounts'});
+        const chain=await provider.request({method:'eth_chainId'});
+        requireCurrent();
+        if(!Array.isArray(accounts) || String(accounts[0]).toLowerCase()!==context.owner.address || Number(chain)!==11155111)
+          throw new Error('The wallet account or signing network changed. Review the SGT action again.');
+      }
+    };
+    const signature=await this.signTypedDataOnChain(typed,11155111,beforeSigning);
+    requireCurrent();await revalidate();inspectGenerationSgt(raw,context);
+    const {EIP712Domain:_domain,...types}=typed.types;
+    if(verifyTypedData(typed.domain,types,typed.message,signature).toLowerCase()!==context.owner.address)
+      throw new Error('The wallet signature does not match the reviewed owner.');
+    return signature;
   }
 
   /**
@@ -560,6 +598,8 @@ export class EvmWalletService {
    * payment/protocol signing keeps its existing configured-chain allowlist. */
   async signLaunchCeremony(typedData: Eip712TypedData, binding: LaunchCeremonyBinding): Promise<string> {
     this.assertLaunchBinding(typedData, binding);
+    const generation = deploymentGeneration();
+    const provider = this.eip1193, address = this.address();
     const shapes: Record<string, { name: string; type: string }[]> = {
       SolslotGenesisAdminEnrollment: [
         {name:'ceremonyId',type:'bytes32'},{name:'slot',type:'uint8'},{name:'wallet',type:'address'},
@@ -576,10 +616,12 @@ export class EvmWalletService {
     const versions = typedData.primaryType === 'SolslotGenesisArtifact'
       ? ([84532, 8453].includes(binding.evmChainId) ? ['4'] : ['2','3','4']) : ['2'];
     if (!fields || domain.name !== 'Solslot Protocol' || !versions.includes(String(domain.version)) ||
-        JSON.stringify(Object.keys(domain).sort()) !== JSON.stringify(['chainId','name','version']) ||
+        JSON.stringify(Object.keys(domain).sort()) !== JSON.stringify(['chainId','name','version',...(generation ? ['salt'] : [])].sort()) ||
+        (domain.salt || null) !== generation ||
         JSON.stringify(Object.keys(typedData.types).sort()) !== JSON.stringify(['EIP712Domain',typedData.primaryType].sort()) ||
         JSON.stringify(typedData.types['EIP712Domain']) !== JSON.stringify([
-          {name:'name',type:'string'},{name:'version',type:'string'},{name:'chainId',type:'uint256'}]) ||
+          {name:'name',type:'string'},{name:'version',type:'string'},{name:'chainId',type:'uint256'},
+          ...(generation ? [{name:'salt',type:'bytes32'}] : [])]) ||
         JSON.stringify(typedData.types[typedData.primaryType]) !== JSON.stringify(fields) ||
         JSON.stringify(Object.keys(typedData.message).sort()) !== JSON.stringify(fields.map(f=>f.name).sort()) ||
         typedData.message['network'] !== 'testnet11') throw new Error('Refusing altered ceremony signing data.');
@@ -598,15 +640,39 @@ export class EvmWalletService {
       throw new Error('The launch plan changed after review.');
     if (binding.artifactHash && typedData.primaryType === 'SolslotGenesisArtifact' && typedData.message['artifactHash'] !== binding.artifactHash)
       throw new Error('The launch artifact changed after review.');
-    return this.signTypedDataOnChain(typedData,binding.evmChainId);
+    const signature = await this.signTypedDataOnChain(typedData,binding.evmChainId);
+    if (provider !== this.eip1193 || address !== this.address() || generation !== deploymentGeneration())
+      throw new Error('The wallet or deployment changed while signing. Review the launch again.');
+    return signature;
   }
 
   private assertLaunchBinding(typedData: Eip712TypedData, binding: LaunchCeremonyBinding): void {
     if (!binding || ![11155111,84532,8453].includes(binding.evmChainId) ||
+        (binding.generationId || null) !== deploymentGeneration() ||
         Number(typedData.domain.chainId) !== binding.evmChainId ||
         !isHexString(binding.ceremonyId,32) || /^0x0+$/.test(binding.ceremonyId) ||
         typedData.message['ceremonyId'] !== binding.ceremonyId)
       throw new Error('Signing data differs from the server-selected ceremony.');
+  }
+
+  async signGenerationLaunch(typedData:Eip712TypedData,review:FinalLaunchStatus):Promise<string> {
+    const provider=this.eip1193,address=this.address(),generation=deploymentGeneration();
+    if(!provider || !address)throw new Error('Connect your enrolled administrator wallet first.');
+    const expected=validateFinalLaunchSignature(typedData,review,address);
+    const signature=await this.signTypedDataOnChain(expected,environment.eip712ChainId);
+    if(provider!==this.eip1193 || address!==this.address() || generation!==deploymentGeneration())
+      throw new Error('The wallet changed. Review the exact generation launch again.');
+    return signature;
+  }
+
+  async signRecipientAcknowledgement(typedData: Eip712TypedData, review: RecipientConsentReview): Promise<string> {
+    const provider=this.eip1193,address=this.address(),generation=deploymentGeneration();
+    if (!provider || !address) throw new Error('Connect your enrolled administrator wallet first.');
+    const expected=validateRecipientAcknowledgement(typedData,review,address);
+    const signature=await this.signTypedDataOnChain(expected,environment.eip712ChainId);
+    if(provider!==this.eip1193 || address!==this.address() || generation!==deploymentGeneration())
+      throw new Error('The wallet changed while signing. Review your recipient again.');
+    return signature;
   }
 
   async signLaunchAction(typedData: Eip712TypedData, binding?: LaunchCeremonyBinding): Promise<string> {
@@ -616,10 +682,12 @@ export class EvmWalletService {
     if (!this.eip1193 || !address) throw new Error('Connect the administrator wallet first.');
 
     const domain = typedData.domain;
+    const generation = deploymentGeneration();
     const domainFields = [
       { name: 'name', type: 'string' },
       { name: 'version', type: 'string' },
       { name: 'chainId', type: 'uint256' },
+      ...(generation ? [{name:'salt',type:'bytes32'}] : []),
     ];
     const resumeFields = [
       { name: 'ceremonyId', type: 'bytes32' },
@@ -654,7 +722,8 @@ export class EvmWalletService {
       domain.version !== '21' ||
       Number(domain.chainId) !== launchChain ||
       JSON.stringify(Object.keys(domain).sort()) !==
-        JSON.stringify(['chainId', 'name', 'version']) ||
+        JSON.stringify(['chainId', 'name', 'version', ...(generation ? ['salt'] : [])].sort()) ||
+      (domain.salt || null) !== generation ||
       JSON.stringify(typeKeys) !== JSON.stringify(['EIP712Domain', primaryType].sort()) ||
       JSON.stringify(typedData.types['EIP712Domain']) !== JSON.stringify(domainFields) ||
       JSON.stringify(typedData.types[primaryType]) !== JSON.stringify(expectedFields) ||
@@ -752,17 +821,19 @@ export class EvmWalletService {
   private async signTypedDataOnChain(
     typedData: Eip712TypedData,
     targetChainId: number,
+    beforeSigning?:()=>Promise<void>,
   ): Promise<string> {
     if (!this.eip1193) throw new Error('Not connected');
     const address = this.address();
     if (!address) throw new Error('Not connected');
     if (this.connectionKind() === 'walletconnect') {
-      return this.signTypedDataViaWalletConnectChain(typedData, address, targetChainId);
+      return this.signTypedDataViaWalletConnectChain(typedData, address, targetChainId,beforeSigning);
     }
     await this.ensureChainId(targetChainId);
 
     const provider = new BrowserProvider(this.eip1193);
     const signer = await provider.getSigner(address);
+    if(beforeSigning)await beforeSigning();
 
     // ethers v6 signTypedData expects (domain, types without EIP712Domain, message).
     const { EIP712Domain: _ignored, ...signingTypes } = typedData.types as Record<
@@ -781,6 +852,7 @@ export class EvmWalletService {
     typedData: Eip712TypedData,
     address: string,
     targetChainId: number,
+    beforeSigning?:()=>Promise<void>,
   ): Promise<string> {
     const chain = formatWalletConnectChainId(targetChainId);
     const provider = this.wcProvider as unknown as WalletConnectDebugProvider | null;
@@ -797,6 +869,7 @@ export class EvmWalletService {
       );
     }
 
+    if(beforeSigning)await beforeSigning();
     const payload = JSON.stringify(typedData);
     const timeoutMessage =
       `Tangem/WalletConnect did not return the ${evmChainDisplayName(targetChainId)} ` +
@@ -835,6 +908,7 @@ export class EvmWalletService {
       chain,
       address: redactAddress(address),
     });
+    if(beforeSigning)await beforeSigning();
     return (await withWalletPromptTimeout(
       this.requestWalletConnectChain(
         {
@@ -1515,4 +1589,4 @@ export const _internal = {
   withWalletPromptTimeout,
 };
 
-export interface LaunchCeremonyBinding { ceremonyId: string; evmChainId: number; planHash?: string | null; artifactHash?: string | null; }
+export interface LaunchCeremonyBinding { ceremonyId: string; evmChainId: number; generationId?: string | null; planHash?: string | null; artifactHash?: string | null; }

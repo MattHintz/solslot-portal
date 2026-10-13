@@ -114,7 +114,7 @@
         </div>
         <div class="ux-context">
           <strong>You do not need SGT to enroll</strong>
-          <p>Start with your daily administrator wallet. Your SGT vault and starter grant come after team setup and launch.</p>
+          <p>Start with your daily administrator wallet. Before launch, each administrator confirms their SGT receiving vault. The starter grants are created together at genesis.</p>
         </div>
         <ol class="ux-steps ux-steps--three" aria-label="Administrator onboarding overview">
           <li><span>01</span><div><strong>Join the team</strong><p>Use your private link and confirm the daily wallet assigned to your role.</p></div></li>
@@ -127,6 +127,9 @@
         is sent to Solslot.
       </footer>
     </section>
+  } @else if (generationId && !workspace()?.session?.setup) {
+    <solslot-generation-recipients (sessionExpired)="workspace.set(null)" />
+    <solslot-generation-final-launch (sessionExpired)="workspace.set(null)" />
   } @else {
     <header class="launch-header">
           <div>

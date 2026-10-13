@@ -1,0 +1,7 @@
+@use './generation-consents.component.scss';
+.ballot-desk{margin-block:2rem;padding:1.5rem;border:1px solid var(--admin-border,#29463b);border-radius:1rem;background:var(--admin-surface,#0b1b15)}
+.select-holdings{padding:1.25rem;border:1px solid var(--admin-border,#29463b);border-radius:.75rem;margin-block:1rem}
+.holding{display:flex;align-items:flex-start;gap:.8rem;padding-block:.75rem;border-bottom:1px solid var(--admin-border,#29463b)}
+.holding span{min-width:0;display:grid;gap:.35rem}.holding code{overflow-wrap:anywhere}.holding small{color:var(--admin-muted,#abc4b8)}
+.weight{font-weight:700}.ballot-desk button{min-height:44px}.ballot-desk button:disabled{opacity:.55;cursor:default}
+@media(max-width:600px){.ballot-desk{padding:1rem}.select-holdings{padding:.8rem}}
