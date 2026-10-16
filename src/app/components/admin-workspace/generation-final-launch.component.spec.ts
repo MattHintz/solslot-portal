@@ -19,6 +19,9 @@ describe('Final launch assigned UI lifecycle',()=>{
   it('polls only cached status and presents full destinations and the 24-hour window',async()=>{
     const f=await mount();expect(f.nativeElement.textContent).toContain(s.review!.recipients[0].recipientVault);
     expect(f.nativeElement.textContent).toContain('24 hours');expect(api.status).toHaveBeenCalled();
+    expect(f.nativeElement.textContent).toContain('0.7% to company revenue');
+    expect(f.nativeElement.textContent).toContain('owner plus one other administrator');
+    expect(f.nativeElement.textContent).toContain('0.3% to SGT rewards');
     expect(api.review).not.toHaveBeenCalled();expect(api.prepare).not.toHaveBeenCalled();expect(wallet.signGenerationLaunch).not.toHaveBeenCalled();
   });
   it('signs only after the assigned action and uses the previously displayed review',async()=>{

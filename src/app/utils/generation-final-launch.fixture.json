@@ -5,10 +5,32 @@
   "enabled": true,
   "review": {
     "actionEnvelope": "AE-SOLSLOT-SYNTHETIC-LAUNCH",
-    "artifactHash": "0xf3d432ce381dbc810adef11be5e600f5c8694e901dea4ecb1a27012bdb5fa938",
-    "assemblyHash": "0x8f9e6254934063ec5ae94dca47257e3fb367a46e8d7bcb89e9a12801abe8256b",
+    "artifactHash": "0xf9b750d20986e274fd6fe784b519fa8f8043069d512232b881d338d56a135c2e",
+    "assemblyHash": "0x0ca817f693b20c1d9c656ab42e886dd1e4acc2ff5f25a85d7d809d72ad38039e",
     "backupReceiptHash": "0x5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
-    "certificateHash": "0x7fd5f63e501a32572569d71a523085ee56780d67ab4062ded9a00fbcddaefacc",
+    "certificateHash": "0x3ce293fd68b2afa1e10ab7da38c69c57c6a635737434d02996561329aebd7f3f",
+    "custody": {
+      "companyRevenue": {
+        "authorityId": "0x3ecaaec67274da5002276699c4adbaa54817dfa73c9d8e2582feea1851db8632",
+        "backingCustody": "0xd4b2778af2e5c56433fd9e080da1c8df122c9537e9eb57291f8fe23ee11ec84f",
+        "custodyPuzzleHash": "0x9d3941982cf25e800ee856cf054a163cba55a38ee90af04caf35d42fedefda48",
+        "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
+        "maxApprovalSeconds": 86400,
+        "maxNetworkFeeMojos": 1000000000,
+        "moduleHash": "0x0e903f37c7761a8959a24e2f76506cf2e197e10b0b38b31ea75aae1f53211c52",
+        "operatingExpensesAllowed": true,
+        "policy": "COMPANY_REVENUE_OWNER_PLUS_ONE_V1",
+        "protectedCustomerAndRewardFunds": "SEPARATE_CONTRACTS",
+        "reinvestmentAllowed": true,
+        "serverSpendingKey": false,
+        "standingWithdrawalBudget": false
+      },
+      "nonwithdrawableBacking": "0xd4b2778af2e5c56433fd9e080da1c8df122c9537e9eb57291f8fe23ee11ec84f",
+      "policy": "SEGREGATED_COMPANY_REVENUE_V1",
+      "primaryFeeSplitter": "0x69b69b3541699f8bd22a426d10c72074bd7986947a259035dc4cc5e56617a9a8",
+      "redemptions": "SEPARATE_ISSUER_FUNDED_LEAVES",
+      "sgtRewards": "SEPARATE_HOLDER_CLAIMS"
+    },
     "exchangeFees": {
       "protocolBps": 70,
       "sgtRewardsBps": 30,
@@ -18,37 +40,37 @@
       {
         "amount": 1,
         "parent_coin_info": "0xf28c8ae83653a0868eaab2b67dd61225e5a11b46ad4da009304505285a0ffc16",
-        "puzzle_hash": "0x7833c8409afbeb0faa58a437ce23875fa28845eff16d43dbd89cab91023ce531"
+        "puzzle_hash": "0x989f58ad20e7db06f8a847918603d9e0ab8b4cb8573a7021e1630a3127cfdba3"
       },
       {
         "amount": 1,
         "parent_coin_info": "0xc7f18dd0565439f8f24bc7d5e24d4043c182c2c6dc0587494252cd6c50e48e35",
-        "puzzle_hash": "0x3b84062c33599a1c576b9ee389c42f5022eaad5f51a2c49db0c6d59d9d9514c6"
+        "puzzle_hash": "0xfd4d45a6373011d62096dfef388256eeee3061d35454cdcd1dd61dfc7a0ec5f4"
       },
       {
         "amount": 1,
-        "parent_coin_info": "0xe12c4824f41bced167f9b23a61cb1b786dc8bd9b9b0f6dbf39f8dec36667160a",
-        "puzzle_hash": "0x0840b2635c19216d16fe6823b33fc264529b3e76adaa8d99dbe8e87b5ec160a1"
+        "parent_coin_info": "0x5d0ef3f4ae85af906a674a0d395cd4175d21168eb6b1136c24797151569d4854",
+        "puzzle_hash": "0x258ac8c90b028a95977f592d854122fe79b892d43ad27b9d1ad029f61bdeb624"
       },
       {
         "amount": 1,
         "parent_coin_info": "0xd2587fca36b4a192953aa109d8b3f7cdadf4ac8eedf1f2d95b21660cc7e8b16e",
-        "puzzle_hash": "0x2fd2fc7fa59598c86e57a7af50542db321af5e6f20ca9d4dbab880d3ea36424c"
+        "puzzle_hash": "0x6c851bfc139d077a95eec50bd30a61069d9e54de79c9f734a125f40a12134c1e"
       },
       {
         "amount": 1,
         "parent_coin_info": "0x8107b20ff7f271b8d6068becd18052a120db99b0135d949537a6de41719ad901",
-        "puzzle_hash": "0xfa1dc2d09c1275ff2ef4fe9c75e5b682ab67a0826835cb72bc3035979eb14d2a"
+        "puzzle_hash": "0x1cd5d51e32b5b3c8fbd536e8a63b28dcf513bffe9912a0b35975dccae1be121f"
       },
       {
         "amount": 1,
-        "parent_coin_info": "0xf68a45789bff7d4d00e0944fd30405103c759cfc4cf1f857a3ae9cdcb2f7f80c",
-        "puzzle_hash": "0x1cf2761c33630eee827f86c7aa168a01006fead25309c57ffe213c58c8a5b0fe"
+        "parent_coin_info": "0x215a6bbdd5e4ea4fef32ea517e4e2b14fc046f2e9fe534ed105c1b23cc4d7ec6",
+        "puzzle_hash": "0xc553d616b69c9cbe37fc3cf0c7ceec65779807fe4528f332969532331e3c58d5"
       },
       {
         "amount": 1,
         "parent_coin_info": "0x3ecaaec67274da5002276699c4adbaa54817dfa73c9d8e2582feea1851db8632",
-        "puzzle_hash": "0xaf7dd521682f3c8b79dc594d9f5993dfe5f0d4687b6bcd635467e05f28ec9196"
+        "puzzle_hash": "0x1d8a7b6b8c6b97306d6cd0f8d92d96b9d57e7f8005ae51750b95433434226d03"
       },
       {
         "amount": 3,
@@ -67,37 +89,37 @@
       },
       {
         "amount": 1,
-        "parent_coin_info": "0x13715f0619f2c9e800dff30cb1df4f26bf87c7031fe13a8f73ca0d1333f7351c",
-        "puzzle_hash": "0xed91e57f90a6c658b49254e182f81e14fdd540104d0eaadef60dbf32056f5df6"
+        "parent_coin_info": "0x098caca05ef53366250ab99edd9587b7e8db8dbb0a53a7fa310bc45ac2f05ca8",
+        "puzzle_hash": "0x2bffa9122bf2e7ec16018e1311dee69e3f5dd6bc60100990880e99c8dc1d9154"
       },
       {
         "amount": 10000,
-        "parent_coin_info": "0x8dc9a01ea483bcdfbe23544482d82bfa8a14edaa545f90e0f0fea6ffec770619",
-        "puzzle_hash": "0x44ad908b98a15d28fd115cf44188d672347f37bb64ce38b463163171cd88977d"
+        "parent_coin_info": "0x3ae92d98657c1c987626bb72648a2940d8ce563103a68576396db9ba53c61eed",
+        "puzzle_hash": "0xecc66dde977895ebe501130de053038076bf1867011858466843fd0e3336e91c"
       },
       {
         "amount": 10000,
-        "parent_coin_info": "0x8dc9a01ea483bcdfbe23544482d82bfa8a14edaa545f90e0f0fea6ffec770619",
-        "puzzle_hash": "0x6db88752fb424efb8e2ebba600ad9df9c72a14236c8617d0617e7a2a8affa0f6"
+        "parent_coin_info": "0x3ae92d98657c1c987626bb72648a2940d8ce563103a68576396db9ba53c61eed",
+        "puzzle_hash": "0xa6f108c60c60d5534e9217c4d2c02ebfeae8bf36dbd25eeaa177b3bbd9f08245"
       },
       {
         "amount": 10000,
-        "parent_coin_info": "0x8dc9a01ea483bcdfbe23544482d82bfa8a14edaa545f90e0f0fea6ffec770619",
-        "puzzle_hash": "0xfcb91ba6e8f597dd0d4c7bd290599f711968667860b15bc0859843254e3e2b1c"
+        "parent_coin_info": "0x3ae92d98657c1c987626bb72648a2940d8ce563103a68576396db9ba53c61eed",
+        "puzzle_hash": "0x4a78e7b78928ecfc0e160d3ab09ffc47bb7cefb18f76561cc180d2186fc58cc6"
       },
       {
         "amount": 970000,
-        "parent_coin_info": "0x8dc9a01ea483bcdfbe23544482d82bfa8a14edaa545f90e0f0fea6ffec770619",
-        "puzzle_hash": "0xc815b751e05e96c19d01d397474d780f849121049b0321682a2213c2ab2e6ae0"
+        "parent_coin_info": "0x3ae92d98657c1c987626bb72648a2940d8ce563103a68576396db9ba53c61eed",
+        "puzzle_hash": "0x6577c779b75cfe5c058490e66fbb9767cbd56eb85182c46eecec66b794134677"
       }
     ],
-    "expiresAt": 1791915242,
+    "expiresAt": 1792261874,
     "feeCapMojos": 100,
     "generationId": "0x0707070707070707070707070707070707070707070707070707070707070707",
-    "issuedAt": 1791828842,
+    "issuedAt": 1792175474,
     "network": "testnet11",
-    "preparationManifest": "0x95e65f512e2bb84a0ba9ff5693e3c34336aa409f2b70702ecce272add8637acd",
-    "readAnchorHash": "0xf36b45e12860ba4f6ecc0d348ee1e1c463f6457b71c864608f43194f611bc019",
+    "preparationManifest": "0xe400739f9d22490ad0eb1b95cdc9f46323b29106fb0c2a13df5520855aeefd1c",
+    "readAnchorHash": "0x67af001c724dc9260c493669aad10d7523b033e9a6bd6d08e233386340d7d2b9",
     "recipients": [
       {
         "administratorSlot": 1,
@@ -130,41 +152,41 @@
         "wallet": "0x3325a78425f17a7e487eb5666b2bfd93abb06c70"
       }
     ],
-    "releaseExpiresAt": 1791915242,
+    "releaseExpiresAt": 1792261874,
     "releaseManifestHash": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
     "restoreReceiptHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
     "securityReviewHash": "0x5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
     "sgtOutputs": [
       {
         "amount": 10000,
-        "coinId": "0x801bf8a75cc23c4e1414fdcd498049790e2daa7d83c1e6025803db649647eb71",
+        "coinId": "0x7bde4a137888de51bcd97acf9680bce1bfbcc2233c15385dc2f88738c1682d1a",
         "kind": "HOLDER",
         "ownerPuzzleHash": "0xd6d960f0d858dbafd0c951b8777fc819ba9ed8d9d0576609314777fc45c52fba",
-        "puzzleHash": "0x44ad908b98a15d28fd115cf44188d672347f37bb64ce38b463163171cd88977d"
+        "puzzleHash": "0xecc66dde977895ebe501130de053038076bf1867011858466843fd0e3336e91c"
       },
       {
         "amount": 10000,
-        "coinId": "0xb45502d3dae6a1f60cd28053920e2a60ae9abdf6870c11ad55e434d8087ac35c",
+        "coinId": "0x387a025e8caf6fd4c5b74f7b110a01fdc20fc06f2b48385830495b8c90eb13c0",
         "kind": "HOLDER",
         "ownerPuzzleHash": "0xc380eb23a0f4d9f3ed2fc14da356f106d161b784b10451bede282f0f607d007e",
-        "puzzleHash": "0x6db88752fb424efb8e2ebba600ad9df9c72a14236c8617d0617e7a2a8affa0f6"
+        "puzzleHash": "0xa6f108c60c60d5534e9217c4d2c02ebfeae8bf36dbd25eeaa177b3bbd9f08245"
       },
       {
         "amount": 10000,
-        "coinId": "0x48ac60ee4408b59d6f147014c1981135dfc31fbe1cef6d89185aa067375d84ae",
+        "coinId": "0x31db03e817db7e30a74c04f0095a03ea74661bafe76b2a3a7ac19fd084475009",
         "kind": "HOLDER",
         "ownerPuzzleHash": "0x804686fd07add05050fb882997b24fc22abc2b062807bd5cdf42be31611b43bf",
-        "puzzleHash": "0xfcb91ba6e8f597dd0d4c7bd290599f711968667860b15bc0859843254e3e2b1c"
+        "puzzleHash": "0x4a78e7b78928ecfc0e160d3ab09ffc47bb7cefb18f76561cc180d2186fc58cc6"
       },
       {
         "amount": 970000,
-        "coinId": "0xaac01a95f2d86983d987f140d19b9268fbbb93c460701fa91dddc4166909a4a4",
+        "coinId": "0x84025623df6313b56d8e84024d09f81a2b8a2a8c539aaaa7f81e949e6be1bbad",
         "kind": "RESERVE",
         "ownerPuzzleHash": "0x5151515151515151515151515151515151515151515151515151515151515151",
-        "puzzleHash": "0xc815b751e05e96c19d01d397474d780f849121049b0321682a2213c2ab2e6ae0"
+        "puzzleHash": "0x6577c779b75cfe5c058490e66fbb9767cbd56eb85182c46eecec66b794134677"
       }
     ],
-    "sgtTailHash": "0x9e7ff112da5806b9f888c6d31c0948ebd4056bc10b0b4acdf33016b52b85dd91",
+    "sgtTailHash": "0xc8fdfe9a4821c8f0ed365365c3f05a0c1eb6fdd875bc8add85f47dab360bbcda",
     "sourceCommits": {
       "adminPortal": "1212121212121212121212121212121212121212",
       "api": "1212121212121212121212121212121212121212",
@@ -182,7 +204,7 @@
       "reserve": 970000,
       "total": 1000000
     },
-    "reviewId": "0x9c66fea852d9dacbe10af15f9dd107713416be46334a7f4c3aec939b8f1afc46",
+    "reviewId": "0x6e36ea4fa990ee186200739845afae19c0622a9650c9b8029e4797b7bc4f914d",
     "approvedSlots": [],
     "launchComplete": false,
     "confirmedHeight": null,

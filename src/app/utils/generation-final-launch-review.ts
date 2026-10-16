@@ -4,6 +4,7 @@ import {Eip712TypedData} from '../services/solslot-api.service';
 import {deploymentGeneration} from './deployment-generation';
 import {canonicalConsent} from './generation-consent-review';
 import {validateGenerationOperations} from '../services/generation-governance.service';
+import {validateRevenueCustody} from './generation-revenue-review';
 const hash=(v:unknown)=>typeof v==='string' && /^0x[0-9a-f]{64}$/.test(v) && !/^0x0+$/.test(v);
 const integer=(v:unknown):v is number=>typeof v==='number' && Number.isSafeInteger(v) && v>=0;
 const fail=()=>{throw new Error('The final launch differs from this generation, release or exact recipient review.');};
@@ -36,6 +37,7 @@ export function validateFinalLaunch(value:FinalLaunchStatus):FinalLaunchStatus {
   if(!Array.isArray(r.sgtOutputs) || r.sgtOutputs.length!==4 || r.sgtOutputs.some((o,i)=>
     ![o.coinId,o.puzzleHash,o.ownerPuzzleHash].every(hash) || o.amount!==(i===3?970000:10000) ||
     (i<3 && o.ownerPuzzleHash!==r.recipients[i].recipientPuzzle)) || new Set(r.sgtOutputs.map(o=>o.coinId)).size!==4)fail();
+  validateRevenueCustody(r);
   if(s.operation){
     validateGenerationOperations({generationId:g!,network:'testnet11',available:true,operations:[s.operation],
       executionEnabled:s.enabled,maximumFeeMojos:String(r.feeCapMojos),pollAfterSeconds:5});

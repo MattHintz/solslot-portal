@@ -38,6 +38,19 @@ describe('Exact native final launch review',()=>{
     expect(()=>validateFinalLaunchSignature(t,s,s.review!.recipients[1].wallet)).toThrow();
     (Date.now as jasmine.Spy).and.returnValue(s.review!.expiresAt*1000);expect(()=>validateFinalLaunchSignature(t,s,s.review!.recipients[0].wallet)).toThrow();
   });
+  for(const fault of ['wallet-revenue','backing-alias','single-admin','standing-budget','server-key','unbounded-fee']){
+    it('rejects changed custody policy even with a recomputed review hash: '+fault,()=>{
+      const s=data(),v=s.review!.custody.companyRevenue;
+      if(fault==='wallet-revenue')v.custodyPuzzleHash='0x'+'12'.repeat(32);
+      if(fault==='backing-alias')s.review!.custody.nonwithdrawableBacking=v.custodyPuzzleHash;
+      if(fault==='single-admin')(v as any).policy='SINGLE_ADMIN';
+      if(fault==='standing-budget')v.standingWithdrawalBudget=true;
+      if(fault==='server-key')v.serverSpendingKey=true;
+      if(fault==='unbounded-fee')v.maxNetworkFeeMojos++;
+      s.review!.reviewId=finalLaunchHash(finalLaunchPayload(s.review!));
+      expect(()=>validateFinalLaunch(s)).toThrow();
+    });
+  }
   it('detects a wallet change after the exact prompt is signed',async()=>{
     const s=data(),t=finalLaunchTypedData(s.review!,1),address=s.review!.recipients[0].wallet;
     const service=Object.create(EvmWalletService.prototype);let current=address;

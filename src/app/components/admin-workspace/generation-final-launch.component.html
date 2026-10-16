@@ -14,6 +14,17 @@
         <p>{{r.approvedSlots.includes(a.administratorSlot)?'Launch consent approved':'Launch consent waiting'}}</p>
       </article>}</div>
       <p class="notice">One million SGT total. Receiving these grants requires no private ID check. The reserve cannot vote. Fee ceiling: {{r.feeCapMojos}} TXCH mojos.</p>
+      <article class="custody-policy" aria-labelledby="company-revenue-heading">
+        <span class="eyebrow">Where fees go · 1% total</span><h3 id="company-revenue-heading">Company revenue and protected funds</h3>
+        <p><strong>0.7% to company revenue.</strong> Operating expenses and reinvestment require the owner plus one other administrator to approve the exact recipient, asset, amount and deadline. There is no standing withdrawal permission.</p>
+        <p><strong>0.3% to SGT rewards.</strong> Reward claims, Sols backing, offering proceeds and funded redemptions stay in their separate contracts.</p>
+        <details><summary>Verify custody destinations</summary><dl>
+          <dt>Company revenue · owner plus one approval</dt><dd class="hash">{{r.custody.companyRevenue.custodyPuzzleHash}}</dd>
+          <dt>Sols backing · no operating-expense withdrawals</dt><dd class="hash">{{r.custody.nonwithdrawableBacking}}</dd>
+          <dt>Revenue approval authority</dt><dd class="hash">{{r.custody.companyRevenue.authorityId}}</dd>
+          <dt>Primary technology fee · automatic 70/30 split</dt><dd class="hash">{{r.custody.primaryFeeSplitter}}</dd>
+        </dl></details>
+      </article>
       @if(r.launchComplete){<p class="notice" role="status"><strong>All launch outputs confirmed in block {{r.confirmedHeight | number}}.</strong> Your team’s grants are issued. Next: the governed upgrade rehearsal, then the test property mint.</p>}
       @else if(s.operation?.transactionId){<p class="notice" role="status"><span class="spinner" aria-hidden="true"></span>Following the saved transaction automatically. Launch is complete only after all initial outputs are proven.</p>
         <p class="hash">Transaction: {{s.operation!.transactionId}}</p>

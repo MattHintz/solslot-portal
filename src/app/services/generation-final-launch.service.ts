@@ -14,6 +14,12 @@ export interface FinalLaunchReview {
   recipients:FinalLaunchRecipient[];supply:{total:number;distributed:number;reserve:number;quorum:number};sgtTailHash:string;
   sgtOutputs:Array<{coinId:string;puzzleHash:string;amount:number;kind:string;ownerPuzzleHash:string}>;
   exchangeFees:{totalBps:number;protocolBps:number;sgtRewardsBps:number};readAnchorHash:string;
+  custody:{policy:'SEGREGATED_COMPANY_REVENUE_V1';nonwithdrawableBacking:string;primaryFeeSplitter:string;
+    sgtRewards:'SEPARATE_HOLDER_CLAIMS';redemptions:'SEPARATE_ISSUER_FUNDED_LEAVES';
+    companyRevenue:{policy:'COMPANY_REVENUE_OWNER_PLUS_ONE_V1';generationId:string;authorityId:string;
+      custodyPuzzleHash:string;moduleHash:string;backingCustody:string;operatingExpensesAllowed:boolean;
+      reinvestmentAllowed:boolean;standingWithdrawalBudget:boolean;serverSpendingKey:boolean;
+      maxNetworkFeeMojos:number;maxApprovalSeconds:number;protectedCustomerAndRewardFunds:'SEPARATE_CONTRACTS'}};
   expectedOutputs:Array<{parent_coin_info:string;puzzle_hash:string;amount:number}>;
   approvedSlots:number[];launchComplete:boolean;confirmedHeight:number|null;lastCheckedAt:number|null;errorCode:string|null;
 }
