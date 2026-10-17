@@ -96,6 +96,9 @@ describe('GoogleDriveVaultService', () => {
   });
 
   it('creates then verifies a new backup without persisting the access token', async () => {
+    // Unrelated suites/account state may already have storage entries. Check
+    // writes directly, including a token written then removed before return.
+    const storageWrite = spyOn(Storage.prototype, 'setItem').and.callThrough();
     let listCount = 0;
     spyOn(window, 'fetch').and.callFake(async (input) => {
       const url = String(input);
@@ -112,8 +115,7 @@ describe('GoogleDriveVaultService', () => {
     });
 
     await expectAsync(service.createBackup(ENVELOPE)).toBeResolved();
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
+    expect(storageWrite).not.toHaveBeenCalled();
   });
 
   it('uses bounded RFC 2387 multipart/related rather than FormData', async () => {

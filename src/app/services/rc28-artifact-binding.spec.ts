@@ -853,7 +853,9 @@ const artifact = {
 
 describe('hosted RC28 artifact binding', () => {
   it('verifies the actual sealed archive before making admin coordinates available', async () => {
-    const original = structuredClone(environment);
+    // Other suites hold the frozen environment objects by reference. Restore
+    // those exact objects after binding this independent hosted fixture.
+    const original = { ...environment };
     Object.assign(environment, structuredClone(hosted));
     try {
       TestBed.configureTestingModule({providers:[{provide:SolslotApiService,useValue:{getSignedProtocolArtifact:async()=>artifact}}]});
@@ -863,5 +865,6 @@ describe('hosted RC28 artifact binding', () => {
       expect(service.isReady).toBeTrue();
       expect(service.coordinates?.propertyRegistryLauncherId).toBe(artifact.launcherIds.propertyRegistry);
     } finally { Object.assign(environment, original); }
+    expect(environment.solslotProtocol).toBe(original.solslotProtocol);
   });
 });

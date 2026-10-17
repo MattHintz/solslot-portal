@@ -1,3 +1,4 @@
+import { initializeChiaTestRuntime } from '../../../test-support/chia-runtime';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
@@ -73,16 +74,7 @@ describe('MintExecuteSpendBuilderService', () => {
   let service: MintExecuteSpendBuilderService;
 
   beforeAll(async () => {
-    if ((window as unknown as { ChiaSDK?: unknown }).ChiaSDK) return;
-    // @ts-ignore deep WASM glue import
-    const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
-    const response = await fetch('/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm');
-    const result = await WebAssembly.instantiate(await response.arrayBuffer(), {
-      './chia_wallet_sdk_wasm_bg.js': wasmExports as unknown as WebAssembly.ModuleImports,
-    });
-    (wasmExports as unknown as { __wbg_set_wasm(wasm: WebAssembly.Exports): void })
-      .__wbg_set_wasm(result.instance.exports);
-    (window as unknown as { ChiaSDK: unknown }).ChiaSDK = wasmExports;
+    await initializeChiaTestRuntime();
   });
 
   beforeEach(() => {

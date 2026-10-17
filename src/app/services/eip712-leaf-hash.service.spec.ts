@@ -1,3 +1,4 @@
+import { initializeChiaTestRuntime } from '../../test-support/chia-runtime';
 import { TestBed } from '@angular/core/testing';
 
 import { ChiaWasmService } from './chia-wasm.service';
@@ -75,40 +76,7 @@ describe('Eip712LeafHashService', () => {
   let service: Eip712LeafHashService;
 
   beforeAll(async () => {
-    // Reuse the same WASM bootstrap as
-    // ``admin-authority-v2.service.spec.ts`` — fetch the .wasm asset,
-    // hand-instantiate, and stash on ``window.ChiaSDK``.  We guard on
-    // an existing ``window.ChiaSDK`` so the wasm is only instantiated
-    // once across the karma session: re-running ``__wbg_set_wasm`` with
-    // a second instance breaks any references the first instance owns
-    // (the bg.js module is a singleton across imports, so subsequent
-    // calls to it would reach for the new wasm's memory and corrupt
-    // state allocated against the first one).
-    if ((window as unknown as { ChiaSDK?: unknown }).ChiaSDK) {
-      return;
-    }
-    // @ts-ignore — deep-import path.
-    const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
-    const response = await fetch('/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm');
-    if (!response.ok) {
-      throw new Error(
-        `WASM asset fetch failed: ${response.status} ${response.statusText}`,
-      );
-    }
-    const bytes = await response.arrayBuffer();
-    const result = await WebAssembly.instantiate(bytes, {
-      './chia_wallet_sdk_wasm_bg.js': wasmExports as unknown as WebAssembly.ModuleImports,
-    });
-
-    const setWasm = (
-      wasmExports as unknown as { __wbg_set_wasm?: (w: WebAssembly.Exports) => void }
-    ).__wbg_set_wasm;
-    if (typeof setWasm !== 'function') {
-      throw new Error('chia_wallet_sdk_wasm_bg.js missing __wbg_set_wasm');
-    }
-    setWasm(result.instance.exports);
-
-    (window as unknown as { ChiaSDK: unknown }).ChiaSDK = wasmExports;
+    await initializeChiaTestRuntime();
   });
 
   beforeEach(() => {

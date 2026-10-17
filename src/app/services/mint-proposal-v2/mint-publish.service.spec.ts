@@ -1,3 +1,4 @@
+import { initializeChiaTestRuntime } from '../../../test-support/chia-runtime';
 /**
  * Cross-repo binding test for the TS port of mint_publish_driver.
  *
@@ -101,30 +102,7 @@ describe('MintPublishService', () => {
   let service: MintPublishService;
 
   beforeAll(async () => {
-    // WASM bootstrap mirroring mint-proposal-v2.service.spec.ts.
-    if ((window as unknown as { ChiaSDK?: unknown }).ChiaSDK) {
-      return;
-    }
-    // @ts-ignore — deep-import path; types come from chia_wallet_sdk_wasm.d.ts.
-    const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
-    const response = await fetch('/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm');
-    if (!response.ok) {
-      throw new Error(`WASM asset fetch failed: ${response.status} ${response.statusText}`);
-    }
-    const bytes = await response.arrayBuffer();
-    const result = await WebAssembly.instantiate(bytes, {
-      './chia_wallet_sdk_wasm_bg.js': wasmExports as unknown as WebAssembly.ModuleImports,
-    });
-    const setWasm = (
-      wasmExports as unknown as {
-        __wbg_set_wasm?: (w: WebAssembly.Exports) => void;
-      }
-    ).__wbg_set_wasm;
-    if (typeof setWasm !== 'function') {
-      throw new Error('chia_wallet_sdk_wasm_bg.js missing __wbg_set_wasm');
-    }
-    setWasm(result.instance.exports);
-    (window as unknown as { ChiaSDK: unknown }).ChiaSDK = wasmExports;
+    await initializeChiaTestRuntime();
   });
 
   beforeEach(() => {

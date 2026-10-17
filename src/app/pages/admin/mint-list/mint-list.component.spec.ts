@@ -28,7 +28,9 @@ describe('Live mint proposal list', () => {
     fixture.detectChanges(); flushMicrotasks(); fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Start with a property');
     list.and.resolveTo({ proposals: [example] });
-    tick(15_000); flushMicrotasks(); fixture.detectChanges();
+    tick(29_999); flushMicrotasks();
+    expect(list).toHaveBeenCalledTimes(1);
+    tick(1); flushMicrotasks(); fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Example property');
     expect(fixture.nativeElement.querySelector('.mint-empty-state')).toBeNull();
     fixture.destroy();
@@ -40,13 +42,13 @@ describe('Live mint proposal list', () => {
     fixture.detectChanges(); flushMicrotasks();
     const previousCheck = fixture.componentInstance.refresh.lastUpdated();
     list.and.rejectWith(new Error('Temporary service outage'));
-    tick(15_000); flushMicrotasks(); fixture.detectChanges();
+    tick(30_000); flushMicrotasks(); fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Could not update proposals');
     expect(fixture.componentInstance.proposals()).toEqual([example]);
     expect(fixture.componentInstance.refresh.lastUpdated()).toBe(previousCheck);
     expect(fixture.componentInstance.loading()).toBeFalse();
     list.and.resolveTo({ proposals: [] });
-    tick(30_000); flushMicrotasks(); fixture.detectChanges();
+    tick(60_000); flushMicrotasks(); fixture.detectChanges();
     expect(fixture.componentInstance.error()).toBeNull();
     expect(fixture.componentInstance.refresh.error()).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Start with a property');
@@ -68,7 +70,7 @@ describe('Live mint proposal list', () => {
   it('pauses reads after administrator access expires', fakeAsync(() => {
     const fixture = TestBed.createComponent(MintListComponent);
     fixture.detectChanges(); flushMicrotasks();
-    authenticated.set(false); tick(15_000); flushMicrotasks(); fixture.detectChanges();
+    authenticated.set(false); tick(30_000); flushMicrotasks(); fixture.detectChanges();
     expect(list).toHaveBeenCalledTimes(1);
     expect(fixture.nativeElement.textContent).toContain('Sign in again');
     fixture.destroy();

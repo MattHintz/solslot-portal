@@ -1,3 +1,4 @@
+import { initializeChiaTestRuntime } from '../../../test-support/chia-runtime';
 /**
  * Cross-repo binding test for the TS port of admin_authority_v2_driver.
  *
@@ -124,50 +125,7 @@ describe('AdminAuthorityV2Service', () => {
   let service: AdminAuthorityV2Service;
 
   beforeAll(async () => {
-    // Mirror ``main.ts:initializeChiaWasm()``'s production bootstrap
-    // pattern: deep-import the JS glue (NOT the package index, which
-    // does ``import * as wasm from './..._bg.wasm'`` and breaks
-    // Angular's Zone.js-aware esbuild config), fetch the .wasm
-    // binary from the test server's static assets (Karma serves
-    // ``angular.json``'s ``test.assets`` glob at ``/assets/...``),
-    // hand-instantiate, and stash the result on ``window.ChiaSDK``
-    // where ChiaWasmService's ``probeReady()`` will pick it up.
-    //
-    // This avoids the ESM-WASM import path that would require
-    // zoneless Angular and lets the spec run under the standard
-    // Zone.js-based test harness.
-    //
-    // We guard on existing ``window.ChiaSDK`` so the wasm is only
-    // instantiated once across the karma session — running
-    // ``__wbg_set_wasm`` twice (once per spec) corrupts memory because
-    // the bg.js module is a singleton across imports.
-    if ((window as unknown as { ChiaSDK?: unknown }).ChiaSDK) {
-      return;
-    }
-
-    // @ts-ignore — deep-import path; types come from chia_wallet_sdk_wasm.d.ts.
-    const wasmExports = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
-    const response = await fetch('/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm');
-    if (!response.ok) {
-      throw new Error(
-        `WASM asset fetch failed: ${response.status} ${response.statusText}.\n` +
-          'Karma must serve src/assets/chia_wasm at /assets/chia_wasm — ' +
-          'check angular.json:test.assets.',
-      );
-    }
-    const bytes = await response.arrayBuffer();
-    const result = await WebAssembly.instantiate(bytes, {
-      './chia_wallet_sdk_wasm_bg.js': wasmExports as unknown as WebAssembly.ModuleImports,
-    });
-
-    const setWasm = (wasmExports as unknown as { __wbg_set_wasm?: (w: WebAssembly.Exports) => void })
-      .__wbg_set_wasm;
-    if (typeof setWasm !== 'function') {
-      throw new Error('chia_wallet_sdk_wasm_bg.js missing __wbg_set_wasm');
-    }
-    setWasm(result.instance.exports);
-
-    (window as unknown as { ChiaSDK: unknown }).ChiaSDK = wasmExports;
+    await initializeChiaTestRuntime();
   });
 
   beforeEach(() => {

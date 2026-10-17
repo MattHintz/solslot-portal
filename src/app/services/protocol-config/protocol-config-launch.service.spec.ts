@@ -1,3 +1,4 @@
+import { initializeChiaTestRuntime } from '../../../test-support/chia-runtime';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -11,22 +12,7 @@ describe('ProtocolConfigLaunchService', () => {
   let singletonLaunch: jasmine.SpyObj<AdminAuthorityV2Service>;
 
   beforeAll(async () => {
-    if (!(window as any).ChiaSDK) {
-      // @ts-ignore — deep-import path; types come from chia_wallet_sdk_wasm.d.ts.
-      const wasm = await import('chia-wallet-sdk-wasm/chia_wallet_sdk_wasm_bg.js');
-      const response = await fetch('/assets/chia_wasm/chia_wallet_sdk_wasm_bg.wasm');
-      const bytes = await response.arrayBuffer();
-      const result = await WebAssembly.instantiate(bytes, {
-        './chia_wallet_sdk_wasm_bg.js': wasm as unknown as WebAssembly.ModuleImports,
-      });
-      const setWasm = (wasm as unknown as { __wbg_set_wasm?: (w: WebAssembly.Exports) => void })
-        .__wbg_set_wasm;
-      if (typeof setWasm !== 'function') {
-        throw new Error('chia_wallet_sdk_wasm_bg.js missing __wbg_set_wasm');
-      }
-      setWasm(result.instance.exports);
-      (window as any).ChiaSDK = wasm;
-    }
+    await initializeChiaTestRuntime();
   });
 
   beforeEach(() => {
