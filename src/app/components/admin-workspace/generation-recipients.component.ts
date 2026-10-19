@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, OnInit, Output, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, OnInit, Output, computed, inject, input, signal } from '@angular/core';
 import { GenerationRecipientsService, GenerationRecipientReview, RecipientConsentReview } from '../../services/generation-recipients.service';
 import { EvmWalletService } from '../../services/evm-wallet.service';
 import { AdminStatusRefresh } from '../../services/admin-status-refresh.service';
@@ -14,6 +14,7 @@ import { GenerationOperationStatus, mergeGenerationReceipt, validateGenerationOp
   changeDetection:ChangeDetectionStrategy.OnPush,
 })
 export class GenerationRecipientsComponent implements OnInit {
+  readonly issuedHeight=input<number|null>(null);
   private readonly api=inject(GenerationRecipientsService);
   readonly wallet=inject(EvmWalletService);
   readonly refresh=inject(AdminStatusRefresh);
@@ -31,7 +32,7 @@ export class GenerationRecipientsComponent implements OnInit {
       catch(error){if((error as {status?:number}).status===401)this.sessionExpired.emit();throw error;}
     },
       ()=>this.pending()?'Finishing your reviewed launch step. Saved progress will refresh afterward.':null,
-      ()=>!!this.review() && !this.review()!.recipientPreparationComplete);
+      ()=>!this.issuedHeight() && !!this.review() && !this.review()!.recipientPreparationComplete);
   }
   private accept(value: GenerationRecipientReview): void {
     if(value.generationId!==deploymentGeneration() || value.network!=='testnet11' ||
@@ -67,7 +68,7 @@ export class GenerationRecipientsComponent implements OnInit {
   }
   async prepareCreation():Promise<void> {
     const state=this.review(),recipient=this.mine();
-    if(this.pending() || !state?.creationAvailable || !recipient || recipient.confirmed || recipient.creation)return;
+    if(this.issuedHeight() || this.pending() || !state?.creationAvailable || !recipient || recipient.confirmed || recipient.creation)return;
     this.pending.set('PREPARING');this.error.set(null);
     try{this.accept(await this.api.prepareCreation({generationId:state.generationId,preparationManifest:state.preparationManifest,
       administratorSlot:recipient.administratorSlot,fundingCoinId:recipient.fundingCoinId,
@@ -77,7 +78,7 @@ export class GenerationRecipientsComponent implements OnInit {
   }
   async submitCreation():Promise<void> {
     const state=this.review(),op=this.mine()?.creation;
-    if(this.pending() || !state?.creationAvailable || !op || op.transactionId || op.stage!=='PREPARED')return;
+    if(this.issuedHeight() || this.pending() || !state?.creationAvailable || !op || op.transactionId || op.stage!=='PREPARED')return;
     const saved=structuredClone(op),manifest=state.preparationManifest;
     this.pending.set('SUBMITTING');this.error.set(null);
     try{this.accept(await this.api.submitCreation(manifest,saved));this.uncertainCreation.set(null);}
@@ -85,14 +86,14 @@ export class GenerationRecipientsComponent implements OnInit {
     finally{this.pending.set(null);await this.refresh.refresh();}
   }
   async check(): Promise<void> {
-    if(this.pending())return;
+    if(this.issuedHeight() || this.pending())return;
     this.pending.set('CHECKING');this.error.set(null);
     try{this.accept(await this.api.check());}
     catch(error){this.report(error);}
     finally{this.pending.set(null);}
   }
   async acknowledge(): Promise<void> {
-    if(this.pending() || !this.review() || !this.mine()?.confirmed || this.mine()?.acknowledgedAt)return;
+    if(this.issuedHeight() || this.pending() || !this.review() || !this.mine()?.confirmed || this.mine()?.acknowledgedAt)return;
     // Capture what was displayed BEFORE preparing a request. Background reads
     // or a changed manifest cannot replace the destination while signing.
     const displayed: RecipientConsentReview=structuredClone({generationId:this.review()!.generationId,

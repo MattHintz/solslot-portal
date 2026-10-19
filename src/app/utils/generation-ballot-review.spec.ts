@@ -7,10 +7,10 @@ describe('Native holder ballot review',()=>{
   const runtime=environment.solslotProtocol as typeof environment.solslotProtocol & {generationId?:string};
   let previous:any;
   const review=()=>structuredClone(vector.review) as unknown as GenerationBallotReview;
-  beforeEach(()=>{previous={generationId:runtime.generationId,verified:runtime.artifactVerified,bindings:structuredClone(runtime.generationHolderBindings)};
-    runtime.generationId=vector.review.generationId;runtime.artifactVerified=true;runtime.generationHolderBindings={...vector.bindings};});
+  beforeEach(()=>{previous={generationId:runtime.generationId,verified:runtime.generationBindingsVerified,bindings:structuredClone(runtime.generationHolderBindings)};
+    runtime.generationId=vector.review.generationId;runtime.generationBindingsVerified=true;runtime.generationHolderBindings={...vector.bindings};});
   afterEach(()=>{if(previous.generationId===undefined)delete runtime.generationId;else runtime.generationId=previous.generationId;
-    runtime.artifactVerified=previous.verified;runtime.generationHolderBindings=previous.bindings;});
+    runtime.generationBindingsVerified=previous.verified;runtime.generationHolderBindings=previous.bindings;});
   it('reconstructs native co-sponsorship, custody, exact bill and 15,000-SGT quorum',()=>{
     const r=review(),valid=validateGenerationBallot(r);
     expect(valid.selectedWeight).toBe(20000);expect(valid.requiredVotes).toBe(15000);expect(valid.eligibleSupply).toBe(30000);
@@ -39,7 +39,7 @@ describe('Native holder ballot review',()=>{
   });
   it('requires frozen verified authority bindings rather than server-selected bindings',()=>{
     runtime.generationHolderBindings.ledgerLauncherId='0x'+'aa'.repeat(32);
-    expect(()=>validateGenerationBallot(review())).toThrow();runtime.generationHolderBindings={...vector.bindings};runtime.artifactVerified=false;
+    expect(()=>validateGenerationBallot(review())).toThrow();runtime.generationHolderBindings={...vector.bindings};runtime.generationBindingsVerified=false;
     expect(()=>validateGenerationBallot(review())).toThrow();
   });
 });

@@ -931,3 +931,9 @@ td:last-child {
 :host :is(a,button,summary,input):focus-visible { outline: 3px solid #47755a; outline-offset: 4px; }
 @media (max-width: 900px) { .launch-layout { grid-template-columns: 1fr; }.stage-nav ol { display: flex; overflow-x: auto; }.stage-nav li { flex: 0 0 155px; border-left: 0; border-bottom: 2px solid #d9ded1; }.stage-nav li.is-current { border-bottom-color: #285543; }.stage-nav small { display: none; }.stage-nav { position: static; }.launch-header { gap: 20px; }.launch-header__actions { justify-content: flex-start; } }
 @media (max-width: 600px) { .launch-shell { padding-inline: 16px; }.team-approval-list { grid-template-columns: 1fr; }.team-approval-list > div { padding: 14px; }.next-action, .workspace-section, .team-approval-panel { padding: 22px 18px; }.next-action { align-items: stretch; }.next-action h2 { font-size: 26px; }.launch-checks > summary { font-size: 17px; }.administrator-row { grid-template-columns: 32px minmax(0, 1fr); }.administrator-row > .status { grid-column: 2; justify-self: start; } }
+
+.generation-coordination-heading,.generation-recipient-history { max-width:1120px; margin:1.5rem auto; }
+.generation-coordination-heading h1 { font:500 clamp(2rem,4vw,3rem)/1.15 Georgia,serif; }
+.generation-recipient-history { padding:1.2rem; border:1px solid var(--border); border-radius:14px; background:var(--bg-2); }
+.generation-recipient-history>summary { cursor:pointer; min-height:44px; font-weight:600; color:var(--text); }
+.generation-recipient-history>summary:focus-visible { outline:2px solid var(--accent); outline-offset:4px; }

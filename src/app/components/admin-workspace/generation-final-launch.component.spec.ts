@@ -43,4 +43,35 @@ describe('Final launch assigned UI lifecycle',()=>{
     const f=await mount();expect(f.nativeElement.textContent).toContain('security review and recovery certificate');
     expect(f.componentInstance.pending()).toBeNull();expect(api.review).not.toHaveBeenCalled();
   });
+  it('shows one effective deadline and a clear owner-plus-one requirement',async()=>{
+    const f=await mount();
+    expect(f.componentInstance.deadline()).toBe(Math.min(s.review!.expiresAt,s.review!.releaseExpiresAt));
+    expect(f.nativeElement.querySelectorAll('.deadline').length).toBe(1);
+    expect(f.nativeElement.textContent).toContain('owner and one coadministrator');
+    expect(f.nativeElement.querySelector('[aria-current="step"]').textContent).toContain('Administrator consent');
+  });
+  it('does not request an unnecessary third signature once the threshold is met',async()=>{
+    s.assignedSlot=3;s.review!.approvedSlots=[1,2];const f=await mount();
+    await f.componentInstance.sign();f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('No further signature required');
+    expect(f.nativeElement.textContent).not.toContain('Launch consent waiting');
+    expect(api.consent).not.toHaveBeenCalled();expect(wallet.signGenerationLaunch).not.toHaveBeenCalled();
+  });
+  it('shows confirmed issuance for all three people even after the signing deadline',async()=>{
+    s.review!.launchComplete=true;s.review!.confirmedHeight=12345;s.review!.approvedSlots=[1,2];
+    (Date.now as jasmine.Spy).and.returnValue((s.review!.expiresAt+100)*1000);
+    const f=await mount();await f.componentInstance.sign();
+    expect(f.componentInstance.currentStage()).toBe(4);
+    expect(f.nativeElement.textContent).toContain('All launch outputs confirmed');
+    expect(f.nativeElement.querySelectorAll('.signer-status').length).toBe(3);
+    expect(f.nativeElement.textContent).not.toContain('Launch consent waiting');
+    expect(f.nativeElement.textContent).not.toContain('This review or its operational evidence expired');
+    expect(api.consent).not.toHaveBeenCalled();
+  });
+  it('provides manual forwarding text if clipboard access is unavailable without starting a wallet action',async()=>{
+    const f=await mount();await f.componentInstance.share();
+    expect(f.componentInstance.instructions()).toContain(s.review!.reviewId);
+    expect(f.componentInstance.instructions()).toContain('no additional signature is needed');
+    expect(api.consent).not.toHaveBeenCalled();expect(api.prepare).not.toHaveBeenCalled();
+  });
 });

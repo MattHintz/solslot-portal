@@ -1,11 +1,12 @@
 <section aria-labelledby="generation-recipients-title">
   <header>
     <span class="eyebrow">Setup & launch · Chia Testnet11</span>
-    <h1 id="generation-recipients-title">Your team’s SGT vaults</h1>
-    <p>Confirm each administrator’s receiving vault before genesis. Each vault receives 10,000 test SGT at launch. No private ID check is required to receive SGT.</p>
+    <h2 id="generation-recipients-title">Your team’s SGT vaults</h2>
+    @if(issuedHeight()){<p>All three 10,000-SGT grants were confirmed in block {{issuedHeight() | number}}. These are the destinations acknowledged for this launch.</p>}
+    @else{<p>Confirm each administrator’s receiving vault before genesis. Each vault receives 10,000 test SGT at launch. No private ID check is required to receive SGT.</p>}
   </header>
   <ol class="steps" aria-label="Launch preparation">
-    <li>Team & recovery</li><li>Frozen preparation</li><li aria-current="step">Recipient vaults</li><li>Genesis review</li><li>Chain confirmation</li>
+    <li>Team & recovery</li><li>Frozen preparation</li><li [attr.aria-current]="!issuedHeight()?'step':null">Recipient vaults</li><li>Genesis review</li><li [attr.aria-current]="issuedHeight()?'step':null">Chain confirmation</li>
   </ol>
   <solslot-admin-refresh-status [state]="refresh" />
   @if(error()){<p class="notice error" role="alert">{{error()}}</p>}
@@ -19,7 +20,7 @@
       @for(recipient of state.recipients;track recipient.administratorSlot){
         <article [class.assigned]="recipient.administratorSlot===state.assignedSlot">
           <header class="recipient-heading">
-            <div><span class="eyebrow">Administrator {{recipient.administratorSlot}} {{recipient.administratorSlot===state.assignedSlot?'· Your action':''}}</span><h2>{{recipient.name}}</h2></div>
+            <div><span class="eyebrow">Administrator {{recipient.administratorSlot}} {{recipient.administratorSlot===state.assignedSlot&&!issuedHeight()&&!recipient.acknowledgedAt?'· Your action':''}}</span><h3>{{recipient.name}}</h3></div>
             <strong class="allocation">10,000 SGT</strong>
           </header>
           <dl>
@@ -28,7 +29,8 @@
             <dt>Administrator signing wallet</dt><dd class="hash">{{recipient.wallet}}</dd>
           </dl>
           <div class="state" role="status">
-            @if(recipient.errorCode==='NODE_UNAVAILABLE'){<strong>Confirmation service is temporarily unavailable.</strong><span>Your saved consent is retained. Check again when the node reconnects.</span>}
+            @if(issuedHeight()){<strong>10,000 SGT issued · confirmed</strong><span>Destination acknowledgement is complete. No repeat signature is needed.</span>}
+            @else if(recipient.errorCode==='NODE_UNAVAILABLE'){<strong>Confirmation service is temporarily unavailable.</strong><span>Your saved consent is retained. Check again when the node reconnects.</span>}
             @else if(!recipient.confirmed && recipient.creation?.transactionId){<strong><span class="spinner" aria-hidden="true"></span>Confirming your receiving vault</strong><span>We’re checking the saved transaction automatically. Next: acknowledge this destination for your 10,000-SGT genesis grant.</span>}
             @else if(!recipient.confirmed && recipient.creation){<strong>Creation is ready for review</strong><span>Check the receiving destination and fee limit below, then submit this saved launch.</span>}
             @else if(!recipient.confirmed){<strong>Create your SGT receiving vault</strong><span>Review the reserved Testnet11 destination, create it, then acknowledge it. SGT is issued later during genesis.</span>}
@@ -36,7 +38,7 @@
             @else{<strong>Vault confirmed · Destination approval next</strong><span>Review the full destination above, then acknowledge it with your administrator wallet.</span>}
             @if(recipient.lastCheckedAt){<small>Vault evidence checked {{recipient.lastCheckedAt * 1000 | date:'medium'}}</small>}
           </div>
-          @if(recipient.administratorSlot===state.assignedSlot){
+          @if(!issuedHeight() && recipient.administratorSlot===state.assignedSlot){
             @if(recipient.creation; as operation){
               <div class="notice" aria-label="Saved recipient creation review">
                 <strong>Reserved vault creation · Testnet11</strong>
@@ -68,7 +70,8 @@
         </article>
       }
     </div>
-    @if(state.recipientPreparationComplete){<p class="notice" role="status"><strong>All three destinations are acknowledged.</strong> Next: final source, recovery and genesis review. Launch is complete only when the exact grants and reserve are confirmed on chain.</p>}
+    @if(issuedHeight()){<p class="notice" role="status"><strong>Genesis grants are confirmed.</strong> Receiving-vault preparation is complete.</p>}
+    @else if(state.recipientPreparationComplete){<p class="notice" role="status"><strong>All three destinations are acknowledged.</strong> Next: final source, recovery and genesis review. Launch is complete only when the exact grants and reserve are confirmed on chain.</p>}
     <details><summary>Frozen preparation</summary><dl><dt>Deployment generation</dt><dd class="hash">{{state.generationId}}</dd><dt>Preparation manifest</dt><dd class="hash">{{state.preparationManifest}}</dd><dt>Your reserved funding input</dt><dd class="hash">{{mine()?.fundingCoinId}}</dd></dl><p>Changing the preparation requires new destination acknowledgements.</p></details>
   } @else {
     <p class="notice" role="status">{{refresh.refreshing()?'Loading the reviewed launch preparation…':'The reviewed preparation is not available yet. Your existing launch evidence is preserved.'}}</p>

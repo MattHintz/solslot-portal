@@ -1,0 +1,49 @@
+/* Shared launch surfaces follow the current page theme in light and dark modes. */
+:host { display:block; color:var(--text,#173e33); }
+section { max-width:1120px; margin:auto; }
+header h1,header h2 { font:500 clamp(1.8rem,3vw,2.5rem)/1.2 Georgia,serif; margin:.6rem 0 1rem; }
+h3 { font-size:1.15rem; margin:.3rem 0; }
+p { line-height:1.65; color:var(--muted,#596b61); max-width:78ch; }
+strong,.signer-status { color:var(--text,#173e33); }
+.eyebrow { font-size:.75rem; text-transform:uppercase; letter-spacing:.09em; color:var(--accent,#2f644e); }
+.steps { display:flex; flex-wrap:wrap; gap:.6rem 1.2rem; padding:1rem 0; list-style:none; color:var(--muted,#596b61); border-block:1px solid var(--border,#d9ded1); }
+.steps [aria-current] { color:var(--text,#173e33); font-weight:700; }
+.steps .complete { color:var(--accent,#2f644e); }
+.totals { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; margin:1.2rem 0; }
+.totals>div { display:grid; gap:.35rem; padding:1rem; background:var(--accent-soft,#e8efdf); border:1px solid var(--border,#d9ded1); border-radius:12px; }
+.totals span,small { font-size:.85rem; color:var(--muted,#596b61); }
+.recipients { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
+article { min-width:0; padding:clamp(1rem,2vw,1.4rem); border:1px solid var(--border,#d9ded1); background:var(--bg-2,var(--surface,#fcfcf7)); border-radius:14px; }
+.assigned { border-color:var(--accent,#2f644e); }
+.recipient-heading { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; }
+.allocation { padding:.45rem .7rem; background:var(--accent-soft,#e8efdf); border-radius:8px; }
+dl { display:grid; gap:.4rem; margin:1.2rem 0; }
+dt { font-size:.8rem; color:var(--muted,#596b61); }
+dd { margin:0 0 .7rem; }
+.hash,code { overflow-wrap:anywhere; font-family:monospace; font-size:.82rem; user-select:all; }
+details { border-top:1px solid var(--border,#d9ded1); padding-top:1rem; margin-top:1rem; }
+summary { cursor:pointer; min-height:40px; }
+.state { display:grid; gap:.35rem; }
+.state span,.waiting { color:var(--muted,#596b61); font-size:.95rem; }
+.actions { display:flex; gap:.8rem; flex-wrap:wrap; margin:1.2rem 0; }
+button,a { color:var(--text,#173e33); }
+button { min-height:46px; padding:.7rem 1rem; border:1px solid var(--accent,#2f644e); border-radius:9px; background:transparent; font-weight:600; cursor:pointer; }
+.primary { background:#285543; border-color:#285543; color:#fff; }
+button:disabled { opacity:.6; cursor:default; }
+button:focus-visible,summary:focus-visible,a:focus-visible,textarea:focus-visible { outline:2px solid var(--accent,#2f644e); outline-offset:4px; }
+.notice,.next-step { padding:1.2rem; border:1px solid var(--border,#d9ded1); border-radius:14px; background:var(--accent-soft,#e8efdf); max-width:none; }
+.next-step { border-inline-start:4px solid var(--accent,#2f644e); }
+.next-step p { margin-bottom:0; }
+.deadline { display:grid; gap:.4rem; padding:1.2rem 0; }
+.deadline p { font-size:.85rem; margin:0; }
+.deadline span { font-weight:600; color:var(--accent,#2f644e); }
+.error { border-color:#b45b42; background:var(--bg-2,var(--surface,#fcfcf7)); color:var(--text,#173e33); }
+.sharing { margin:1.2rem 0; }
+.sharing p { font-size:.9rem; }
+.sharing label { display:block; margin-bottom:.5rem; }
+textarea { width:100%; box-sizing:border-box; min-height:160px; border:1px solid var(--border,#d9ded1); border-radius:9px; padding:1rem; background:var(--bg-2,var(--surface,#fcfcf7)); color:var(--text,#173e33); resize:vertical; }
+.spinner { display:inline-block; width:1rem; height:1rem; border:2px solid var(--border,#d9ded1); border-top-color:var(--accent,#2f644e); border-radius:50%; animation:spin 1s linear infinite; vertical-align:middle; margin-right:.5rem; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .spinner { animation:none; } }
+@media(max-width:900px) { .recipients { grid-template-columns:1fr; } }
+@media(max-width:600px) { .totals { grid-template-columns:1fr; } .actions button { width:100%; } .hash { font-size:.78rem; } }

@@ -46,12 +46,15 @@ describe('AdminSessionService', () => {
   });
 
   it('isolates new-generation admin signatures, API tokens, and saved sessions', async()=>{
-    const runtime=environment.solslotProtocol as {generationId?: string};
-    const prior=runtime.generationId, generation='0x'+'cd'.repeat(32);
+    const runtime=environment.solslotProtocol as typeof environment.solslotProtocol & {generationId?: string};
+    const prior=structuredClone(runtime), generation='0x'+'cd'.repeat(32);
     const old=await signedEnvelope();
     sessionStorage.setItem(storageKey,JSON.stringify(persisted(old)));
     try {
       runtime.generationId=generation;
+      runtime.generationBindingsVerified=true;
+      runtime.generationBuildBindings={...runtime.generationBuildBindings,generationId:generation,evmChainId:11155111,dailyPublicKeys:[...roster]};
+      artifact.isReady=false;artifact.artifact=null;artifact.adminRoster=[];
       const service=configure();
       expect(service.isAuthenticated()).toBeFalse();
       expect(sessionStorage.getItem(storageKey)).toBeTruthy();
@@ -66,7 +69,7 @@ describe('AdminSessionService', () => {
       TestBed.resetTestingModule();
       expect(configure().isAuthenticated()).toBeFalse();
       expect(sessionStorage.getItem(storageKey)).toBeTruthy();
-    } finally {if(prior===undefined) delete runtime.generationId; else runtime.generationId=prior;}
+    } finally {Object.assign(runtime,prior);if(prior.generationId===undefined) delete runtime.generationId;}
   });
 
   it('persists only a fully verified EIP-712 session', async () => {

@@ -49,6 +49,11 @@ export const environment = {
     artifactHash: '',
     adminPortalSourceSha: '',
     artifactVerified: false,
+    generationBindingsVerified: false,
+    generationBuildBindings: {
+      schemaVersion: 1, generationId: '', readAnchorHash: '', authorityLauncherId: '', identityLauncherIds: [] as string[],
+      evmChainId: 0, dailyPublicKeys: [] as string[],
+    },
     // Frozen replacement-generation source bindings. Empty values keep holder
     // wallet actions closed until a reviewed release populates every field.
     generationHolderBindings: {

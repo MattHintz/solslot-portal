@@ -128,8 +128,15 @@
       </footer>
     </section>
   } @else if (generationId && !workspace()?.session?.setup) {
-    <solslot-generation-recipients (sessionExpired)="workspace.set(null)" />
-    <solslot-generation-final-launch (sessionExpired)="workspace.set(null)" />
+    <header class="generation-coordination-heading"><span class="eyebrow">Setup & launch · Testnet11</span>
+      <h1>{{generationLaunchState()?.review?.launchComplete?'Launch complete.':'Your team’s launch.'}}</h1>
+      <p>One shared review. Each administrator signs with their own wallet. Saved steps resume when you return.</p>
+    </header>
+    <solslot-generation-final-launch (stateChange)="generationLaunchState.set($event)" (sessionExpired)="generationSessionExpired()" />
+    <details class="generation-recipient-history" [open]="!generationLaunchState()?.review">
+      <summary>{{generationLaunchState()?.review?.launchComplete?'Receiving vaults and grant destinations · completed':generationLaunchState()?.review?'Receiving-vault acknowledgements · completed':'First: confirm your receiving vaults'}}</summary>
+      <solslot-generation-recipients [issuedHeight]="generationLaunchState()?.review?.launchComplete?generationLaunchState()!.review!.confirmedHeight:null" (sessionExpired)="generationSessionExpired()" />
+    </details>
   } @else {
     <header class="launch-header">
           <div>

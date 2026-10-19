@@ -49,7 +49,7 @@ export function validateGenerationBallot(source:GenerationBallotReview):Generati
   check(bill.hash===p.billHash && list([t('HOLDER_PROPOSAL_V1'),a(r.generationId),n(r.proposalNonce),bill,
     list([a(r.snapshotRoot),n(r.eligibleSupply),n(1_000_000)])]).hash===r.proposalId);
   const frozen=environment.solslotProtocol.generationHolderBindings;
-  check(environment.solslotProtocol.artifactVerified && Object.keys(frozen).length===6 && Object.values(frozen).every(hash));
+  check(environment.solslotProtocol.generationBindingsVerified && Object.keys(frozen).length===6 && Object.values(frozen).every(hash));
   let weight=0;
   r.holders.forEach((row,i)=>{
     const c=row.context,w=row.request,selected=req.selected[i];

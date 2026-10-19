@@ -38,6 +38,15 @@ describe('Native recipient preparation',()=>{
   });
   afterEach(()=>{TestBed.resetTestingModule();if(old===undefined)delete runtime.generationId;else runtime.generationId=old;});
   async function mount(){const f=TestBed.createComponent(GenerationRecipientsComponent);f.detectChanges();await f.whenStable();f.detectChanges();return f;}
+  it('retires all preparation actions once the parent has confirmed genesis outputs',async()=>{
+    const f=await mount();f.componentRef.setInput('issuedHeight',12345);f.detectChanges();
+    await f.componentInstance.check();await f.componentInstance.acknowledge();
+    await f.componentInstance.prepareCreation();await f.componentInstance.submitCreation();
+    expect(f.nativeElement.textContent).toContain('Genesis grants are confirmed');
+    expect(f.nativeElement.querySelector('article .actions')).toBeNull();
+    expect(api.check).not.toHaveBeenCalled();expect(api.prepare).not.toHaveBeenCalled();
+    expect(api.prepareCreation).not.toHaveBeenCalled();expect(wallet.signRecipientAcknowledgement).not.toHaveBeenCalled();
+  });
   it('shows full destinations, exact amounts and only the signed-in administrator action',async()=>{
     const f=await mount(),text=f.nativeElement.textContent as string;
     expect(text).toContain(fixture.review.recipient.recipientVault);

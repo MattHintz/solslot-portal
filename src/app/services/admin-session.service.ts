@@ -202,10 +202,14 @@ export class AdminSessionService implements OnDestroy {
     address: string;
     pubkey: string;
   } {
+    const generation = deploymentGeneration();
     const artifact = this.protocolArtifact.artifact;
-    if (!this.protocolArtifact.isReady || !artifact) {
-      throw new Error(this.protocolArtifact.failure);
+    const generationPins=environment.solslotProtocol.generationBuildBindings;
+    if (generation ? !environment.solslotProtocol.generationBindingsVerified || generationPins.generationId!==generation
+        : !this.protocolArtifact.isReady || !artifact) {
+      throw new Error(generation ? 'Confirmed generation administrator bindings are unavailable. Sign-in remains closed.' : this.protocolArtifact.failure);
     }
+    const expectedChainId=generation ? generationPins.evmChainId : artifact!.evmChainId;
 
     const nowSec = Math.floor(Date.now() / 1_000);
     if (
@@ -217,14 +221,13 @@ export class AdminSessionService implements OnDestroy {
     }
 
     const typedData = input.typedData;
-    const generation = deploymentGeneration();
     const loginTypes = [...ADMIN_LOGIN_TYPES, ...(generation ? [{name:'generationId',type:'bytes32'}] : [])];
     if (
       typedData.primaryType !== 'SolslotAdminLogin' ||
       !sameKeys(typedData.domain, ['chainId', 'name', 'version']) ||
       typedData.domain.name !== 'Solslot Protocol' ||
       typedData.domain.version !== '2' ||
-      typedData.domain.chainId !== artifact.evmChainId ||
+      typedData.domain.chainId !== expectedChainId ||
       !sameKeys(typedData.types, ['EIP712Domain', 'SolslotAdminLogin']) ||
       JSON.stringify(typedData.types['EIP712Domain']) !==
         JSON.stringify(EIP712_DOMAIN_TYPES) ||
@@ -276,7 +279,7 @@ export class AdminSessionService implements OnDestroy {
     }
     let adminRoster: string[];
     try {
-      adminRoster = this.protocolArtifact.adminRoster.map(normalizePubkey);
+      adminRoster = (generation ? generationPins.dailyPublicKeys : this.protocolArtifact.adminRoster).map(normalizePubkey);
     } catch {
       throw new Error('Administrator key is not in the signed genesis roster.');
     }

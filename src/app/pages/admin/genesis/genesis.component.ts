@@ -39,6 +39,7 @@ import { formatError } from '../../../utils/format-error';
 import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
 import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
 import { GenerationRecipientsComponent } from '../../../components/admin-workspace/generation-recipients.component';
+import { FinalLaunchStatus } from '../../../services/generation-final-launch.service';
 import { deploymentGeneration } from '../../../utils/deployment-generation';
 
 type WalletKind = 'injected' | 'walletconnect';
@@ -86,6 +87,7 @@ interface LaunchStage {
 })
 export class GenesisComponent implements OnInit, OnDestroy {
   readonly generationId=deploymentGeneration();
+  readonly generationLaunchState=signal<FinalLaunchStatus|null>(null);
   readonly refresh = inject(AdminStatusRefresh);
   private readonly launch = inject(AdminLaunchService);
   private readonly router = inject(Router);
@@ -102,6 +104,11 @@ export class GenesisComponent implements OnInit, OnDestroy {
   readonly pending = signal<string | null>(null);
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
+
+  generationSessionExpired():void {
+    this.workspace.set(null);this.pendingDecision.set(null);this.message.set(null);
+    this.error.set('Your administrator session expired. Completed steps and consent are saved. Sign in with your enrolled wallet to resume this exact review.');
+  }
 
   readonly ownerToken = signal<string | null>(null);
   readonly enrollmentToken = signal<string | null>(null);

@@ -15,8 +15,8 @@ describe('Durable holder signature service',()=>{
   const review=()=>structuredClone(vector.review) as unknown as GenerationBallotReview;
   const base=environment.faucetApi+'/admin/generation/ballots';
   beforeEach(()=>{
-    previous={generationId:runtime.generationId,verified:runtime.artifactVerified,bindings:structuredClone(runtime.generationHolderBindings)};
-    runtime.generationId=vector.review.generationId;runtime.artifactVerified=true;runtime.generationHolderBindings={...vector.bindings};
+    previous={generationId:runtime.generationId,verified:runtime.generationBindingsVerified,bindings:structuredClone(runtime.generationHolderBindings)};
+    runtime.generationId=vector.review.generationId;runtime.generationBindingsVerified=true;runtime.generationHolderBindings={...vector.bindings};
     session={requireJwt:()=> 'synthetic-jwt',pubkey:()=>vector.review.holders[0].context.owner.publicKey};
     wallet={signGenerationSgt:jasmine.createSpy().and.callFake(async(r:any,c:any,check:()=>Promise<void>)=>{await check();return '0x'+'11'.repeat(65);})};
     TestBed.configureTestingModule({providers:[provideHttpClient(),provideHttpClientTesting(),{provide:AdminSessionService,useValue:session},
@@ -25,7 +25,7 @@ describe('Durable holder signature service',()=>{
     dateSpy=spyOn(Date,'now').and.returnValue((vector.review.createdAt+10)*1000);
   });
   afterEach(()=>{http.verify();if(previous.generationId===undefined)delete runtime.generationId;else runtime.generationId=previous.generationId;
-    runtime.artifactVerified=previous.verified;runtime.generationHolderBindings=previous.bindings;});
+    runtime.generationBindingsVerified=previous.verified;runtime.generationHolderBindings=previous.bindings;});
   it('fetches an immutable proof once and polls thin receipts without wallet or assembly actions',fakeAsync(()=>{
     const r=review(),{holders,...summary}=r;let result:GenerationBallotReview[]=[];
     void service.list().then(v=>result=v);http.expectOne(base).flush({generationId:r.generationId,network:'testnet11',reviews:[summary]});flushMicrotasks();
@@ -49,8 +49,8 @@ describe('Durable holder signature service',()=>{
   it('rejects another holder, changed frozen bindings and expired requests before opening the wallet',fakeAsync(()=>{
     const r=review();session.pubkey=()=>r.holders[1].context.owner.publicKey;let failures=0;
     void service.sign(r,r.request.selected[0].coinId).catch(()=>failures++);flushMicrotasks();
-    session.pubkey=()=>r.holders[0].context.owner.publicKey;runtime.artifactVerified=false;
-    void service.sign(r,r.request.selected[0].coinId).catch(()=>failures++);flushMicrotasks();runtime.artifactVerified=true;
+    session.pubkey=()=>r.holders[0].context.owner.publicKey;runtime.generationBindingsVerified=false;
+    void service.sign(r,r.request.selected[0].coinId).catch(()=>failures++);flushMicrotasks();runtime.generationBindingsVerified=true;
     tick((r.expiresAt-r.createdAt-10)*1000);
     void service.sign(r,r.request.selected[0].coinId).catch(()=>failures++);flushMicrotasks();
     expect(failures).toBe(3);expect(wallet.signGenerationSgt).not.toHaveBeenCalled();

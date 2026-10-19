@@ -4,6 +4,8 @@ import { INVENTORY_V2_HASH, RESERVED_V5_HASH } from './mint-proposal-v2/inventor
 import { INVENTORY_V3_HASH, RESERVED_V6_HASH, BASE_TEST_PAYMENT_PROFILE } from './mint-proposal-v2/base-inventory-puzzles';
 import { computeAddress, SigningKey, verifyTypedData } from 'ethers';
 import { environment } from '../../environments/environment';
+import {deploymentGeneration} from '../utils/deployment-generation';
+import {installGenerationBuildBindings} from '../utils/generation-build-bindings';
 import { SolslotApiService, SolslotPublicArtifact } from './solslot-api.service';
 import {
   clearVerifiedProtocolCoordinates,
@@ -78,6 +80,17 @@ export class SolslotProtocolArtifactService {
     this.artifactValue = null;
     clearVerifiedProtocolCoordinates();
     clearRuntimeBindings();
+
+    try {
+      if (deploymentGeneration()) {
+        installGenerationBuildBindings();
+        this.failureValue = 'Legacy operations are unavailable in this generation. Use the generation governance workflow.';
+        return;
+      }
+    } catch (error) {
+      this.failureValue = error instanceof Error ? error.message : 'Generation launch bindings could not be verified.';
+      return;
+    }
 
     const config = environment.solslotProtocol as Record<string, unknown>;
     const expectedHash = String(config['artifactHash'] || '').toLowerCase();
@@ -456,6 +469,7 @@ function clearRuntimeBindings(): void {
   environment.eip712ChainId = INITIAL_OPERATIONAL_CHAIN_ID;
   Object.assign(environment.solslotProtocol, {
     artifactVerified: false,
+    generationBindingsVerified: false,
     retiredCoordinates: [],
     adminAuthorityV2LauncherId: '',
     adminAuthorityV3LauncherId: '',
