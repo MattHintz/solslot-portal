@@ -16,7 +16,7 @@
   <solslot-generation-consents [snapshot]="snapshot()" [isCurrent]="isCurrent()"
     [available]="!!operations()?.available" [maximumFee]="operations()?.maximumFeeMojos ?? '0'" (preparedPause)="resumeSaved($event)" (sponsorReview)="sponsorshipConsent.set($event)" />
   <solslot-generation-ballots [snapshot]="snapshot()" [consent]="sponsorshipConsent()" [isCurrent]="isCurrent()"
-    [available]="!!operations()?.available" [maximumFee]="operations()?.maximumFeeMojos ?? '0'" (prepared)="resumeSaved($event)" />
+    [available]="!!operations()?.available" [maximumFee]="operations()?.maximumFeeMojos ?? '0'" [operations]="operations()?.operations ?? []" (prepared)="resumeSaved($event)" />
   @if(reviewRequest() || preparedAction()){
     <section class="status-card action-review" aria-labelledby="action-review-title" [attr.aria-busy]="!!pendingAction()">
       <p class="eyebrow">Review chain action · Testnet11</p>

@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { CommonModule,DOCUMENT } from '@angular/common';
 import { ChangeDetectionStrategy,Component,computed,inject,input,OnInit,output,signal } from '@angular/core';
 import { GenerationBallotService,GenerationBallotReview,HolderBallotRequest,HolderCatalog,HolderRow } from '../../../services/generation-ballot.service';
 import { GenerationConsentReview } from '../../../services/generation-consent.service';
@@ -17,6 +17,7 @@ import { governedBillLabel } from '../../../utils/generation-governed-bill';
 export class GenerationBallotsComponent implements OnInit {
   readonly proposalLabel=governedBillLabel;
   private readonly api=inject(GenerationBallotService);
+  private readonly document=inject(DOCUMENT);
   readonly session=inject(AdminSessionService);
   private readonly chia=inject(ChiaWalletService);
   readonly refresh=inject(AdminStatusRefresh);
@@ -25,22 +26,28 @@ export class GenerationBallotsComponent implements OnInit {
   readonly isCurrent=input(false);
   readonly available=input(false);
   readonly maximumFee=input('0');
+  readonly operations=input<GenerationOperationStatus[]>([]);
   readonly prepared=output<GenerationOperationStatus>();
   readonly catalog=signal<HolderCatalog|null>(null);
   readonly reviews=signal<GenerationBallotReview[]>([]);
   readonly selected=signal<GenerationBallotReview|null>(null);
   readonly coinIds=signal<string[]>([]);
+  readonly selectionLimit=32;
   readonly busy=signal<'PREPARING'|'SIGNING'|'ASSEMBLING'|null>(null);
   readonly signingWallet=signal('browser wallet');
   readonly error=signal<string|null>(null);
   readonly scopes=[{mask:1,label:'New proposals'},{mask:2,label:'New mints'},{mask:4,label:'New offers'},
     {mask:8,label:'New unfunded obligations'},{mask:16,label:'Pending upgrade activation'}];
   readonly pending=signal<HolderBallotRequest|null>(this.restore());
+  readonly assignedActions=computed(()=>this.reviews().flatMap(review=>review.holders
+    .filter(row=>this.assigned(row) && !this.signed(review,row) && !this.expired(review) && !this.confirmedReceipt(review)).map(row=>({review,row}))));
   readonly selectedWeight=computed(()=>this.catalog()?.holdings.filter(h=>this.coinIds().includes(h.coinId)).reduce((s,h)=>s+h.amount,0)??0);
   readonly quorum=computed(()=>Math.ceil((this.catalog()?.eligibleSupply??0)/2));
   readonly canSelect=computed(()=>this.available() && this.isCurrent() && !this.busy() && !!this.catalog() &&
     this.refresh.now()-this.catalog()!.checkedAt*1000<=90_000);
-  readonly canPrepare=computed(()=>this.canSelect() && !!this.coinIds().length && this.coinIds().every(id=>this.catalog()!.holdings.some(h=>h.coinId===id)));
+  readonly canPrepare=computed(()=>this.canSelect() && !this.pending() && !!this.coinIds().length &&
+    this.coinIds().length<=this.selectionLimit && new Set(this.coinIds()).size===this.coinIds().length &&
+    this.coinIds().every(id=>this.catalog()!.holdings.some(h=>h.coinId===id)));
   readonly canOpen=computed(()=>this.canPrepare() && this.selectedWeight()>=10000 && !this.snapshot()?.proposal &&
     this.consent()?.stage==='READY' && this.consent()!.expiresAt*1000>this.refresh.now() &&
     this.consent()?.holdingsRoot===this.catalog()?.snapshotRoot);
@@ -84,14 +91,52 @@ export class GenerationBallotsComponent implements OnInit {
     this.reviews.update(rows=>[next,...rows.filter(r=>r.packageId!==next.packageId)].slice(0,50));this.selected.set(next);
   }
   expired(r:GenerationBallotReview):boolean {return r.stage==='EXPIRED' || this.refresh.now()>=r.expiresAt*1000;}
+  confirmedReceipt(r:GenerationBallotReview):GenerationOperationStatus|undefined {
+    return this.operations().find(op=>{
+      const saved=op.review;
+      return !!saved && (saved.kind==='OPEN_PROPOSAL' || saved.kind==='CAST_VOTE') &&
+        op.stage==='CONFIRMED' && op.kind===r.kind && op.network===r.network &&
+        op.generationId===r.generationId && saved.generationId===r.generationId && saved.kind===r.kind &&
+        !!op.transactionId && /^0x[0-9a-f]{64}$/.test(op.transactionId) &&
+        Number.isSafeInteger(op.confirmedHeight) && op.confirmedHeight!>0 &&
+        saved.packageId===r.packageId && saved.requestKey===`ballot:${r.packageId}` && saved.proposalId===r.proposalId &&
+        saved.selectedWeight===r.selectedWeight && saved.snapshotRoot===r.snapshotRoot &&
+        saved.eligibleSupply===r.eligibleSupply && saved.requiredVotes===r.requiredVotes && saved.votingClosesAt===r.votingClosesAt &&
+        Number(op.feeCapMojos)===Number(r.feeCapMojos) && saved.feeCapMojos===Number(r.feeCapMojos) &&
+        canonicalConsent(saved.selected)===canonicalConsent(r.request.selected);
+    });
+  }
+  displayHolders(r:GenerationBallotReview):HolderRow[]{
+    const priority=(row:HolderRow)=>Number(this.assigned(row) && !this.signed(r,row));
+    return [...r.holders].sort((a,b)=>priority(b)-priority(a));
+  }
   signed(r:GenerationBallotReview,row:HolderRow):boolean {return r.signatures.some(s=>s.coinId===row.request.sgtCoinId);}
   assigned(row:HolderRow):boolean {return this.session.pubkey()===row.context.owner.publicKey;}
   walletLabel(row:HolderRow):string {return row.context.owner.authType===3?'browser wallet':this.chia.connectionKind()==='goby'?'Goby':'Sage';}
+  openReview(event:Event,packageId:string):void {
+    if(event instanceof MouseEvent && (event.button!==0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey))return;
+    const review=this.document.getElementById('holder-review-'+packageId);if(!review)return;
+    event.preventDefault();review.scrollIntoView({block:'start'});review.focus({preventScroll:true});
+  }
+  reviewHref(r:GenerationBallotReview):string {
+    const location=this.document.location;
+    return (location?location.pathname+location.search:'/genesis-admin/next/committee')+'#holder-review-'+r.packageId;
+  }
   includesScope(scope:number|undefined,mask:number):boolean {return typeof scope==='number' && !!(scope&mask);}
+  canChoose(holding:HolderCatalog['holdings'][number]):boolean {
+    if(!this.canSelect())return false;
+    if(this.coinIds().includes(holding.coinId))return true;
+    return this.coinIds().length<this.selectionLimit &&
+      !this.catalog()!.holdings.some(h=>h.vaultLauncherId===holding.vaultLauncherId && this.coinIds().includes(h.coinId));
+  }
   choose(id:string,checked:boolean):void {
     const row=this.catalog()?.holdings.find(h=>h.coinId===id);if(!row || !this.canSelect())return;
+    if(checked && this.coinIds().includes(id))return;
+    if(checked && this.coinIds().length>=this.selectionLimit){
+      this.error.set(`Select up to ${this.selectionLimit} holdings for one action.`);return;
+    }
     if(checked && this.coinIds().some(c=>this.catalog()!.holdings.find(h=>h.coinId===c)?.vaultLauncherId===row.vaultLauncherId)){
-      this.error.set('Select one complete input per vault for this action. Other inputs can be selected in a later vote.');return;
+      this.error.set('Select one complete holding per vault for this action. Other eligible holdings can be selected in a later vote while voting is open.');return;
     }
     this.coinIds.update(ids=>checked?[...ids,id]:ids.filter(c=>c!==id));this.error.set(null);
   }

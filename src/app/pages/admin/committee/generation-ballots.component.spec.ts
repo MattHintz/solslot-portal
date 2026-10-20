@@ -1,6 +1,7 @@
 import { TestBed,fakeAsync,flushMicrotasks,tick } from '@angular/core/testing';
 import { GenerationBallotsComponent } from './generation-ballots.component';
 import { GenerationBallotService,GenerationBallotReview,HolderCatalog } from '../../../services/generation-ballot.service';
+import { GenerationOperationStatus,HolderBallotOperationReview } from '../../../services/generation-governance.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import { environment } from '../../../../environments/environment';
@@ -10,6 +11,14 @@ describe('Holder voting lifecycle UX',()=>{
   const runtime=environment.solslotProtocol as typeof environment.solslotProtocol & {generationId?:string};
   let previous:any,api:jasmine.SpyObj<GenerationBallotService>,session:any;
   const review=()=>structuredClone(vector.review) as unknown as GenerationBallotReview;
+  const confirmed=(r:GenerationBallotReview):GenerationOperationStatus=>({
+    generationId:r.generationId,network:r.network,operationId:'0x'+'ab'.repeat(32),kind:r.kind,intentHash:'0x'+'cd'.repeat(32),
+    stage:'CONFIRMED',transactionId:'0x'+'ef'.repeat(32),feeCapMojos:r.feeCapMojos,createdAt:r.createdAt,updatedAt:r.createdAt+20,
+    lastCheckedAt:r.createdAt+20,errorCode:null,confirmedHeight:12345,nextAction:'NONE',pollAfterSeconds:30,
+    review:{generationId:r.generationId,requestKey:`ballot:${r.packageId}`,kind:r.kind,packageId:r.packageId,proposalId:r.proposalId,
+      selected:structuredClone(r.request.selected),selectedWeight:r.selectedWeight,snapshotRoot:r.snapshotRoot,
+      eligibleSupply:r.eligibleSupply,requiredVotes:r.requiredVotes,votingClosesAt:r.votingClosesAt,feeCapMojos:Number(r.feeCapMojos)}
+  });
   const catalog=():HolderCatalog=>{const r=review();return {generationId:r.generationId,network:'testnet11',scope:'FROZEN_GENESIS_ROSTER',checkedAt:r.createdAt+10,
     expectedInputs:r.request.expectedInputs,proposalId:null,snapshotRoot:r.snapshotRoot,eligibleSupply:r.eligibleSupply,votingClosesAt:null,truncated:false,
     holdings:r.holders.map((h,i)=>({coinId:h.request.sgtCoinId,vaultLauncherId:h.context.vault.launcherId,name:'Synthetic administrator '+(i+1),
@@ -30,7 +39,7 @@ describe('Holder voting lifecycle UX',()=>{
   it('shows full recipient vaults, whole-input weight and an assigned action without automatic signatures',fakeAsync(()=>{
     const f=create();flushMicrotasks();f.detectChanges();
     expect(f.nativeElement.textContent).toContain(review().holders[0].context.vault.launcherId);
-    expect(f.nativeElement.textContent).toContain('15,000 quorum at 50%');expect(f.nativeElement.textContent).toContain('Each holder keeps custody');
+    expect(f.nativeElement.textContent).toContain('15,000 quorum at 50%');expect(f.nativeElement.textContent).toContain('Each selected holding counts in full');
     expect(f.nativeElement.textContent).toContain('Your selected holding');
     expect(f.nativeElement.textContent).toContain(review().proposal.upgrade!.sourceManifestHash);
     expect(f.nativeElement.textContent).toContain(review().proposal.upgrade!.changes[0].newModuleHash);
@@ -38,6 +47,40 @@ describe('Holder voting lifecycle UX',()=>{
     expect((f.nativeElement.querySelector('.assigned-action button') as HTMLButtonElement).classList).toContain('primary');
     tick(5000);flushMicrotasks();expect(api.list).toHaveBeenCalledTimes(2);
     expect(api.prepare).not.toHaveBeenCalled();expect(api.sign).not.toHaveBeenCalled();expect(api.assemble).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('shows assigned requests before selection and repeatedly focuses the review with the current signer first',fakeAsync(()=>{
+    const r=review();session.pubkey=()=>r.holders[1].context.owner.publicKey;
+    const f=create();flushMicrotasks();f.detectChanges();
+    const action=f.nativeElement.querySelector('.your-action a') as HTMLAnchorElement;
+    const card=f.nativeElement.querySelector('.review') as HTMLElement;
+    expect(action.textContent).toContain('Review 10,000 SGT');
+    expect(action.compareDocumentPosition(f.nativeElement.querySelector('.select-holdings')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card.querySelector('.assigned-action')!.textContent).toContain(r.holders[1].context.vault.launcherId);
+    expect(f.componentInstance.reviews()[0].holders.map(h=>h.request.sgtCoinId)).toEqual(r.holders.map(h=>h.request.sgtCoinId));
+    const scroll=spyOn(card,'scrollIntoView');action.click();f.detectChanges();
+    expect(document.activeElement).toBe(card);action.click();f.detectChanges();expect(scroll).toHaveBeenCalledTimes(2);
+    const modified=new MouseEvent('click',{ctrlKey:true,cancelable:true});f.componentInstance.openReview(modified,r.packageId);
+    expect(modified.defaultPrevented).toBeFalse();expect(scroll).toHaveBeenCalledTimes(2);
+    expect(api.sign).not.toHaveBeenCalled();expect(api.prepare).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('separates the sponsorship minimum from an eligible smaller whole-holding vote',fakeAsync(()=>{
+    const r=review(),c=catalog();c.holdings[0].amount=4000;api.holdings.and.resolveTo(c);
+    const f=create();flushMicrotasks();f.componentRef.setInput('consent',{
+      packageId:r.request.consentPackageId,proposalId:r.proposalId,proposal:r.proposal,stage:'READY',
+      holdingsRoot:c.snapshotRoot,expiresAt:r.expiresAt,feeCapMojos:r.feeCapMojos});
+    f.componentInstance.choose(c.holdings[0].coinId,true);f.detectChanges();
+    expect(f.nativeElement.querySelector('#holder-title').textContent).toBe('Help open this proposal');
+    expect(f.nativeElement.textContent).toContain('At least 10,000 SGT is needed to open a proposal');
+    expect(f.componentInstance.canOpen()).toBeFalse();
+    c.proposalId=r.proposalId;c.votingClosesAt=r.createdAt+3600;f.componentInstance.catalog.set({...c});
+    f.componentRef.setInput('snapshot',{proposal:{proposalId:r.proposalId,openedAt:r.createdAt}});
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('#holder-title').textContent).toBe('Vote with your SGT');
+    expect(f.nativeElement.textContent).not.toContain('At least 10,000 SGT is needed to open a proposal');
+    const buttons=Array.from(f.nativeElement.querySelectorAll('.select-holdings button')) as HTMLButtonElement[];
+    expect(buttons.length).toBe(1);expect(buttons[0].textContent).toContain('Review yes vote · 4,000 SGT');
+    expect(buttons[0].disabled).toBeFalse();expect(f.componentInstance.coinIds()).toEqual([c.holdings[0].coinId]);
+    expect(api.prepare).not.toHaveBeenCalled();expect(api.sign).not.toHaveBeenCalled();f.destroy();
   }));
   it('announces the pending wallet prompt and prevents duplicate signatures or status churn',fakeAsync(()=>{
     const f=create();flushMicrotasks();const r=f.componentInstance.reviews()[0];let resolve!:(v:GenerationBallotReview)=>void;
@@ -73,11 +116,89 @@ describe('Holder voting lifecycle UX',()=>{
     expect(f.componentInstance.coinIds().length).toBe(2);expect(f.componentInstance.canPrepare()).toBeFalse();
     expect(api.prepare).not.toHaveBeenCalled();f.destroy();
   }));
+  it('limits a whole-holding review to 32 unique inputs without silently dropping any selection',fakeAsync(()=>{
+    const c=catalog();c.holdings=Array.from({length:33},(_,i)=>({name:'Synthetic holder '+i,ownerPuzzleHash:c.holdings[0].ownerPuzzleHash,
+      coinId:'0x'+(i+1).toString(16).padStart(64,'0'),vaultLauncherId:'0x'+(i+101).toString(16).padStart(64,'0'),amount:100}));
+    api.holdings.and.resolveTo(c);const f=create();flushMicrotasks();const component=f.componentInstance;
+    c.holdings.slice(0,32).forEach(h=>component.choose(h.coinId,true));component.choose(c.holdings[0].coinId,true);
+    expect(component.coinIds().length).toBe(32);expect(component.selectedWeight()).toBe(3200);expect(component.canPrepare()).toBeTrue();
+    component.choose(c.holdings[32].coinId,true);
+    expect(component.coinIds()).toEqual(c.holdings.slice(0,32).map(h=>h.coinId));expect(component.error()).toContain('32 holdings');
+    component.choose(c.holdings[0].coinId,false);component.choose(c.holdings[32].coinId,true);
+    expect(component.coinIds().length).toBe(32);expect(component.canPrepare()).toBeTrue();
+    component.coinIds.set(c.holdings.map(h=>h.coinId));expect(component.canPrepare()).toBeFalse();
+    component.coinIds.set([c.holdings[0].coinId,c.holdings[0].coinId]);expect(component.canPrepare()).toBeFalse();
+    expect(api.prepare).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('keeps native checkbox state aligned at the 32-holding limit and allows deselection',fakeAsync(()=>{
+    const c=catalog();c.holdings=Array.from({length:33},(_,i)=>({name:'Synthetic holder '+i,ownerPuzzleHash:c.holdings[0].ownerPuzzleHash,
+      coinId:'0x'+(i+1).toString(16).padStart(64,'0'),vaultLauncherId:'0x'+(i+101).toString(16).padStart(64,'0'),amount:100}));
+    api.holdings.and.resolveTo(c);const f=create();flushMicrotasks();f.detectChanges();
+    const inputs=Array.from(f.nativeElement.querySelectorAll('.holding input')) as HTMLInputElement[];
+    inputs.slice(0,32).forEach(input=>{input.click();f.detectChanges();});
+    expect(inputs.slice(0,32).every(input=>input.checked && !input.disabled)).toBeTrue();
+    expect(inputs[32].disabled).toBeTrue();inputs[32].click();f.detectChanges();
+    expect(inputs[32].checked).toBeFalse();expect(f.componentInstance.coinIds()).toEqual(c.holdings.slice(0,32).map(h=>h.coinId));
+    expect(f.nativeElement.querySelector('.weight').textContent).toContain('32 holdings selected · 3,200 SGT');
+    inputs[0].click();f.detectChanges();expect(inputs[0].checked).toBeFalse();expect(inputs[32].disabled).toBeFalse();
+    inputs[32].click();f.detectChanges();
+    expect(inputs[32].checked).toBeTrue();expect(inputs[32].disabled).toBeFalse();
+    expect(inputs[0].checked).toBeFalse();expect(inputs[0].disabled).toBeTrue();
+    expect(f.componentInstance.coinIds()).toEqual(c.holdings.slice(1).map(h=>h.coinId));
+    expect(api.prepare).not.toHaveBeenCalled();expect(api.sign).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('disables competing holdings from a selected vault and re-enables them after deselection',fakeAsync(()=>{
+    const c=catalog(),original=c.holdings[0],other=c.holdings[1];
+    c.holdings=[original,{...original,coinId:'0x'+'11'.repeat(32)},other];
+    api.holdings.and.resolveTo(c);const f=create();flushMicrotasks();f.detectChanges();
+    const inputs=Array.from(f.nativeElement.querySelectorAll('.holding input')) as HTMLInputElement[];
+    inputs[0].click();f.detectChanges();
+    expect(inputs[0].checked).toBeTrue();expect(inputs[0].disabled).toBeFalse();expect(inputs[1].disabled).toBeTrue();
+    inputs[1].click();f.detectChanges();expect(inputs[1].checked).toBeFalse();expect(inputs[2].disabled).toBeFalse();
+    inputs[2].click();f.detectChanges();expect(inputs[2].checked).toBeTrue();
+    inputs[0].click();f.detectChanges();expect(inputs[1].disabled).toBeFalse();inputs[1].click();f.detectChanges();
+    expect(inputs[1].checked).toBeTrue();expect(inputs[1].disabled).toBeFalse();
+    expect(inputs[0].checked).toBeFalse();expect(inputs[0].disabled).toBeTrue();
+    expect(f.componentInstance.coinIds()).toEqual([c.holdings[2].coinId,c.holdings[1].coinId]);
+    expect(api.prepare).not.toHaveBeenCalled();expect(api.sign).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('keeps verified confirmed reviews successful after expiry without changing signing deadlines',fakeAsync(()=>{
+    const r=review(),f=create();flushMicrotasks();
+    f.componentRef.setInput('operations',[confirmed(r)]);f.componentInstance.refresh.now.set(r.expiresAt*1000);f.detectChanges();
+    const card=f.nativeElement.querySelector('.review') as HTMLElement;
+    expect(card.classList.contains('expired')).toBeFalse();
+    expect(card.textContent).toContain('confirmed in block 12,345');
+    expect(card.textContent).not.toContain('Signing window ended');expect(card.querySelector('button')).toBeNull();
+    expect(f.componentInstance.expired(r)).toBeTrue();expect(f.componentInstance.reviews()[0].expiresAt).toBe(r.expiresAt);
+    void f.componentInstance.sign(r,r.holders[0]);flushMicrotasks();expect(api.sign).not.toHaveBeenCalled();
+    f.componentRef.setInput('operations',[]);f.detectChanges();
+    expect(card.classList.contains('expired')).toBeTrue();expect(card.textContent).toContain('Signing window ended');f.destroy();
+  }));
+  it('does not present unconfirmed or mismatched operation receipts as a successful vote',fakeAsync(()=>{
+    const r=review(),f=create();flushMicrotasks();f.componentInstance.refresh.now.set(r.expiresAt*1000);
+    const mutations:Array<(op:GenerationOperationStatus)=>void>=[
+      op=>{op.stage='SUBMITTED';op.confirmedHeight=null;},op=>{op.transactionId=null;},op=>{op.confirmedHeight=0;},
+      op=>{op.generationId='0x'+'11'.repeat(32);},
+      op=>{(op.review as HolderBallotOperationReview).packageId='0x'+'22'.repeat(32);},
+      op=>{(op.review as HolderBallotOperationReview).proposalId='0x'+'33'.repeat(32);},
+      op=>{(op.review as HolderBallotOperationReview).snapshotRoot='0x'+'44'.repeat(32);},
+      op=>{(op.review as HolderBallotOperationReview).selectedWeight+=1;},
+      op=>{(op.review as HolderBallotOperationReview).selected[0].coinId='0x'+'55'.repeat(32);},
+      op=>{op.feeCapMojos=String(Number(op.feeCapMojos)+1);}
+    ];
+    for(const mutate of mutations){
+      const receipt=confirmed(r);mutate(receipt);f.componentRef.setInput('operations',[receipt]);f.detectChanges();
+      expect(f.componentInstance.confirmedReceipt(r)).toBeUndefined();
+      expect(f.nativeElement.querySelector('.review').textContent).toContain('Signing window ended');
+    }
+    expect(api.sign).not.toHaveBeenCalled();expect(api.assemble).not.toHaveBeenCalled();f.destroy();
+  }));
   it('persists a failed preparation key across refresh and retries only the exact request',fakeAsync(()=>{
     const r=review(),req=r.request,key='solslot_generation_holder_prepare:'+r.generationId;sessionStorage.setItem(key,JSON.stringify(req));
     api.list.and.resolveTo([]);const f=create();api.prepare.and.rejectWith(new Error('lost preparation response'));flushMicrotasks();
     void f.componentInstance.retry();flushMicrotasks();expect(api.prepare.calls.mostRecent().args[0]).toEqual(req);
-    expect(sessionStorage.getItem(key)).toBe(JSON.stringify(req));expect(f.componentInstance.pending()).toEqual(req);f.destroy();
+    expect(sessionStorage.getItem(key)).toBe(JSON.stringify(req));expect(f.componentInstance.pending()).toEqual(req);
+    f.componentInstance.choose(catalog().holdings[0].coinId,true);expect(f.componentInstance.canPrepare()).toBeFalse();f.destroy();
   }));
   it('pauses hidden-tab polling and refreshes on return without wallet prompts',fakeAsync(()=>{
     let visible=true;spyOnProperty(document,'visibilityState','get').and.callFake(()=>visible?'visible':'hidden');

@@ -4,4 +4,8 @@
 .holding{display:flex;align-items:flex-start;gap:.8rem;padding-block:.75rem;border-bottom:1px solid var(--admin-border,#29463b)}
 .holding span{min-width:0;display:grid;gap:.35rem}.holding code{overflow-wrap:anywhere}.holding small{color:var(--admin-muted,#abc4b8)}
 .weight{font-weight:700}.ballot-desk button{min-height:44px}.ballot-desk button:disabled{opacity:.55;cursor:default}
+.your-action{display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1.25rem;margin-block:1rem;border:2px solid var(--admin-accent,#8ec5ad);border-radius:.85rem;background:var(--admin-surface-raised,#15392d);color:var(--admin-text,#ecf5ee)}
+.your-action>div{flex:1 1 20rem}.your-action p{margin-block:.35rem}.action-link{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:.8rem 1rem;border-radius:8px;text-decoration:none;text-align:center;font-weight:600}
+.action-link:focus-visible,.review:focus-visible{outline:2px solid var(--admin-accent,#8ec5ad);outline-offset:4px}
+.review{scroll-margin-top:6rem}.review details{margin-block:1rem}.review summary{padding:.65rem 0;cursor:pointer}.assigned-action{flex-wrap:wrap}.assigned-action>div{flex:1 1 16rem;display:grid;gap:.35rem}.assigned-action small{display:block}.assigned-action button{flex:0 1 auto;white-space:normal;text-wrap:balance}
 @media(max-width:600px){.ballot-desk{padding:1rem}.select-holdings{padding:.8rem}}
