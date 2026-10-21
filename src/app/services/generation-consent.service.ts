@@ -35,6 +35,30 @@ export interface GenerationConsentRequest extends Omit<MaintenanceRequest,'kind'
   mintReviewId?:string;
 }
 
+/** Only these local, fixed messages are safe to show instead of the generic receipt-recovery notice. */
+export class GenerationConsentSigningError extends Error {
+  constructor(readonly reason:'WALLET_PENDING'|'WALLET_REJECTED'|'WALLET_UNAVAILABLE'|'WRONG_ACCOUNT'|'REVIEW_CHANGED'|'SIGNING_FAILED',expectedAddress?:string) {
+    const messages={
+      WALLET_PENDING:'A wallet request is already waiting. Open your administrator wallet and finish or dismiss it, then retry this saved review.',
+      WALLET_REJECTED:'You declined the wallet request. Your saved review is unchanged. Choose its approval button again when you are ready.',
+      WALLET_UNAVAILABLE:'Reconnect your administrator wallet through Vault Connect, then return to this saved review without reloading the page.',
+      WRONG_ACCOUNT:'Switch to the administrator account assigned to this review, then choose its approval button again.',
+      REVIEW_CHANGED:'The administrator session, generation or approval window changed. Refresh this saved review and sign in again if requested.',
+      SIGNING_FAILED:'The wallet could not finish this approval. Open your administrator wallet, check its pending requests and requested signing network, then retry this saved review.',
+    };
+    super(messages[reason]+(reason==='WRONG_ACCOUNT' && expectedAddress ? ` Expected account: ${expectedAddress}.` : ''));
+    this.name='GenerationConsentSigningError';
+  }
+}
+
+function consentWalletFailure(error:unknown,connecting:boolean):GenerationConsentSigningError {
+  const value=error as {code?:unknown;error?:{code?:unknown};info?:{error?:{code?:unknown}};cause?:{code?:unknown}}|null;
+  const codes=[value?.code,value?.error?.code,value?.info?.error?.code,value?.cause?.code];
+  if(codes.some(code=>code===4001 || code==='4001' || code==='ACTION_REJECTED'))return new GenerationConsentSigningError('WALLET_REJECTED');
+  if(codes.some(code=>code===-32002 || code==='-32002'))return new GenerationConsentSigningError('WALLET_PENDING');
+  return new GenerationConsentSigningError(connecting?'WALLET_UNAVAILABLE':'SIGNING_FAILED');
+}
+
 @Injectable({providedIn:'root'})
 export class GenerationConsentService {
   private readonly http=inject(HttpClient);
@@ -71,14 +95,28 @@ export class GenerationConsentService {
   async sign(source:GenerationConsentReview):Promise<GenerationConsentReview> {
     const review=validateGenerationConsent(source),slot=this.session.authoritySlot(),key=this.session.pubkey();
     const challenge=review.challenges.find(c=>c.slot===slot);
-    if(!challenge || challenge.publicKey!==key || this.wallet.address()?.toLowerCase()!==computeAddress(challenge.publicKey).toLowerCase() ||
+    if(!challenge || challenge.publicKey!==key || deploymentGeneration()!==review.generationId ||
       review.stage==='EXPIRED' || review.expiresAt<=Math.floor(Date.now()/1000) || review.signatures.some(s=>s.slot===slot))
-      throw new Error('Open the assigned administrator wallet and review its current approval.');
-    const signature=await this.wallet.signAuthorityV3ChiaAction(challenge.typedData,{coinId:challenge.coinId,
-      delegatedPuzzleHash:challenge.delegatedPuzzleHash,compressedPubkey:challenge.publicKey});
-    if(this.session.authoritySlot()!==slot || this.session.pubkey()!==key || deploymentGeneration()!==review.generationId ||
-      this.wallet.address()?.toLowerCase()!==computeAddress(challenge.publicKey).toLowerCase() || review.expiresAt<=Math.floor(Date.now()/1000))
-      throw new Error('The wallet, generation or approval window changed. Review the saved action again.');
+      throw new GenerationConsentSigningError('REVIEW_CHANGED');
+    const expectedAddress=computeAddress(challenge.publicKey);
+    const assertCurrent=()=>{
+      if(this.session.authoritySlot()!==slot || this.session.pubkey()!==key || deploymentGeneration()!==review.generationId ||
+        review.expiresAt<=Math.floor(Date.now()/1000))throw new GenerationConsentSigningError('REVIEW_CHANGED');
+      if(this.wallet.address()?.toLowerCase()!==expectedAddress.toLowerCase())
+        throw new GenerationConsentSigningError('WRONG_ACCOUNT',expectedAddress);
+    };
+    // The authenticated session survives reload; the provider connection does not.
+    // Reconnect only from this explicit sign action, never from status polling.
+    if(!this.wallet.address()){
+      if(!this.wallet.hasInjectedProvider())throw new GenerationConsentSigningError('WALLET_UNAVAILABLE');
+      try{await this.wallet.connectInjected();}catch(error){throw consentWalletFailure(error,true);}
+    }
+    assertCurrent();
+    let signature:string;
+    try{signature=await this.wallet.signAuthorityV3ChiaAction(challenge.typedData,{coinId:challenge.coinId,
+      delegatedPuzzleHash:challenge.delegatedPuzzleHash,compressedPubkey:challenge.publicKey});}
+    catch(error){throw consentWalletFailure(error,false);}
+    assertCurrent();
     const value=validateGenerationConsent(await firstValueFrom(this.http.post<GenerationConsentReview>(
       `${this.base}/${review.packageId}/sign`,{signature},{headers:this.headers()}).pipe(timeout(25_000))));
     if(value.packageId!==review.packageId)throw new Error('Returned approval differs from the saved review.');

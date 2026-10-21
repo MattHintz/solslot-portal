@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy,Component,computed,inject,input,OnInit,output,signal } from '@angular/core';
-import { GenerationConsentService,GenerationConsentRequest,GenerationConsentReview } from '../../../services/generation-consent.service';
+import { ChangeDetectionStrategy,Component,computed,effect,inject,input,OnInit,output,signal,untracked } from '@angular/core';
+import { GenerationConsentService,GenerationConsentRequest,GenerationConsentReview,GenerationConsentSigningError } from '../../../services/generation-consent.service';
 import { GenerationChainSnapshot,GenerationOperationStatus } from '../../../services/generation-governance.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
@@ -56,6 +56,17 @@ export class GenerationConsentsComponent implements OnInit {
       s.components.some(v=>v.componentId===m.mintAuthority.componentId && v.launcherId===m.mintAuthority.launcherId &&
         v.moduleHash===m.mintAuthority.moduleHash && v.version===m.mintAuthority.version);
   });
+  private readonly refreshStarted=signal(false);
+  private refreshedSession:{key:string;token:string}|null=null;
+  private readonly readyRefresh=effect(()=>{
+    const key=this.available()?this.session.pubkey():null,token=key?this.session.jwt():null;
+    if(!this.refreshStarted())return;
+    if(!key || !token){this.refreshedSession=null;return;}
+    if(this.refreshedSession?.key===key && this.refreshedSession.token===token || this.busy() || this.refresh.refreshing())return;
+    // Access often becomes ready after this child mounts. Load saved requests
+    // immediately, without waiting for the next poll or opening any wallet.
+    untracked(()=>{void this.refresh.refresh();});
+  });
   private storageKey():string {return 'solslot_generation_consent_prepare:'+deploymentGeneration()+':'+
     (this.showGeneralActions()?'committee':this.mintSource()?.packageId);}
   private restorePending():GenerationConsentRequest|null {
@@ -78,8 +89,15 @@ export class GenerationConsentsComponent implements OnInit {
   ngOnInit():void {
     this.request.set(this.restorePending());
     this.refresh.start(async()=>{
-      if(!this.available())return;
+      if(!this.available() || !this.session.pubkey() || !this.session.jwt())return;
+      const readSession={key:this.session.pubkey()!,token:this.session.jwt()!,generation:deploymentGeneration()};
+      this.refreshedSession=readSession;
+      const assertReadSession=()=>{
+        if(!this.available() || readSession.key!==this.session.pubkey() || readSession.token!==this.session.jwt() ||
+          readSession.generation!==deploymentGeneration())throw new Error('The review-loading session changed.');
+      };
       const incoming=(await this.api.list()).filter(r=>this.showGeneralActions() || r.request.mintReviewId===this.mintSource()?.packageId);
+      assertReadSession();
       // A delayed read may not hide an already-recorded signature. Keep the
       // original immutable package and merge only its saved role receipts.
       const old=new Map(this.reviews().map(r=>[r.packageId,r]));
@@ -88,8 +106,9 @@ export class GenerationConsentsComponent implements OnInit {
       const selected=this.selected();if(selected){const found=merged.find(r=>r.packageId===selected.packageId);if(found)this.selected.set(this.merge(selected,found));}
       const pending=this.request(),saved=pending && merged.find(r=>r.requestKey===pending.requestKey);
       if(saved && !this.busy())this.remember(saved);
-    },()=>this.busy()?'Finishing your explicit wallet action. Saved approvals will refresh afterward.':null,
+    },()=>!this.available() || !this.session.pubkey() || !this.session.jwt()?'Sign in to load your saved reviews.':this.busy()?'Finishing your explicit wallet action. Saved approvals will refresh afterward.':null,
       ()=>this.reviews().some(r=>r.stage==='AWAITING_APPROVALS' && !this.expired(r)));
+    this.refreshStarted.set(true);
   }
   private merge(old:GenerationConsentReview|undefined,next:GenerationConsentReview):GenerationConsentReview {
     if(!old)return structuredClone(next);
@@ -163,7 +182,8 @@ export class GenerationConsentsComponent implements OnInit {
     if(this.busy() || this.expired(review) || !this.available() || !this.isCurrent())return;
     this.selected.set(structuredClone(review));this.busy.set('SIGNING');this.error.set(null);
     try{this.remember(await this.api.sign(structuredClone(review)));}
-    catch{this.error.set('Approval was not completed. Check your wallet, then refresh the saved review before trying again. A lost response does not erase a recorded approval.');}
+    catch(error){this.error.set(error instanceof GenerationConsentSigningError ? error.message :
+      'Approval was not completed. Check your wallet, then refresh the saved review before trying again. A lost response does not erase a recorded approval.');}
     finally{this.busy.set(null);await this.refresh.refresh();}
   }
   async reviewPause(review:GenerationConsentReview):Promise<void> {

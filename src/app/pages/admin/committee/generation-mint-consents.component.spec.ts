@@ -16,7 +16,7 @@ describe('Sealed edition administrator actions in the native property flow',()=>
     api.list.and.resolveTo([structuredClone(upgrade.review) as any,review()]);
     api.prepare.and.rejectWith(new Error('synthetic lost response'));
     TestBed.configureTestingModule({providers:[{provide:GenerationConsentService,useValue:api},
-      {provide:AdminSessionService,useValue:{authoritySlot:()=>0,pubkey:()=>vector.challenges[0].publicKey}}]});
+      {provide:AdminSessionService,useValue:{jwt:()=> 'synthetic-jwt',authoritySlot:()=>0,pubkey:()=>vector.challenges[0].publicKey}}]});
     spyOn(Date,'now').and.returnValue((vector.createdAt+10)*1000);
   });
   afterEach(()=>{

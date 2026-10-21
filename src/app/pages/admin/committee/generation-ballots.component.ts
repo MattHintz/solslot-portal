@@ -1,6 +1,6 @@
 import { CommonModule,DOCUMENT } from '@angular/common';
-import { ChangeDetectionStrategy,Component,computed,inject,input,OnInit,output,signal } from '@angular/core';
-import { GenerationBallotService,GenerationBallotReview,HolderBallotRequest,HolderCatalog,HolderRow } from '../../../services/generation-ballot.service';
+import { ChangeDetectionStrategy,Component,computed,effect,inject,input,OnInit,output,signal,untracked } from '@angular/core';
+import { GenerationBallotService,GenerationBallotReview,HolderBallotRequest,HolderCatalog,HolderRow,GenerationBallotSigningError } from '../../../services/generation-ballot.service';
 import { GenerationConsentReview } from '../../../services/generation-consent.service';
 import { GenerationChainSnapshot,GenerationOperationStatus } from '../../../services/generation-governance.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
@@ -54,6 +54,17 @@ export class GenerationBallotsComponent implements OnInit {
   readonly canVote=computed(()=>this.canPrepare() && !!this.snapshot()?.proposal?.openedAt &&
     this.catalog()?.proposalId===this.snapshot()?.proposal?.proposalId && !!this.catalog()?.votingClosesAt &&
     this.catalog()!.votingClosesAt!*1000>this.refresh.now());
+  private readonly refreshStarted=signal(false);
+  private refreshedSession:{key:string;token:string}|null=null;
+  private readonly readyRefresh=effect(()=>{
+    const key=this.available()?this.session.pubkey():null,token=key?this.session.jwt():null;
+    if(!this.refreshStarted())return;
+    if(!key || !token){this.refreshedSession=null;return;}
+    if(this.refreshedSession?.key===key && this.refreshedSession.token===token || this.busy() || this.refresh.refreshing())return;
+    // Access often becomes ready after this child mounts. Load saved requests
+    // immediately, without waiting for the next poll or opening any wallet.
+    untracked(()=>{void this.refresh.refresh();});
+  });
   private storageKey(){return 'solslot_generation_holder_prepare:'+deploymentGeneration();}
   private restore():HolderBallotRequest|null {
     try{const raw=sessionStorage.getItem(this.storageKey());if(!raw || raw.length>16384)return null;
@@ -65,8 +76,15 @@ export class GenerationBallotsComponent implements OnInit {
   }
   ngOnInit():void {
     this.refresh.start(async()=>{
-      if(!this.available())return;
+      if(!this.available() || !this.session.pubkey() || !this.session.jwt())return;
+      const readSession={key:this.session.pubkey()!,token:this.session.jwt()!,generation:deploymentGeneration()};
+      this.refreshedSession=readSession;
+      const assertReadSession=()=>{
+        if(!this.available() || readSession.key!==this.session.pubkey() || readSession.token!==this.session.jwt() ||
+          readSession.generation!==deploymentGeneration())throw new Error('The review-loading session changed.');
+      };
       const results=await Promise.allSettled([this.api.list(),this.api.holdings()]);
+      assertReadSession();
       if(results[0].status==='fulfilled'){
         const previous=new Map(this.reviews().map(r=>[r.packageId,r]));
         const reviews=results[0].value.map(r=>this.merge(previous.get(r.packageId),r));this.reviews.set(reviews);
@@ -75,8 +93,9 @@ export class GenerationBallotsComponent implements OnInit {
         if(saved && !this.busy()){this.remember(saved);this.savePending(null);}
       }else throw results[0].reason;
       if(results[1].status==='fulfilled')this.catalog.set(results[1].value);else throw results[1].reason;
-    },()=>this.busy()?'Finishing your explicit holder action. Saved receipts will refresh afterward.':null,
+    },()=>!this.available() || !this.session.pubkey() || !this.session.jwt()?'Sign in to load your saved reviews.':this.busy()?'Finishing your explicit holder action. Saved receipts will refresh afterward.':null,
       ()=>!!this.snapshot()?.proposal || this.reviews().some(r=>r.stage==='AWAITING_HOLDER_SIGNATURES' && !this.expired(r)));
+    this.refreshStarted.set(true);
   }
   private merge(old:GenerationBallotReview|undefined,next:GenerationBallotReview):GenerationBallotReview {
     if(!old)return structuredClone(next);
@@ -159,7 +178,8 @@ export class GenerationBallotsComponent implements OnInit {
     if(this.busy() || this.expired(r) || this.signed(r,row) || !this.assigned(row) || !this.available() || !this.isCurrent())return;
     this.selected.set(r);this.signingWallet.set(this.walletLabel(row));this.busy.set('SIGNING');this.error.set(null);
     try{this.remember(await this.api.sign(r,row.request.sgtCoinId));}
-    catch{this.error.set('The signature was not completed. Check the pending wallet request, then refresh this saved review. A lost response does not erase a recorded signature.');}
+    catch(error){this.error.set(error instanceof GenerationBallotSigningError ? error.message :
+      'The signature was not completed. Check the pending wallet request, then refresh this saved review. A lost response does not erase a recorded signature.');}
     finally{this.busy.set(null);await this.refresh.refresh();}
   }
   async assemble(r:GenerationBallotReview):Promise<void> {

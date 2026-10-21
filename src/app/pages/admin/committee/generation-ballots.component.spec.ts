@@ -1,6 +1,8 @@
 import { TestBed,fakeAsync,flushMicrotasks,tick } from '@angular/core/testing';
+import { signal } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import { GenerationBallotsComponent } from './generation-ballots.component';
-import { GenerationBallotService,GenerationBallotReview,HolderCatalog } from '../../../services/generation-ballot.service';
+import { GenerationBallotService,GenerationBallotReview,HolderCatalog,GenerationBallotSigningError } from '../../../services/generation-ballot.service';
 import { GenerationOperationStatus,HolderBallotOperationReview } from '../../../services/generation-governance.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
@@ -23,14 +25,14 @@ describe('Holder voting lifecycle UX',()=>{
     expectedInputs:r.request.expectedInputs,proposalId:null,snapshotRoot:r.snapshotRoot,eligibleSupply:r.eligibleSupply,votingClosesAt:null,truncated:false,
     holdings:r.holders.map((h,i)=>({coinId:h.request.sgtCoinId,vaultLauncherId:h.context.vault.launcherId,name:'Synthetic administrator '+(i+1),
       ownerPuzzleHash:h.request.outputs[0].owner,amount:h.context.holding.current.coin.amount}))};};
-  const create=()=>{const f=TestBed.createComponent(GenerationBallotsComponent);f.componentRef.setInput('available',true);
+  const create=(available=true)=>{const f=TestBed.createComponent(GenerationBallotsComponent);f.componentRef.setInput('available',available);
     f.componentRef.setInput('isCurrent',true);f.componentRef.setInput('maximumFee','1000');f.detectChanges();return f;};
   beforeEach(()=>{
     previous=runtime.generationId;runtime.generationId=vector.review.generationId;
     sessionStorage.removeItem('solslot_generation_holder_prepare:'+runtime.generationId);
     api=jasmine.createSpyObj('GenerationBallotService',['list','holdings','prepare','sign','assemble']);api.list.and.resolveTo([review()]);api.holdings.and.resolveTo(catalog());
-    session={pubkey:()=>vector.review.holders[0].context.owner.publicKey};
-    TestBed.configureTestingModule({imports:[GenerationBallotsComponent],providers:[{provide:GenerationBallotService,useValue:api},
+    session={jwt:()=> 'synthetic-jwt',pubkey:()=>vector.review.holders[0].context.owner.publicKey};
+    TestBed.configureTestingModule({imports:[GenerationBallotsComponent],providers:[provideRouter([]),{provide:GenerationBallotService,useValue:api},
       {provide:AdminSessionService,useValue:session},{provide:ChiaWalletService,useValue:{connectionKind:()=> 'sage-walletconnect'}}]});
     spyOn(Date,'now').and.returnValue((vector.review.createdAt+10)*1000);
   });
@@ -102,6 +104,62 @@ describe('Holder voting lifecycle UX',()=>{
     api.list.and.resolveTo([r]);void f.componentInstance.refresh.refresh();flushMicrotasks();
     expect(f.componentInstance.signed(f.componentInstance.reviews()[0],r.holders[0])).toBeTrue();expect(f.componentInstance.reviews()[0].expiresAt).toBe(r.expiresAt);f.destroy();
   }));
+  for(const reason of ['WALLET_PENDING','WALLET_REJECTED','WALLET_UNAVAILABLE','WRONG_ACCOUNT','REVIEW_CHANGED'] as const){
+    it('shows actionable '+reason+' feedback from the holder button and preserves the saved review',fakeAsync(()=>{
+      const f=create();flushMicrotasks();f.detectChanges();const original=structuredClone(f.componentInstance.reviews()[0]);
+      const failure=new GenerationBallotSigningError(reason,original.holders[0].context.owner.address);api.sign.and.rejectWith(failure);
+      (f.nativeElement.querySelector('.assigned-action button') as HTMLButtonElement).click();flushMicrotasks();f.detectChanges();
+      expect(api.sign).toHaveBeenCalledOnceWith(original,original.holders[0].request.sgtCoinId);
+      expect(f.nativeElement.textContent).toContain(failure.message);expect(f.componentInstance.reviews()[0]).toEqual(original);
+      expect(f.componentInstance.busy()).toBeNull();expect(api.prepare).not.toHaveBeenCalled();expect(api.assemble).not.toHaveBeenCalled();f.destroy();
+    }));
+  }
+  it('does not render arbitrary provider or HTTP response bodies',fakeAsync(()=>{
+    const f=create();flushMicrotasks();const r=f.componentInstance.reviews()[0];api.sign.and.rejectWith(new Error('<html>private upstream payload</html>'));
+    void f.componentInstance.sign(r,r.holders[0]);flushMicrotasks();f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('A lost response does not erase a recorded signature');
+    expect(f.nativeElement.textContent).not.toContain('private upstream payload');f.destroy();
+  }));
+  it('loads saved holder reviews immediately when access becomes ready without a fake successful check',fakeAsync(()=>{
+    const f=create(false);flushMicrotasks();f.detectChanges();
+    expect(api.list).not.toHaveBeenCalled();expect(api.holdings).not.toHaveBeenCalled();expect(f.componentInstance.refresh.lastUpdated()).toBeNull();
+    f.componentRef.setInput('available',true);f.detectChanges();flushMicrotasks();f.detectChanges();
+    expect(api.list).toHaveBeenCalledTimes(1);expect(api.holdings).toHaveBeenCalledTimes(1);
+    expect(f.componentInstance.assignedActions().length).toBe(1);expect(api.sign).not.toHaveBeenCalled();expect(api.prepare).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('refreshes after a new sign-in without polling or duplicate reads during a pending wallet action',fakeAsync(()=>{
+    const key=signal<string|null>(null);session.pubkey=key;
+    const f=create();flushMicrotasks();f.detectChanges();expect(api.list).not.toHaveBeenCalled();
+    key.set(review().holders[0].context.owner.publicKey);f.detectChanges();flushMicrotasks();f.detectChanges();expect(api.list).toHaveBeenCalledTimes(1);
+    let complete!:(r:GenerationBallotReview)=>void;api.sign.and.returnValue(new Promise(resolve=>complete=resolve));
+    const r=f.componentInstance.reviews()[0];void f.componentInstance.sign(r,r.holders[0]);flushMicrotasks();f.detectChanges();
+    key.set(r.holders[1].context.owner.publicKey);f.detectChanges();flushMicrotasks();f.detectChanges();
+    expect(api.list).toHaveBeenCalledTimes(1);expect(api.sign).toHaveBeenCalledTimes(1);
+    complete(r);flushMicrotasks();f.detectChanges();flushMicrotasks();f.detectChanges();
+    expect(api.list).toHaveBeenCalledTimes(2);expect(api.holdings).toHaveBeenCalledTimes(2);expect(api.sign).toHaveBeenCalledTimes(1);f.destroy();
+  }));
+  for(const change of ['logout','account','token','generation'] as const){
+    it('discards delayed holder reads after '+change+' without marking the old session successful',fakeAsync(()=>{
+      const key=signal<string|null>(review().holders[0].context.owner.publicKey),token=signal<string|null>('synthetic-jwt');
+      session.pubkey=key;session.jwt=token;let resolveReviews!:(r:GenerationBallotReview[])=>void,resolveCatalog!:(c:HolderCatalog)=>void;
+      api.list.and.returnValue(new Promise(resolve=>resolveReviews=resolve));api.holdings.and.returnValue(new Promise(resolve=>resolveCatalog=resolve));
+      const f=create();flushMicrotasks();f.detectChanges();expect(api.list).toHaveBeenCalledTimes(1);
+      if(change==='logout'){key.set(null);token.set(null);}
+      if(change==='account')key.set(review().holders[1].context.owner.publicKey);
+      if(change==='token')token.set('replacement-session');
+      if(change==='generation')runtime.generationId='0x'+'55'.repeat(32);
+      f.detectChanges();flushMicrotasks();expect(api.list).toHaveBeenCalledTimes(1);
+      resolveReviews([review()]);resolveCatalog(catalog());flushMicrotasks();
+      expect(f.componentInstance.reviews()).toEqual([]);expect(f.componentInstance.catalog()).toBeNull();
+      expect(f.componentInstance.refresh.lastUpdated()).toBeNull();expect(f.componentInstance.refresh.error()).not.toBeNull();
+      expect(api.sign).not.toHaveBeenCalled();expect(api.prepare).not.toHaveBeenCalled();
+      if(change==='account' || change==='token'){
+        api.list.and.resolveTo([]);api.holdings.and.resolveTo(catalog());f.detectChanges();flushMicrotasks();f.detectChanges();
+        expect(api.list).toHaveBeenCalledTimes(2);expect(api.holdings).toHaveBeenCalledTimes(2);
+      }
+      f.destroy();
+    }));
+  }
   it('rejects altered cached deadlines and locally stops expired signature actions',fakeAsync(()=>{
     const f=create();flushMicrotasks();const r=f.componentInstance.reviews()[0];
     api.list.and.resolveTo([{...r,expiresAt:r.expiresAt+100}]);void f.componentInstance.refresh.refresh();flushMicrotasks();

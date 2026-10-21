@@ -10,6 +10,7 @@ import { GenerationConsentReview } from './generation-consent.service';
 import { GenerationSgtContext,GenerationSgtRequest,snapshotGenerationReview } from '../utils/generation-sgt-review';
 import { validateGenerationBallot,validateHolderCatalog } from '../utils/generation-ballot-review';
 import { canonicalConsent,validateGenerationConsent } from '../utils/generation-consent-review';
+import { deploymentGeneration } from '../utils/deployment-generation';
 
 export interface HolderSelection {coinId:string;vaultLauncherId:string;}
 export interface HolderBallotRequest extends Omit<MaintenanceRequest,'kind'> {
@@ -27,6 +28,31 @@ export interface HolderCatalog {
   generationId:string;network:'testnet11';scope:'FROZEN_GENESIS_ROSTER';checkedAt:number;
   expectedInputs:MaintenanceRequest['expectedInputs'];proposalId:string|null;snapshotRoot:string;eligibleSupply:number;votingClosesAt:number|null;
   holdings:Array<HolderSelection & {name:string;ownerPuzzleHash:string;amount:number}>;truncated:boolean;
+}
+
+/** Fixed local messages only: never render provider or upstream response bodies. */
+export class GenerationBallotSigningError extends Error {
+  constructor(readonly reason:'WALLET_PENDING'|'WALLET_REJECTED'|'WALLET_UNAVAILABLE'|'WRONG_ACCOUNT'|'REVIEW_CHANGED'|'SIGNING_FAILED',expectedAddress?:string) {
+    const messages={
+      WALLET_PENDING:'A wallet request is already waiting. Open your holder wallet and finish or dismiss it, then retry this saved review.',
+      WALLET_REJECTED:'You declined the wallet request. Your saved review is unchanged. Choose its SGT approval button again when you are ready.',
+      WALLET_UNAVAILABLE:'Reconnect your holder wallet through Vault Connect, then return to this saved review without reloading the page.',
+      WRONG_ACCOUNT:'Switch to the holder account assigned to this review, then choose its SGT approval button again.',
+      REVIEW_CHANGED:'Your sign-in, deployment or saved review is no longer current. Refresh this review and sign in again if requested before approving it.',
+      SIGNING_FAILED:'The wallet could not finish this SGT approval. Open your holder wallet, check pending requests and the requested signing network, then retry this saved review.',
+    };
+    super(messages[reason]+(reason==='WRONG_ACCOUNT' && expectedAddress ? ` Expected account: ${expectedAddress}.` : ''));
+    this.name='GenerationBallotSigningError';
+  }
+}
+
+function holderWalletFailure(error:unknown,connecting:boolean):GenerationBallotSigningError {
+  if(error instanceof GenerationBallotSigningError)return error;
+  const value=error as {code?:unknown;error?:{code?:unknown};info?:{error?:{code?:unknown}};cause?:{code?:unknown}}|null;
+  const codes=[value?.code,value?.error?.code,value?.info?.error?.code,value?.cause?.code];
+  if(codes.some(code=>code===4001 || code==='4001' || code==='ACTION_REJECTED'))return new GenerationBallotSigningError('WALLET_REJECTED');
+  if(codes.some(code=>code===-32002 || code==='-32002'))return new GenerationBallotSigningError('WALLET_PENDING');
+  return new GenerationBallotSigningError(connecting?'WALLET_UNAVAILABLE':'SIGNING_FAILED');
 }
 
 @Injectable({providedIn:'root'})
@@ -84,16 +110,40 @@ export class GenerationBallotService {
   async sign(source:GenerationBallotReview,coinId:string):Promise<GenerationBallotReview> {
     const review=validateGenerationBallot(source),row=review.holders.find(r=>r.request.sgtCoinId===coinId),key=this.session.pubkey();
     if(!row || key!==row.context.owner.publicKey || review.stage==='EXPIRED' || review.expiresAt<=Math.floor(Date.now()/1000) ||
-      review.signatures.some(s=>s.coinId===coinId))throw new Error('Connect the selected holder wallet and review the saved action.');
+      review.signatures.some(s=>s.coinId===coinId))throw new GenerationBallotSigningError('REVIEW_CHANGED');
+    const assertCurrent=()=>{
+      if(this.session.pubkey()!==key || deploymentGeneration()!==review.generationId || review.expiresAt<=Math.floor(Date.now()/1000))
+        throw new GenerationBallotSigningError('REVIEW_CHANGED');
+      try{this.session.requireJwt();validateGenerationBallot(review);}
+      catch{throw new GenerationBallotSigningError('REVIEW_CHANGED');}
+    };
+    const assertOwner=()=>{
+      assertCurrent();
+      if(row.context.owner.authType===3 && this.evm.address()?.toLowerCase()!==row.context.owner.address)
+        throw new GenerationBallotSigningError('WRONG_ACCOUNT',row.context.owner.address);
+    };
+    assertCurrent();
+    // Login survives a hard reload; the EVM provider connection does not.
+    // Only this explicit holder-sign action may request a connection. Preserve
+    // an existing connection (including WalletConnect), even if it is wrong.
+    if(row.context.owner.authType===3 && !this.evm.address()){
+      if(!this.evm.hasInjectedProvider())throw new GenerationBallotSigningError('WALLET_UNAVAILABLE');
+      try{await this.evm.connectInjected();}catch(error){throw holderWalletFailure(error,true);}
+    }
+    assertOwner();
     const check=async()=>{
-      if(this.session.pubkey()!==key || review.expiresAt<=Math.floor(Date.now()/1000))throw new Error('Wallet or signing window changed.');
+      assertOwner();
       const v=await firstValueFrom(this.http.post<{generationId:string;packageId:string;unchanged:boolean}>(`${this.base}/${review.packageId}/check-inputs`,{},
         {headers:this.headers()}).pipe(timeout(25_000)));
-      if(v.generationId!==review.generationId || v.packageId!==review.packageId || v.unchanged!==true)throw new Error('The original confirmed inputs changed.');
+      assertOwner();
+      if(v.generationId!==review.generationId || v.packageId!==review.packageId || v.unchanged!==true)
+        throw new GenerationBallotSigningError('REVIEW_CHANGED');
     };
-    const signature=row.context.owner.authType===3?await this.evm.signGenerationSgt(row.request,row.context,check):
-      (await this.chia.signGenerationSgt(row.request,row.context,check)).aggregatedSignature;
-    if(this.session.pubkey()!==key || review.expiresAt<=Math.floor(Date.now()/1000))throw new Error('Wallet or signing window changed after the prompt.');
+    let signature:string;
+    try{signature=row.context.owner.authType===3?await this.evm.signGenerationSgt(row.request,row.context,check):
+      (await this.chia.signGenerationSgt(row.request,row.context,check)).aggregatedSignature;}
+    catch(error){throw holderWalletFailure(error,false);}
+    assertOwner();
     const result=validateGenerationBallot(await firstValueFrom(this.http.post<GenerationBallotReview>(`${this.base}/${review.packageId}/sign`,{coinId,signature},
       {headers:this.headers()}).pipe(timeout(25_000))));
     if(result.packageId!==review.packageId || result.requestDigest!==review.requestDigest)throw new Error('Returned signature belongs to another review.');
