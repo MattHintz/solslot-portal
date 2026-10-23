@@ -1529,9 +1529,12 @@ export class CollectionEditorComponent implements OnDestroy {
   unknownChoices(): Array<{path: string; label: string}> {
     const fields = [
       ['valuation/asOfDate', 'Appraisal date'], ['valuation/source', 'Appraiser or report source'],
+      ['valuation/method', 'Appraisal method'], ['valuation/currency', 'Valuation currency'],
       ['capital/debtBalanceMinor', 'Current debt / payoff'], ['capital/debtRateBps', 'Current debt rate'],
+      ['capital/currency', 'Debt currency'],
       ['operations/occupancyStatus', 'Occupancy'], ['operations/monthlyGrossRentMinor', 'Monthly gross rent'],
       ['operations/annualOperatingExpenseMinor', 'Annual operating expense'],
+      ['operations/currency', 'Operating currency'],
       ['legal/issuerLegalName', 'Issuer legal name'], ['legal/securityStructure', 'Legal structure'],
       ['legal/collateralSummary', 'Collateral'], ['legal/filingStatus', 'Filing status'], ['legal/transferPolicy', 'Transfer policy'],
     ];

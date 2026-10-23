@@ -153,6 +153,42 @@ describe('CollectionEditor reviewed revision', () => {
     expect(api.applyTestPricing).not.toHaveBeenCalled();
   });
 
+  it('offers an unresolved declaration for every required test-edition property detail', () => {
+    testEdition();
+    const required: Record<string, string[]> = {
+      valuation: ['asOfDate', 'currency', 'method', 'source'],
+      capital: ['debtBalanceMinor', 'debtRateBps', 'currency'],
+      operations: ['occupancyStatus', 'monthlyGrossRentMinor', 'annualOperatingExpenseMinor', 'currency'],
+      legal: ['issuerLegalName', 'securityStructure', 'collateralSummary', 'filingStatus', 'transferPolicy'],
+    };
+    const paths = editor.unknownChoices().map(choice => choice.path);
+    for (const [section, fields] of Object.entries(required)) {
+      for (const field of fields) expect(paths).withContext(`${section}/${field}`).toContain(`/${section}/${field}`);
+    }
+    expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  it('saves an unknown appraisal method without inventing a method or changing signed pricing', async () => {
+    testEdition();
+    editor.addUnknown();
+    const choice = editor.unknownChoices().find(item => item.label === 'Appraisal method')!;
+    expect(choice).toBeDefined();
+    editor.draftModel!.unknownFields![0] = {
+      path: choice.path, status: 'UNKNOWN',
+      reason: 'The appraisal method has not been verified from the controlling report.',
+    };
+    editor.changed();
+    expect(await editor.saveNow()).toBeTrue();
+    const saved = api.update.calls.mostRecent().args[1];
+    expect(saved.unknownFields).toEqual(editor.draftModel!.unknownFields);
+    expect(saved.valuation?.method).toBeUndefined();
+    expect(saved.pricingRoundHash).toBe(collection.dossier.pricingRoundHash);
+    expect(saved.offering?.parValueMojos).toBe('1000000');
+    expect(saved.offering?.targetRaiseMinor).toBe('7500000');
+    expect(api.applyTestPricing).not.toHaveBeenCalled();
+    expect(api.convertDisplayUnits.calls.mostRecent().args[0].deriveXchPar).toBeFalse();
+  });
+
   it('clears test-edition price commitments when the dollar economics change', async () => {
     testEdition();editor.displayUnits.targetRaiseUsd='80000';editor.changed();
     expect(await editor.saveNow()).toBeTrue();
