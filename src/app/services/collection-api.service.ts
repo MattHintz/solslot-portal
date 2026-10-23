@@ -393,7 +393,7 @@ export interface CollectionDisplayUnitConversion {
   moneyMinor: Record<string, string>;
   percentageBps: Record<string, string>;
   ownershipPpm: Record<string, number>;
-  governanceQuorum: string;
+  governanceQuorum: string | null; // Generation quorum is fixed at proposal opening.
   xchParMojos: {
     collection: string;
     deeds: Record<string, string>;

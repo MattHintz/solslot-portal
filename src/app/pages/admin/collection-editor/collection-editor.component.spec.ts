@@ -133,7 +133,7 @@ describe('CollectionEditor reviewed revision', () => {
     (editor as any).applyWorkspace(collection);
     api.convertDisplayUnits.and.callFake(async request => ({
       moneyMinor: {targetRaise: request.money['targetRaise'] === '80000' ? '8000000' : '7500000'},
-      percentageBps: {technologyFee:'100'}, ownershipPpm:{'deed.0':1000000}, governanceQuorum:'',
+      percentageBps: {technologyFee:'100'}, ownershipPpm:{'deed.0':1000000}, governanceQuorum:null,
       xchParMojos:null,xchOracle:null,
     }));
     api.update.and.callFake(async (_id,dossier) => ({...collection,revision:8,dossier}));
@@ -147,6 +147,7 @@ describe('CollectionEditor reviewed revision', () => {
     expect(api.convertDisplayUnits.calls.mostRecent().args[0].deriveXchPar).toBeFalse();
     const saved=api.update.calls.mostRecent().args[1];
     expect(saved.offering!.parValueMojos).toBe('1000000');
+    expect(saved.offering!.governanceQuorum).toBeUndefined();
     expect(saved.deedAllocation[0].parValueMojos).toBe('1000000');
     expect(saved.pricingRoundHash).toBe(collection.dossier.pricingRoundHash);
     expect(api.applyTestPricing).not.toHaveBeenCalled();

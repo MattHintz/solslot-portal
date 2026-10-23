@@ -1945,7 +1945,7 @@ function applyDisplayUnitConversion(
   draft.offering.minimumInvestmentMinor = conversion.moneyMinor['minimumInvestment'];
   draft.offering.projectedReturnBps = draft.purpose === 'TEST_ONLY' ? undefined : conversion.percentageBps['projectedReturn'];
   draft.offering.royaltyBps = conversion.percentageBps['technologyFee'];
-  draft.offering.governanceQuorum = draft.purpose === 'TEST_ONLY' ? undefined : conversion.governanceQuorum;
+  draft.offering.governanceQuorum = draft.purpose === 'TEST_ONLY' ? undefined : conversion.governanceQuorum ?? undefined;
   draft.capital.debtBalanceMinor = conversion.moneyMinor['debtBalance'];
   draft.capital.debtRateBps = conversion.percentageBps['debtRate'];
   draft.operations.monthlyGrossRentMinor = conversion.moneyMinor['monthlyGrossRent'];
