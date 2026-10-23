@@ -518,11 +518,11 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                       <div class="field-grid">
                         <label class="full">Cancellation reason<input type="text" [(ngModel)]="presaleCancelReason" /></label>
                       </div>
-                      <div class="review-actions"><button type="button" class="btn btn--danger" (click)="cancelPresale()" [disabled]="presaleBusy() || presaleCancelReason.trim().length < 8">Cancel governed presale</button></div>
+                      <div class="review-actions"><button type="button" class="btn btn--danger" (click)="cancelPresale()" [disabled]="presaleBusy() || !presaleStatusLoaded() || presaleCancelReason.trim().length < 8">Cancel governed presale</button></div>
                     }
                   } @else {
                     <dl class="commitment-grid">
-                      <div><dt>Campaign</dt><dd>{{ collection.state === 'PUBLISHED' ? 'Ready to schedule' : 'Waiting for governed issuance' }}</dd></div>
+                      <div><dt>Campaign</dt><dd>{{ collection.state !== 'PUBLISHED' ? 'Waiting for governed issuance' : presaleStatusLoaded() ? 'Ready to schedule' : presaleBusy() ? 'Checking reservations…' : 'Reservation status unavailable' }}</dd></div>
                       <div><dt>Inventory</dt><dd>{{ collection.deeds.length }} planned vouchers</dd></div>
                       <div><dt>Eligibility</dt><dd>zkPassport-approved vaults only</dd></div>
                       <div><dt>Delivery deadline</dt><dd>48 hours after mint</dd></div>
@@ -534,10 +534,13 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                         <label>Refund deadline<input type="datetime-local" [(ngModel)]="presaleForm.refundDeadline" /></label>
                         <label>Launch deadline<input type="datetime-local" [(ngModel)]="presaleForm.launchDeadline" /></label>
                       </fieldset>
-                      <div class="review-actions"><button type="button" class="btn btn--primary" data-ux-action="create_presale" (click)="createPresale()" [disabled]="presaleBusy()">{{ presaleBusy() ? 'Preparing…' : 'Create governed presale' }}</button></div>
+                      <div class="review-actions"><button type="button" class="btn btn--primary" data-ux-action="create_presale" (click)="createPresale()" [disabled]="presaleBusy() || !presaleStatusLoaded()">{{ presaleBusy() ? 'Checking reservations…' : 'Create governed presale' }}</button></div>
                     }
                   }
-                  @if (presaleError()) { <span class="inline-error">{{ presaleError() }}</span> }
+                  @if (presaleError()) {
+                    <p class="inline-error" role="status">{{ presaleError() }}</p>
+                    <button type="button" class="btn btn--ghost" (click)="refreshPresale()" [disabled]="presaleBusy()">Retry reservation status</button>
+                  }
                 }
 
                 @case ('sales') {
@@ -800,6 +803,7 @@ export class CollectionEditorComponent implements OnDestroy {
   readonly reviewBusy = signal(false);
   readonly presale = signal<PresaleSeries | null>(null);
   readonly presaleBusy = signal(false);
+  readonly presaleStatusLoaded = signal(false);
   readonly presaleError = signal<string | null>(null);
 
   draftModel: PropertyDossierDraftV1 | null = null;
@@ -853,17 +857,24 @@ export class CollectionEditorComponent implements OnDestroy {
     try {
       if (forceContext) this.absentPresale = null;
       const reuseContext = !forceContext && this.contextLoadedAt > Date.now() - 60_000;
-      const [feature, profiles, collection, presale] = await Promise.all([
+      const [feature, profiles, collection] = await Promise.all([
         reuseContext ? Promise.resolve(this.feature()) : this.api.featureStatus(),
         reuseContext ? Promise.resolve(this.profiles()) : this.api.profiles(),
         this.api.get(id),
-        this.loadPresale(id),
       ]);
       this.feature.set(feature);
       this.profiles.set(profiles);
       if (!reuseContext) this.contextLoadedAt = Date.now();
       if (generation === this.editGeneration) this.applyWorkspace(collection);
-      this.presale.set(presale);
+      // Reservations are available only after issuance. Their availability must
+      // not prevent loading or editing the independently authenticated property.
+      this.loading.set(false);
+      if (collection.state === 'PUBLISHED') await this.refreshPresale();
+      else {
+        this.presale.set(null);
+        this.presaleError.set(null);
+        this.presaleStatusLoaded.set(false);
+      }
     } catch (error) {
       if (!this.workspace()) this.loadError.set(formatError(error));
       throw error;
@@ -1404,7 +1415,8 @@ export class CollectionEditorComponent implements OnDestroy {
 
   async createPresale(): Promise<void> {
     const collection = this.workspace();
-    if (!collection || !this.isOwner() || this.presale()) return;
+    if (!collection || collection.state !== 'PUBLISHED' || !this.isOwner() || this.presale()
+      || this.presaleBusy() || !this.presaleStatusLoaded()) return;
     this.presaleBusy.set(true);
     this.presaleError.set(null);
     try {
@@ -1430,13 +1442,15 @@ export class CollectionEditorComponent implements OnDestroy {
 
   async refreshPresale(): Promise<void> {
     const collection = this.workspace();
-    if (!collection) return;
+    if (!collection || collection.state !== 'PUBLISHED' || this.presaleBusy()) return;
     this.presaleBusy.set(true);
+    this.presaleStatusLoaded.set(false);
     this.presaleError.set(null);
     try {
       this.presale.set(await this.loadPresale(collection.id));
+      this.presaleStatusLoaded.set(true);
     } catch (error) {
-      this.presaleError.set(formatError(error));
+      this.presaleError.set('Reservation status is unavailable. You can still view this property. Reservation actions will resume after a successful check. ' + formatError(error));
     } finally {
       this.presaleBusy.set(false);
     }
@@ -1445,7 +1459,7 @@ export class CollectionEditorComponent implements OnDestroy {
   canLaunchPresale(campaign: PresaleSeries): boolean {
     const collection = this.workspace();
     const now = Math.floor(Date.now() / 1000);
-    return !!collection
+    return !!collection && this.presaleStatusLoaded()
       && now >= campaign.terms.saleClose
       && now <= campaign.terms.launchDeadline
       && collection.deeds.length > 0
@@ -1471,7 +1485,8 @@ export class CollectionEditorComponent implements OnDestroy {
     const collection = this.workspace();
     const campaign = this.presale();
     const reason = this.presaleCancelReason.trim();
-    if (!collection || !campaign || !this.isOwner() || reason.length < 8) return;
+    if (!collection || !campaign || !this.isOwner() || reason.length < 8
+      || this.presaleBusy() || !this.presaleStatusLoaded()) return;
     this.presaleBusy.set(true);
     this.presaleError.set(null);
     try {

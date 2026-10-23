@@ -262,7 +262,7 @@ export class CollectionApiService {
       this.http.get<PresaleSeries>(
         `${this.base}/presales/admin/${encodeURIComponent(identifier)}`,
         { headers: this.headers() },
-      ),
+      ).pipe(timeout(20_000)),
     );
   }
 

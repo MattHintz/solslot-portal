@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { TestBed } from '@angular/core/testing';
+import { fakeAsync, flushMicrotasks, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 
 import { AdminSessionService } from '../../../services/admin-session.service';
@@ -15,7 +15,7 @@ describe('CollectionEditor reviewed revision', () => {
   let collection: CollectionWorkspace;
 
   beforeEach(() => {
-    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal', 'getPresale', 'applyTestPricing']);
+    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal', 'getPresale', 'applyTestPricing', 'get', 'featureStatus', 'profiles', 'createPresale', 'cancelPresale']);
     collection = {
       id: 'COL-TEST', state: 'REVIEW', revision: 7,
       dossier: {
@@ -40,6 +40,88 @@ describe('CollectionEditor reviewed revision', () => {
   });
 
   afterEach(() => editor.ngOnDestroy());
+
+  function arrangeReload(state: CollectionWorkspace['state'] = 'DRAFT'): void {
+    collection = {...collection, state, ownerSubject: 'owner', deeds: [], metadataVersions: []} as CollectionWorkspace;
+    api.get.and.resolveTo(collection);
+    api.featureStatus.and.resolveTo({metadataEnabled: true} as any);
+    api.profiles.and.resolveTo({} as any);
+    editor.workspace.set(null);
+    editor.draftModel = null;
+    editor.loading.set(true);
+  }
+
+  for (const state of ['DRAFT', 'REVIEW', 'SEALED'] as const) {
+    it(`opens a ${state} property without requesting unavailable reservations or creating a revision`, async () => {
+      arrangeReload(state);
+      api.getPresale.and.rejectWith(new HttpErrorResponse({status: 403, error: '<html>Forbidden</html>'}));
+      await editor.reload();
+      expect(editor.workspace()?.id).toBe('COL-TEST');
+      expect(editor.loadError()).toBeNull();
+      expect(editor.loading()).toBeFalse();
+      expect(api.getPresale).not.toHaveBeenCalled();
+      expect(api.update).not.toHaveBeenCalled();
+      expect(api.convertDisplayUnits).not.toHaveBeenCalled();
+    });
+  }
+
+  it('shows the published property before a slow reservation response arrives', fakeAsync(() => {
+    arrangeReload('PUBLISHED');
+    let reject!: (error: unknown) => void;
+    api.getPresale.and.returnValue(new Promise((_resolve, fail) => reject = fail));
+    const done = jasmine.createSpy('reload resolved');
+    editor.reload().then(done);
+    flushMicrotasks();
+    expect(editor.workspace()?.id).toBe('COL-TEST');
+    expect(editor.loading()).toBeFalse();
+    expect(editor.presaleBusy()).toBeTrue();
+    expect(editor.presaleStatusLoaded()).toBeFalse();
+    reject(new HttpErrorResponse({status: 503}));
+    flushMicrotasks();
+    expect(done).toHaveBeenCalled();
+    expect(editor.loadError()).toBeNull();
+    expect(editor.presaleError()).toContain('Reservation status is unavailable');
+  }));
+
+  for (const status of [0, 401, 403, 503]) {
+    it(`keeps property access but disables reservation writes after a ${status} reservation failure`, async () => {
+      arrangeReload('PUBLISHED');
+      api.getPresale.and.rejectWith(new HttpErrorResponse({status, error: '<html>Unavailable</html>'}));
+      await editor.reload();
+      expect(editor.workspace()?.id).toBe('COL-TEST');
+      expect(editor.loadError()).toBeNull();
+      expect(editor.presaleError()).not.toContain('<html>');
+      expect(editor.presaleStatusLoaded()).toBeFalse();
+      await editor.createPresale();
+      expect(api.createPresale).not.toHaveBeenCalled();
+      expect(editor.canLaunchPresale({} as any)).toBeFalse();
+    });
+  }
+
+  it('retries failed reservations without duplicating in-flight reads and only enables actions after success', async () => {
+    arrangeReload('PUBLISHED');
+    api.getPresale.and.rejectWith(new HttpErrorResponse({status: 403}));
+    await editor.reload();
+    let finish!: (error: unknown) => void;
+    api.getPresale.and.returnValue(new Promise((_resolve, reject) => finish = reject));
+    const retry = editor.refreshPresale();
+    await editor.refreshPresale();
+    expect(api.getPresale).toHaveBeenCalledTimes(2);
+    finish(new HttpErrorResponse({status: 404}));
+    await retry;
+    expect(editor.presaleStatusLoaded()).toBeTrue();
+    expect(editor.presaleError()).toBeNull();
+    expect(editor.presale()).toBeNull();
+  });
+
+  it('does not hide an authentication failure on the property itself', async () => {
+    arrangeReload();
+    api.get.and.rejectWith(new HttpErrorResponse({status: 401}));
+    await expectAsync(editor.reload()).toBeRejected();
+    expect(editor.workspace()).toBeNull();
+    expect(editor.loadError()).toContain('Sign in again');
+    expect(api.getPresale).not.toHaveBeenCalled();
+  });
 
   function testEdition(): void {
     collection.ownerSubject = 'owner';
