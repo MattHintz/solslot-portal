@@ -15,10 +15,11 @@
     "security:headers": "python3 scripts/check_static_headers.py",
     "release:recovery-manifest": "node scripts/write-recovery-page-manifest.mjs",
     "watch": "ng build --watch --configuration development",
-    "test": "npm run security:chia-runtime && npm run prepare:google-vault-runtime && ng test",
+    "test": "npm run security:wallet-schemas && npm run security:chia-runtime && npm run prepare:google-vault-runtime && ng test",
     "postinstall": "node scripts/copy-chia-wasm.mjs",
     "copy-chia-wasm": "node scripts/copy-chia-wasm.mjs",
-    "security:chia-runtime": "node scripts/check-chia-runtime.mjs"
+    "security:chia-runtime": "node scripts/check-chia-runtime.mjs",
+    "security:wallet-schemas": "node scripts/check-wallet-schemas.test.mjs"
   },
   "prettier": {
     "printWidth": 100,
@@ -78,6 +79,7 @@
   "overrides": {
     "ethers": "$ethers",
     "qs": "6.16.0",
-    "axios": "1.20.0"
+    "axios": "1.20.0",
+    "zod": "4.6.6"
   }
 }
