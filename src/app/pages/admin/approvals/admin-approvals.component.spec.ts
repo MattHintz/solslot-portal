@@ -1,3 +1,5 @@
+import { sealFixture } from '../../../services/property-metadata/collection-seal-review.fixture';
+import { CollectionApiService, CollectionWorkspace } from '../../../services/collection-api.service';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -18,7 +20,7 @@ describe('Mint approval completion', () => {
     api.list.and.resolveTo({ operations: [item], count: 1 });
     api.get.and.resolveTo(item);
     api.execute.and.resolveTo({});
-    await TestBed.configureTestingModule({ imports: [AdminApprovalsComponent], providers: [provideRouter([]),
+    await TestBed.configureTestingModule({ imports: [AdminApprovalsComponent], providers: [provideRouter([]), {provide: CollectionApiService, useValue: {}},
       { provide: AdminOperationApprovalService, useValue: api },
       { provide: AdminSessionService, useValue: { subject } },
     ] }).compileComponents();
@@ -41,7 +43,7 @@ describe('Mint approval completion', () => {
 
 describe('Identity network review', () => {
   it('shows the current and replacement networks with the reviewed contracts', () => {
-    TestBed.configureTestingModule({providers: [provideRouter([]), AdminStatusRefresh,
+    TestBed.configureTestingModule({providers: [provideRouter([]), {provide: CollectionApiService, useValue: {}}, AdminStatusRefresh,
       {provide: AdminSessionService, useValue: {subject: signal('owner')}},
       {provide: AdminOperationApprovalService, useValue: {list: () => Promise.resolve({operations: [], count: 0})}},
     ]});
@@ -83,7 +85,7 @@ describe('Approval inbox recovery and refresh', () => {
     api = jasmine.createSpyObj('approvals', ['list', 'get', 'sign', 'execute', 'prepareIdentityDeployment']);
     api.list.and.resolveTo({operations: [base], count: 1});
     api.get.and.resolveTo(detailed);
-    await TestBed.configureTestingModule({imports: [AdminApprovalsComponent], providers: [provideRouter([]),
+    await TestBed.configureTestingModule({imports: [AdminApprovalsComponent], providers: [provideRouter([]), {provide: CollectionApiService, useValue: {}},
       {provide: AdminSessionService, useValue: {subject: signal('owner'), authoritySlot: () => 0}},
       {provide: AdminOperationApprovalService, useValue: api},
     ]}).compileComponents();
@@ -133,5 +135,93 @@ describe('Approval inbox recovery and refresh', () => {
     await fixture.componentInstance.prepareIdentity();
     expect(api.sign).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
     expect(fixture.componentInstance.notice()).toContain('Review the network');
+  });
+});
+
+
+describe('Property sealing decision receipt', () => {
+  let api: jasmine.SpyObj<AdminOperationApprovalService>;
+  let collections: jasmine.SpyObj<CollectionApiService>;
+  let fixture: ReturnType<typeof TestBed.createComponent<AdminApprovalsComponent>>;
+  let item: AdminOperationApproval;
+  let workspace: CollectionWorkspace;
+  const subject = signal('coadmin');
+
+  beforeEach(async () => {
+    ({item, workspace} = sealFixture()); subject.set('coadmin');
+    api = jasmine.createSpyObj('approvals', ['list', 'get', 'sign', 'execute']);
+    collections = jasmine.createSpyObj('collections', ['get']);
+    api.list.and.resolveTo({operations: [item], count: 1});
+    collections.get.and.callFake(async () => structuredClone(workspace));
+    api.sign.and.resolveTo(item); api.execute.and.resolveTo({});
+    await TestBed.configureTestingModule({imports: [AdminApprovalsComponent], providers: [provideRouter([]),
+      {provide: AdminOperationApprovalService, useValue: api},
+      {provide: AdminSessionService, useValue: {subject, authoritySlot: () => 1}},
+      {provide: CollectionApiService, useValue: collections},
+    ]}).compileComponents();
+    fixture = TestBed.createComponent(AdminApprovalsComponent);
+    await fixture.whenStable(); fixture.detectChanges();
+  });
+
+  it('shows property, exact revision, terms, unresolved facts and effect before a signature', () => {
+    const text = fixture.nativeElement.textContent;
+    for (const expected of ['Example House', 'Revision 13', 'USD 75,000.00', 'USD 3,000.00 before fee',
+      '25 planned SmartDeeds', '4% each', '15% participation based on market value', '14 months',
+      '10–12 months', 'US-TN', 'user-confirmed; report details unresolved', 'Payoff evidence not supplied',
+      'This does not mint SmartDeeds', 'Approve sealing this revision']) expect(text).toContain(expected);
+    expect(text).not.toContain('PRIVATE TITLE MUST NOT APPEAR');
+    expect(fixture.componentInstance.operationContext(item)).toContain('TEST-EXAMPLE · revision 13');
+    expect(api.sign).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
+  });
+
+  it('lets the second administrator sign but only the property preparer complete sealing', async () => {
+    await fixture.componentInstance.sign();
+    expect(api.sign).toHaveBeenCalledOnceWith(item.operationId, item.typedData, jasmine.any(Function));
+    item.status = 'approved'; item.signatures.push({signerAddress: 'coadmin', adminIndex: 1} as never);
+    expect(fixture.componentInstance.canComplete(item)).toBeFalse();
+    subject.set('owner');
+    expect(fixture.componentInstance.canComplete(item)).toBeTrue();
+  });
+
+  it('blocks signing after a failed property read even when an older review was displayed', async () => {
+    collections.get.and.rejectWith(new Error('Property unavailable'));
+    await fixture.componentInstance.reload(); await fixture.componentInstance.sign(); fixture.detectChanges();
+    expect(api.sign).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.sealReview()).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Property unavailable');
+  });
+
+  it('rechecks the exact revision before opening the wallet', async () => {
+    workspace.revision++;
+    await fixture.componentInstance.sign(); fixture.detectChanges();
+    expect(api.sign).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('no longer matches');
+  });
+
+  it('requires a new look if the reconstructed root changes before signing', async () => {
+    workspace.readiness.metadataRoot = `0x${'66'.repeat(32)}`;
+    await fixture.componentInstance.sign();
+    expect(api.sign).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.error()).toContain('review changed');
+  });
+
+  it('rechecks before execution and reports sealing rather than a chain transaction', async () => {
+    item.status = 'approved'; subject.set('owner');
+    await fixture.componentInstance.execute();
+    expect(api.execute).toHaveBeenCalledOnceWith(item);
+    expect(fixture.componentInstance.notice()).toContain('Property metadata sealed');
+    expect(fixture.componentInstance.notice()).toContain('No SmartDeeds were minted');
+  });
+
+  it('does not execute when property readiness is lost', async () => {
+    item.status = 'approved'; subject.set('owner'); workspace.readiness.ready = false;
+    await fixture.componentInstance.execute();
+    expect(api.execute).not.toHaveBeenCalled();
+  });
+
+  it('refreshes never prepare, sign or execute an approval', async () => {
+    await fixture.componentInstance.reload();
+    expect(collections.get).toHaveBeenCalledWith('TEST-EXAMPLE');
+    expect(api.sign).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
   });
 });

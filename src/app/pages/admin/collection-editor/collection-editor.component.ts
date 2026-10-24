@@ -106,6 +106,19 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
 
           <pp-project-team-summary [team]="draft.projectTeam" [compact]="true" />
           <solslot-admin-refresh-status [state]="refresh" />
+          @if (generationTreasuryIssue()) {
+            <aside class="section-note" role="status">
+              <strong>Fee destination needs review</strong>
+              <p>{{ generationTreasuryIssue() }}</p>
+              @if (verifiedGenerationTreasury() && isOwner() && collection.state !== 'PUBLISHED') {
+                <p>The 1% fee, dollar terms, pricing receipt and files stay the same. The corrected revision needs a new preview, independent review and sealing approval. Your earlier seal and signatures remain in history.</p>
+                <button type="button" class="btn btn--primary" [disabled]="treasuryBusy() || !feature()?.metadataEnabled" (click)="applyGenerationTreasury()">
+                  {{ treasuryBusy() ? 'Checking and saving…' : collection.state === 'SEALED' ? 'Create corrected revision' : 'Apply current fee destination' }}
+                </button>
+              }
+              @if (treasuryError()) { <p class="inline-error">{{ treasuryError() }}</p> }
+            </aside>
+          }
           @if (feature()?.metadataConfigured && !feature()?.recovery?.healthy) {
             <p class="inline-error" role="status">Recovery check pending. Your fields are retained; saving resumes when recovery is healthy.</p>
           }
@@ -554,6 +567,13 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
 
                 @case ('updates') {
                   <div class="section-head"><span>Append-only record</span><h2>Updates</h2></div>
+                  @for (seal of collection.retainedSeals || []; track seal.revision) {
+                    <section class="locked-state"><strong>Retained sealed revision {{ seal.revision }}</strong>
+                      <span>Fee destination corrected in revision {{ seal.correction.nextRevision }}. The original metadata, preview and approvals are retained. Fresh review is required for the corrected revision.</span>
+                      <span class="mono">{{ seal.metadataRoot }}</span>
+                      <details><summary>Fee destination change</summary><p class="mono">Previous: {{ seal.correction.previousTreasury }}</p><p class="mono">Corrected: {{ seal.correction.treasury }}</p></details>
+                    </section>
+                  }
                   <div class="asset-table">
                     @for (version of collection.metadataVersions; track version.id) {
                       <article><div><strong>{{ version.kind }}</strong><span class="mono">{{ version.metadataRoot }}</span><span>{{ version.effectiveDate || 'Issuance snapshot' }}</span></div></article>
@@ -781,6 +801,8 @@ export class CollectionEditorComponent implements OnDestroy {
   readonly saveState = signal<SaveState>('idle');
   readonly saveError = signal<string | null>(null);
   readonly sealing = signal(false);
+  readonly treasuryBusy = signal(false);
+  readonly treasuryError = signal<string | null>(null);
   readonly sealError = signal<string | null>(null);
   readonly mediaUploading = signal(false);
   readonly mediaError = signal<string | null>(null);
@@ -832,7 +854,7 @@ export class CollectionEditorComponent implements OnDestroy {
     this.refresh.start(() => this.reload(), () => {
       if (!this.session.isAuthenticated()) return 'Sign in again to update this property.';
       if (['dirty', 'saving', 'error', 'conflict'].includes(this.saveState())) return 'Updates paused to protect your unsaved fields.';
-      if (this.mediaUploading() || this.documentUploading() || this.privateDocumentUploading() || this.proposalBusy() || this.sealing() || this.reviewBusy() || this.presaleBusy() || this.amendmentBusy() || this.amendmentOpen() || this.mintPreview()) return 'Updates paused while you review or complete an action.';
+      if (this.treasuryBusy() || this.mediaUploading() || this.documentUploading() || this.privateDocumentUploading() || this.proposalBusy() || this.sealing() || this.reviewBusy() || this.presaleBusy() || this.amendmentBusy() || this.amendmentOpen() || this.mintPreview()) return 'Updates paused while you review or complete an action.';
       return null;
     }, () => this.workspace()?.deeds.some(deed => !['PLANNED', 'EXECUTED'].includes(deed.proposalState)) ?? false);
   }
@@ -1043,8 +1065,38 @@ export class CollectionEditorComponent implements OnDestroy {
   }
 
   private syncTrustedTreasury(): void {
+    if (this.workspace()?.generationId || this.draftModel?.purpose === 'TEST_ONLY' || !this.canEdit()) return;
     const treasury = this.mint.trustedProtocolTreasuryPuzzleHash();
     if (treasury && this.draftModel?.offering) this.draftModel.offering.royaltyPuzhash = treasury;
+  }
+
+  verifiedGenerationTreasury(): string | null {
+    const workspace = this.workspace(), authority = this.feature()?.mintAuthority;
+    return workspace?.generationId && this.feature()?.network === 'testnet11' &&
+      authority?.network === 'testnet11' && authority.generationId === workspace.generationId &&
+      /^0x[0-9a-f]{64}$/.test(authority.treasuryPuzzleHash) ? authority.treasuryPuzzleHash : null;
+  }
+
+  generationTreasuryIssue(): string | null {
+    if (!this.workspace()?.generationId || this.draftModel?.purpose !== 'TEST_ONLY') return null;
+    const treasury = this.verifiedGenerationTreasury();
+    if (!treasury) return 'The current generation fee destination is unavailable. Refresh before reviewing or sealing.';
+    return this.draftModel.offering?.royaltyPuzhash !== treasury ?
+      'This record uses a fee destination from a different protocol generation. It cannot be minted until a corrected revision is reviewed.' : null;
+  }
+
+  async applyGenerationTreasury(): Promise<void> {
+    const collection=this.workspace(),treasury=this.verifiedGenerationTreasury();
+    if (!collection || !treasury || !this.isOwner() || this.treasuryBusy() || !this.feature()?.metadataEnabled || !this.generationTreasuryIssue()) return;
+    this.treasuryBusy.set(true);this.treasuryError.set(null);
+    try {
+      if (collection.state==='SEALED') {
+        this.applyWorkspace(await this.api.correctTestTreasury(collection,treasury));
+      } else if (this.canEdit() && this.draftModel?.offering) {
+        this.draftModel.offering.royaltyPuzhash=treasury;this.changed();await this.saveNow();
+      }
+    } catch (error) {this.treasuryError.set(formatError(error));}
+    finally {this.treasuryBusy.set(false);}
   }
 
   isOwner(): boolean {
@@ -1115,6 +1167,9 @@ export class CollectionEditorComponent implements OnDestroy {
       if (!(await this.saveNow())) return;
       const collection = this.workspace();
       if (!collection) return;
+      if (this.generationTreasuryIssue()) {
+        this.sealError.set(this.generationTreasuryIssue());return;
+      }
       if (this.pricingPending()) {
         this.sealError.set('Your dollar figures are saved. Refresh pricing after the signed XCH price feed is available, then review the updated revision before sealing.');
         this.activeSection.set('economics');

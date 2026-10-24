@@ -15,7 +15,7 @@ describe('CollectionEditor reviewed revision', () => {
   let collection: CollectionWorkspace;
 
   beforeEach(() => {
-    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal', 'getPresale', 'applyTestPricing', 'get', 'featureStatus', 'profiles', 'createPresale', 'cancelPresale']);
+    api = jasmine.createSpyObj('CollectionApiService', ['update', 'convertDisplayUnits', 'seal', 'getPresale', 'applyTestPricing', 'get', 'featureStatus', 'profiles', 'createPresale', 'cancelPresale', 'correctTestTreasury']);
     collection = {
       id: 'COL-TEST', state: 'REVIEW', revision: 7,
       dossier: {
@@ -138,6 +138,72 @@ describe('CollectionEditor reviewed revision', () => {
     }));
     api.update.and.callFake(async (_id,dossier) => ({...collection,revision:8,dossier}));
   }
+
+  function generationEdition(state: CollectionWorkspace['state']): void {
+    testEdition();
+    collection.generationId = '0x'+'d1'.repeat(32);
+    collection.state = state;
+    collection.dossier.offering!.royaltyPuzhash = '0x'+'d2'.repeat(32);
+    collection.metadataRoot = '0x'+'d4'.repeat(32);
+    editor.feature.set({network:'testnet11',metadataEnabled:true,mintAuthority:{
+      generationId:collection.generationId,network:'testnet11',componentId:'0x'+'d5'.repeat(32),
+      treasuryPuzzleHash:'0x'+'d3'.repeat(32)}} as any);
+    (editor as any).mint.trustedProtocolTreasuryPuzzleHash = () => '0x'+'ee'.repeat(32);
+    (editor as any).applyWorkspace(collection);
+  }
+
+  for (const state of ['DRAFT','REVIEW','SEALED'] as const) {
+    it(`never substitutes the legacy destination when loading a ${state} generation edition`, async () => {
+      generationEdition(state);
+      expect(editor.draftModel!.offering!.royaltyPuzhash).toBe('0x'+'d2'.repeat(32));
+      expect(editor.generationTreasuryIssue()).toContain('different protocol generation');
+      expect(api.update).not.toHaveBeenCalled();expect(api.correctTestTreasury).not.toHaveBeenCalled();
+      expect(editor.saveState()).toBe('saved');
+    });
+  }
+
+  it('uses an explicit preserved correction for a seal and ignores duplicate clicks', async () => {
+    generationEdition('SEALED');
+    let finish!:(v:CollectionWorkspace)=>void;
+    api.correctTestTreasury.and.returnValue(new Promise(resolve=>finish=resolve));
+    const first=editor.applyGenerationTreasury();await editor.applyGenerationTreasury();
+    expect(api.correctTestTreasury).toHaveBeenCalledOnceWith(collection,'0x'+'d3'.repeat(32));
+    expect(editor.treasuryBusy()).toBeTrue();expect(api.update).not.toHaveBeenCalled();
+    const dossier=structuredClone(collection.dossier);dossier.revision=8;dossier.offering!.royaltyPuzhash='0x'+'d3'.repeat(32);
+    finish({...collection,state:'DRAFT',revision:8,dossier,metadataRoot:null});await first;
+    expect(editor.workspace()?.state).toBe('DRAFT');expect(editor.workspace()?.revision).toBe(8);
+    expect(editor.generationTreasuryIssue()).toBeNull();expect(editor.treasuryBusy()).toBeFalse();
+    expect(api.seal).not.toHaveBeenCalled();expect(api.applyTestPricing).not.toHaveBeenCalled();
+  });
+
+  it('retains the original seal after a lost response and retries the same revision', async () => {
+    generationEdition('SEALED');api.correctTestTreasury.and.rejectWith(new Error('response lost'));
+    await editor.applyGenerationTreasury();await editor.applyGenerationTreasury();
+    expect(editor.workspace()?.revision).toBe(7);expect(editor.workspace()?.state).toBe('SEALED');
+    expect(api.correctTestTreasury.calls.allArgs()).toEqual([[collection,'0x'+'d3'.repeat(32)],[collection,'0x'+'d3'.repeat(32)]]);
+    expect(editor.treasuryError()).toBeTruthy();expect(api.update).not.toHaveBeenCalled();
+  });
+
+  it('blocks correction without matching generation authority or owner access', async () => {
+    generationEdition('SEALED');editor.feature.set({...editor.feature()!,mintAuthority:null});
+    expect(editor.generationTreasuryIssue()).toContain('unavailable');await editor.applyGenerationTreasury();
+    generationEdition('SEALED');editor.workspace.set({...collection,ownerSubject:'another-owner'});
+    await editor.applyGenerationTreasury();expect(api.correctTestTreasury).not.toHaveBeenCalled();
+  });
+
+  it('explicitly saves the trusted destination on an editable revision without repricing', async () => {
+    generationEdition('DRAFT');await editor.applyGenerationTreasury();
+    expect(api.update).toHaveBeenCalledTimes(1);
+    const saved=api.update.calls.mostRecent().args[1];
+    expect(saved.offering!.royaltyPuzhash).toBe('0x'+'d3'.repeat(32));
+    expect(saved.pricingRoundHash).toBe(collection.dossier.pricingRoundHash);
+    expect(api.correctTestTreasury).not.toHaveBeenCalled();expect(api.applyTestPricing).not.toHaveBeenCalled();
+  });
+
+  it('cannot open a sealing request for a mismatched generation destination', async () => {
+    generationEdition('REVIEW');await editor.seal();
+    expect(api.seal).not.toHaveBeenCalled();expect(editor.sealError()).toContain('different protocol generation');
+  });
 
   it('preserves test-edition pricing and its receipt when a note changes', async () => {
     testEdition();

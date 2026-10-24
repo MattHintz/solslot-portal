@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { HttpErrorResponse } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { CollectionWorkspace } from '../../services/collection-api.service';
 import { GenerationMintReviewService } from '../../services/generation-mint-review.service';
@@ -52,6 +53,14 @@ describe('One sealed test batch in the native collection editor',()=>{
     await f.componentInstance.prepare();const first=api.prepare.calls.mostRecent().args[0];
     api.prepare.and.resolveTo(structuredClone(fixture) as any);await f.componentInstance.prepare();
     expect(api.prepare.calls.mostRecent().args[0]).toEqual(first);expect(f.componentInstance.review()?.packageId).toBe(fixture.packageId);
+  });
+  it('explains a rejected treasury binding without claiming a saved batch exists',async()=>{
+    const f=component();
+    api.prepare.and.rejectWith(new HttpErrorResponse({status:409,error:{detail:{code:'GENERATION_MINT_TREASURY_MISMATCH'}}}));
+    await f.componentInstance.prepare();f.detectChanges();
+    expect(f.componentInstance.request()).toBeNull();expect(f.componentInstance.review()).toBeNull();
+    expect(f.nativeElement.textContent).not.toContain('Recover this saved batch');
+    expect(f.nativeElement.textContent).toContain('corrected revision');f.destroy();
   });
   it('blocks a draft, old generation and production edition',async()=>{
     const f=component(),base=f.componentInstance.collection();

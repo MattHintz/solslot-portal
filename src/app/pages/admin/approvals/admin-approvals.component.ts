@@ -9,12 +9,16 @@ import {
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
 import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
+import { RouterLink } from '@angular/router';
+import { CollectionApiService } from '../../../services/collection-api.service';
+import { PropertyDossierComponent } from '../../../components/property-dossier/property-dossier.component';
+import { buildCollectionSealReview, CollectionSealReview, sealCollectionId } from '../../../services/property-metadata/collection-seal-review';
 import { formatError } from '../../../utils/format-error';
 
 @Component({
   selector: 'app-admin-approvals',
   standalone: true,
-  imports: [CommonModule, AdminWorkspaceNavComponent, AdminRefreshStatusComponent],
+  imports: [CommonModule, RouterLink, AdminWorkspaceNavComponent, AdminRefreshStatusComponent, PropertyDossierComponent],
   providers: [AdminStatusRefresh],
   template: `
     <solslot-admin-workspace-nav />
@@ -96,6 +100,40 @@ import { formatError } from '../../../utils/format-error';
             <h2 id="review-title">{{ operationLabel(item.operation) }}</h2>
             <p>{{ operationDescription(item.operation) }}</p>
 
+            @if (item.operation === 'collection.seal') {
+              @if (sealReview(); as review) {
+                <section class="collection-review" aria-labelledby="collection-review-title">
+                  <span class="eyebrow">{{ review.workspace.dossier.purpose === 'TEST_ONLY' ? 'Test-only edition · no real investment or legal rights' : 'Property metadata review' }}</span>
+                  <h3 id="collection-review-title">{{ review.workspace.dossier.title }}</h3>
+                  <p><strong>Revision {{ review.workspace.revision }}</strong> · {{ review.workspace.id }}</p>
+                  <p>You are approving this exact saved property dossier for sealing. When both administrators approve and the preparer completes the action, its metadata becomes fixed for the next governance steps.</p>
+                  <p><strong>This does not mint SmartDeeds, publish an offering, cast an SGT vote, or move funds.</strong></p>
+                  <dl class="decision-grid">
+                    @for (field of review.fields; track field.label) {
+                      <div><dt>{{ field.label }}</dt><dd>{{ field.value }}</dd></div>
+                    }
+                  </dl>
+                  @if (review.workspace.dossier.unknownFields?.length) {
+                    <details class="unresolved">
+                      <summary>{{ review.workspace.dossier.unknownFields?.length }} unresolved diligence {{ review.workspace.dossier.unknownFields?.length === 1 ? 'field remains' : 'fields remain' }}</summary>
+                      <p>Sealing this test edition does not verify these facts or qualify it for a production offering.</p>
+                      <ul>@for (field of review.workspace.dossier.unknownFields; track field.path) {
+                        <li><strong>{{ field.path }}</strong> — {{ field.reason }}</li>
+                      }</ul>
+                    </details>
+                  }
+                  <button type="button" class="button" [attr.aria-expanded]="showSealPreview()" (click)="showSealPreview.set(!showSealPreview())">
+                    {{ showSealPreview() ? 'Hide public preview' : 'Read public preview, risks and disclosures' }}
+                  </button>
+                  @if (showSealPreview()) { <pp-property-dossier [workspace]="review.workspace" /> }
+                  <p><a [routerLink]="['/admin/collections', review.workspace.id]">Open property workspace and review evidence</a></p>
+                  <p>After sealing: prepare the mint proposal → administrator approvals → SGT vote → mint and network confirmation.</p>
+                </section>
+              } @else {
+                <p class="notice" role="status">{{ sealReviewError() || 'Loading this exact property revision. Signing is unavailable until its review is ready.' }}</p>
+              }
+            }
+
             <dl class="decision-grid">
               <div>
                 <dt>Network</dt>
@@ -132,6 +170,9 @@ import { formatError } from '../../../utils/format-error';
             <div class="signing-check">
               <strong>Before signing</strong>
               <span>Confirm the wallet shows the same network and action described above.</span>
+              @if (item.operation === 'collection.seal') {
+                <span>Wallet action: collection.seal · revision {{ item.revision }}. The request hash binds this property and revision; the property details above come from its saved record.</span>
+              }
               <span>Reject unexpected payments, approvals, recipients, or recovery-phrase requests.</span>
             </div>
 
@@ -172,6 +213,10 @@ import { formatError } from '../../../utils/format-error';
               <dl class="technical-grid">
                 <div><dt>Operation ID</dt><dd>{{ item.operationId }}</dd></div>
                 <div><dt>Payload hash</dt><dd>{{ item.payloadHash }}</dd></div>
+                @if (sealReview(); as review) {
+                  <div><dt>Metadata root</dt><dd>{{ review.metadataRoot }}</dd></div>
+                  <div><dt>Generation</dt><dd>{{ review.workspace.generationId || 'Legacy collection' }}</dd></div>
+                }
                 <div><dt>Authority</dt><dd>{{ item.authorityLauncherId }}</dd></div>
                 <div>
                   <dt>Exact request</dt>
@@ -186,22 +231,28 @@ import { formatError } from '../../../utils/format-error';
                 <button
                   type="button"
                   class="button button--quiet"
+                  [class.button--primary]="item.operation === 'collection.seal'"
                   data-ux-action="review_approval" (click)="sign()"
                   [disabled]="busy() || refresh.refreshing() || expired(item) || item.status === 'consumed' || !reviewReady(item)"
                 >
-                  Approve this request
+                  {{ item.operation === 'collection.seal' ? 'Approve sealing this revision' : 'Approve this request' }}
                 </button>
               }
+              @if (item.operation !== 'collection.seal' || sealReview()?.workspace?.ownerSubject?.toLowerCase() === currentSubject()) {
               <button
                 type="button"
                 class="button button--primary"
                 (click)="execute()"
                 [disabled]="busy() || refresh.refreshing() || !canComplete(item)"
               >
-                {{ item.operation === 'identity.activate' ? 'Activate identity checks' : 'Complete approved action' }}
+                {{ item.operation === 'identity.activate' ? 'Activate identity checks' : item.operation === 'collection.seal' ? 'Seal approved revision' : 'Complete approved action' }}
               </button>
+              }
               @if (item.operation === 'mint.publish' && item.createdBy.toLowerCase() !== currentSubject()) {
                 <p>The original proposer completes this mint after both approvals are recorded.</p>
+              }
+              @if (item.operation === 'collection.seal' && sealReview()?.workspace?.ownerSubject?.toLowerCase() !== currentSubject()) {
+                <p>The property preparer completes sealing after both approvals are saved.</p>
               }
             </div>
           } @else {
@@ -223,14 +274,15 @@ import { formatError } from '../../../utils/format-error';
       .eyebrow { color:#67e7ad; font:700 11px/1.2 monospace; text-transform:uppercase; }
       h1,h2 { letter-spacing:0; } h1 { margin:7px 0; font-size:34px; } h2 { margin:5px 0 0; font-size:22px; }
       p,.empty span,.operation-row small,.impact span { color:#a9c2b8; }
-      .approval-layout { display:grid; grid-template-columns:minmax(320px,.8fr) minmax(0,1.2fr); gap:18px; margin-top:20px; }
+      .approval-layout { display:grid; grid-template-columns:minmax(260px,.55fr) minmax(0,1.45fr); gap:18px; margin-top:20px; }
       .inbox,.review { border:1px solid #245144; background:#0a1a16; min-height:420px; }
-      .inbox { padding:18px; } .review { padding:24px; }
+      .inbox { padding:18px; min-height:0; align-self:start; position:sticky; top:110px; } .review { padding:24px; }
       .operation-list { display:grid; gap:1px; margin-top:16px; background:#245144; }
-      .operation-row { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; width:100%; padding:13px; border:0; background:#081612; color:inherit; text-align:left; cursor:pointer; }
+      .operation-row { display:grid; grid-template-columns:1fr auto; align-items:center; gap:12px; width:100%; padding:13px; border:0; background:#081612; color:inherit; text-align:left; cursor:pointer; }
       .operation-row:hover,.operation-row.is-selected { background:#123329; }
-      .operation-row span:nth-child(2) { display:grid; gap:3px; min-width:0; }
-      .operation-row time { color:#77998c; font:11px monospace; }
+      .operation-row > .status { width:fit-content; }
+      .operation-row span:nth-child(2) { display:grid; gap:3px; min-width:0; grid-column:1/-1; grid-row:2; }
+      .operation-row time { grid-column:2; grid-row:1; color:#77998c; font:11px monospace; }
       .status { padding:4px 6px; border:1px solid #4f8d77; color:#f0ca67; font:700 10px monospace; }
       .status--approved { color:#67e7ad; }
       .decision-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; margin:22px 0; background:#245144; border:1px solid #245144; }
@@ -239,6 +291,13 @@ import { formatError } from '../../../utils/format-error';
       .impact { display:grid; gap:5px; padding:15px; border-left:3px solid #67e7ad; background:#0d241d; }
       .signing-check { display:grid; gap:4px; margin-top:12px; padding:13px; border-left:3px solid #77bce3; background:#091b1d; font-size:11px; }
       .signing-check span { color:#a9c2b8; }
+      .collection-review { margin-top:20px; padding:18px; border:1px solid #356858; border-radius:12px; background:#081612; }
+      .collection-review h3 { font-size:26px; margin:8px 0; overflow-wrap:anywhere; }
+      .collection-review p,.collection-review li { line-height:1.55; overflow-wrap:anywhere; }
+      .collection-review a { color:#8ef0c4; text-underline-offset:3px; }
+      .collection-review summary { font-size:14px; }
+      .collection-review li { margin:10px 0; }
+      .actions { flex-wrap:wrap; position:sticky; bottom:12px; padding:14px; background:#0a1a16; border:1px solid #356858; border-radius:10px; z-index:2; } .actions p { flex-basis:100%; margin:0; font-size:13px; }
       .identity-review { margin-top:18px; padding:15px; border:1px solid #356858; background:#081612; }
       .identity-review p { margin-bottom:0; }
       .signers { display:flex; flex-wrap:wrap; gap:7px; margin:18px 0; }
@@ -255,7 +314,7 @@ import { formatError } from '../../../utils/format-error';
       .empty--review { min-height:360px; }
       .notice { display:grid; gap:4px; margin-top:16px; padding:12px; border:1px solid #844f4f; color:#ffc4c4; }
       .pending-state { display:grid; gap:5px; margin:16px 0; padding:13px; border-left:3px solid #7dc9ec; background:#0d251e; color:#d2e9dd; }
-      @media (max-width:800px) { .approval-layout { grid-template-columns:1fr; } .desk-header { align-items:flex-start; flex-direction:column; } }
+      @media (max-width:800px) { .approval-layout { grid-template-columns:1fr; } .inbox { position:static; } .desk-header { align-items:flex-start; flex-direction:column; } }
       @media (max-width:520px) { .decision-grid { grid-template-columns:1fr; } .operation-row { grid-template-columns:auto 1fr; } .operation-row time { grid-column:2; } }
     `,
   ],
@@ -264,10 +323,14 @@ import { formatError } from '../../../utils/format-error';
 export class AdminApprovalsComponent {
   private readonly api = inject(AdminOperationApprovalService);
   private readonly session = inject(AdminSessionService);
+  private readonly collections = inject(CollectionApiService);
   readonly refresh = inject(AdminStatusRefresh);
 
   readonly operations = signal<AdminOperationApproval[]>([]);
   readonly approval = signal<AdminOperationApproval | null>(null);
+  readonly sealReview = signal<CollectionSealReview | null>(null);
+  readonly sealReviewError = signal<string | null>(null);
+  readonly showSealPreview = signal(false);
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
@@ -300,6 +363,12 @@ export class AdminApprovalsComponent {
             (this.expired(selected) ? selected : null)
           : result.operations[0] ?? null;
       this.approval.set(next);
+      if (next?.operation === 'collection.seal') {
+        await this.loadSealReview(next);
+      } else {
+        this.sealReview.set(null);
+        this.sealReviewError.set(null);
+      }
       if (next && !this.expired(next) && ['identity.activate', 'mint.publish'].includes(next.operation)) {
         // The list is intentionally lightweight; GET reconstructs the full chain review.
         const detailed = await this.api.get(next.operationId);
@@ -315,6 +384,9 @@ export class AdminApprovalsComponent {
 
   select(item: AdminOperationApproval): void {
     if (this.busy()) return;
+    this.sealReview.set(null);
+    this.showSealPreview.set(false);
+    this.sealReviewError.set(null);
     this.approval.set(item);
     void this.reload();
   }
@@ -322,13 +394,16 @@ export class AdminApprovalsComponent {
   async sign(): Promise<void> {
     const current = this.approval();
     if (!current || this.busy() || this.refresh.refreshing() || this.signedByCurrentAdmin(current) || this.expired(current) || !this.reviewReady(current)) return;
-    await this.run(async () => this.api.sign(current.operationId, current.typedData, (stage) => {
+    await this.run(async () => {
+      await this.recheckSealReview(current);
+      return this.api.sign(current.operationId, current.typedData, (stage) => {
       this.actionMessage.set({ checking: 'Checking this request…', 'chain-signature': 'Wallet approval 1 of 2',
         'request-signature': current.chainActions?.length ? 'Wallet approval 2 of 2' : 'Waiting for your wallet signature',
         saving: 'Saving your approval…' }[stage]);
       this.actionHint.set(stage === 'saving' ? 'Wait for the server to confirm your signature.'
         : 'Open your wallet to review the request. Reject it there to stop signing.');
-    }), 'Approval saved. The inbox will update when the other administrator signs.');
+      });
+    }, 'Approval saved. The inbox will update when the other administrator signs.');
   }
 
   async execute(): Promise<void> {
@@ -337,11 +412,12 @@ export class AdminApprovalsComponent {
     this.busy.set(true);
     this.notice.set(null);
     this.actionMessage.set('Submitting the approved action…');
-    this.actionHint.set('Checking the server result. Do not submit a second transaction while this request is pending.');
+    this.actionHint.set(current.operation === 'collection.seal' ? 'Saving the sealed metadata. No transaction is sent.' : 'Checking the server result. Do not submit a second transaction while this request is pending.');
     this.error.set(null);
     try {
+      await this.recheckSealReview(current);
       await this.api.execute(current);
-      this.notice.set('The server accepted the approved action. Check chain confirmation before treating it as complete.');
+      this.notice.set(current.operation === 'collection.seal' ? 'Property metadata sealed. No SmartDeeds were minted and no funds moved. Continue with mint proposal preparation in the property workspace.' : 'The server accepted the approved action. Check chain confirmation before treating it as complete.');
       this.approval.set(null);
       await this.loadApprovals();
       this.refresh.updated();
@@ -372,7 +448,8 @@ export class AdminApprovalsComponent {
 
   canComplete(item: AdminOperationApproval): boolean {
     return item.status === 'approved' && !this.expired(item) && this.reviewReady(item) && this.signedByCurrentAdmin(item) &&
-      (item.operation !== 'mint.publish' || item.createdBy.toLowerCase() === this.currentSubject());
+      (item.operation !== 'mint.publish' || item.createdBy.toLowerCase() === this.currentSubject()) &&
+      (item.operation !== 'collection.seal' || this.sealReview()?.workspace.ownerSubject.toLowerCase() === this.currentSubject());
   }
 
   operationLabel(operation: AdminOperationName): string {
@@ -393,6 +470,7 @@ export class AdminApprovalsComponent {
   }
 
   operationDescription(operation: AdminOperationName): string {
+    if (operation === 'collection.seal') return 'Freeze a reviewed property revision before preparing its mint proposal.';
     if (operation.startsWith('collection.')) {
       return 'Changes the shared investor dossier after independent administrator review.';
     }
@@ -412,6 +490,7 @@ export class AdminApprovalsComponent {
   }
 
   operationImpact(operation: AdminOperationName): string {
+    if (operation === 'collection.seal') return 'Metadata sealing only. No mint, committee vote or funds transfer.';
     if (operation === 'identity.activate') {
       return 'New identity checks change after Testnet11 confirmation. No funds move.';
     }
@@ -423,8 +502,9 @@ export class AdminApprovalsComponent {
   operationContext(item: AdminOperationApproval): string {
     const path = item.requestBinding.path;
     const segments = path.split('/').filter(Boolean);
-    return segments.at(-2) === 'collections'
-      ? `Collection ${segments.at(-1)}`
+    const collectionIndex = segments.indexOf('collections');
+    return collectionIndex >= 0 && segments[collectionIndex + 1]
+      ? `Collection ${segments[collectionIndex + 1]} · revision ${item.revision}`
       : segments.at(-1)?.replaceAll('-', ' ') || 'Protocol operation';
   }
 
@@ -483,6 +563,11 @@ export class AdminApprovalsComponent {
   }
 
   reviewReady(item: AdminOperationApproval): boolean {
+    if (item.operation === 'collection.seal') {
+      const review = this.sealReview();
+      return !!review && review.operationId === item.operationId && review.payloadHash === item.payloadHash &&
+        review.workspace.revision === item.revision && !this.sealReviewError();
+    }
     if (item.operation !== 'identity.activate') return true;
     const review = item.identityReview;
     const body = item.requestBinding.body as Record<string, unknown> | null;
@@ -499,10 +584,47 @@ export class AdminApprovalsComponent {
   nextStep(item: AdminOperationApproval): string {
     if (this.expired(item)) return 'This approval window has expired';
     if (!this.reviewReady(item)) return 'Loading the complete review. Signing is unavailable until all details can be checked.';
-    if (item.status === 'consumed') return 'Submitted. Follow the chain confirmation.';
+    if (item.status === 'consumed') return item.operation === 'collection.seal' ? 'Metadata sealed. Minting is a separate step.' : 'Submitted. Follow the chain confirmation.';
     if (item.status === 'approved') return 'Both approvals are saved. Complete the approved action when ready.';
     if (this.signedByCurrentAdmin(item)) return 'Your approval is saved. Waiting for the other required administrator.';
     return 'Review the details, then approve this request. Approval alone does not execute it.';
+  }
+
+  private async loadSealReview(item: AdminOperationApproval): Promise<void> {
+    try {
+      const review = await this.readSealReview(item);
+      if (this.approval()?.operationId !== item.operationId) return;
+      this.sealReview.set(review);
+      this.sealReviewError.set(null);
+    } catch (error) {
+      if (this.approval()?.operationId !== item.operationId) return;
+      this.sealReview.set(null);
+      this.sealReviewError.set(formatError(error));
+      throw error;
+    }
+  }
+
+  private async readSealReview(item: AdminOperationApproval): Promise<CollectionSealReview> {
+    const id = sealCollectionId(item);
+    if (!id) throw new Error('This sealing request does not identify an exact property revision. Ask the preparer for a new request.');
+    return buildCollectionSealReview(item, await this.collections.get(id));
+  }
+
+  private async recheckSealReview(item: AdminOperationApproval): Promise<void> {
+    if (item.operation !== 'collection.seal') return;
+    const shown = this.sealReview();
+    try {
+      const fresh = await this.readSealReview(item);
+      if (!shown || fresh.metadataRoot !== shown.metadataRoot ||
+          fresh.workspace.draftHash !== shown.workspace.draftHash ||
+          fresh.workspace.generationId !== shown.workspace.generationId) {
+        throw new Error('The property review changed. Refresh and read the current details before approving.');
+      }
+    } catch (error) {
+      this.sealReview.set(null);
+      this.sealReviewError.set(formatError(error));
+      throw error;
+    }
   }
 
   statusClass(status: string): string {

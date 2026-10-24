@@ -35,6 +35,13 @@ export class CollectionApiService {
     );
   }
 
+  correctTestTreasury(collection: CollectionWorkspace, treasury: string): Promise<CollectionWorkspace> {
+    return firstValueFrom(this.http.post<CollectionWorkspace>(
+      `${this.base}/admin/collections/${encodeURIComponent(collection.id)}/corrections/treasury`,
+      {generationId: collection.generationId, metadataRoot: collection.metadataRoot, treasury},
+      {headers: this.headers().set('If-Match', `"${collection.revision}"`)}).pipe(timeout(70_000)));
+  }
+
   convertDisplayUnits(request: CollectionDisplayUnitRequest): Promise<CollectionDisplayUnitConversion> {
     return firstValueFrom(
       this.http.post<CollectionDisplayUnitConversion>(
@@ -94,7 +101,7 @@ export class CollectionApiService {
       this.http.get<CollectionWorkspace>(
         `${this.base}/admin/collections/${encodeURIComponent(collectionId)}`,
         { headers: this.headers() },
-      ),
+      ).pipe(timeout(20_000)),
     );
   }
 
@@ -357,6 +364,7 @@ export type CollectionState = 'DRAFT' | 'REVIEW' | 'SEALED' | 'PUBLISHED';
 export interface CollectionSourceSummary {collectionId: string; revision: number; title: string; draftHash: string; generationId: string;}
 
 export interface CollectionFeatureStatus {
+  mintAuthority?: {generationId: string; network: 'testnet11'; componentId: string; treasuryPuzzleHash: string} | null;
   generationId?: string | null;
   testEditionsEnabled?: boolean;
   metadataConfigured?: boolean;
@@ -529,6 +537,8 @@ export interface CollectionWorkspace {
   comments: ReviewComment[];
   reviews: CollectionReview[];
   metadataVersions: MetadataVersion[];
+  retainedSeals?: Array<{revision: number; metadataRoot: string; canonicalByteSize: number; sealedAt: number;
+    correction: {previousTreasury: string; treasury: string; nextRevision: number; correctedAt: number}}>;
   anchorEvidence: AnchorEvidence[];
   auditEvents?: AuditEvent[];
   readiness: CollectionReadiness;

@@ -218,7 +218,13 @@ export class GenerationCollectionMintComponent implements OnInit {
     const req=this.request()??{generationId:c.generationId!,collectionId:c.id,revision:c.revision,metadataRoot:c.metadataRoot!,previewHash:c.draftHash!};
     this.request.set(structuredClone(req));this.busy.set(true);this.error.set(null);
     try{this.remember(await this.api.prepare(structuredClone(req)));}
-    catch{this.error.set('We couldn’t finish the sealed batch review. Recover this same batch to keep its original funding. If the source or funding changed, an operator must reconcile it before preparing a replacement.');}
+    catch(error){
+      const detail=(error as {error?:{detail?:{code?:string}}})?.error?.detail;
+      if(detail?.code==='GENERATION_MINT_TREASURY_MISMATCH'){
+        this.request.set(null);
+        this.error.set('The sealed fee destination belongs to another generation. Use Create corrected revision in the property workspace, then review and seal the correction. No mint batch or funding holds were saved.');
+      }else this.error.set('We couldn’t finish the sealed batch review. Recover this same batch to keep its original funding. If the source or funding changed, an operator must reconcile it before preparing a replacement.');
+    }
     finally{this.busy.set(false);await this.refresh.refresh();}
   }
 }
