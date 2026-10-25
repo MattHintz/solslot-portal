@@ -86,7 +86,7 @@ describe('AdminOperationApprovalService', () => {
     expect(prepare.request.body).toEqual({
       operation: 'collection.seal',
       revision: 5,
-      expiresInSeconds: 600,
+      expiresInSeconds: 86_400,
       requestBinding: approval('pending').requestBinding,
     });
     prepare.flush(approval('pending'));
@@ -115,6 +115,16 @@ describe('AdminOperationApprovalService', () => {
     );
     request.flush({ sealed: true });
     expect(await result).toEqual({ sealed: true });
+  });
+
+  it('keeps the existing short window for actions other than metadata sealing', async () => {
+    spyOn(service, 'sign').and.resolveTo({...approval('pending'), operation: 'mint.cancel'});
+    const pending = service.prepareAndSign({operation: 'mint.cancel', revision: 5,
+      binding: {...approval('pending').requestBinding, path: '/admin/mint/example/cancel'}});
+    const prepared = http.expectOne(`${environment.faucetApi}/admin/auth/operations/prepare`);
+    expect(prepared.request.body.expiresInSeconds).toBe(600);
+    prepared.flush({...approval('pending'), operation: 'mint.cancel'});
+    await pending;
   });
 
   it('requires the current mint chain action and submits it with the HTTP approval', async () => {

@@ -445,6 +445,9 @@ type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
                 @case ('review') {
                   <div class="section-head"><span>Publication gate</span><h2>Review and seal</h2></div>
                   <div class="readiness" [class.is-ready]="collection.readiness.ready"><strong>{{ collection.readiness.ready ? 'Ready to seal' : collection.readiness.issues.length + ' checks remain' }}</strong><span>{{ collection.readiness.canonicalByteSize || 0 | number }} / {{ feature()?.maxCanonicalBytes || 24576 | number }} canonical bytes</span></div>
+                  @if (isOwner() && (collection.state === 'DRAFT' || collection.state === 'REVIEW')) {
+                    <p class="section-note">Sealing opens a 24-hour review for the owner and one other administrator. Both signatures and completion are required within that window. The inbox shows the exact deadline.</p>
+                  }
                   @if (collection.readiness.issues.length) {
                     <div class="issue-list">@for (issue of collection.readiness.issues; track $index) { <button type="button" (click)="openIssue(issue.path)"><strong>{{ issue.message }}</strong><span class="mono">{{ issue.path }}</span></button> }</div>
                   }

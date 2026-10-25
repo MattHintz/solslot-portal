@@ -59,18 +59,21 @@ import { formatError } from '../../../utils/format-error';
           <div class="section-heading">
             <div>
               <span class="eyebrow">Assigned work</span>
-              <h2 id="inbox-title">Open approvals</h2>
+              <h2 id="inbox-title">{{ showRecent() ? 'Recent requests' : 'Open approvals' }}</h2>
             </div>
             <strong>{{ operations().length }}</strong>
           </div>
+          <button type="button" class="button button--quiet" (click)="toggleRecent()" [disabled]="busy() || refresh.refreshing()">
+            {{ showRecent() ? 'Show open approvals' : 'Show recent requests' }}
+          </button>
           @if (loading() && !operations().length) {
             <p class="empty">Loading approvals...</p>
           } @else if (error() && !operations().length) {
             <p class="empty">Refresh to check whether any approvals are waiting.</p>
           } @else if (!operations().length) {
             <div class="empty">
-              <strong>Nothing is waiting</strong>
-              <span>New owner-plus-one requests will appear here automatically.</span>
+              <strong>{{ showRecent() ? 'No recent requests' : 'No active requests' }}</strong>
+              <span>{{ showRecent() ? 'New requests will appear here automatically.' : 'A previous request may have expired or been completed. Choose Show recent requests to check its status.' }}</span>
             </div>
           } @else {
             <div class="operation-list">
@@ -148,15 +151,17 @@ import { formatError } from '../../../utils/format-error';
                 <dd>{{ item.signatures.length }} of 2 required · owner required</dd>
               </div>
               <div>
-                <dt>Request expires</dt>
-                <dd>{{ item.expiresAt * 1000 | date: 'medium' }}</dd>
+                <dt>Request deadline · your local time</dt>
+                <dd>{{ item.expiresAt * 1000 | date: 'medium' }} {{ item.expiresAt * 1000 | date: 'zzz' }}</dd>
               </div>
             </dl>
 
             <div class="pending-state" role="status">
               <strong>{{ nextStep(item) }}</strong>
-              @if (expired(item)) {
-                <span>This request cannot be signed or executed. The owner can open a fresh review.</span>
+              @if (expired(item) && item.status !== 'consumed') {
+                <span>{{ item.operation === 'collection.seal' ? 'This request cannot be signed or executed. Saved property and content reviews remain. The owner must open a new sealing request for fresh signatures.' : 'This request cannot be signed or executed. The owner can open a fresh review.' }}</span>
+              } @else if (item.status === 'consumed') {
+                <span>The completed request remains in history.</span>
               } @else {
                 <span>{{ remaining(item) }} · The inbox checks for new approvals automatically.</span>
               }
@@ -328,6 +333,7 @@ export class AdminApprovalsComponent {
 
   readonly operations = signal<AdminOperationApproval[]>([]);
   readonly approval = signal<AdminOperationApproval | null>(null);
+  readonly showRecent = signal(false);
   readonly sealReview = signal<CollectionSealReview | null>(null);
   readonly sealReviewError = signal<string | null>(null);
   readonly showSealPreview = signal(false);
@@ -354,7 +360,7 @@ export class AdminApprovalsComponent {
     this.loading.set(!this.refresh.lastUpdated());
     this.error.set(null);
     try {
-      const result = await this.api.list('active');
+      const result = await this.api.list(this.showRecent() ? 'all' : 'active');
       this.operations.set(result.operations);
       const selected = this.approval();
       const next =
@@ -389,6 +395,16 @@ export class AdminApprovalsComponent {
     this.sealReviewError.set(null);
     this.approval.set(item);
     void this.reload();
+  }
+
+  async toggleRecent(): Promise<void> {
+    if (this.busy() || this.refresh.refreshing()) return;
+    this.showRecent.update(value => !value);
+    this.approval.set(null);
+    this.sealReview.set(null);
+    this.sealReviewError.set(null);
+    this.showSealPreview.set(false);
+    await this.reload();
   }
 
   async sign(): Promise<void> {
@@ -549,6 +565,7 @@ export class AdminApprovalsComponent {
   }
 
   statusLabel(item: AdminOperationApproval): string {
+    if (item.status === 'consumed') return 'Completed';
     if (this.expired(item)) return 'Expired';
     return item.status === 'approved' ? 'Ready' : 'Needs approval';
   }
@@ -559,6 +576,7 @@ export class AdminApprovalsComponent {
 
   remaining(item: AdminOperationApproval): string {
     const seconds = Math.max(0, Math.ceil((item.expiresAt * 1000 - this.refresh.now()) / 1000));
+    if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m left to approve and execute`;
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left to approve and execute`;
   }
 
@@ -582,9 +600,9 @@ export class AdminApprovalsComponent {
   }
 
   nextStep(item: AdminOperationApproval): string {
+    if (item.status === 'consumed') return item.operation === 'collection.seal' ? 'Metadata sealed. Minting is a separate step.' : 'Submitted. Follow the chain confirmation.';
     if (this.expired(item)) return 'This approval window has expired';
     if (!this.reviewReady(item)) return 'Loading the complete review. Signing is unavailable until all details can be checked.';
-    if (item.status === 'consumed') return item.operation === 'collection.seal' ? 'Metadata sealed. Minting is a separate step.' : 'Submitted. Follow the chain confirmation.';
     if (item.status === 'approved') return 'Both approvals are saved. Complete the approved action when ready.';
     if (this.signedByCurrentAdmin(item)) return 'Your approval is saved. Waiting for the other required administrator.';
     return 'Review the details, then approve this request. Approval alone does not execute it.';

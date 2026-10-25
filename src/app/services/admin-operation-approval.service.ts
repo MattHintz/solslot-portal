@@ -94,7 +94,7 @@ export class AdminOperationApprovalService {
         {
           operation: input.operation,
           revision: input.revision,
-          expiresInSeconds: 600,
+          expiresInSeconds: input.operation === 'collection.seal' ? 86_400 : 600,
           requestBinding: input.binding,
         },
         { headers: this.authHeaders() },

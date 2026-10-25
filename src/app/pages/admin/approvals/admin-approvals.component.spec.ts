@@ -224,4 +224,41 @@ describe('Property sealing decision receipt', () => {
     expect(collections.get).toHaveBeenCalledWith('TEST-EXAMPLE');
     expect(api.sign).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
   });
+
+  it('shows an expired sealing request after a new login instead of losing its history', async () => {
+    const expired = {...item, expiresAt: Math.floor(Date.now() / 1000) - 1};
+    api.list.and.callFake(async filter => filter === 'all'
+      ? {operations: [expired], count: 1} : {operations: [], count: 0});
+    fixture.componentInstance.approval.set(null);
+    await fixture.componentInstance.reload(); fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('No active requests');
+    expect(fixture.nativeElement.textContent).toContain('Show recent requests');
+    await fixture.componentInstance.toggleRecent(); fixture.detectChanges();
+    expect(api.list).toHaveBeenCalledWith('all');
+    expect(fixture.nativeElement.textContent).toContain('Recent requests');
+    expect(fixture.nativeElement.textContent).toContain('This approval window has expired');
+    expect(fixture.nativeElement.textContent).toContain('Saved property and content reviews remain');
+    const approve = Array.from(fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>)
+      .find(button => button.textContent?.includes('Approve sealing this revision'))!;
+    expect(approve.disabled).toBeTrue();
+    await fixture.componentInstance.sign(); await fixture.componentInstance.execute();
+    expect(api.sign).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
+  });
+
+  it('labels a completed request as completed even after its signing deadline passes', async () => {
+    const completed = {...item, status: 'consumed' as const, expiresAt: Math.floor(Date.now() / 1000) - 1};
+    api.list.and.resolveTo({operations: [completed], count: 1});
+    await fixture.componentInstance.toggleRecent(); fixture.detectChanges();
+    expect(fixture.componentInstance.statusLabel(completed)).toBe('Completed');
+    expect(fixture.componentInstance.nextStep(completed)).toBe('Metadata sealed. Minting is a separate step.');
+    expect(fixture.nativeElement.textContent).toContain('The completed request remains in history');
+    expect(api.sign).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
+  });
+
+  it('uses hours for the longer window and identifies the deadline timezone', () => {
+    const component = fixture.componentInstance;
+    const longer = {...item, expiresAt: Math.floor(component.refresh.now() / 1000) + 86_400};
+    expect(component.remaining(longer)).toBe('24h 0m left to approve and execute');
+    expect(fixture.nativeElement.textContent).toContain('Request deadline · your local time');
+  });
 });
