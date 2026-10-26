@@ -10,7 +10,7 @@ import { AdminSessionService } from '../../../services/admin-session.service';
 import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
 import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
 import { RouterLink } from '@angular/router';
-import { CollectionApiService } from '../../../services/collection-api.service';
+import { CollectionApiService, CollectionWorkspace } from '../../../services/collection-api.service';
 import { PropertyDossierComponent } from '../../../components/property-dossier/property-dossier.component';
 import { buildCollectionSealReview, CollectionSealReview, sealCollectionId } from '../../../services/property-metadata/collection-seal-review';
 import { formatError } from '../../../utils/format-error';
@@ -45,6 +45,9 @@ import { formatError } from '../../../utils/format-error';
           <strong>Approval inbox needs attention</strong>
           <span>{{ error() }}</span>
         </div>
+      }
+      @if (executionError()) {
+        <div class="notice notice--error" role="alert"><strong>Action was not completed</strong><span>{{ executionError() }}</span><span>Check the saved result before retrying. A refresh will not repeat this action.</span></div>
       }
       @if (busy()) {
         <div class="pending-state" role="status" aria-live="polite">
@@ -161,7 +164,7 @@ import { formatError } from '../../../utils/format-error';
               @if (expired(item) && item.status !== 'consumed') {
                 <span>{{ item.operation === 'collection.seal' ? 'This request cannot be signed or executed. Saved property and content reviews remain. The owner must open a new sealing request for fresh signatures.' : 'This request cannot be signed or executed. The owner can open a fresh review.' }}</span>
               } @else if (item.status === 'consumed') {
-                <span>The completed request remains in history.</span>
+                <span>{{ item.sealExecution?.state === 'retry_required' ? 'Your signatures are saved. The preparer can retry this exact revision without signing again, before its original deadline.' : 'The request remains in history. Completion is checked against the saved result.' }}</span>
               } @else {
                 <span>{{ remaining(item) }} · The inbox checks for new approvals automatically.</span>
               }
@@ -250,7 +253,7 @@ import { formatError } from '../../../utils/format-error';
                 (click)="execute()"
                 [disabled]="busy() || refresh.refreshing() || !canComplete(item)"
               >
-                {{ item.operation === 'identity.activate' ? 'Activate identity checks' : item.operation === 'collection.seal' ? 'Seal approved revision' : 'Complete approved action' }}
+                {{ item.operation === 'identity.activate' ? 'Activate identity checks' : item.sealExecution?.state === 'retry_required' ? 'Retry sealing approved revision' : item.operation === 'collection.seal' ? 'Seal approved revision' : 'Complete approved action' }}
               </button>
               }
               @if (item.operation === 'mint.publish' && item.createdBy.toLowerCase() !== currentSubject()) {
@@ -340,6 +343,7 @@ export class AdminApprovalsComponent {
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+  readonly executionError = signal<string | null>(null);
   readonly notice = signal<string | null>(null);
   readonly actionMessage = signal('Preparing your review…');
   readonly actionHint = signal('Checking the exact request with the server.');
@@ -430,15 +434,21 @@ export class AdminApprovalsComponent {
     this.actionMessage.set('Submitting the approved action…');
     this.actionHint.set(current.operation === 'collection.seal' ? 'Saving the sealed metadata. No transaction is sent.' : 'Checking the server result. Do not submit a second transaction while this request is pending.');
     this.error.set(null);
+    this.executionError.set(null);
     try {
       await this.recheckSealReview(current);
-      await this.api.execute(current);
+      const result = await this.api.execute<Partial<CollectionWorkspace>>(current);
+      if (current.operation === 'collection.seal' && (!result || result.state !== 'SEALED' ||
+          result.id !== this.sealReview()?.workspace.id || result.revision !== current.revision ||
+          result.metadataRoot !== this.sealReview()?.metadataRoot)) {
+        throw new Error('Sealing is not confirmed for this exact revision. Your signatures are saved; check the property workspace before retrying.');
+      }
       this.notice.set(current.operation === 'collection.seal' ? 'Property metadata sealed. No SmartDeeds were minted and no funds moved. Continue with mint proposal preparation in the property workspace.' : 'The server accepted the approved action. Check chain confirmation before treating it as complete.');
       this.approval.set(null);
       await this.loadApprovals();
       this.refresh.updated();
     } catch (error) {
-      this.error.set(formatError(error));
+      this.executionError.set(formatError(error));
     } finally {
       this.busy.set(false);
     }
@@ -463,7 +473,7 @@ export class AdminApprovalsComponent {
   }
 
   canComplete(item: AdminOperationApproval): boolean {
-    return item.status === 'approved' && !this.expired(item) && this.reviewReady(item) && this.signedByCurrentAdmin(item) &&
+    return (item.status === 'approved' || (item.operation === 'collection.seal' && item.sealExecution?.state === 'retry_required')) && !this.expired(item) && this.reviewReady(item) && this.signedByCurrentAdmin(item) &&
       (item.operation !== 'mint.publish' || item.createdBy.toLowerCase() === this.currentSubject()) &&
       (item.operation !== 'collection.seal' || this.sealReview()?.workspace.ownerSubject.toLowerCase() === this.currentSubject());
   }
@@ -565,6 +575,9 @@ export class AdminApprovalsComponent {
   }
 
   statusLabel(item: AdminOperationApproval): string {
+    if (item.operation === 'collection.seal' && item.status === 'consumed' && item.sealExecution?.state !== 'confirmed') {
+      return this.expired(item) ? 'Expired · not sealed' : item.sealExecution?.state === 'retry_required' ? 'Retry available' : 'Outcome unverified';
+    }
     if (item.status === 'consumed') return 'Completed';
     if (this.expired(item)) return 'Expired';
     return item.status === 'approved' ? 'Ready' : 'Needs approval';
@@ -600,6 +613,10 @@ export class AdminApprovalsComponent {
   }
 
   nextStep(item: AdminOperationApproval): string {
+    if (item.operation === 'collection.seal' && item.status === 'consumed' && item.sealExecution?.state !== 'confirmed') {
+      return this.expired(item) ? 'Sealing was not confirmed before this request expired.' : item.sealExecution?.state === 'retry_required'
+        ? 'Both signatures are saved. Retry sealing this exact revision.' : 'Sealing is not confirmed. Check the property workspace before continuing.';
+    }
     if (item.status === 'consumed') return item.operation === 'collection.seal' ? 'Metadata sealed. Minting is a separate step.' : 'Submitted. Follow the chain confirmation.';
     if (this.expired(item)) return 'This approval window has expired';
     if (!this.reviewReady(item)) return 'Loading the complete review. Signing is unavailable until all details can be checked.';

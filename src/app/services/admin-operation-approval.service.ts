@@ -44,6 +44,7 @@ export interface AdminOperationApproval {
   createdAt: number;
   approvedAt?: number | null;
   consumedAt?: number | null;
+  sealExecution?: { state: 'not_started' | 'retry_required' | 'confirmed' | 'revision_changed' | 'unavailable'; metadataRoot?: string };
   requestBinding: AdminRequestBindingV1;
   signatures: Array<{ adminIndex: number; signerAddress: string; signedAt: number }>;
   typedData: Eip712TypedData;
@@ -201,7 +202,9 @@ export class AdminOperationApprovalService {
   }
 
   async execute<T = unknown>(approval: AdminOperationApproval): Promise<T> {
-    if (approval.status !== 'approved') {
+    const retrySeal = approval.operation === 'collection.seal' && approval.status === 'consumed' &&
+      approval.sealExecution?.state === 'retry_required';
+    if (approval.status !== 'approved' && !retrySeal) {
       throw new Error('This operation does not yet have slot 0 plus one coadmin.');
     }
     const binding = approval.requestBinding;

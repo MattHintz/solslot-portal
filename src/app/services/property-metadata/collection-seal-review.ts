@@ -33,7 +33,8 @@ export function buildCollectionSealReview(item: AdminOperationApproval, workspac
       !workspace.generationId || workspace.generationId !== draft.generationId)) {
     throw new Error('The test edition does not match this approval’s network and generation.');
   }
-  const consumed = item.status === 'consumed';
+  const consumed = item.sealExecution?.state === 'confirmed' ||
+    (item.status === 'consumed' && item.sealExecution?.state !== 'retry_required');
   const root = consumed ? workspace.metadataRoot : workspace.readiness.metadataRoot;
   if (!draft.title?.trim() || !root || !/^0x[0-9a-f]{64}$/i.test(root) ||
       (!consumed && (!['DRAFT', 'REVIEW'].includes(workspace.state) || !workspace.readiness.ready)) ||

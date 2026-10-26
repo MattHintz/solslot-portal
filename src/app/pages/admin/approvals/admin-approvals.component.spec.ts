@@ -153,7 +153,7 @@ describe('Property sealing decision receipt', () => {
     collections = jasmine.createSpyObj('collections', ['get']);
     api.list.and.resolveTo({operations: [item], count: 1});
     collections.get.and.callFake(async () => structuredClone(workspace));
-    api.sign.and.resolveTo(item); api.execute.and.resolveTo({});
+    api.sign.and.resolveTo(item); api.execute.and.resolveTo({...workspace, state: 'SEALED', metadataRoot: workspace.readiness.metadataRoot});
     await TestBed.configureTestingModule({imports: [AdminApprovalsComponent], providers: [provideRouter([]),
       {provide: AdminOperationApprovalService, useValue: api},
       {provide: AdminSessionService, useValue: {subject, authoritySlot: () => 1}},
@@ -246,12 +246,12 @@ describe('Property sealing decision receipt', () => {
   });
 
   it('labels a completed request as completed even after its signing deadline passes', async () => {
-    const completed = {...item, status: 'consumed' as const, expiresAt: Math.floor(Date.now() / 1000) - 1};
+    const completed = {...item, status: 'consumed' as const, sealExecution: {state:'confirmed' as const}, expiresAt: Math.floor(Date.now() / 1000) - 1};
     api.list.and.resolveTo({operations: [completed], count: 1});
     await fixture.componentInstance.toggleRecent(); fixture.detectChanges();
     expect(fixture.componentInstance.statusLabel(completed)).toBe('Completed');
     expect(fixture.componentInstance.nextStep(completed)).toBe('Metadata sealed. Minting is a separate step.');
-    expect(fixture.nativeElement.textContent).toContain('The completed request remains in history');
+    expect(fixture.nativeElement.textContent).toContain('Completion is checked against the saved result');
     expect(api.sign).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
   });
 
@@ -260,5 +260,28 @@ describe('Property sealing decision receipt', () => {
     const longer = {...item, expiresAt: Math.floor(component.refresh.now() / 1000) + 86_400};
     expect(component.remaining(longer)).toBe('24h 0m left to approve and execute');
     expect(fixture.nativeElement.textContent).toContain('Request deadline · your local time');
+  });
+
+  it('keeps execution failures visible across automatic refresh and rejects an unsealed success response', async () => {
+    item.status = 'approved'; subject.set('owner');
+    api.execute.and.resolveTo({state:'REVIEW'});
+    await fixture.componentInstance.execute();
+    expect(fixture.componentInstance.notice()).toBeNull();
+    await fixture.componentInstance.reload(); fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Sealing is not confirmed for this exact revision');
+    expect(api.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers retry only for the exact unfinished seal while preserving deadline and preparer checks', async () => {
+    const retry = {...item, status:'consumed' as const, sealExecution:{state:'retry_required' as const}};
+    api.list.and.resolveTo({operations:[retry],count:1}); subject.set('owner');
+    await fixture.componentInstance.reload(); fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Retry sealing approved revision');
+    expect(fixture.componentInstance.canComplete(retry)).toBeTrue();
+    subject.set('coadmin'); expect(fixture.componentInstance.canComplete(retry)).toBeFalse();
+    subject.set('owner'); fixture.componentInstance.refresh.now.set(retry.expiresAt*1000);
+    expect(fixture.componentInstance.canComplete(retry)).toBeFalse();
+    expect(fixture.componentInstance.statusLabel(retry)).toBe('Expired · not sealed');
+    expect(api.execute).not.toHaveBeenCalled();
   });
 });

@@ -75,6 +75,20 @@ describe('AdminOperationApprovalService', () => {
 
   afterEach(() => http.verify());
 
+  it('retries only an explicitly unfinished metadata seal using the same signed binding', async () => {
+    const saved = {...approval('consumed'), sealExecution:{state:'retry_required' as const}};
+    const pending = service.execute(saved);
+    const request = http.expectOne(`${environment.faucetApi}/admin/collections/alpha/seal?mode=strict`);
+    expect(request.request.headers.get('X-Solslot-Admin-Operation-Id')).toBe(saved.operationId);
+    expect(request.request.headers.get('If-Match')).toBe('"5"');
+    request.flush({state:'SEALED'}); await pending;
+    expect(wallet.signTypedData).not.toHaveBeenCalled();
+    for (const state of ['confirmed','unavailable'] as const) {
+      await expectAsync(service.execute({...saved,sealExecution:{state}})).toBeRejected();
+    }
+    await expectAsync(service.execute({...saved,operation:'mint.execute'})).toBeRejected();
+  });
+
   it('prepares the exact request and signs only the returned typed data', async () => {
     const pending = service.prepareAndSign({
       operation: 'collection.seal',
