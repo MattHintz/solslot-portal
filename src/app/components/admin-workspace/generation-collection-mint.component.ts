@@ -36,17 +36,18 @@ import { MintExecutionRequest } from '../../services/generation-governance.servi
           <li><strong>{{deed.deedId}}</strong><span>{{deed.sharePpm/10000 | number:'1.0-4'}}% · {{allocationUsd(r,deed.sharePpm)}}</span></li>
         }</ul>
         <p>Technology fee: {{r.canonicalMetadata.offering.royaltyBps/100 | number:'1.0-2'}}%. Sponsor and builder remain separate in the sealed property record.</p>
-        <div class="next"><strong>Batch saved. Publication is the next step.</strong><p>{{r.nextAction}}</p>
-          <p>No wallet prompt or transaction is sent by batch preparation. Administrator publication approvals come next.</p></div>
+        <div class="next"><strong>{{execution()?.inventory?.receipt ? "Mint confirmed. Inventory verified." : step()===4 ? "Vote passed. Continue the exact saved mint below." : step()===3 ? "Holder voting and confirmation" : "Batch saved. Administrator approval is next."}}</strong>@if(step()<3){<p>{{r.nextAction}}</p>}
+          @if(step()<3){<p>Preparation sends no transaction. Both administrators approve this exact sealed edition before holders vote.</p>}</div>
         <details><summary>Sealed source and fixed launcher funding</summary>
           <dl><dt>Saved package</dt><dd><code>{{r.packageId}}</code></dd><dt>Metadata root · revision {{r.request.revision}}</dt><dd><code>{{r.request.metadataRoot}}</code></dd>
             <dt>Edition commitment</dt><dd><code>{{r.editionHash}}</code></dd><dt>Mint authority</dt><dd><code>{{r.mintAuthority.launcherId}}</code></dd></dl>
-          <p>These confirmed parents are held for this edition. Deed launchers and inventory below are predicted outputs, pending mint confirmation.</p>
+          <p>These confirmed parents are held for this edition. Deed launchers and inventory below are predicted outputs, {{execution()?.inventory?.receipt ? "verified in the confirmed mint below." : "pending mint confirmation."}}</p>
           @for(f of r.funding; track f.coinId){<dl><dt>Confirmed funding coin · block {{f.confirmedHeight | number}}</dt><dd><code>{{f.coinId}}</code></dd>
             <dt>Predicted deed launcher</dt><dd><code>{{f.launcherId}}</code></dd><dt>Predicted inventory coin</dt><dd><code>{{f.inventoryCoinId}}</code></dd></dl>}
         </details>
       </div>
-      <solslot-generation-consents [mintSource]="r" [showGeneralActions]="false" [snapshot]="status()?.snapshot ?? null"
+      <details [open]="step()<4"><summary>{{step()>=4 ? "Completed approvals and voting" : "Administrator approval and holder voting"}}</summary>
+      @if(step()<4){<solslot-generation-consents [mintSource]="r" [showGeneralActions]="false" [snapshot]="status()?.snapshot ?? null"
         [isCurrent]="isCurrent() && reviewMatchesSource()" [available]="!!operations()?.available && reviewMatchesSource()" [maximumFee]="operations()?.maximumFeeMojos ?? '0'"
         (sponsorReview)="sponsorship.set($event)" />
       @if(sponsorship(); as s){<solslot-generation-ballots [consent]="s" [snapshot]="status()?.snapshot ?? null"
@@ -54,7 +55,9 @@ import { MintExecutionRequest } from '../../services/generation-governance.servi
         (prepared)="preparedVote.set($event)" />}
       @if(preparedVote(); as v){<div class="next" role="status"><strong>{{v.stage==='CONFIRMED'?'Confirmed':'Saved'}} {{v.kind==='OPEN_PROPOSAL'?'proposal opening':'holder vote'}}.</strong>
         <p>Follow this exact saved transaction in the committee desk. A confirmed opening starts the voting clock.</p>
-        <code>{{v.operationId}}</code><a routerLink="/admin/committee">Open committee desk →</a></div>}
+        <code>{{v.operationId}}</code><a routerLink="/committee">Open committee desk →</a></div>}
+      }@else{<p>Administrator consent and the holder vote are complete. Their saved evidence remains in the committee history.</p><a routerLink="/committee">View recorded vote →</a>}
+      </details>
       <section class="mint-execution" aria-labelledby="batch-execution-title">
         <h4 id="batch-execution-title">Mint and confirm this entire batch</h4>
         @if(executionBusy()){<p class="wait" role="status"><span class="spinner" aria-hidden="true"></span>{{executionBusy()==='PREPARING'?'Checking the passed vote and saving the exact mint…':'Submitting the saved mint. Confirmation updates automatically…'}}</p>}
@@ -62,7 +65,7 @@ import { MintExecutionRequest } from '../../services/generation-governance.servi
           <div class="next" role="status"><strong>✓ {{receipt.deedCount}} test SmartDeeds minted and verified</strong>
             <p>Confirmed in block {{receipt.confirmedHeight | number}}. Every unique inventory output matches this sealed edition.</p>
             <p>This is initial mint evidence. Customer delivery and subsequent holdings are separate.</p>
-            <a routerLink="/admin/committee">Review and return closed voting stakes →</a>
+            @if(status()?.snapshot?.closedStakeCount){<a routerLink="/committee">Return closed voting stakes →</a>}@else{<p>Voting stakes have been returned.</p>}
             <details><summary>Confirmed inventory ({{receipt.deedCount}})</summary>@for(row of receipt.inventory; track row.coinId){
               <dl><dt>SmartDeed launcher</dt><dd><code>{{row.launcherId}}</code></dd><dt>Initial inventory coin</dt><dd><code>{{row.coinId}}</code></dd></dl>}</details>
           </div>
