@@ -38,9 +38,16 @@ describe('One sealed test batch in the native collection editor',()=>{
   it('prepares one batch and renders allocation, predicted outputs and separate next steps',async()=>{
     const f=component();await f.componentInstance.prepare();f.detectChanges();
     const text=f.nativeElement.textContent;expect(text).toContain('25 unique SmartDeeds');expect(text).toContain('$75,000');
-    expect(text).toContain('No wallet prompt or transaction');expect(text).toContain('predicted outputs');
+    expect(text).toContain('Preparation sends no transaction');expect(text).toContain('predicted outputs');
     expect(api.prepare.calls.count()).toBe(1);expect(f.componentInstance.review()?.publicationReady).toBeFalse();
     expect(text).toContain('Prepare exact test mint publication');expect(text).toContain('Mint execution is disabled');f.destroy();
+  });
+  it('keeps completed approvals in history and gives no new publication instruction after confirmation',async()=>{
+    const f=component(),c=f.componentInstance;await c.prepare();
+    c.execution.set({operation:{stage:'CONFIRMED'},inventory:{receipt:{deedCount:25,inventory:[]}}} as any);f.detectChanges();
+    const text=f.nativeElement.textContent;expect(text).toContain('Mint confirmed. Inventory verified.');expect(text).toContain('Voting stakes have been returned.');
+    expect(text).not.toContain('Administrator approval is next');expect(text).not.toContain('Prepare exact test mint publication');
+    expect(f.nativeElement.querySelector('details summary')?.textContent).toContain('Sealed source');f.destroy();
   });
   it('blocks duplicate clicks while preparing and never requests a signature',async()=>{
     const f=component();let resolve!:(v:any)=>void;

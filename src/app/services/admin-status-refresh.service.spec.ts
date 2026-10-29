@@ -97,4 +97,14 @@ describe('Read-only administrator refresh', () => {
     tick(120_000);
     expect(read).toHaveBeenCalledTimes(1);
   }));
+  it('releases a suspended composite read instead of remaining on Updating forever', fakeAsync(() => {
+    const read=jasmine.createSpy('suspended status GET').and.returnValue(new Promise<void>(()=>{}));
+    refresh.start(read);tick(45_000);flushMicrotasks();
+    expect(refresh.refreshing()).toBeFalse();
+    expect(refresh.error()).toContain('retrying automatically');
+    read.and.resolveTo();
+    page.dispatchEvent(new Event('visibilitychange'));flushMicrotasks();
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(refresh.error()).toBeNull();cleanup();
+  }));
 });

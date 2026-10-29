@@ -64,8 +64,13 @@ export class AdminStatusRefresh {
     if (this.timer) clearTimeout(this.timer);
     if (this.pausedReason()) { this.schedule(5000); return; }
     this.refreshing.set(true);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      await this.read();
+      // Individual GETs have transport deadlines too. Bound the entire composite
+      // refresh so a suspended tab cannot retain the UI's pending lock forever.
+      await Promise.race([this.read(), new Promise<never>((_, reject) => {
+        deadline = setTimeout(() => reject(new Error('Status refresh timed out')), 45_000);
+      })]);
       if (this.disposed) return;
       this.lastUpdated.set(Date.now());
       this.error.set(null);
@@ -76,6 +81,7 @@ export class AdminStatusRefresh {
         this.error.set('Could not update. Previous results are still shown; retrying automatically.');
       }
     } finally {
+      if (deadline) clearTimeout(deadline);
       this.refreshing.set(false);
       this.schedule(Math.min(60_000, (this.active() ? 5_000 : 30_000) * 2 ** this.failures));
     }
