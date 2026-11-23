@@ -117,6 +117,8 @@ describe('EvmWalletService', () => {
   it('retries WalletConnect relay failures after clearing stale session state', async () => {
     localStorage.setItem('wc@2:client:0.3//pairing', 'stale');
     localStorage.setItem('@walletconnect/core:topic', 'stale');
+    localStorage.setItem('wc@2:core:0.3:solslot-admin-v2//pairing', 'old-admin-pairing');
+    localStorage.setItem('wc@2:core:0.3:solslot-customer//pairing', 'customer');
     localStorage.setItem('unrelated', 'keep');
     sessionStorage.setItem('walletconnect', 'stale');
     const first = fakeProvider();
@@ -151,9 +153,11 @@ describe('EvmWalletService', () => {
     expect(first.disconnect).toHaveBeenCalled();
     expect(connected.toLowerCase()).toBe(walletAddress.toLowerCase());
     expect(service.isConnected()).toBeTrue();
-    expect(localStorage.getItem('wc@2:client:0.3//pairing')).toBeNull();
-    expect(localStorage.getItem('@walletconnect/core:topic')).toBeNull();
-    expect(sessionStorage.getItem('walletconnect')).toBeNull();
+    expect(localStorage.getItem('wc@2:client:0.3//pairing')).toBe('stale');
+    expect(localStorage.getItem('wc@2:core:0.3:solslot-admin-v2//pairing')).toBeNull();
+    expect(localStorage.getItem('wc@2:core:0.3:solslot-customer//pairing')).toBe('customer');
+    expect(localStorage.getItem('@walletconnect/core:topic')).toBe('stale');
+    expect(sessionStorage.getItem('walletconnect')).toBe('stale');
     expect(localStorage.getItem('unrelated')).toBe('keep');
   });
 
