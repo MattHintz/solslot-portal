@@ -1,12 +1,14 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   inject,
   signal,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { BrowserWallet, watchBrowserWallets } from '../../../services/browser-wallets';
 import { EvmWalletService } from '../../../services/evm-wallet.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { JourneyTelemetryService } from '../../../services/journey-telemetry.service';
@@ -96,25 +98,20 @@ import { formatError } from '../../../utils/format-error';
 
           @if (!walletAddress()) {
             <div class="connection-options">
-              <button
-                class="connect-option"
-                type="button"
-                data-ux-action="connect_wallet" (click)="connectInjected()"
-                [disabled]="busy()"
-              >
-                <span aria-hidden="true">01</span>
-                <span>
-                  <strong>Browser wallet</strong>
-                  <small>MetaMask, Rabby, Coinbase Wallet, or another installed wallet</small>
-                </span>
-              </button>
+              @for (wallet of browserWallets(); track wallet.provider) {
+                <button class="connect-option" type="button" data-ux-action="connect_wallet"
+                        (click)="connectInjected(wallet)" [disabled]="busy()">
+                  <strong>{{ wallet.label }}</strong>
+                </button>
+              } @empty {
+                <p class="wallet-hint">No browser wallets detected.</p>
+              }
               <button
                 class="connect-option"
                 type="button"
                 data-ux-action="connect_wallet" (click)="connectWalletConnect()"
                 [disabled]="busy()"
               >
-                <span aria-hidden="true">02</span>
                 <span>
                   <strong>Mobile or hardware wallet</strong>
                   <small>WalletConnect, including compatible Tangem and hardware wallets</small>
@@ -143,14 +140,15 @@ import { formatError } from '../../../utils/format-error';
             <div class="status" role="status">{{ status() }}</div>
           }
 
+          @if (browserAttempt) {
+            <button class="quiet-action cancel-request" type="button" (click)="cancelBrowserRequest()">Choose another wallet</button>
+          }
+
           @if (error()) {
             <div class="error" role="alert">
-              <strong>We could not sign you in</strong>
+              <strong>{{ walletAddress() ? 'Sign-in failed' : 'Wallet connection failed' }}</strong>
               <span>{{ error() }}</span>
-              <small>
-                Confirm that the connected wallet is one of the enrolled administrator wallets,
-                then try again.
-              </small>
+
             </div>
           }
         </section>
@@ -178,9 +176,10 @@ import { formatError } from '../../../utils/format-error';
       .sign-in-card header strong { overflow:hidden; color:#f4fff9; font-size:18px; text-overflow:ellipsis; }
       .quiet-action { border:0; background:none; color:#75d8aa; font-size:11px; cursor:pointer; }
       .connection-options { display:grid; gap:1px; background:#21483d; }
-      .connect-option { display:grid; grid-template-columns:34px minmax(0,1fr); gap:12px; align-items:start; padding:18px 20px; border:0; background:#091713; color:inherit; text-align:left; cursor:pointer; }
+      .connect-option { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; align-items:start; padding:18px 20px; border:0; background:#091713; color:inherit; text-align:left; cursor:pointer; }
       .connect-option:hover { background:#0d251e; }
-      .connect-option > span:first-child { display:grid; width:30px; height:30px; place-items:center; border:1px solid #3c7361; color:#67e7ad; font:10px var(--font-mono); }
+      .wallet-hint { margin:0; padding:16px 20px; background:#091713; }
+      .cancel-request { margin:0 20px 16px; padding:8px 0; text-decoration:underline; }
       .connect-option > span:last-child { display:grid; gap:4px; }
       .connect-option strong { font-size:14px; }
       .connect-option small { color:#91ada1; font-size:11px; line-height:1.5; }
@@ -208,6 +207,8 @@ export class AdminLoginComponent {
   private readonly router = inject(Router);
   private readonly activatedRoute = inject(ActivatedRoute);
 
+  readonly browserWallets = signal<BrowserWallet[]>([]);
+  browserAttempt?: AbortController;
   readonly busy = signal(false);
   readonly status = signal<string>('');
   readonly error = signal<string | null>(null);
@@ -215,6 +216,11 @@ export class AdminLoginComponent {
   readonly walletAddress = computed(() => this.evm.address());
 
   constructor() {
+    const stopDiscovery = watchBrowserWallets(wallets => this.browserWallets.set(wallets));
+    inject(DestroyRef).onDestroy(() => {
+      stopDiscovery();
+      this.browserAttempt?.abort();
+    });
     // If the user reloads /admin/login while already authenticated, send
     // them straight to the dashboard.  Avoids the awkward "you're already
     // signed in but the page still shows the connect screen" state.
@@ -223,19 +229,36 @@ export class AdminLoginComponent {
     }
   }
 
-  async connectInjected(): Promise<void> {
+  async connectInjected(wallet: BrowserWallet): Promise<void> {
+    if (this.busy()) return;
+    const attempt = new AbortController();
+    this.browserAttempt = attempt;
     this.error.set(null);
+    this.status.set(`Waiting for ${wallet.label} to connect…`);
     this.busy.set(true);
     try {
-      this.status.set('Requesting wallet permission…');
-      await this.evm.connectInjected();
-      this.status.set('');
-    } catch (e) {
-      this.journey.noteAssetFailure(e);
-      this.error.set(formatError(e));
+      await this.evm.connectInjected(wallet.provider, attempt.signal);
+    } catch (error) {
+      if (attempt.signal.aborted) return;
+      const code = (error as {code?: number} | null)?.code;
+      if (code === 4900) this.error.set(`${wallet.label} disconnected. Unlock it and select it again.`);
+      else if (code === -32002) this.error.set(`Open ${wallet.label} to finish its pending connection request.`);
+      else if (code === 4001) this.error.set(`Connection to ${wallet.label} was declined.`);
+      else this.error.set(formatError(error));
     } finally {
-      this.busy.set(false);
+      if (this.browserAttempt === attempt) {
+        this.browserAttempt = undefined;
+        this.status.set('');
+        this.busy.set(false);
+      }
     }
+  }
+
+  cancelBrowserRequest(): void {
+    this.browserAttempt?.abort();
+    this.browserAttempt = undefined;
+    this.status.set('');
+    this.busy.set(false);
   }
 
   async connectWalletConnect(): Promise<void> {
@@ -251,6 +274,7 @@ export class AdminLoginComponent {
     } catch (e) {
       this.journey.noteAssetFailure(e);
       this.error.set(formatError(e));
+      this.status.set('');
     } finally {
       this.busy.set(false);
     }

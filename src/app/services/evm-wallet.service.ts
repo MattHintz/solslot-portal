@@ -1,3 +1,4 @@
+import { InjectedEthereum } from './browser-wallets';
 import {FinalLaunchStatus} from './generation-final-launch.service';
 import {validateFinalLaunchSignature} from '../utils/generation-final-launch-review';
 import { deploymentGeneration } from '../utils/deployment-generation';
@@ -97,6 +98,7 @@ export class EvmWalletService {
   });
 
   private eip1193: Eip1193Provider | null = null;
+  private unbindInjected?: () => void;
   private wcProvider: EthereumProvider | null = null;
   private wcInitPromise: Promise<EthereumProvider> | null = null;
   private wcOptionalChainsMode: EvmWalletConnectOptionalChainsMode | null = null;
@@ -111,8 +113,9 @@ export class EvmWalletService {
    * Connect via injected provider (window.ethereum).  Triggers the wallet's
    * permission modal.  Throws on rejection.
    */
-  async connectInjected(): Promise<string> {
-    const eth = (window as WindowWithEth).ethereum;
+  async connectInjected(selected?: InjectedEthereum, signal?: AbortSignal): Promise<string> {
+    const eth = selected ?? (window as WindowWithEth).ethereum;
+    signal?.throwIfAborted();
     if (!eth) throw new Error('No injected EVM wallet detected (MetaMask, Coinbase, etc.)');
 
     const accounts = (await withWalletPromptTimeout(
@@ -120,9 +123,11 @@ export class EvmWalletService {
         method: 'eth_requestAccounts',
       }) as Promise<unknown>,
       WALLET_CONNECT_PROMPT_TIMEOUT_MS,
-      'Browser EVM wallet did not respond. Close any stale wallet popup, then retry or use WalletConnect.',
+      'Browser EVM wallet did not respond. Choose the wallet again or use WalletConnect.',
+      signal,
     )) as string[];
-    if (!accounts || accounts.length === 0) {
+    signal?.throwIfAborted();
+    if (!Array.isArray(accounts) || accounts.length === 0) {
       throw new Error('Wallet returned no accounts');
     }
     const address = getAddress(accounts[0]);
@@ -194,6 +199,7 @@ export class EvmWalletService {
       throw new Error('WalletConnect returned no accounts');
     }
     const address = getAddress(accounts[0]);
+    this.unbindInjected?.();
     this.eip1193 = provider as unknown as Eip1193Provider;
     this._state.set({ kind: 'connected', address, connection: 'walletconnect' });
     return address;
@@ -230,8 +236,9 @@ export class EvmWalletService {
       },
     }).then((p) => {
       this.wcProvider = p;
-      p.on('disconnect', () => this.handleDisconnect());
+      p.on('disconnect', () => { if (this.eip1193 === p) this.handleDisconnect(); });
       p.on('accountsChanged', (...args: unknown[]) => {
+        if (this.eip1193 !== p) return;
         const accounts = (args[0] as string[]) ?? [];
         this.debugWalletConnect('event:accountsChanged', {
           accounts: accounts.map(redactAddress),
@@ -259,7 +266,9 @@ export class EvmWalletService {
   }
 
   private bindInjectedEvents(eth: InjectedEthereum): void {
-    eth.on?.('accountsChanged', (...args: unknown[]) => {
+    this.unbindInjected?.();
+    const onAccounts = (...args: unknown[]) => {
+      if (this.eip1193 !== eth) return;
       const accounts = (args[0] as string[]) ?? [];
       if (accounts.length === 0) {
         this.handleDisconnect();
@@ -270,11 +279,19 @@ export class EvmWalletService {
           connection: 'injected',
         });
       }
-    });
-    eth.on?.('disconnect', () => this.handleDisconnect());
+    };
+    const onDisconnect = () => { if (this.eip1193 === eth) this.handleDisconnect(); };
+    eth.on?.('accountsChanged', onAccounts);
+    eth.on?.('disconnect', onDisconnect);
+    this.unbindInjected = () => {
+      eth.removeListener?.('accountsChanged', onAccounts);
+      eth.removeListener?.('disconnect', onDisconnect);
+      this.unbindInjected = undefined;
+    };
   }
 
   private handleDisconnect(): void {
+    this.unbindInjected?.();
     this._state.set({ kind: 'disconnected' });
     this.eip1193 = null;
   }
@@ -1151,12 +1168,6 @@ export type EvmState =
   | { kind: 'disconnected' }
   | { kind: 'connected'; address: string; connection: 'injected' | 'walletconnect' };
 
-interface InjectedEthereum {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-  on?: (event: string, listener: (...args: unknown[]) => void) => void;
-  removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
-}
-
 interface WindowWithEth extends Window {
   ethereum?: InjectedEthereum;
 }
@@ -1521,24 +1532,30 @@ function withWalletPromptTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   message: string,
+  signal?: AbortSignal,
 ): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
   });
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timeoutId !== null) clearTimeout(timeoutId);
+  let onAbort: (() => void) | undefined;
+  const waits: Promise<T>[] = [promise, timeout];
+  if (signal) {
+    waits.push(new Promise<never>((_, reject) => {
+      onAbort = () => reject(signal.reason);
+      signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    }));
+  }
+  return Promise.race(waits).finally(() => {
+    clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
   });
 }
 
 function isWalletConnectStorageKey(key: string): boolean {
-  const lower = key.toLowerCase();
-  return (
-    lower.startsWith('wc@2:') ||
-    lower.startsWith('walletconnect') ||
-    lower.includes('@walletconnect') ||
-    lower.includes(EVM_WALLETCONNECT_STORAGE_PREFIX)
-  );
+  // WalletConnect shares this origin with the customer checkout.
+  return key.startsWith('wc@2:') && key.includes(`:${EVM_WALLETCONNECT_STORAGE_PREFIX}//`);
 }
 
 function normalizeChainIdHex(value: unknown): string | null {
