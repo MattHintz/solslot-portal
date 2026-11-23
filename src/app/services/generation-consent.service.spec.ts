@@ -8,6 +8,7 @@ import { AdminSessionService } from './admin-session.service';
 import { EvmWalletService } from './evm-wallet.service';
 import { GenerationGovernanceService } from './generation-governance.service';
 import vector from '../utils/generation-consent.fixture.json';
+import statutesVector from '../utils/generation-statutes-consent.fixture.json';
 import mintVector from '../utils/generation-mint-consent.fixture.json';
 
 describe('Explicit generation approval signatures',()=>{
@@ -40,6 +41,17 @@ describe('Explicit generation approval signatures',()=>{
     expect(call.request.headers.get('Authorization')).toBe('Bearer synthetic-jwt');call.flush(r);
     expect((await pending).packageId).toBe(r.packageId);expect(wallet.signAuthorityV3ChiaAction).not.toHaveBeenCalled();
     expect(wallet.connectInjected).not.toHaveBeenCalled();
+  });
+  it('saves the exact reviewed collection through its restricted route without prompting a wallet',async()=>{
+    const r=structuredClone(statutesVector.review) as unknown as GenerationConsentReview;
+    runtime.generationId=r.generationId;runtime.adminAuthorityV3LauncherId=r.authorityLauncherId;
+    runtime.adminAuthorityV3IdentityLauncherIds=[...r.identityLauncherIds];
+    const pending=service.prepare(structuredClone(r.request),true);
+    const call=http.expectOne(environment.faucetApi+'/admin/generation/consents/collection-valuation/prepare');
+    expect(call.request.headers.get('Authorization')).toBe('Bearer synthetic-jwt');
+    call.flush(r);
+    expect((await pending).packageId).toBe(r.packageId);
+    expect(wallet.signAuthorityV3ChiaAction).not.toHaveBeenCalled();
   });
   it('rejects a different prepared request without asking the wallet',async()=>{
     const req=structuredClone(vector.request) as unknown as GenerationConsentRequest;req.feeCapMojos++;

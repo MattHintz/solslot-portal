@@ -311,7 +311,7 @@ export class GenerationGovernanceService {
   }
   async operations():Promise<GenerationOperations> {
     return validateGenerationOperations(await firstValueFrom(this.http.get<GenerationOperations>(
-      `${environment.faucetApi}/admin/generation/operations`,{headers:new HttpHeaders({Authorization:`Bearer ${this.session.requireJwt()}`})})
+      `${environment.faucetApi}/admin/generation/operations`,{headers:this.headers(),params:{view:'committee'}})
       .pipe(timeout(20_000))));
   }
   private headers():HttpHeaders {return new HttpHeaders({Authorization:`Bearer ${this.session.requireJwt()}`});}

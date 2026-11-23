@@ -1,0 +1,35 @@
+{
+  "generationId": "0x2219d1e2dba64ceb4df84e70ce14b6b2d8d94b0e99350664dd3371c2f3234d57",
+  "requestKey": "AE-SOLSLOT-EASTMORELAND-SWAP-NAV-20261122-R1",
+  "kind": "PUBLICATION_APPROVAL",
+  "coadministratorSlot": 1,
+  "expectedInputs": {
+    "registry": "0x75606954b5776526a5a7f5309c8a0618f59dbd6de68f5e5510549bb6d403b187",
+    "governance": "0x4ce09d8d4b1a89558e56cfa76afe9edb432cbf45c178571b79e0eaad28067616",
+    "holdings": "0xdbee7c6dbca7dd746d6f633d569e671c44647a15250cd77f84b435877e7726ee",
+    "components": {
+      "0x8bcb1ebba42914fcef085b970966e20246cdec58070ee88a1ff958d436a64c3e": "0x9be5616ec53bf2c716354562ff8edb7aea9ea741887d2c2138c68836694376ec"
+    }
+  },
+  "feeCapMojos": 1000000000,
+  "proposalKind": "STATUTES",
+  "statutes": {
+    "componentId": "0x8bcb1ebba42914fcef085b970966e20246cdec58070ee88a1ff958d436a64c3e",
+    "launcherId": "0xa9acd4f9b8f435ee61986fa0d045f4de681a3be58af5e231afd311f1509ec152",
+    "revision": 0,
+    "recordKind": "COLLECTION",
+    "key": "0x2186273445db018251c1d046f09f48f9a1d978aa373bac4bea126ebe5fd98653",
+    "record": [
+      "0x2186273445db018251c1d046f09f48f9a1d978aa373bac4bea126ebe5fd98653",
+      75000000000,
+      75000000000,
+      1,
+      1795413600,
+      1795500000,
+      1
+    ],
+    "previousRoot": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+    "nextRoot": "0xb0a873bb139a927e9c3a94404f0c8cb27c28e33bf1989fb2fe0ce0f3f7d5b366",
+    "currentRecords": []
+  }
+}

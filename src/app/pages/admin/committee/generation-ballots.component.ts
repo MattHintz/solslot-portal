@@ -93,7 +93,8 @@ export class GenerationBallotsComponent implements OnInit {
         if(saved && !this.busy()){this.remember(saved);this.savePending(null);}
       }else throw results[0].reason;
       if(results[1].status==='fulfilled')this.catalog.set(results[1].value);else throw results[1].reason;
-    },()=>!this.available() || !this.session.pubkey() || !this.session.jwt()?'Sign in to load your saved reviews.':this.busy()?'Finishing your explicit holder action. Saved receipts will refresh afterward.':null,
+    },()=>!this.session.pubkey() || !this.session.jwt()?'Sign in to load your saved reviews.':
+      !this.available()?'Waiting for committee history to refresh.':this.busy()?'Finishing your explicit holder action. Saved receipts will refresh afterward.':null,
       ()=>!!this.snapshot()?.proposal || this.reviews().some(r=>r.stage==='AWAITING_HOLDER_SIGNATURES' && !this.expired(r)));
     this.refreshStarted.set(true);
   }

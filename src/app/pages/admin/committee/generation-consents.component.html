@@ -54,6 +54,13 @@
         <dt>Maximum network fee</dt><dd>{{r.feeCapMojos}} mojos</dd></dl></details>
     </article>
   }
+  @if(showValuation()){
+    <section class="new-review prepare-kind"><h3>127 Eastmoreland St · Testnet valuation</h3>
+      <p>Collection value {{+valuationRecord[1]/1000000 | currency:'USD':'symbol':'1.0-0'}} · Allocation cap {{+valuationRecord[2]/1000000 | currency:'USD':'symbol':'1.0-0'}}.</p>
+      <p>November 23, 2026 · Chicago time. Saving this review costs zero and makes it available for both administrators to sign.</p>
+      <button type="button" class="primary" [disabled]="!canSaveValuation()" (click)="saveValuation()">Save unsigned valuation review</button>
+    </section>
+  }
   @if(mintSource(); as m){<div class="new-review prepare-kind"><h3>Prepare publication of this test edition</h3>
     <p>{{m.canonicalMetadata.title}} · {{m.funding.length}} SmartDeeds. Both administrators approve the same sealed batch before holders sponsor and vote. Preparing this review does not open a wallet or send a transaction.</p>
     <label>Second administrator<select [value]="coadministrator()" [disabled]="!!busy()" (change)="coadministrator.set(+$any($event.target).value)">

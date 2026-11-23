@@ -5,6 +5,7 @@ import { GenerationConsentsComponent } from './generation-consents.component';
 import { GenerationConsentService,GenerationConsentReview,GenerationConsentSigningError } from '../../../services/generation-consent.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { environment } from '../../../../environments/environment';
+import valuation from '../../../../environments/eastmoreland-testnet-valuation.json';
 import vector from '../../../utils/generation-consent.fixture.json';
 
 describe('Saved administrator consent UX',()=>{
@@ -31,6 +32,39 @@ describe('Saved administrator consent UX',()=>{
     expect(f.nativeElement.textContent).toContain('24 hours');expect(f.nativeElement.textContent).toContain('15,000 required');
     tick(5000);flushMicrotasks();expect(api.list).toHaveBeenCalledTimes(2);
     expect(api.sign).not.toHaveBeenCalled();expect(api.prepare).not.toHaveBeenCalled();expect(api.preparePause).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('offers the authorized valuation only for its generation, live inputs, assigned admin and date',fakeAsync(()=>{
+    const runtime=environment.solslotProtocol as typeof environment.solslotProtocol & {generationId?:string};
+    const priorGeneration=runtime.generationId;
+    const f=create();
+    try{
+      runtime.generationId=valuation.generationId;
+      const clock=spyOn(Date,'now').and.returnValue(Number(valuation.statutes.record[4])*1000);
+      const inputs=valuation.expectedInputs;
+      const state={pauseMask:0,stateProof:{version:1},chainEvidence:{registry:{coinId:inputs.registry},governance:{coinId:inputs.governance},
+        holdings:{coinId:inputs.holdings}},componentEvidence:Object.fromEntries(
+          Object.entries(inputs.components).map(([id,coinId])=>[id,{coinId}]))};
+      f.componentRef.setInput('snapshot',state);flushMicrotasks();f.detectChanges();
+      const button=Array.from<HTMLButtonElement>(f.nativeElement.querySelectorAll('button')).find(
+        b=>b.textContent?.includes('Save unsigned valuation review'))!;
+      expect(button.disabled).toBeFalse();
+      expect(f.nativeElement.textContent).toContain('$75,000');
+      session.authoritySlot=()=>2;expect(f.componentInstance.canSaveValuation()).toBeFalse();
+      session.authoritySlot=()=>0;
+      f.componentRef.setInput('snapshot',{...state,componentEvidence:{}});f.detectChanges();
+      expect(button.disabled).toBeTrue();
+      f.componentRef.setInput('snapshot',state);f.detectChanges();
+      api.prepare.and.returnValue(new Promise(()=>{}));
+      button.click();button.click();flushMicrotasks();
+      expect(api.prepare).toHaveBeenCalledOnceWith(jasmine.objectContaining({requestKey:valuation.requestKey}),true);
+      expect(api.sign).not.toHaveBeenCalled();
+      clock.and.returnValue(Number(valuation.statutes.record[5])*1000);
+      expect(f.componentInstance.showValuation()).toBeFalse();
+    }finally{
+      sessionStorage.removeItem('solslot_generation_consent_prepare:'+valuation.generationId+':committee');
+      if(priorGeneration===undefined)delete runtime.generationId;else runtime.generationId=priorGeneration;
+      f.destroy();
+    }
   }));
   it('announces the wallet prompt, blocks duplicate clicks and pauses reads during signing',fakeAsync(()=>{
     let complete!:(r:GenerationConsentReview)=>void;
