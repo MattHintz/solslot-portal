@@ -24,6 +24,15 @@ describe('Exact generation operation preparation response',()=>{
     service=TestBed.inject(GenerationGovernanceService);http=TestBed.inject(HttpTestingController);
   });
   afterEach(()=>{http.verify();if(previous===undefined)delete runtime.generationId;else runtime.generationId=previous;});
+  it('requests committee history using the administrator session',async()=>{
+    const pending=service.operations();
+    const call=http.expectOne(environment.faucetApi+'/admin/generation/operations?view=committee');
+    expect(call.request.method).toBe('GET');
+    expect(call.request.headers.get('Authorization')).toBe('Bearer synthetic-jwt');
+    call.flush({generationId:runtime.generationId,network:'testnet11',available:true,
+      executionEnabled:false,maximumFeeMojos:'0',pollAfterSeconds:30,operations:[]});
+    expect((await pending).operations).toEqual([]);
+  });
   it('accepts only the selected exact native intent without a wallet request',async()=>{
     const r=request(),pending=service.prepare(r);
     http.expectOne(environment.faucetApi+'/admin/generation/operations/prepare').flush(receipt(r));

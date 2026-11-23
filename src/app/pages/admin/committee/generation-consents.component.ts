@@ -8,6 +8,7 @@ import { AdminRefreshStatusComponent } from '../../../components/admin-workspace
 import { REHEARSAL_SUCCESSOR } from '../../../utils/generation-consent-review';
 import { GenerationMintReview,validateMintReview } from '../../../utils/generation-mint-review';
 import { GenerationAssetIntentComponent } from '../../../components/admin-workspace/generation-asset-intent.component';
+import valuation from '../../../../environments/eastmoreland-testnet-valuation.json';
 import { deploymentGeneration } from '../../../utils/deployment-generation';
 import { governedBillLabel,RedemptionIntent,redemptionReviewBill } from '../../../utils/generation-governed-bill';
 import { GenerationRedemptionFormComponent } from '../../../components/admin-workspace/generation-redemption-form.component';
@@ -42,6 +43,27 @@ export class GenerationConsentsComponent implements OnInit {
   readonly canPrepare=computed(()=>this.isCurrent() && this.available() && !this.busy());
   readonly canFundRedemption=computed(()=>this.canPrepare() && !!this.snapshot() && !this.snapshot()?.proposal &&
     !((this.snapshot()?.pauseMask??0)&9) && !(this.request() && !this.selected()));
+  readonly valuationRecord=valuation.statutes.record;
+  showValuation():boolean {
+    const now=Date.now()/1000;
+    return this.showGeneralActions() && deploymentGeneration()===valuation.generationId &&
+      Number(this.valuationRecord[4])<=now && now<Number(this.valuationRecord[5]) &&
+      !this.reviews().some(r=>r.requestKey===valuation.requestKey);
+  }
+  canSaveValuation():boolean {
+    const s=this.snapshot();
+    return this.showValuation() && this.canPrepare() && !!s && !s.proposal && !(s.pauseMask&1) &&
+      !!this.session.jwt() && [0,valuation.coadministratorSlot].includes(this.session.authoritySlot()??-1) &&
+      !(this.request() && !this.selected()) &&
+      (['registry','governance','holdings'] as const).every(k=>s.chainEvidence[k]?.coinId===valuation.expectedInputs[k]) &&
+      Object.entries(valuation.expectedInputs.components).every(([id,coin])=>s.componentEvidence[id]?.coinId===coin);
+  }
+  async saveValuation():Promise<void> {
+    if(!this.canSaveValuation())return;
+    this.selected.set(null);
+    this.saveRequest(structuredClone(valuation) as GenerationConsentRequest);
+    await this.prepareSameReview();
+  }
   readonly canUpgrade=computed(()=>this.canPrepare() && !this.snapshot()?.proposal && !this.snapshot()?.pendingUpgrade &&
     this.snapshot()?.stateProof.version===1 && !(this.snapshot()!.pauseMask&1) && /^0x[0-9a-f]{64}$/.test(this.sourceManifest()) && !/^0x0+$/.test(this.sourceManifest()));
   readonly canReopen=computed(()=>!!this.snapshot() && this.canPrepare() && !this.snapshot()?.proposal && !!this.reopenScope() &&
@@ -106,7 +128,8 @@ export class GenerationConsentsComponent implements OnInit {
       const selected=this.selected();if(selected){const found=merged.find(r=>r.packageId===selected.packageId);if(found)this.selected.set(this.merge(selected,found));}
       const pending=this.request(),saved=pending && merged.find(r=>r.requestKey===pending.requestKey);
       if(saved && !this.busy())this.remember(saved);
-    },()=>!this.available() || !this.session.pubkey() || !this.session.jwt()?'Sign in to load your saved reviews.':this.busy()?'Finishing your explicit wallet action. Saved approvals will refresh afterward.':null,
+    },()=>!this.session.pubkey() || !this.session.jwt()?'Sign in to load your saved reviews.':
+      !this.available()?'Waiting for committee history to refresh.':this.busy()?'Finishing your explicit wallet action. Saved approvals will refresh afterward.':null,
       ()=>this.reviews().some(r=>r.stage==='AWAITING_APPROVALS' && !this.expired(r)));
     this.refreshStarted.set(true);
   }
@@ -174,7 +197,11 @@ export class GenerationConsentsComponent implements OnInit {
   async prepareSameReview():Promise<void> {
     const req=this.request();if(!req || this.busy())return;
     this.busy.set('PREPARING');this.error.set(null);
-    try{this.remember(await this.api.prepare(structuredClone(req)));}
+    try{
+      const request=structuredClone(req);
+      const saved=req.requestKey===valuation.requestKey ? await this.api.prepare(request,true) : await this.api.prepare(request);
+      this.remember(saved);
+    }
     catch{this.error.set('We couldn’t finish preparing the review. Retry this same action to recover it. If the inputs changed, refresh the chain and prepare a new review.');}
     finally{this.busy.set(null);await this.refresh.refresh();}
   }

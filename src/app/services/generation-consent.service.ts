@@ -73,7 +73,7 @@ export class GenerationConsentService {
       throw new Error('Approval history belongs to another generation.');
     return value.reviews.map(validateGenerationConsent);
   }
-  async prepare(request:GenerationConsentRequest):Promise<GenerationConsentReview> {
+  async prepare(request:GenerationConsentRequest,reviewedCollection=false):Promise<GenerationConsentReview> {
     request=snapshotGenerationReview(request);
     const expected={generationId:request.generationId,requestKey:request.requestKey,kind:request.kind,
       coadministratorSlot:request.coadministratorSlot,expectedInputs:{...request.expectedInputs,components:request.expectedInputs.components??{}},
@@ -82,7 +82,8 @@ export class GenerationConsentService {
       ...(request.statutes ? {statutes:request.statutes} : {}),
       ...(request.redemption ? {redemption:request.redemption} : {}),
       ...(request.mintReviewId ? {mintReviewId:request.mintReviewId} : {})};
-    const review=validateGenerationConsent(await firstValueFrom(this.http.post<GenerationConsentReview>(this.base+'/prepare',request,
+    const path=reviewedCollection?'/collection-valuation/prepare':'/prepare';
+    const review=validateGenerationConsent(await firstValueFrom(this.http.post<GenerationConsentReview>(this.base+path,request,
       {headers:this.headers()}).pipe(timeout(65_000))));
     if(review.requestKey!==request.requestKey || review.kind!==request.kind || review.coadministratorSlot!==request.coadministratorSlot ||
       review.requestDigest!==sha256(toUtf8Bytes(canonicalConsent(expected))) ||
