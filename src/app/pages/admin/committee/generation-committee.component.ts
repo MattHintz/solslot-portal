@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { GenerationGovernanceService, GenerationGovernanceStatus,GenerationOperations,GenerationOperationStatus,
-  MaintenanceKind,MaintenanceRequest,GovernedAction,RewardEpochIntent,RewardClaimIntent,RewardProgressIntent,mergeGenerationReceipt } from '../../../services/generation-governance.service';
+  MaintenanceKind,MaintenanceRequest,GovernedAction,RewardEpochIntent,RewardClaimIntent,RewardProgressIntent,mergeGenerationReceipt,sponsoredKinds } from '../../../services/generation-governance.service';
 import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
@@ -153,10 +153,27 @@ export class GenerationCommitteeComponent implements OnInit {
     if(this.pendingAction() || !this.snapshot()?.closedStakes.some(c=>c.coinId===coinId))return;
     this.selectedStakes.update(ids=>selected?[...new Set([...ids,coinId])]:ids.filter(id=>id!==coinId));
   }
+  maintenanceGrant(kind:MaintenanceKind,intent?:GovernedAction){
+    const s=this.snapshot(),g=this.currentFunding()?.maintenanceSponsorship?.find(row=>row.kind===kind);
+    if(!s || !g || g.expiresAt*1000<=this.refresh.now() || g.governanceCoinId!==s.chainEvidence['governance']?.coinId)return null;
+    if(g.kind==='FINALIZE_VOTE')return s.proposal?.proposalId===g.proposalId && !!s.proposal.openedAt && this.votingClosed()?g:null;
+    if(g.kind==='APPLY_STATUTES')return intent?.kind==='STATUTES' && !!intent.statutes && intent.proposalId===g.proposalId &&
+      intent.billHash===g.billHash && statuteReviewBill(intent.statutes).hash===g.billHash &&
+      s.approvedActions.some(a=>a.kind==='STATUTES' && a.proposalId===g.proposalId && a.billHash===g.billHash)?g:null;
+    const selected=[...this.selectedStakes()].sort();
+    return selected.length===g.stakeCoinIds.length && g.stakeCoinIds.every((id,i)=>selected[i]===id &&
+      s.closedStakes.some(c=>c.coinId===id && c.proposalId===g.proposalId))?g:null;
+  }
+  actionFeeAvailable(kind:MaintenanceKind,intent?:GovernedAction):boolean {
+    return !!this.operations()?.executionEnabled || Number(this.operations()?.maximumFeeMojos)>0 ||
+      !!(kind==='ANCHOR_VOTE'?this.anchorSponsorship():this.maintenanceGrant(kind,intent));
+  }
   async reviewAction(kind:MaintenanceKind,intent?:GovernedAction):Promise<void> {
     if(this.pendingAction() || !this.isCurrent() || this.operationsError() || !this.operations()?.available)return;
     const s=this.snapshot()!;
-    const maximumFee=(kind==='ANCHOR_VOTE'?this.anchorSponsorship()?.maximumFeeMojos:undefined)??this.operations()!.maximumFeeMojos;
+    if(sponsoredKinds.includes(kind) && !this.actionFeeAvailable(kind,intent))return;
+    const grant=kind==='ANCHOR_VOTE'?this.anchorSponsorship():this.maintenanceGrant(kind,intent);
+    const maximumFee=grant?.maximumFeeMojos??this.operations()!.maximumFeeMojos;
     const request:MaintenanceRequest={generationId:s.generationId,requestKey:crypto.randomUUID(),kind,
       feeCapMojos:Number(maximumFee),expectedInputs:{registry:s.chainEvidence['registry'].coinId,
         governance:s.chainEvidence['governance'].coinId,holdings:s.chainEvidence['holdings'].coinId}};
@@ -191,7 +208,7 @@ export class GenerationCommitteeComponent implements OnInit {
     if(kind==='UNLOCK_STAKES'){
       const ids=this.selectedStakes();
       if(!ids.length || ids.length>32 || ids.some(id=>!s.closedStakes.some(c=>c.coinId===id)))return;
-      request.stakes={coinIds:[...ids]};
+      request.stakes={coinIds:grant?[...ids].sort():[...ids]};
     }
     this.reviewRequest.set(structuredClone(request));this.preparedAction.set(null);
     await this.prepareReview();
@@ -215,9 +232,11 @@ export class GenerationCommitteeComponent implements OnInit {
     }
   }
   sponsoredSubmission(op:GenerationOperationStatus){
-    if(op.stage!=='PREPARED' || op.transactionId || !['OPEN_PROPOSAL','ANCHOR_VOTE'].includes(op.kind))return null;
+    if(op.stage!=='PREPARED' || op.transactionId || !sponsoredKinds.includes(op.kind))return null;
     const row=this.currentFunding()?.operations.find(r=>r.operationId===op.operationId);
     const grant=row?.sponsoredSubmission;
+    if(op.kind==='CAST_VOTE' && (row?.review?.kind!=='CAST_VOTE' || !row.review.votingClosesAt ||
+      this.refresh.now()>=row.review.votingClosesAt*1000))return null;
     return row && grant && row.stage==='PREPARED' && !row.transactionId && row.kind===op.kind && row.intentHash===op.intentHash &&
       row.generationId===op.generationId && row.feeCapMojos===op.feeCapMojos && op.feeCapMojos===grant.maximumFeeMojos &&
       this.refresh.now()<grant.expiresAt*1000 ? grant : null;
@@ -229,7 +248,7 @@ export class GenerationCommitteeComponent implements OnInit {
     if(this.pendingAction() || op.kind==='CREATE_RECIPIENT_VAULT')return;
     this.setPrepared(op);this.reviewRequest.set(null);this.actionError.set(null);
     if(!this.operations()?.executionEnabled && op.stage==='PREPARED' &&
-      ['OPEN_PROPOSAL','ANCHOR_VOTE'].includes(op.kind) && !this.sponsoredSubmission(op))void this.refresh.refresh();
+      sponsoredKinds.includes(op.kind) && !this.sponsoredSubmission(op))void this.refresh.refresh();
   }
   delayReady(when:number):boolean {return this.isCurrent() && this.refresh.now()>=when*1000;}
   operationMessage(op:GenerationOperationStatus):string {

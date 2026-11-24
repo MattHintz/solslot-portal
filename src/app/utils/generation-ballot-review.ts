@@ -28,6 +28,13 @@ export function validateHolderCatalog(source:HolderCatalog):HolderCatalog {
       c.proposalId===null && s.maximumFeeMojos==='1000000000' && uint(s.expiresAt) && s.expiresAt>0 &&
       c.holdings.some(h=>h.coinId===s.coinId && h.vaultLauncherId===s.vaultLauncherId && h.amount===10_000));
   }
+  if(c.voteSponsorship!==undefined){
+    const s=c.voteSponsorship;
+    check(s && Object.keys(s).length===5 && [s.proposalId,s.coinId,s.vaultLauncherId].every(hash) &&
+      s.proposalId===c.proposalId && !!c.votingClosesAt && s.maximumFeeMojos==='1000000000' &&
+      uint(s.expiresAt) && s.expiresAt>0 &&
+      c.holdings.some(h=>h.coinId===s.coinId && h.vaultLauncherId===s.vaultLauncherId && h.amount===10_000));
+  }
   return c;
 }
 
