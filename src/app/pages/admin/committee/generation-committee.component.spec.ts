@@ -1,4 +1,5 @@
 import { TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { GenerationSolsBatchesService } from '../../../services/generation-sols-batches.service';
 import { provideRouter } from '@angular/router';
 import { GenerationCommitteeComponent } from './generation-committee.component';
@@ -15,6 +16,7 @@ describe('Generation committee evidence and refresh',()=>{
   const hash=(n:string)=>'0x'+n.repeat(64);
   const runtime=environment.solslotProtocol as {generationId?:string};
   let old:string|undefined,api:jasmine.SpyObj<GenerationGovernanceService>;
+  const sessionKey=signal<string|null>(null),sessionToken=signal<string|null>(null);
   const status=():GenerationGovernanceStatus=>({generationId:hash('a'),network:'testnet11',status:'READY',
     lastCheckedAt:Math.floor(Date.now()/1000),lastAttemptAt:Math.floor(Date.now()/1000),errorCode:null,pollAfterSeconds:30,
     snapshot:{generationId:hash('a'),network:'testnet11',checkedAt:Math.floor(Date.now()/1000),active:false,
@@ -26,6 +28,7 @@ describe('Generation committee evidence and refresh',()=>{
       pauseMask:0,pauseEpoch:0,delays:[],componentEvidence:{},chainEvidence:Object.fromEntries(['registry','governance','holdings'].map(k=>[k,
         {coinId:hash('1'),confirmedHeight:10,transitions:1}]))}});
   beforeEach(()=>{
+    sessionKey.set(null);sessionToken.set(null);
     old=runtime.generationId;runtime.generationId=hash('a');
     api=jasmine.createSpyObj('GenerationGovernanceService',['status','operations','prepare','submit']);api.status.and.callFake(async()=>status());
     api.operations.and.resolveTo({generationId:hash('a'),network:'testnet11',available:true,operations:[],pollAfterSeconds:30,
@@ -36,7 +39,7 @@ describe('Generation committee evidence and refresh',()=>{
       {provide:GenerationConsentService,useValue:{list:async()=>[]}},
       {provide:GenerationBallotService,useValue:{list:async()=>[],holdings:async()=>{throw new Error('not launched');}}},
       {provide:ChiaWalletService,useValue:{connectionKind:()=>null}},
-      {provide:AdminSessionService,useValue:{authoritySlot:()=>0,pubkey:()=>null}}]});
+      {provide:AdminSessionService,useValue:{authoritySlot:()=>0,pubkey:sessionKey,jwt:sessionToken}}]});
   });
   afterEach(()=>{TestBed.resetTestingModule();if(old===undefined)delete runtime.generationId;else runtime.generationId=old;});
   it('reviews explicitly selected complete closed stakes during a pause without polling or automatic submission',async()=>{
@@ -161,6 +164,65 @@ describe('Generation committee evidence and refresh',()=>{
   });
   const prepared=()=>({...saved().operations[0],stage:'PREPARED' as const,transactionId:null,errorCode:null,
     kind:'FINALIZE_VOTE',nextAction:'REVIEW_SUBMISSION'});
+  const fundedAnchor=()=>{
+    const sponsoredSubmission={maximumFeeMojos:'1000000000' as const,expiresAt:Math.floor(Date.now()/1000)+60};
+    return {...prepared(),kind:'ANCHOR_VOTE',feeCapMojos:sponsoredSubmission.maximumFeeMojos,sponsoredSubmission,
+      review:{kind:'ANCHOR_VOTE' as const,generationId:hash('a'),requestKey:'saved-anchor',feeCapMojos:1_000_000_000,
+        expectedInputs:{registry:hash('1'),governance:hash('1'),holdings:hash('1')}}};
+  };
+  it('accepts an exact sponsored anchor and rejects unrelated operations or a changed fee cap',()=>{
+    const op=fundedAnchor(),list={...saved(),executionEnabled:false,maximumFeeMojos:'0',operations:[op]};
+    expect(validateGenerationOperations(list)).toBe(list);
+    for(const wrong of [{feeCapMojos:'0'},{kind:'FINALIZE_VOTE'},{review:{...op.review,feeCapMojos:1}},
+      {sponsoredSubmission:{...op.sponsoredSubmission,expiresAt:-1}}]){
+      expect(()=>validateGenerationOperations({...list,operations:[{...op,...wrong}]})).toThrow();
+    }
+    const opening={...op,kind:'OPEN_PROPOSAL',review:{generationId:op.generationId,kind:'OPEN_PROPOSAL' as const,
+      requestKey:'ballot:'+hash('5'),packageId:hash('5'),proposalId:hash('6'),selected:[{coinId:hash('4'),vaultLauncherId:hash('7')}],
+      selectedWeight:10_000,snapshotRoot:hash('8'),eligibleSupply:30_000,requiredVotes:15_000,votingClosesAt:null,feeCapMojos:1_000_000_000}};
+    expect(validateGenerationOperations({...list,operations:[opening]}).operations[0]).toBe(opening);
+    expect(()=>validateGenerationOperations({...list,operations:[{...opening,review:{...opening.review,selectedWeight:20_000}}]})).toThrow();
+  });
+  it('uses a current authenticated submission grant for one exact saved operation with execution disabled',fakeAsync(()=>{
+    sessionKey.set(hash('7'));sessionToken.set('holder-session');
+    const op=fundedAnchor(),list={...saved(),executionEnabled:false,maximumFeeMojos:'0',operations:[op]};
+    api.operations.and.resolveTo(list);api.submit.and.resolveTo({...op,stage:'SUBMITTED',transactionId:hash('4')});
+    const f=TestBed.createComponent(GenerationCommitteeComponent);f.detectChanges();flushMicrotasks();
+    const b=f.componentInstance;b.resumeSaved(op);f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('organization will fund this saved transaction');
+    expect(b.submissionEnabled({...op,intentHash:hash('9')})).toBeFalse();
+    expect(b.submissionEnabled({...op,stage:'SUBMITTED',transactionId:hash('4')})).toBeFalse();
+    expect(b.submissionEnabled({...op,feeCapMojos:'0'})).toBeFalse();
+    sessionToken.set('different-session');expect(b.submissionEnabled(op)).toBeFalse();sessionToken.set('holder-session');
+    const now=b.refresh.now();b.refresh.now.set(op.sponsoredSubmission.expiresAt*1000);expect(b.submissionEnabled(op)).toBeFalse();b.refresh.now.set(now);
+    void b.submitReviewed();flushMicrotasks();void b.submitReviewed();flushMicrotasks();
+    expect(api.submit).toHaveBeenCalledOnceWith(op);f.destroy();
+  }));
+  it('requires the funding grant in the latest committee history independently of a cached prepared operation',fakeAsync(()=>{
+    sessionKey.set(hash('7'));sessionToken.set('holder-session');
+    const op=fundedAnchor(),list={...saved(),executionEnabled:false,maximumFeeMojos:'0',operations:[op]};
+    api.operations.and.resolveTo(list);const f=TestBed.createComponent(GenerationCommitteeComponent);f.detectChanges();flushMicrotasks();
+    const b=f.componentInstance;b.resumeSaved(op);expect(b.submissionEnabled(op)).toBeTrue();
+    const {sponsoredSubmission,...withdrawn}=op;
+    api.operations.and.resolveTo({...list,operations:[{...withdrawn,updatedAt:100}]});void b.refresh.refresh();flushMicrotasks();
+    expect(b.submissionEnabled(op)).toBeFalse();void b.submitReviewed();flushMicrotasks();expect(api.submit).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('uses anchor funding only for the unanchored proposal and exact confirmed governance coin',fakeAsync(()=>{
+    sessionKey.set(hash('7'));sessionToken.set('holder-session');
+    const op=fundedAnchor(),anchorSponsorship={...op.sponsoredSubmission,proposalId:hash('8'),governanceCoinId:hash('1')};
+    const list={...saved(),executionEnabled:false,maximumFeeMojos:'0',operations:[],anchorSponsorship};
+    expect(validateGenerationOperations(list)).toBe(list);
+    const s=status(),p={proposalId:hash('8'),...structuredClone(bills[0].review) as GovernedBill,
+      eligibleHoldingsRoot:hash('b'),eligibleSupply:30000,requiredVotes:15000,yesWeight:10000,ledgerSequence:0,
+      publicationIssuedAt:100,publicationExpiresAt:86500,openedAt:null,votingClosesAt:null,stage:'CONFIRMING_OPENING' as const,selectionRule:'Whole eligible coins'};
+    s.snapshot!.proposal=p;s.snapshot!.active=true;api.status.and.resolveTo(s);api.operations.and.resolveTo(list);
+    api.prepare.and.returnValue(new Promise(()=>{}));const f=TestBed.createComponent(GenerationCommitteeComponent);f.detectChanges();flushMicrotasks();
+    const b=f.componentInstance;expect(b.anchorSponsorship()).toEqual(anchorSponsorship);
+    const wrong=structuredClone(s);wrong.snapshot!.chainEvidence['governance'].coinId=hash('2');b.status.set(wrong);expect(b.anchorSponsorship()).toBeNull();
+    b.status.set(s);void b.reviewAction('ANCHOR_VOTE');flushMicrotasks();
+    expect(api.prepare.calls.mostRecent().args[0].feeCapMojos).toBe(1_000_000_000);
+    expect(api.prepare.calls.mostRecent().args[0].expectedInputs.governance).toBe(hash('1'));expect(api.submit).not.toHaveBeenCalled();f.destroy();
+  }));
   for(const kind of ['MINT_COLLECTION','ALLOCATE_SGT_GRANT','DELIVER_SGT_GRANT','GENESIS_CORE'])
     it('does not expose an unintegrated '+kind+' receipt for submission',()=>{
       expect(()=>validateGenerationOperations({...saved(),operations:[{...prepared(),kind}]})).toThrow();

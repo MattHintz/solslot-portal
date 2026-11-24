@@ -6,7 +6,15 @@
   @if(busy()){<p class="active-wait" role="status"><span class="spinner" aria-hidden="true"></span>
     {{busy()==='SIGNING'?'Open '+signingWallet()+' and approve the pending SGT signature request.':busy()==='PREPARING'?'Checking the confirmed holdings and saving your exact selection…':'Saving the exact signed transaction. Submission is a separate step…'}}</p>}
   @if(error()){<p class="notice" role="status">{{error()}}</p>}
-  @if(pending() && !busy()){<button type="button" (click)="retry()">Recover this same holder review</button>}
+  @if(pending() && !busy()){
+    @if(pendingNeedsFunding()){
+      <p>The pending request has a zero fee cap. Saved signature receipts appear below when committee history refreshes.</p>
+      <button type="button" (click)="refresh.refresh()">Check saved reviews and funding</button>
+      @if(openingFeeAvailable() && consent()?.packageId===pending()!.consentPackageId){
+        <button type="button" [disabled]="!canSelect() || !!refresh.error() || !refresh.lastUpdated()" (click)="useCurrentOpeningFunding()">Use current funding for a new review</button>
+      }
+    }@else{<button type="button" (click)="retry()">Recover this same holder review</button>}
+  }
   @if(assignedActions().length){
     <aside class="your-action" aria-labelledby="assigned-holder-heading">
       <div><p class="eyebrow">Your action</p><h3 id="assigned-holder-heading">Your SGT has a request ready</h3>
@@ -41,7 +49,10 @@
           <p>The organization will pay the network fee for one opening, up to 0.001 TXCH (1,000,000,000 mojos), until {{offer.expiresAt*1000 | date:'MMM d, h:mm a'}} in your local time. Select only the 10,000 SGT holding in this vault.</p>
           <code>{{offer.vaultLauncherId}}</code>
         }
-        @if(selectedSponsorship() && fundedReview(); as funded){
+        @if(!openingFeeAvailable()){
+          <p role="status">Opening funding is unavailable. Your holdings and saved approvals remain visible. Refresh to check for an opening fee.</p>
+          <button type="button" [disabled]="refresh.refreshing()" (click)="refresh.refresh()">Check opening funding</button>
+        }@else if(selectedSponsorship() && fundedReview(); as funded){
           <a [attr.href]="reviewHref(funded)" (click)="openReview($event,funded.packageId)">View saved organization-funded review</a>
         }@else{
           <button class="primary" type="button" [disabled]="!canOpen()" (click)="create('OPEN_PROPOSAL')">{{selectedSponsorship()?'Review organization-funded opening':'Review sponsorship'}}</button>
@@ -54,6 +65,8 @@
       <h3>{{proposalLabel(r.proposal.kind)}} · {{r.selectedWeight | number}} SGT</h3>
       @if(matchesOpeningSponsorship(r) && r.feeCapMojos==='1000000000'){
         <p>Organization-funded opening · maximum network fee 0.001 TXCH (1,000,000,000 mojos). Funding expires {{openingSponsorship()!.expiresAt*1000 | date:'MMM d, h:mm a'}} in your local time.</p>
+      }@else if(r.kind==='OPEN_PROPOSAL' && r.feeCapMojos==='1000000000' && !operatorFeeAvailable()){
+        <p>This saved opening has a maximum network fee of 0.001 TXCH. The fee operator is offline and this session has no current funding offer for the review.</p>
       }
       <solslot-generation-asset-intent [bill]="r.proposal" />
       @if(r.proposal.upgrade; as u){
@@ -93,6 +106,8 @@
           }@else{
             <p>This signed review has a zero fee cap. To use the organization’s funding, choose “Select holder sponsorship for this proposal” in the publication above, select the designated 10,000 SGT holding, then review the funded opening for a new signature.</p>
           }
+        }@else if(r.kind==='OPEN_PROPOSAL' && r.feeCapMojos==='0' && !operatorFeeAvailable()){
+          <p>This signed review has a zero fee cap. Opening funding is unavailable. Your signature remains recorded here. Check opening funding before preparing a new review.</p>
         }@else{
           <p role="status">All selected holder signatures are saved. Review the exact transaction next.</p>
           <button class="primary" type="button" [disabled]="!!busy()" (click)="assemble(r)">Review signed transaction for submission</button>

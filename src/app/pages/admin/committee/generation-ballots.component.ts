@@ -26,6 +26,7 @@ export class GenerationBallotsComponent implements OnInit {
   readonly isCurrent=input(false);
   readonly available=input(false);
   readonly maximumFee=input('0');
+  readonly executionEnabled=input(false);
   readonly operations=input<GenerationOperationStatus[]>([]);
   readonly prepared=output<GenerationOperationStatus>();
   readonly catalog=signal<HolderCatalog|null>(null);
@@ -54,13 +55,22 @@ export class GenerationBallotsComponent implements OnInit {
   });
   readonly fundedReview=computed(()=>this.reviews().find(r=>this.matchesOpeningSponsorship(r) &&
     r.feeCapMojos===this.openingSponsorship()!.maximumFeeMojos && !this.expired(r)));
+  readonly operatorFeeAvailable=computed(()=>this.executionEnabled() || Number(this.maximumFee())>0);
+  readonly openingFeeAvailable=computed(()=>!!this.selectedSponsorship() || this.operatorFeeAvailable());
+  readonly pendingNeedsFunding=computed(()=>{
+    const pending=this.pending();
+    if(pending?.kind!=='OPEN_PROPOSAL' || pending.feeCapMojos!==0)return false;
+    const s=this.openingSponsorship(),consent=this.consent();
+    return !this.operatorFeeAvailable() || !!s && s.proposalId===pending.proposalId && s.consentPackageId===pending.consentPackageId ||
+      Number(this.maximumFee())>0 && consent?.packageId===pending.consentPackageId && Number(consent?.feeCapMojos)>0;
+  });
   readonly quorum=computed(()=>Math.ceil((this.catalog()?.eligibleSupply??0)/2));
   readonly canSelect=computed(()=>this.available() && this.isCurrent() && !this.busy() && !!this.catalog() &&
     this.refresh.now()-this.catalog()!.checkedAt*1000<=90_000);
   readonly canPrepare=computed(()=>this.canSelect() && !this.pending() && !!this.coinIds().length &&
     this.coinIds().length<=this.selectionLimit && new Set(this.coinIds()).size===this.coinIds().length &&
     this.coinIds().every(id=>this.catalog()!.holdings.some(h=>h.coinId===id)));
-  readonly canOpen=computed(()=>this.canPrepare() && this.selectedWeight()>=10000 && !this.snapshot()?.proposal &&
+  readonly canOpen=computed(()=>this.canPrepare() && this.openingFeeAvailable() && this.selectedWeight()>=10000 && !this.snapshot()?.proposal &&
     this.consent()?.stage==='READY' && this.consent()!.expiresAt*1000>this.refresh.now() &&
     this.consent()?.holdingsRoot===this.catalog()?.snapshotRoot && (!this.selectedSponsorship() ||
       (!this.fundedReview() && this.coinIds().length===1 && this.coinIds()[0]===this.selectedSponsorship()!.coinId &&
@@ -191,11 +201,18 @@ export class GenerationBallotsComponent implements OnInit {
     this.selected.set(null);this.savePending(req);await this.retry();
   }
   async retry():Promise<void> {
-    const req=this.pending();if(!req || this.busy())return;
+    const req=this.pending();if(!req || this.busy() || this.pendingNeedsFunding())return;
     this.busy.set('PREPARING');this.error.set(null);
     try{this.remember(await this.api.prepare(structuredClone(req),req.kind==='OPEN_PROPOSAL'?this.consent()??undefined:undefined));this.savePending(null);}
     catch{this.error.set('We couldn’t complete preparation. Recover this same review before starting another. Your signatures and prior transactions are retained.');}
     finally{this.busy.set(null);await this.refresh.refresh();}
+  }
+  useCurrentOpeningFunding():void {
+    const pending=this.pending(),consent=this.consent(),catalog=this.catalog();
+    if(!pending || !catalog || !consent || !this.pendingNeedsFunding() || !this.openingFeeAvailable() || !this.canSelect() ||
+      this.refresh.error() || !this.refresh.lastUpdated() || pending.consentPackageId!==consent.packageId || pending.proposalId!==consent.proposalId)return;
+    const eligible=pending.selected.filter(row=>catalog.holdings.some(h=>h.coinId===row.coinId && h.vaultLauncherId===row.vaultLauncherId));
+    this.coinIds.set(eligible.map(h=>h.coinId));this.savePending(null);this.error.set(null);
   }
   async sign(r:GenerationBallotReview,row:HolderRow):Promise<void> {
     if(this.busy() || this.expired(r) || this.signed(r,row) || !this.assigned(row) || !this.available() || !this.isCurrent())return;
@@ -206,7 +223,8 @@ export class GenerationBallotsComponent implements OnInit {
     finally{this.busy.set(null);await this.refresh.refresh();}
   }
   async assemble(r:GenerationBallotReview):Promise<void> {
-    if(this.busy() || this.expired(r) || r.stage!=='READY')return;
+    if(this.busy() || this.expired(r) || r.stage!=='READY' ||
+      (r.kind==='OPEN_PROPOSAL' && r.feeCapMojos==='0' && (!this.operatorFeeAvailable() || this.matchesOpeningSponsorship(r))))return;
     this.busy.set('ASSEMBLING');this.error.set(null);
     try{this.prepared.emit(await this.api.assemble(r));}
     catch{this.error.set('The exact transaction could not be prepared. Keep this review and check saved transactions before retrying.');}
