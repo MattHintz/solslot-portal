@@ -1,6 +1,6 @@
 {
   "generationId": "0x2219d1e2dba64ceb4df84e70ce14b6b2d8d94b0e99350664dd3371c2f3234d57",
-  "requestKey": "AE-SOLSLOT-EASTMORELAND-SWAP-NAV-20261122-R1",
+  "requestKey": "AE-SOLSLOT-EASTMORELAND-SWAP-NAV-0700-20261124-R1",
   "kind": "PUBLICATION_APPROVAL",
   "coadministratorSlot": 1,
   "expectedInputs": {
@@ -24,12 +24,12 @@
       75000000000,
       75000000000,
       1,
-      1795413600,
-      1795500000,
+      1795525200,
+      1795611600,
       1
     ],
     "previousRoot": "0x4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
-    "nextRoot": "0xb0a873bb139a927e9c3a94404f0c8cb27c28e33bf1989fb2fe0ce0f3f7d5b366",
+    "nextRoot": "0x366624166d775b0bdd870b12b9b78ad2f728300fd54cbd13660eab53404b21e2",
     "currentRecords": []
   }
 }

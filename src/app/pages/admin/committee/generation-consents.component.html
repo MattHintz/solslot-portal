@@ -57,7 +57,7 @@
   @if(showValuation()){
     <section class="new-review prepare-kind"><h3>127 Eastmoreland St · Testnet valuation</h3>
       <p>Collection value {{+valuationRecord[1]/1000000 | currency:'USD':'symbol':'1.0-0'}} · Allocation cap {{+valuationRecord[2]/1000000 | currency:'USD':'symbol':'1.0-0'}}.</p>
-      <p>November 23, 2026 · Chicago time. Saving this review costs zero and makes it available for both administrators to sign.</p>
+      <p>{{ +valuationRecord[4]*1000 | date:'MMM d, y, h:mm a':'-0600' }} to {{ +valuationRecord[5]*1000 | date:'MMM d, y, h:mm a':'-0600' }} Chicago time. Saving this review costs zero and makes it available for both administrators to sign.</p>
       <button type="button" class="primary" [disabled]="!canSaveValuation()" (click)="saveValuation()">Save unsigned valuation review</button>
     </section>
   }
