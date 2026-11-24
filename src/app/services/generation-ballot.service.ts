@@ -13,6 +13,9 @@ import { canonicalConsent,validateGenerationConsent } from '../utils/generation-
 import { deploymentGeneration } from '../utils/deployment-generation';
 
 export interface HolderSelection {coinId:string;vaultLauncherId:string;}
+export interface OpeningSponsorship extends HolderSelection {
+  consentPackageId:string;proposalId:string;maximumFeeMojos:'1000000000';expiresAt:number;
+}
 export interface HolderBallotRequest extends Omit<MaintenanceRequest,'kind'> {
   kind:'OPEN_PROPOSAL'|'CAST_VOTE';proposalId:string;consentPackageId:string|null;selected:HolderSelection[];
 }
@@ -28,6 +31,7 @@ export interface HolderCatalog {
   generationId:string;network:'testnet11';scope:'FROZEN_GENESIS_ROSTER';checkedAt:number;
   expectedInputs:MaintenanceRequest['expectedInputs'];proposalId:string|null;snapshotRoot:string;eligibleSupply:number;votingClosesAt:number|null;
   holdings:Array<HolderSelection & {name:string;ownerPuzzleHash:string;amount:number}>;truncated:boolean;
+  openingSponsorship?:OpeningSponsorship;
 }
 
 /** Fixed local messages only: never render provider or upstream response bodies. */

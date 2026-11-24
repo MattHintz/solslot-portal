@@ -37,13 +37,24 @@
         <p class="notice">This sponsorship alone will not reach quorum. You can select co-sponsors now so their approvals finish before the one-hour vote starts, or another holder must vote after opening.</p>
       }
       @if(!snapshot()?.proposal){@if(consent(); as p){<p>Selected publication: {{proposalLabel(p.proposal!.kind)}} · approve by {{p.expiresAt*1000 | date:'MMM d, h:mm a'}}.</p>
-        <button class="primary" type="button" [disabled]="!canOpen()" (click)="create('OPEN_PROPOSAL')">Review sponsorship</button>}}
+        @if(selectedSponsorship(); as offer){
+          <p>The organization will pay the network fee for one opening, up to 0.001 TXCH (1,000,000,000 mojos), until {{offer.expiresAt*1000 | date:'MMM d, h:mm a'}} in your local time. Select only the 10,000 SGT holding in this vault.</p>
+          <code>{{offer.vaultLauncherId}}</code>
+        }
+        @if(selectedSponsorship() && fundedReview(); as funded){
+          <a [attr.href]="reviewHref(funded)" (click)="openReview($event,funded.packageId)">View saved organization-funded review</a>
+        }@else{
+          <button class="primary" type="button" [disabled]="!canOpen()" (click)="create('OPEN_PROPOSAL')">{{selectedSponsorship()?'Review organization-funded opening':'Review sponsorship'}}</button>
+        }}}
       @if(snapshot()?.proposal){<button class="primary" type="button" [disabled]="!canVote()" (click)="create('CAST_VOTE')">Review yes vote · {{selectedWeight() | number}} SGT</button>}
     </div>
   }
   @for(r of reviews(); track r.packageId){
     <article class="review" tabindex="-1" [id]="'holder-review-'+r.packageId" [class.expired]="expired(r) && !confirmedReceipt(r)"><p class="eyebrow">{{r.kind==='OPEN_PROPOSAL'?'Proposal sponsorship':'Holder vote'}} · Testnet11</p>
       <h3>{{proposalLabel(r.proposal.kind)}} · {{r.selectedWeight | number}} SGT</h3>
+      @if(matchesOpeningSponsorship(r) && r.feeCapMojos==='1000000000'){
+        <p>Organization-funded opening · maximum network fee 0.001 TXCH (1,000,000,000 mojos). Funding expires {{openingSponsorship()!.expiresAt*1000 | date:'MMM d, h:mm a'}} in your local time.</p>
+      }
       <solslot-generation-asset-intent [bill]="r.proposal" />
       @if(r.proposal.upgrade; as u){
         <p>Approve these code changes with current state preserved. Activation requires a separate 24-hour on-chain wait after ratification.</p>
@@ -74,8 +85,19 @@
         @if(signed(r,row)){<span class="approved">✓ Signed</span>}
         @else if(assigned(row) && !expired(r) && !confirmedReceipt(r)){<button class="primary" type="button" [disabled]="!!busy() || !available() || !isCurrent()" (click)="sign(r,row)">Approve SGT {{r.kind==='OPEN_PROPOSAL'?'sponsorship':'vote'}} in {{walletLabel(row)}}</button>}
       </div>}
-      @if(r.stage==='READY' && !expired(r) && !confirmedReceipt(r)){<p role="status">All selected holder signatures are saved. Review the exact transaction next.</p>
-        <button class="primary" type="button" [disabled]="!!busy()" (click)="assemble(r)">Review signed transaction for submission</button>}
+      @if(r.stage==='READY' && !expired(r) && !confirmedReceipt(r)){
+        @if(matchesOpeningSponsorship(r) && r.feeCapMojos==='0'){
+          @if(fundedReview(); as funded){
+            <p>This signed review has a zero fee cap.</p>
+            <a [attr.href]="reviewHref(funded)" (click)="openReview($event,funded.packageId)">View saved organization-funded review</a>
+          }@else{
+            <p>This signed review has a zero fee cap. To use the organization’s funding, choose “Select holder sponsorship for this proposal” in the publication above, select the designated 10,000 SGT holding, then review the funded opening for a new signature.</p>
+          }
+        }@else{
+          <p role="status">All selected holder signatures are saved. Review the exact transaction next.</p>
+          <button class="primary" type="button" [disabled]="!!busy()" (click)="assemble(r)">Review signed transaction for submission</button>
+        }
+      }
       <details><summary>Exact proposal and network fee</summary><dl><dt>Proposal</dt><dd>{{r.proposalId}}</dd><dt>Bill</dt><dd>{{r.proposal.billHash}}</dd>
         <dt>Opening snapshot</dt><dd>{{r.snapshotRoot}}</dd><dt>Maximum network fee</dt><dd>{{r.feeCapMojos}} mojos</dd></dl></details>
     </article>
