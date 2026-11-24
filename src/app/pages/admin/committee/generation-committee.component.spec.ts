@@ -170,6 +170,43 @@ describe('Generation committee evidence and refresh',()=>{
       review:{kind:'ANCHOR_VOTE' as const,generationId:hash('a'),requestKey:'saved-anchor',feeCapMojos:1_000_000_000,
         expectedInputs:{registry:hash('1'),governance:hash('1'),holdings:hash('1')}}};
   };
+  it('prepares the exact voted bill, closed stake set and finalization with each advertised grant',fakeAsync(()=>{
+    sessionKey.set(hash('7'));sessionToken.set('holder-session');
+    const s=status(),now=s.lastCheckedAt!,proposalId=hash('8');
+    const action={proposalId,...structuredClone(bills[5].review) as GovernedBill};
+    const fact=action.statutes!,componentId=fact.componentId;
+    s.snapshot!.componentEvidence[componentId]={coinId:hash('3'),confirmedHeight:10,transitions:0,stateHash:hash('4')};
+    s.snapshot!.statutesWitnesses={[componentId]:{[fact.recordKind]:[]}};
+    s.snapshot!.approvedActions=[action];s.snapshot!.approvedActionCount=1;
+    s.snapshot!.closedStakes=[{proposalId,coinId:hash('3'),ownerPuzzleHash:hash('4'),amount:10000},
+      {proposalId,coinId:hash('5'),ownerPuzzleHash:hash('6'),amount:10000}];
+    s.snapshot!.proposal={...action,openedAt:now-4000,votingClosesAt:now-10,yesWeight:20000,requiredVotes:15000,
+      eligibleSupply:30000,eligibleHoldingsRoot:hash('b'),ledgerSequence:1,publicationIssuedAt:100,publicationExpiresAt:86500,
+      stage:'VOTING',selectionRule:'Whole eligible coins'};
+    const base={proposalId,governanceCoinId:hash('1'),maximumFeeMojos:'1000000000' as const,expiresAt:now+60};
+    const grants=[{...base,kind:'FINALIZE_VOTE' as const},{...base,kind:'APPLY_STATUTES' as const,billHash:action.billHash},
+      {...base,kind:'UNLOCK_STAKES' as const,stakeCoinIds:[hash('3'),hash('5')]}];
+    const list={...saved(),executionEnabled:false,maximumFeeMojos:'0',operations:[],maintenanceSponsorship:grants};
+    expect(validateGenerationOperations(list)).toBe(list);
+    for(const bad of [[grants[0],grants[0]],[{...grants[2],stakeCoinIds:[hash('5'),hash('3')]}],
+      [{...grants[1],billHash:'bad'}],[{...grants[0],kind:'PROVE_STATE'}]])
+      expect(()=>validateGenerationOperations({...list,maintenanceSponsorship:bad} as GenerationOperations)).toThrow();
+    api.status.and.resolveTo(s);api.operations.and.resolveTo(list);
+    api.prepare.and.callFake(async request=>({...prepared(),feeCapMojos:String(request.feeCapMojos),kind:request.kind,review:request}));
+    const f=TestBed.createComponent(GenerationCommitteeComponent);f.detectChanges();flushMicrotasks();const b=f.componentInstance;
+    expect(b.maintenanceGrant('APPLY_STATUTES',{...action,billHash:hash('9')})).toBeNull();
+    void b.reviewAction('APPLY_STATUTES',action);flushMicrotasks();
+    expect(api.prepare.calls.mostRecent().args[0].feeCapMojos).toBe(1_000_000_000);
+    expect(api.prepare.calls.mostRecent().args[0].expectedInputs.components).toEqual({[componentId]:hash('3')});
+    b.selectStake(hash('5'),true);expect(b.maintenanceGrant('UNLOCK_STAKES')).toBeNull();b.selectStake(hash('3'),true);
+    expect(b.maintenanceGrant('UNLOCK_STAKES')).toEqual(grants[2]);void b.reviewAction('UNLOCK_STAKES');flushMicrotasks();
+    expect(api.prepare.calls.mostRecent().args[0].stakes?.coinIds).toEqual([hash('3'),hash('5')]);
+    expect(b.maintenanceGrant('FINALIZE_VOTE')).toEqual(grants[0]);
+    const fresh=structuredClone(s);fresh.snapshot!.proposal!.votingClosesAt=now+30;b.status.set(fresh);
+    expect(b.maintenanceGrant('FINALIZE_VOTE')).toBeNull();b.status.set(s);
+    sessionToken.set('changed-session');expect(b.maintenanceGrant('FINALIZE_VOTE')).toBeNull();
+    expect(api.submit).not.toHaveBeenCalled();f.destroy();
+  }));
   it('accepts an exact sponsored anchor and rejects unrelated operations or a changed fee cap',()=>{
     const op=fundedAnchor(),list={...saved(),executionEnabled:false,maximumFeeMojos:'0',operations:[op]};
     expect(validateGenerationOperations(list)).toBe(list);
@@ -197,6 +234,20 @@ describe('Generation committee evidence and refresh',()=>{
     const now=b.refresh.now();b.refresh.now.set(op.sponsoredSubmission.expiresAt*1000);expect(b.submissionEnabled(op)).toBeFalse();b.refresh.now.set(now);
     void b.submitReviewed();flushMicrotasks();void b.submitReviewed();flushMicrotasks();
     expect(api.submit).toHaveBeenCalledOnceWith(op);f.destroy();
+  }));
+  it('accepts one saved funded cast only before the confirmed voting deadline',fakeAsync(()=>{
+    sessionKey.set(hash('7'));sessionToken.set('holder-session');
+    const op=fundedAnchor(),until=Math.floor(Date.now()/1000)+30;
+    const cast={...op,kind:'CAST_VOTE',review:{generationId:op.generationId,kind:'CAST_VOTE' as const,
+      requestKey:'ballot:'+hash('5'),packageId:hash('5'),proposalId:hash('6'),selected:[{coinId:hash('4'),vaultLauncherId:hash('7')}],
+      selectedWeight:10_000,snapshotRoot:hash('8'),eligibleSupply:30_000,requiredVotes:15_000,votingClosesAt:until,feeCapMojos:1_000_000_000}};
+    const list={...saved(),executionEnabled:false,maximumFeeMojos:'0',operations:[cast]};
+    expect(validateGenerationOperations(list)).toBe(list);
+    expect(()=>validateGenerationOperations({...list,operations:[{...cast,review:{...cast.review,selectedWeight:9999}}]})).toThrow();
+    api.operations.and.resolveTo(list);const f=TestBed.createComponent(GenerationCommitteeComponent);f.detectChanges();flushMicrotasks();
+    const b=f.componentInstance;expect(b.submissionEnabled(cast)).toBeTrue();
+    expect(b.submissionEnabled({...cast,intentHash:hash('b')})).toBeFalse();
+    b.refresh.now.set(until*1000);expect(b.submissionEnabled(cast)).toBeFalse();f.destroy();
   }));
   it('requires the funding grant in the latest committee history independently of a cached prepared operation',fakeAsync(()=>{
     sessionKey.set(hash('7'));sessionToken.set('holder-session');

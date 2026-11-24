@@ -44,6 +44,36 @@ describe('Holder voting lifecycle UX',()=>{
     return {...c,openingSponsorship:{...r.request.selected[0],consentPackageId:r.request.consentPackageId!,
       proposalId:r.proposalId,maximumFeeMojos:'1000000000' as const,expiresAt:c.checkedAt+30}};
   };
+  it('funds the single eligible yes vote while preserving the voting deadline and holder signature step',fakeAsync(()=>{
+    const r=review(),c=catalog(),closes=c.checkedAt+3600;
+    c.proposalId=r.proposalId;c.votingClosesAt=closes;
+    const grant={...r.request.selected[0],proposalId:r.proposalId,maximumFeeMojos:'1000000000' as const,expiresAt:closes+20};
+    c.voteSponsorship=grant;
+    expect(validateHolderCatalog(c).voteSponsorship).toEqual(grant);
+    for(const change of [{coinId:'0x'+'ee'.repeat(32)},{vaultLauncherId:'0x'+'dd'.repeat(32)},
+        {maximumFeeMojos:'0'},{proposalId:'0x'+'cc'.repeat(32)}])
+      expect(()=>validateHolderCatalog({...c,voteSponsorship:{...grant,...change}} as HolderCatalog)).toThrow();
+    api.holdings.and.resolveTo(c);api.prepare.and.returnValue(new Promise(()=>{}));
+    const f=create();flushMicrotasks();const b=f.componentInstance;
+    f.componentRef.setInput('maximumFee','0');f.componentRef.setInput('snapshot',{proposal:{proposalId:r.proposalId,openedAt:c.checkedAt-1,votingClosesAt:closes}});
+    b.choose(grant.coinId,true);expect(b.canVote()).toBeTrue();
+    b.choose(c.holdings[1].coinId,true);expect(b.canVote()).toBeFalse();b.choose(c.holdings[1].coinId,false);
+    b.refresh.now.set(closes*1000);expect(b.canVote()).toBeFalse();b.refresh.now.set(c.checkedAt*1000);
+    f.detectChanges();expect(f.nativeElement.textContent).toContain('Review organization-funded yes vote · 10,000 SGT');
+    void b.create('CAST_VOTE');flushMicrotasks();const req=api.prepare.calls.mostRecent().args[0];
+    expect(req.selected).toEqual([r.request.selected[0]]);expect(req.proposalId).toBe(r.proposalId);
+    expect(req.consentPackageId).toBeNull();expect(req.feeCapMojos).toBe(1_000_000_000);
+    expect(api.sign).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('preserves an eligible vote selection when funding is absent and prevents a zero-cap request',fakeAsync(()=>{
+    const r=review(),c=catalog();c.proposalId=r.proposalId;c.votingClosesAt=c.checkedAt+3600;
+    api.holdings.and.resolveTo(c);const f=create();flushMicrotasks();const b=f.componentInstance;
+    f.componentRef.setInput('maximumFee','0');f.componentRef.setInput('snapshot',{proposal:{proposalId:r.proposalId,
+      openedAt:c.checkedAt-1,votingClosesAt:c.votingClosesAt}});
+    b.choose(c.holdings[0].coinId,true);void b.create('CAST_VOTE');flushMicrotasks();
+    expect(b.canVote()).toBeFalse();expect(api.prepare).not.toHaveBeenCalled();
+    expect(b.coinIds()).toEqual([c.holdings[0].coinId]);f.destroy();
+  }));
   it('validates the funding cap and whole holding in the authenticated catalog',()=>{
     const c=sponsoredCatalog(),s=c.openingSponsorship;
     expect(validateHolderCatalog(c).openingSponsorship).toEqual(s);

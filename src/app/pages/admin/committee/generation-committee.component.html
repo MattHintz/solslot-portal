@@ -129,7 +129,8 @@
               <span>Unchanged owner</span><code>{{stake.ownerPuzzleHash}}</code></label>
           }
           @if(s.closedStakesTruncated){<p class="muted">Showing 32 of {{s.closedStakeCount}} closed stakes. The next batch appears after confirmation.</p>}
-          <button type="button" class="primary-button" [disabled]="!selectedStakes().length || !isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
+          @if(maintenanceGrant('UNLOCK_STAKES')){<p>The organization will pay up to 0.001 TXCH to return these selected stakes to their owners.</p>}
+          <button type="button" class="primary-button" [disabled]="!selectedStakes().length || !actionFeeAvailable('UNLOCK_STAKES') || !isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
             (click)="reviewAction('UNLOCK_STAKES')">Review selected stake unlocks</button>
         </article>
       }
@@ -144,7 +145,8 @@
           @if(votingClosed()){<p>The displayed voting window has ended. Finalization still requires chain confirmation.</p>}
           @if(!p.openedAt || votingClosed()){
             @if(anchorSponsorship(); as grant){<p>The organization will fund confirmation of this opening up to 0.001 TXCH until {{grant.expiresAt*1000 | date:'MMM d, h:mm a'}} in your local time.</p>}
-            <button type="button" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
+            @if(maintenanceGrant('FINALIZE_VOTE')){<p>The organization will pay up to 0.001 TXCH to finalize this vote.</p>}
+            <button type="button" [disabled]="!actionFeeAvailable(p.openedAt?'FINALIZE_VOTE':'ANCHOR_VOTE') || !isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
               (click)="reviewAction(p.openedAt?'FINALIZE_VOTE':'ANCHOR_VOTE')">{{p.openedAt?'Review vote finalization':'Review opening confirmation'}}</button>
           }
           <p>{{p.selectionRule}}</p>
@@ -173,7 +175,8 @@
           }
           @if(action.kind==='STATUTES' && action.statutes; as fact){
             <solslot-generation-asset-intent [bill]="action" />
-            <button type="button" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
+            @if(maintenanceGrant('APPLY_STATUTES',action)){<p>The organization will pay up to 0.001 TXCH to apply this approved economic fact.</p>}
+            <button type="button" [disabled]="!actionFeeAvailable('APPLY_STATUTES',action) || !isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
               (click)="reviewAction('APPLY_STATUTES',action)">Review voted economic fact</button>
           }
           @if(action.kind==='FUND_REDEMPTION' && action.redemption){

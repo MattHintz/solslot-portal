@@ -10,7 +10,7 @@
     @if(pendingNeedsFunding()){
       <p>The pending request has a zero fee cap. Saved signature receipts appear below when committee history refreshes.</p>
       <button type="button" (click)="refresh.refresh()">Check saved reviews and funding</button>
-      @if(openingFeeAvailable() && consent()?.packageId===pending()!.consentPackageId){
+      @if(pending()!.kind==='OPEN_PROPOSAL' && openingFeeAvailable() && consent()?.packageId===pending()!.consentPackageId || pending()!.kind==='CAST_VOTE' && voteSponsorship()){
         <button type="button" [disabled]="!canSelect() || !!refresh.error() || !refresh.lastUpdated()" (click)="useCurrentOpeningFunding()">Use current funding for a new review</button>
       }
     }@else{<button type="button" (click)="retry()">Recover this same holder review</button>}
@@ -57,7 +57,19 @@
         }@else{
           <button class="primary" type="button" [disabled]="!canOpen()" (click)="create('OPEN_PROPOSAL')">{{selectedSponsorship()?'Review organization-funded opening':'Review sponsorship'}}</button>
         }}}
-      @if(snapshot()?.proposal){<button class="primary" type="button" [disabled]="!canVote()" (click)="create('CAST_VOTE')">Review yes vote · {{selectedWeight() | number}} SGT</button>}
+      @if(snapshot()?.proposal){
+        @if(voteSponsorship(); as grant){
+          <p>The organization will pay up to 0.001 TXCH for this vote. Select the 10,000 SGT holding in this vault before voting closes.</p>
+          <code>{{grant.vaultLauncherId}}</code>
+        }@else if(!operatorFeeAvailable() && snapshot()?.proposal?.openedAt){
+          <p role="status">Vote funding is unavailable for this session. Your holdings and saved votes remain visible.</p>
+        }
+        @if(fundedVoteReview(); as savedVote){
+          <a [attr.href]="reviewHref(savedVote)" (click)="openReview($event,savedVote.packageId)">View saved organization-funded yes vote</a>
+        }@else{
+          <button class="primary" type="button" [disabled]="!canVote()" (click)="create('CAST_VOTE')">{{selectedVoteSponsorship()?'Review organization-funded yes vote':'Review yes vote'}} · {{selectedWeight() | number}} SGT</button>
+        }
+      }
     </div>
   }
   @for(r of reviews(); track r.packageId){
@@ -96,7 +108,7 @@
           <strong>{{row.context.holding.current.coin.amount | number}} SGT · {{walletLabel(row)}}</strong><small>Holder vault</small><code>{{row.context.vault.launcherId}}</code>
           <small>{{signed(r,row)?'Signature recorded':assigned(row)?'Your selected holding':'Waiting for this holder wallet'}}</small></div>
         @if(signed(r,row)){<span class="approved">✓ Signed</span>}
-        @else if(assigned(row) && !expired(r) && !confirmedReceipt(r)){<button class="primary" type="button" [disabled]="!!busy() || !available() || !isCurrent()" (click)="sign(r,row)">Approve SGT {{r.kind==='OPEN_PROPOSAL'?'sponsorship':'vote'}} in {{walletLabel(row)}}</button>}
+        @else if(assigned(row) && !expired(r) && !confirmedReceipt(r)){<button class="primary" type="button" [disabled]="!!busy() || !available() || !isCurrent() || !voteRequestFunded(r.request)" (click)="sign(r,row)">Approve SGT {{r.kind==='OPEN_PROPOSAL'?'sponsorship':'vote'}} in {{walletLabel(row)}}</button>}
       </div>}
       @if(r.stage==='READY' && !expired(r) && !confirmedReceipt(r)){
         @if(matchesOpeningSponsorship(r) && r.feeCapMojos==='0'){
@@ -106,6 +118,8 @@
           }@else{
             <p>This signed review has a zero fee cap. To use the organization’s funding, choose “Select holder sponsorship for this proposal” in the publication above, select the designated 10,000 SGT holding, then review the funded opening for a new signature.</p>
           }
+        }@else if(r.kind==='CAST_VOTE' && r.feeCapMojos==='0' && (!operatorFeeAvailable() || voteSponsorship())){
+          <p>This saved vote has a zero fee cap. Your signature remains visible. Choose the designated holding above to review the organization-funded vote.</p>
         }@else if(r.kind==='OPEN_PROPOSAL' && r.feeCapMojos==='0' && !operatorFeeAvailable()){
           <p>This signed review has a zero fee cap. Opening funding is unavailable. Your signature remains recorded here. Check opening funding before preparing a new review.</p>
         }@else{

@@ -10,6 +10,9 @@ export type {ParameterIntent,UpgradeIntent,TestMintIntent,GrantIntent,StatuteInt
 
 export interface SponsoredSubmission {maximumFeeMojos:'1000000000';expiresAt:number;}
 export interface AnchorSponsorship extends SponsoredSubmission {proposalId:string;governanceCoinId:string;}
+export type MaintenanceSponsorship=AnchorSponsorship & (
+  {kind:'FINALIZE_VOTE'}|{kind:'APPLY_STATUTES';billHash:string}|{kind:'UNLOCK_STAKES';stakeCoinIds:string[]});
+export const sponsoredKinds:readonly string[]=['OPEN_PROPOSAL','ANCHOR_VOTE','CAST_VOTE','FINALIZE_VOTE','APPLY_STATUTES','UNLOCK_STAKES'];
 
 export interface GenerationOperationStatus {
   generationId:string;network:'testnet11';operationId:string;kind:string;intentHash:string;
@@ -38,6 +41,7 @@ export interface GenerationOperations {
   generationId:string;network:'testnet11';available:boolean;operations:GenerationOperationStatus[];pollAfterSeconds:number;
   executionEnabled:boolean;maximumFeeMojos:string;
   anchorSponsorship?:AnchorSponsorship;
+  maintenanceSponsorship?:MaintenanceSponsorship[];
 }
 
 export interface MintExecutionRequest {generationId:string;sourceReviewId:string;proposalId:string;
@@ -92,13 +96,25 @@ export function validateGenerationOperations(value:GenerationOperations):Generat
     const a=value.anchorSponsorship;
     if(!value.available || !validFunding(a) || Object.keys(a).length!==4 || !hash(a.proposalId) || !hash(a.governanceCoinId))invalid();
   }
+  if(value.maintenanceSponsorship!==undefined){
+    const grants=value.maintenanceSponsorship;
+    if(!value.available || !Array.isArray(grants) || grants.length>3 || new Set(grants.map(g=>g.kind)).size!==grants.length)invalid();
+    for(const g of grants){
+      if(!validFunding(g) || !hash(g.proposalId) || !hash(g.governanceCoinId))invalid();
+      const count=Object.keys(g).length;
+      if(g.kind==='FINALIZE_VOTE' ? count!==5 : g.kind==='APPLY_STATUTES' ? count!==6 || !hash(g.billHash) :
+        g.kind==='UNLOCK_STAKES' ? count!==6 || !Array.isArray(g.stakeCoinIds) || !g.stakeCoinIds.length ||
+        g.stakeCoinIds.length>32 || !g.stakeCoinIds.every((id,i)=>hash(id) && (!i || id>g.stakeCoinIds[i-1])) : true)invalid();
+    }
+  }
   for(const op of value.operations){
     if(op.sponsoredSubmission!==undefined){
       const s=op.sponsoredSubmission,r=op.review;
       if(!validFunding(s) || Object.keys(s).length!==2 || op.feeCapMojos!==s.maximumFeeMojos ||
         !r || r.kind!==op.kind || r.generationId!==generation || r.feeCapMojos!==Number(s.maximumFeeMojos) ||
-        !(r.kind==='OPEN_PROPOSAL' && r.selected?.length===1 && r.selectedWeight===10_000 ||
-          r.kind==='ANCHOR_VOTE' && r.expectedInputs && [r.expectedInputs.registry,r.expectedInputs.governance,r.expectedInputs.holdings].every(hash)))invalid();
+        !sponsoredKinds.includes(r.kind) ||
+        (r.kind==='OPEN_PROPOSAL' || r.kind==='CAST_VOTE' ? r.selected?.length!==1 || r.selectedWeight!==10_000 :
+          !('expectedInputs' in r) || !r.expectedInputs || ![r.expectedInputs.registry,r.expectedInputs.governance,r.expectedInputs.holdings].every(hash)))invalid();
     }
     if(op.kind==='PRIMARY_SOLS_BATCH'){
       const r=op.review;

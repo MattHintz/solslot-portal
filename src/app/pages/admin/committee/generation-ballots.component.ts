@@ -53,12 +53,30 @@ export class GenerationBallotsComponent implements OnInit {
     const offer=this.openingSponsorship(),consent=this.consent();
     return offer && consent?.packageId===offer.consentPackageId && consent.proposalId===offer.proposalId ? offer : null;
   });
+  readonly voteSponsorship=computed(()=>{
+    const session=this.catalogSession(),c=this.catalog(),grant=c?.voteSponsorship,p=this.snapshot()?.proposal;
+    return grant && session?.key===this.session.pubkey() && session?.token===this.session.jwt() &&
+      this.canSelect() && !this.refresh.error() && !!p?.openedAt && grant.proposalId===p.proposalId && c?.proposalId===p.proposalId &&
+      c.votingClosesAt===p.votingClosesAt && p.votingClosesAt && this.refresh.now()<Math.min(p.votingClosesAt,grant.expiresAt)*1000 ? grant : null;
+  });
+  readonly selectedVoteSponsorship=computed(()=>{
+    const grant=this.voteSponsorship(),ids=this.coinIds();
+    return grant && ids.length===1 && ids[0]===grant.coinId ? grant : null;
+  });
+  readonly fundedVoteReview=computed(()=>{
+    const grant=this.voteSponsorship();
+    return grant && this.reviews().find(r=>r.kind==='CAST_VOTE' && r.proposalId===grant.proposalId &&
+      !this.expired(r) && r.feeCapMojos===grant.maximumFeeMojos && r.request.selected.length===1 &&
+      r.request.selected[0].coinId===grant.coinId && r.request.selected[0].vaultLauncherId===grant.vaultLauncherId &&
+      canonicalConsent(r.request.expectedInputs)===canonicalConsent(this.catalog()!.expectedInputs));
+  });
   readonly fundedReview=computed(()=>this.reviews().find(r=>this.matchesOpeningSponsorship(r) &&
     r.feeCapMojos===this.openingSponsorship()!.maximumFeeMojos && !this.expired(r)));
   readonly operatorFeeAvailable=computed(()=>this.executionEnabled() || Number(this.maximumFee())>0);
   readonly openingFeeAvailable=computed(()=>!!this.selectedSponsorship() || this.operatorFeeAvailable());
   readonly pendingNeedsFunding=computed(()=>{
     const pending=this.pending();
+    if(pending?.kind==='CAST_VOTE' && pending.feeCapMojos===0)return !this.operatorFeeAvailable() || !!this.voteSponsorship();
     if(pending?.kind!=='OPEN_PROPOSAL' || pending.feeCapMojos!==0)return false;
     const s=this.openingSponsorship(),consent=this.consent();
     return !this.operatorFeeAvailable() || !!s && s.proposalId===pending.proposalId && s.consentPackageId===pending.consentPackageId ||
@@ -77,7 +95,8 @@ export class GenerationBallotsComponent implements OnInit {
       this.consent()!.feeCapMojos===this.selectedSponsorship()!.maximumFeeMojos)));
   readonly canVote=computed(()=>this.canPrepare() && !!this.snapshot()?.proposal?.openedAt &&
     this.catalog()?.proposalId===this.snapshot()?.proposal?.proposalId && !!this.catalog()?.votingClosesAt &&
-    this.catalog()!.votingClosesAt!*1000>this.refresh.now());
+    this.catalog()!.votingClosesAt!*1000>this.refresh.now() &&
+    (this.selectedVoteSponsorship()?!this.fundedVoteReview():this.operatorFeeAvailable()));
   private readonly refreshStarted=signal(false);
   private refreshedSession:{key:string;token:string}|null=null;
   private readonly readyRefresh=effect(()=>{
@@ -193,7 +212,8 @@ export class GenerationBallotsComponent implements OnInit {
   }
   async create(kind:'OPEN_PROPOSAL'|'CAST_VOTE'):Promise<void> {
     const c=this.catalog(),consent=this.consent();if(!c || (kind==='OPEN_PROPOSAL'?!this.canOpen():!this.canVote()))return;
-    const maximumFee=kind==='OPEN_PROPOSAL'?this.selectedSponsorship()?.maximumFeeMojos??this.maximumFee():this.maximumFee();
+    const grant=kind==='OPEN_PROPOSAL'?this.selectedSponsorship():this.selectedVoteSponsorship();
+    const maximumFee=grant?.maximumFeeMojos??this.maximumFee();
     const req:HolderBallotRequest={generationId:c.generationId,requestKey:crypto.randomUUID(),kind,
       proposalId:kind==='OPEN_PROPOSAL'?consent!.proposalId!:c.proposalId!,consentPackageId:kind==='OPEN_PROPOSAL'?consent!.packageId:null,
       expectedInputs:structuredClone(c.expectedInputs),feeCapMojos:kind==='OPEN_PROPOSAL'?Math.min(Number(maximumFee),Number(consent!.feeCapMojos)):Number(maximumFee),
@@ -202,20 +222,31 @@ export class GenerationBallotsComponent implements OnInit {
   }
   async retry():Promise<void> {
     const req=this.pending();if(!req || this.busy() || this.pendingNeedsFunding())return;
+    if(req.kind==='CAST_VOTE' && !this.voteRequestFunded(req))return;
     this.busy.set('PREPARING');this.error.set(null);
     try{this.remember(await this.api.prepare(structuredClone(req),req.kind==='OPEN_PROPOSAL'?this.consent()??undefined:undefined));this.savePending(null);}
     catch{this.error.set('We couldn’t complete preparation. Recover this same review before starting another. Your signatures and prior transactions are retained.');}
     finally{this.busy.set(null);await this.refresh.refresh();}
   }
+  voteRequestFunded(req:HolderBallotRequest):boolean {
+    if(req.kind!=='CAST_VOTE')return true;
+    const grant=this.voteSponsorship();
+    if(grant && req.feeCapMojos===Number(grant.maximumFeeMojos) && req.proposalId===grant.proposalId &&
+      req.selected.length===1 && req.selected[0].coinId===grant.coinId && req.selected[0].vaultLauncherId===grant.vaultLauncherId)return true;
+    return this.operatorFeeAvailable() && (!grant || req.feeCapMojos>0);
+  }
   useCurrentOpeningFunding():void {
     const pending=this.pending(),consent=this.consent(),catalog=this.catalog();
-    if(!pending || !catalog || !consent || !this.pendingNeedsFunding() || !this.openingFeeAvailable() || !this.canSelect() ||
-      this.refresh.error() || !this.refresh.lastUpdated() || pending.consentPackageId!==consent.packageId || pending.proposalId!==consent.proposalId)return;
+    if(!pending || !catalog || !this.pendingNeedsFunding() || !this.canSelect() || this.refresh.error() || !this.refresh.lastUpdated())return;
+    if(pending.kind==='CAST_VOTE'){
+      if(!this.voteSponsorship() || pending.proposalId!==catalog.proposalId)return;
+    }else if(!consent || !this.openingFeeAvailable() || pending.consentPackageId!==consent.packageId || pending.proposalId!==consent.proposalId)return;
     const eligible=pending.selected.filter(row=>catalog.holdings.some(h=>h.coinId===row.coinId && h.vaultLauncherId===row.vaultLauncherId));
     this.coinIds.set(eligible.map(h=>h.coinId));this.savePending(null);this.error.set(null);
   }
   async sign(r:GenerationBallotReview,row:HolderRow):Promise<void> {
-    if(this.busy() || this.expired(r) || this.signed(r,row) || !this.assigned(row) || !this.available() || !this.isCurrent())return;
+    if(this.busy() || this.expired(r) || this.signed(r,row) || !this.assigned(row) || !this.available() || !this.isCurrent() ||
+      !this.voteRequestFunded(r.request))return;
     this.selected.set(r);this.signingWallet.set(this.walletLabel(row));this.busy.set('SIGNING');this.error.set(null);
     try{this.remember(await this.api.sign(r,row.request.sgtCoinId));}
     catch(error){this.error.set(error instanceof GenerationBallotSigningError ? error.message :
@@ -224,6 +255,7 @@ export class GenerationBallotsComponent implements OnInit {
   }
   async assemble(r:GenerationBallotReview):Promise<void> {
     if(this.busy() || this.expired(r) || r.stage!=='READY' ||
+      !this.voteRequestFunded(r.request) ||
       (r.kind==='OPEN_PROPOSAL' && r.feeCapMojos==='0' && (!this.operatorFeeAvailable() || this.matchesOpeningSponsorship(r))))return;
     this.busy.set('ASSEMBLING');this.error.set(null);
     try{this.prepared.emit(await this.api.assemble(r));}
