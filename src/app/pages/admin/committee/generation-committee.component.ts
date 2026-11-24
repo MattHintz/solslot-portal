@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { GenerationGovernanceService, GenerationGovernanceStatus,GenerationOperations,GenerationOperationStatus,
   MaintenanceKind,MaintenanceRequest,GovernedAction,RewardEpochIntent,RewardClaimIntent,RewardProgressIntent,mergeGenerationReceipt } from '../../../services/generation-governance.service';
 import { AdminStatusRefresh } from '../../../services/admin-status-refresh.service';
+import { AdminSessionService } from '../../../services/admin-session.service';
 import { AdminRefreshStatusComponent } from '../../../components/admin-workspace/admin-refresh-status.component';
 import { GenerationConsentsComponent } from './generation-consents.component';
 import { GenerationBallotsComponent } from './generation-ballots.component';
@@ -21,10 +22,22 @@ import { GenerationRewardsFormComponent } from '../../../components/admin-worksp
 })
 export class GenerationCommitteeComponent implements OnInit {
   private readonly api=inject(GenerationGovernanceService);
+  private readonly session=inject(AdminSessionService);
   readonly refresh=inject(AdminStatusRefresh);
   readonly status=signal<GenerationGovernanceStatus|null>(null);
   readonly operations=signal<GenerationOperations|null>(null);
   readonly operationsError=signal(false);
+  private readonly fundingRead=signal<{key:string;token:string;at:number;operations:GenerationOperations}|null>(null);
+  private readonly currentFunding=computed(()=>{
+    const read=this.fundingRead();
+    return read && this.isCurrent() && !this.operationsError() && read.key===this.session.pubkey() &&
+      read.token===this.session.jwt() && this.refresh.now()-read.at<=90_000 ? read.operations : null;
+  });
+  readonly anchorSponsorship=computed(()=>{
+    const grant=this.currentFunding()?.anchorSponsorship,s=this.snapshot();
+    return grant && s?.proposal?.proposalId===grant.proposalId && !s.proposal.openedAt &&
+      s.chainEvidence['governance']?.coinId===grant.governanceCoinId && this.refresh.now()<grant.expiresAt*1000 ? grant : null;
+  });
   readonly pendingAction=signal<'PREPARING'|'SUBMITTING'|null>(null);
   readonly reviewRequest=signal<MaintenanceRequest|null>(null);
   readonly preparedAction=signal<GenerationOperationStatus|null>(null);
@@ -94,11 +107,14 @@ export class GenerationCommitteeComponent implements OnInit {
   });
   ngOnInit():void {
     this.refresh.start(async()=>{
+      const key=this.session.pubkey(),token=key?this.session.jwt():null;
       const [state,operations]=await Promise.allSettled([this.api.status(),this.api.operations()]);
       if(operations.status==='fulfilled'){
         try {
           const next={...operations.value,operations:operations.value.operations.map(op=>this.remember(op))};
           this.operations.set(next);this.operationsError.set(false);
+          this.fundingRead.set(key && token && key===this.session.pubkey() && token===this.session.jwt() ?
+            {key,token,at:Date.now(),operations:operations.value} : null);
           const current=this.preparedAction();
           if(current){const saved=next.operations.find(op=>op.operationId===current.operationId);if(saved)this.setPrepared(saved);}
           if(next.operations.some(op=>op.operationId===this.uncertainSubmission() && !!op.transactionId))this.uncertainSubmission.set(null);
@@ -140,8 +156,9 @@ export class GenerationCommitteeComponent implements OnInit {
   async reviewAction(kind:MaintenanceKind,intent?:GovernedAction):Promise<void> {
     if(this.pendingAction() || !this.isCurrent() || this.operationsError() || !this.operations()?.available)return;
     const s=this.snapshot()!;
+    const maximumFee=(kind==='ANCHOR_VOTE'?this.anchorSponsorship()?.maximumFeeMojos:undefined)??this.operations()!.maximumFeeMojos;
     const request:MaintenanceRequest={generationId:s.generationId,requestKey:crypto.randomUUID(),kind,
-      feeCapMojos:Number(this.operations()!.maximumFeeMojos),expectedInputs:{registry:s.chainEvidence['registry'].coinId,
+      feeCapMojos:Number(maximumFee),expectedInputs:{registry:s.chainEvidence['registry'].coinId,
         governance:s.chainEvidence['governance'].coinId,holdings:s.chainEvidence['holdings'].coinId}};
     if(kind==='RATIFY_UPGRADE' || kind==='ACTIVATE_UPGRADE')request.upgrade=intent?.upgrade;
     if(kind==='ACTIVATE_UPGRADE'){
@@ -188,7 +205,7 @@ export class GenerationCommitteeComponent implements OnInit {
   }
   async submitReviewed():Promise<void> {
     const review=this.preparedAction();
-    if(!review || this.pendingAction() || !this.operations()?.executionEnabled || this.operationsError() || review.transactionId || review.stage!=='PREPARED')return;
+    if(!review || this.pendingAction() || !this.submissionEnabled(review) || this.operationsError() || review.transactionId || review.stage!=='PREPARED')return;
     this.pendingAction.set('SUBMITTING');this.actionError.set(null);
     try{this.setPrepared(await this.api.submit(structuredClone(review)));this.uncertainSubmission.set(null);}
     catch{this.uncertainSubmission.set(review.operationId);this.actionError.set('We couldn’t confirm the submission response. Your operation is saved. Check its status below before taking another action.');}
@@ -197,9 +214,22 @@ export class GenerationCommitteeComponent implements OnInit {
 
     }
   }
+  sponsoredSubmission(op:GenerationOperationStatus){
+    if(op.stage!=='PREPARED' || op.transactionId || !['OPEN_PROPOSAL','ANCHOR_VOTE'].includes(op.kind))return null;
+    const row=this.currentFunding()?.operations.find(r=>r.operationId===op.operationId);
+    const grant=row?.sponsoredSubmission;
+    return row && grant && row.stage==='PREPARED' && !row.transactionId && row.kind===op.kind && row.intentHash===op.intentHash &&
+      row.generationId===op.generationId && row.feeCapMojos===op.feeCapMojos && op.feeCapMojos===grant.maximumFeeMojos &&
+      this.refresh.now()<grant.expiresAt*1000 ? grant : null;
+  }
+  submissionEnabled(op:GenerationOperationStatus):boolean {
+    return !!this.operations()?.executionEnabled || !!this.sponsoredSubmission(op);
+  }
   resumeSaved(op:GenerationOperationStatus):void {
     if(this.pendingAction() || op.kind==='CREATE_RECIPIENT_VAULT')return;
     this.setPrepared(op);this.reviewRequest.set(null);this.actionError.set(null);
+    if(!this.operations()?.executionEnabled && op.stage==='PREPARED' &&
+      ['OPEN_PROPOSAL','ANCHOR_VOTE'].includes(op.kind) && !this.sponsoredSubmission(op))void this.refresh.refresh();
   }
   delayReady(when:number):boolean {return this.isCurrent() && this.refresh.now()>=when*1000;}
   operationMessage(op:GenerationOperationStatus):string {

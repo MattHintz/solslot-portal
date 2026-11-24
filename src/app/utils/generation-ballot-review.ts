@@ -22,6 +22,12 @@ export function validateHolderCatalog(source:HolderCatalog):HolderCatalog {
     new Set(c.holdings.map(r=>r.coinId)).size===c.holdings.length);
   for(const r of c.holdings)check([r.coinId,r.vaultLauncherId,r.ownerPuzzleHash].every(hash) && typeof r.name==='string' && r.name.length>0 && r.name.length<=100 &&
     uint(r.amount) && r.amount>0 && r.amount<=1_000_000);
+  if(c.openingSponsorship!==undefined){
+    const s=c.openingSponsorship;
+    check(s && Object.keys(s).length===6 && [s.consentPackageId,s.proposalId,s.coinId,s.vaultLauncherId].every(hash) &&
+      c.proposalId===null && s.maximumFeeMojos==='1000000000' && uint(s.expiresAt) && s.expiresAt>0 &&
+      c.holdings.some(h=>h.coinId===s.coinId && h.vaultLauncherId===s.vaultLauncherId && h.amount===10_000));
+  }
   return c;
 }
 

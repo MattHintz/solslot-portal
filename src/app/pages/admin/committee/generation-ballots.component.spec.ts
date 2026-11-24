@@ -8,6 +8,7 @@ import { AdminSessionService } from '../../../services/admin-session.service';
 import { ChiaWalletService } from '../../../services/chia-wallet.service';
 import { environment } from '../../../../environments/environment';
 import vector from '../../../utils/generation-holder-ballot.fixture.json';
+import { validateHolderCatalog } from '../../../utils/generation-ballot-review';
 
 describe('Holder voting lifecycle UX',()=>{
   const runtime=environment.solslotProtocol as typeof environment.solslotProtocol & {generationId?:string};
@@ -38,6 +39,85 @@ describe('Holder voting lifecycle UX',()=>{
   });
   afterEach(()=>{sessionStorage.removeItem('solslot_generation_holder_prepare:'+runtime.generationId);
     if(previous===undefined)delete runtime.generationId;else runtime.generationId=previous;});
+  const sponsoredCatalog=()=>{
+    const c=catalog(),r=review();
+    return {...c,openingSponsorship:{...r.request.selected[0],consentPackageId:r.request.consentPackageId!,
+      proposalId:r.proposalId,maximumFeeMojos:'1000000000' as const,expiresAt:c.checkedAt+30}};
+  };
+  it('validates the funding cap and whole holding in the authenticated catalog',()=>{
+    const c=sponsoredCatalog(),s=c.openingSponsorship;
+    expect(validateHolderCatalog(c).openingSponsorship).toEqual(s);
+    for(const change of [{maximumFeeMojos:'1000000001'},{vaultLauncherId:c.holdings[1].vaultLauncherId},
+      {proposalId:'invalid'},{expiresAt:-1},{unexpected:true}]){
+      expect(()=>validateHolderCatalog({...c,openingSponsorship:{...s,...change}} as HolderCatalog)).toThrow();
+    }
+    c.holdings[0].amount=9_999;expect(()=>validateHolderCatalog(c)).toThrow();
+  });
+  it('discloses and prepares a funded cap only for the exact publication and designated 10,000 SGT',fakeAsync(()=>{
+    const c=sponsoredCatalog(),s=c.openingSponsorship,r=review();
+    const consent={packageId:s.consentPackageId,proposalId:s.proposalId,proposal:r.proposal,stage:'READY',
+      holdingsRoot:c.snapshotRoot,expiresAt:r.expiresAt,feeCapMojos:s.maximumFeeMojos};
+    api.holdings.and.resolveTo(c);api.prepare.and.returnValue(new Promise(()=>{}));
+    const f=create();flushMicrotasks();f.componentRef.setInput('maximumFee','0');f.componentRef.setInput('consent',consent);
+    const b=f.componentInstance;b.choose(c.holdings[1].coinId,true);
+    expect(b.canOpen()).toBeFalse();b.choose(s.coinId,true);expect(b.canOpen()).toBeFalse();
+    b.choose(c.holdings[1].coinId,false);f.detectChanges();
+    expect(b.canOpen()).toBeTrue();expect(f.nativeElement.textContent).toContain('0.001 TXCH (1,000,000,000 mojos)');
+    f.componentRef.setInput('consent',{...consent,feeCapMojos:'999999999'});expect(b.canOpen()).toBeFalse();
+    f.componentRef.setInput('consent',consent);void b.create('OPEN_PROPOSAL');flushMicrotasks();
+    const [request]=api.prepare.calls.mostRecent().args;
+    expect(request.feeCapMojos).toBe(1_000_000_000);
+    expect(request.selected).toEqual([{coinId:s.coinId,vaultLauncherId:s.vaultLauncherId}]);
+    expect(api.sign).not.toHaveBeenCalled();f.destroy();
+  }));
+  it('keeps expired, unrelated and previous-session funding out of a new review',fakeAsync(()=>{
+    const c=sponsoredCatalog(),s=c.openingSponsorship,r=review(),token=signal('synthetic-session');
+    session.jwt=token;api.holdings.and.resolveTo(c);api.prepare.and.returnValue(new Promise(()=>{}));
+    const f=create();flushMicrotasks();const b=f.componentInstance;
+    const consent={packageId:s.consentPackageId,proposalId:s.proposalId,proposal:r.proposal,stage:'READY',
+      holdingsRoot:c.snapshotRoot,expiresAt:r.expiresAt,feeCapMojos:s.maximumFeeMojos};
+    f.componentRef.setInput('consent',{...consent,packageId:'0x'+'88'.repeat(32)});expect(b.selectedSponsorship()).toBeNull();
+    f.componentRef.setInput('consent',consent);expect(b.selectedSponsorship()).toEqual(s);
+    token.set('changed-session');expect(b.openingSponsorship()).toBeNull();token.set('synthetic-session');
+    b.refresh.now.set(s.expiresAt*1000);b.choose(s.coinId,true);f.componentRef.setInput('maximumFee','0');
+    expect(b.selectedSponsorship()).toBeNull();void b.create('OPEN_PROPOSAL');flushMicrotasks();
+    expect(api.prepare).not.toHaveBeenCalled();f.detectChanges();expect(f.nativeElement.textContent).toContain('Opening funding is unavailable');f.destroy();
+  }));
+  it('retains a selection and recovers an offline opening when an actual funding policy becomes available',fakeAsync(()=>{
+    const r=review(),c=catalog(),consent={packageId:r.request.consentPackageId,proposalId:r.proposalId,proposal:r.proposal,stage:'READY',
+      holdingsRoot:c.snapshotRoot,expiresAt:r.expiresAt,feeCapMojos:'1000000000'};
+    const f=create();flushMicrotasks();f.componentRef.setInput('consent',consent);f.componentRef.setInput('maximumFee','0');
+    const b=f.componentInstance;b.choose(c.holdings[0].coinId,true);f.detectChanges();
+    expect(b.canOpen()).toBeFalse();expect(f.nativeElement.textContent).toContain('Check opening funding');
+    void b.create('OPEN_PROPOSAL');flushMicrotasks();expect(api.prepare).not.toHaveBeenCalled();
+    api.holdings.and.resolveTo(sponsoredCatalog());void b.refresh.refresh();flushMicrotasks();
+    expect(b.coinIds()).toEqual([c.holdings[0].coinId]);expect(b.canOpen()).toBeTrue();
+    api.holdings.and.resolveTo(c);void b.refresh.refresh();flushMicrotasks();expect(b.canOpen()).toBeFalse();
+    f.componentRef.setInput('executionEnabled',true);expect(b.canOpen()).toBeTrue();
+    api.prepare.and.returnValue(new Promise(()=>{}));void b.create('OPEN_PROPOSAL');flushMicrotasks();
+    expect(api.prepare.calls.mostRecent().args[0].feeCapMojos).toBe(0);f.destroy();
+  }));
+  it('recovers a legacy zero-fee request after reload without sending it again or changing prior receipts',fakeAsync(()=>{
+    const r=review(),c=sponsoredCatalog(),pending={...r.request,requestKey:'lost-request',feeCapMojos:0,selected:[r.request.selected[0]]};
+    sessionStorage.setItem('solslot_generation_holder_prepare:'+r.generationId,JSON.stringify(pending));api.holdings.and.resolveTo(c);
+    const f=create();flushMicrotasks();f.componentRef.setInput('maximumFee','0');f.componentRef.setInput('consent',{
+      packageId:r.request.consentPackageId,proposalId:r.proposalId,proposal:r.proposal,stage:'READY',
+      holdingsRoot:c.snapshotRoot,expiresAt:r.expiresAt,feeCapMojos:'1000000000'});
+    const b=f.componentInstance;void b.retry();flushMicrotasks();expect(api.prepare).not.toHaveBeenCalled();
+    b.useCurrentOpeningFunding();expect(b.pending()).toBeNull();expect(b.coinIds()).toEqual([r.request.selected[0].coinId]);
+    expect(b.reviews()).toEqual([r]);expect(b.canOpen()).toBeTrue();f.destroy();
+  }));
+  it('links a signed zero-cap review to the already saved funded review for the same holding',fakeAsync(()=>{
+    const c=sponsoredCatalog(),r=review();
+    r.holders=r.holders.slice(0,1);r.request.selected=r.request.selected.slice(0,1);r.selectedWeight=10_000;
+    const paid={...r,feeCapMojos:'1000000000',request:{...r.request,feeCapMojos:1_000_000_000}};
+    const old={...r,packageId:'0x'+'87'.repeat(32),feeCapMojos:'0',request:{...r.request,feeCapMojos:0},
+      stage:'READY' as const,signatures:[{coinId:c.openingSponsorship.coinId,signedAt:r.createdAt+1}]};
+    api.holdings.and.resolveTo(c);api.list.and.resolveTo([old,paid]);const f=create();flushMicrotasks();f.detectChanges();
+    const card=f.nativeElement.querySelector('[id="holder-review-'+old.packageId+'"]');
+    expect(card.textContent).toContain('zero fee cap');expect(card.querySelector('a').hash).toBe('#holder-review-'+paid.packageId);
+    expect(card.textContent).not.toContain('Review signed transaction for submission');expect(api.prepare).not.toHaveBeenCalled();f.destroy();
+  }));
   it('shows full recipient vaults, whole-input weight and an assigned action without automatic signatures',fakeAsync(()=>{
     const f=create();flushMicrotasks();f.detectChanges();
     expect(f.nativeElement.textContent).toContain(review().holders[0].context.vault.launcherId);

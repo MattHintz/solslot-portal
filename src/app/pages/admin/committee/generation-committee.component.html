@@ -16,7 +16,7 @@
   <solslot-generation-consents [snapshot]="snapshot()" [isCurrent]="isCurrent()"
     [available]="!!operations()?.available" [maximumFee]="operations()?.maximumFeeMojos ?? '0'" (preparedPause)="resumeSaved($event)" (sponsorReview)="sponsorshipConsent.set($event)" />
   <solslot-generation-ballots [snapshot]="snapshot()" [consent]="sponsorshipConsent()" [isCurrent]="isCurrent()"
-    [available]="!!operations()?.available" [maximumFee]="operations()?.maximumFeeMojos ?? '0'" [operations]="operations()?.operations ?? []" (prepared)="resumeSaved($event)" />
+    [available]="!!operations()?.available" [maximumFee]="operations()?.maximumFeeMojos ?? '0'" [executionEnabled]="!!operations()?.executionEnabled" [operations]="operations()?.operations ?? []" (prepared)="resumeSaved($event)" />
   @if(reviewRequest() || preparedAction()){
     <section class="status-card action-review" aria-labelledby="action-review-title" [attr.aria-busy]="!!pendingAction()">
       <p class="eyebrow">Review chain action · Testnet11</p>
@@ -72,13 +72,15 @@
         <dl class="evidence"><dt>Maximum network fee</dt><dd>{{op.feeCapMojos}} mojos · existing test fee fund</dd>
           <dt>Exact reviewed intent</dt><dd>{{op.intentHash}}</dd><dt>Saved operation</dt><dd>{{op.operationId}}</dd></dl>
         <p class="muted">This executes the displayed chain step. Paying its network fee adds no voting weight and cannot change the approved proposal.</p>
-        @if(!operations()?.executionEnabled){<p class="notice">Chain submission is disabled for this deployment. This preparation has not been sent.</p>}
+        @if(sponsoredSubmission(op); as grant){
+          <p>The organization will fund this saved transaction up to 0.001 TXCH (1,000,000,000 mojos) until {{grant.expiresAt*1000 | date:'MMM d, h:mm a'}} in your local time.</p>
+        }@else if(!operations()?.executionEnabled && op.stage==='PREPARED'){<p class="notice">Chain submission is disabled for this deployment. This preparation has not been sent.</p>}
         @if(op.kind==='MINT_COLLECTION'){
           <p>This mint belongs to its exact sealed collection batch. Follow submission and inventory confirmation there.</p>
           <a class="primary-link" [routerLink]="['/admin/collections',$any(op.review).collectionId]">Open the collection mint →</a>
         }@else if(!op.transactionId && op.stage==='PREPARED'){
           @if(uncertainSubmission()===op.operationId){<p role="status">The last response was lost. Retrying uses this same saved operation and cannot create a replacement transaction.</p>}
-          <button class="primary-button" type="button" [disabled]="!!pendingAction() || !operations()?.executionEnabled || operationsError()" (click)="submitReviewed()">{{uncertainSubmission()===op.operationId?'Retry this saved submission':'Submit '+operationLabel(op.kind).toLowerCase()}}</button>
+          <button class="primary-button" type="button" [disabled]="!!pendingAction() || !submissionEnabled(op) || operationsError()" (click)="submitReviewed()">{{uncertainSubmission()===op.operationId?'Retry this saved submission':'Submit '+operationLabel(op.kind).toLowerCase()}}</button>
         }
       } @else if(!pendingAction()) {
         <button type="button" (click)="prepareReview()">Retry preparing this same action</button>
@@ -141,6 +143,7 @@
           @else {<p>Waiting for the confirmed opening timestamp. The one-hour window is measured on chain.</p>}
           @if(votingClosed()){<p>The displayed voting window has ended. Finalization still requires chain confirmation.</p>}
           @if(!p.openedAt || votingClosed()){
+            @if(anchorSponsorship(); as grant){<p>The organization will fund confirmation of this opening up to 0.001 TXCH until {{grant.expiresAt*1000 | date:'MMM d, h:mm a'}} in your local time.</p>}
             <button type="button" [disabled]="!isCurrent() || !!pendingAction() || operationsError() || !operations()?.available"
               (click)="reviewAction(p.openedAt?'FINALIZE_VOTE':'ANCHOR_VOTE')">{{p.openedAt?'Review vote finalization':'Review opening confirmation'}}</button>
           }

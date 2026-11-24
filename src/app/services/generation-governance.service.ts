@@ -8,11 +8,15 @@ import { canonicalConsent } from '../utils/generation-consent-review';
 import { GovernedBill,ParameterIntent,UpgradeIntent,StatuteIntent,RedemptionIntent,redemptionReviewBill,reconstructGovernedBill,validateStatuteIntent } from '../utils/generation-governed-bill';
 export type {ParameterIntent,UpgradeIntent,TestMintIntent,GrantIntent,StatuteIntent,RedemptionIntent} from '../utils/generation-governed-bill';
 
+export interface SponsoredSubmission {maximumFeeMojos:'1000000000';expiresAt:number;}
+export interface AnchorSponsorship extends SponsoredSubmission {proposalId:string;governanceCoinId:string;}
+
 export interface GenerationOperationStatus {
   generationId:string;network:'testnet11';operationId:string;kind:string;intentHash:string;
   stage:'PREPARED'|'DISPATCHING'|'RECONCILING'|'SUBMITTED'|'CONFIRMED'|'EXPIRED_RECONCILED';transactionId:string|null;
   feeCapMojos:string;createdAt:number;updatedAt:number;lastCheckedAt:number|null;
   errorCode:string|null;confirmedHeight:number|null;nextAction:string;pollAfterSeconds:number;
+  sponsoredSubmission?:SponsoredSubmission;
   review?:MaintenanceRequest|RecipientLaunchReview|ScopedPauseReview|HolderBallotOperationReview|MintExecutionReview|FinalLaunchOperationReview|PrimarySolsBatchReview|null;
 }
 /** Once a transaction is known, stale cache responses may never make it submit-able again. */
@@ -33,6 +37,7 @@ export function mergeGenerationReceipt(previous:GenerationOperationStatus|undefi
 export interface GenerationOperations {
   generationId:string;network:'testnet11';available:boolean;operations:GenerationOperationStatus[];pollAfterSeconds:number;
   executionEnabled:boolean;maximumFeeMojos:string;
+  anchorSponsorship?:AnchorSponsorship;
 }
 
 export interface MintExecutionRequest {generationId:string;sourceReviewId:string;proposalId:string;
@@ -82,7 +87,19 @@ export function validateGenerationOperations(value:GenerationOperations):Generat
   if(!generation || value.generationId!==generation || value.network!=='testnet11' || typeof value.available!=='boolean' ||
       typeof value.executionEnabled!=='boolean' || !/^\d{1,10}$/.test(value.maximumFeeMojos) || BigInt(value.maximumFeeMojos)>1000000000n ||
       !Array.isArray(value.operations) || value.operations.length>50 || (!value.available && value.operations.length))invalid();
+  const validFunding=(v:SponsoredSubmission)=>v && v.maximumFeeMojos==='1000000000' && integer(v.expiresAt) && v.expiresAt>0;
+  if(value.anchorSponsorship!==undefined){
+    const a=value.anchorSponsorship;
+    if(!value.available || !validFunding(a) || Object.keys(a).length!==4 || !hash(a.proposalId) || !hash(a.governanceCoinId))invalid();
+  }
   for(const op of value.operations){
+    if(op.sponsoredSubmission!==undefined){
+      const s=op.sponsoredSubmission,r=op.review;
+      if(!validFunding(s) || Object.keys(s).length!==2 || op.feeCapMojos!==s.maximumFeeMojos ||
+        !r || r.kind!==op.kind || r.generationId!==generation || r.feeCapMojos!==Number(s.maximumFeeMojos) ||
+        !(r.kind==='OPEN_PROPOSAL' && r.selected?.length===1 && r.selectedWeight===10_000 ||
+          r.kind==='ANCHOR_VOTE' && r.expectedInputs && [r.expectedInputs.registry,r.expectedInputs.governance,r.expectedInputs.holdings].every(hash)))invalid();
+    }
     if(op.kind==='PRIMARY_SOLS_BATCH'){
       const r=op.review;
       const units=(v:string)=>typeof v==='string' && /^\d{1,20}$/.test(v) && BigInt(v)<2n**64n;
