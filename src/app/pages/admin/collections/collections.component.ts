@@ -81,6 +81,16 @@ type StateFilter = 'ALL' | CollectionState;
         </section>
       }
 
+      @if (feature()?.testEditionsEnabled && sepoliaSource(); as source) {
+        <section class="notice" aria-label="Base Sepolia checkout test">
+          <div><strong>Eastmoreland checkout test</strong>
+            <p>Two private test deeds for 1 test USDC total on Base Sepolia. Saving the draft costs nothing.</p>
+          </div>
+          <button type="button" class="btn btn--ghost" (click)="createSepoliaPair(source)"
+            [disabled]="creating() || !feature()?.metadataEnabled">Open two-deed test draft</button>
+        </section>
+      }
+
       <nav class="filter-bar" aria-label="Collection state filter">
         @for (state of states; track state) {
           <button
@@ -237,6 +247,10 @@ export class CollectionsComponent {
   readonly createOpen = signal(false);
   readonly creating = signal(false);
   readonly createError = signal<string | null>(null);
+  readonly sepoliaSource = computed(() => this.collections().find(item =>
+    item.id === 'TEST-88DD05ABFA6B91DDE96118BC' && item.state === 'SEALED' &&
+    item.revision === 14 && item.metadataRoot === '0x86570ba629b3c4e2cd9f35b081cbba7963f1a0b9a62830d92d2460b8d4bbf74d'));
+
   readonly filtered = computed(() => {
     const state = this.filter();
     return state === 'ALL'
@@ -292,6 +306,20 @@ export class CollectionsComponent {
       await this.router.navigate(['/admin/collections', edition.id]);
     } catch (error) { this.createError.set(formatError(error)); }
     finally { this.creating.set(false); }
+  }
+
+  async createSepoliaPair(source: CollectionWorkspace): Promise<void> {
+    if (this.creating()) return;
+    this.creating.set(true);
+    this.createError.set(null);
+    try {
+      const draft = await this.api.createSepoliaTestPair(source);
+      await this.router.navigate(['/admin/collections', draft.id]);
+    } catch (error) {
+      this.createError.set(formatError(error));
+    } finally {
+      this.creating.set(false);
+    }
   }
 
   async create(): Promise<void> {

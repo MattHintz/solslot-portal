@@ -85,6 +85,17 @@ export class CollectionApiService {
       {headers: this.headers()}).pipe(timeout(20_000)));
   }
 
+  createSepoliaTestPair(source: CollectionWorkspace): Promise<CollectionWorkspace> {
+    const request = {
+      sourceCollectionId: source.id,
+      sourceRevision: source.revision,
+      sourceMetadataRoot: source.metadataRoot,
+    };
+    return firstValueFrom(this.http.post<CollectionWorkspace>(
+      `${this.base}/admin/collections/test-editions/base-sepolia-pair`, request, {headers: this.headers()},
+    ).pipe(timeout(20_000)));
+  }
+
   acknowledgePreview(collection: CollectionWorkspace): Promise<CollectionWorkspace> {
     return firstValueFrom(this.http.post<CollectionWorkspace>(`${this.base}/admin/collections/${encodeURIComponent(collection.id)}/preview-acknowledgements`,
       {draftHash: collection.draftHash}, {headers: this.headers(collection.revision)}).pipe(timeout(20_000)));
