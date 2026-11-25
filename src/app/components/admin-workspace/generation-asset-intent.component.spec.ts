@@ -25,8 +25,8 @@ describe('Exact mint and grant review presentation',()=>{
   it('presents governed monetary facts in dollars with their exact key and revision',()=>{
     const f=TestBed.createComponent(GenerationAssetIntentComponent),bill=vectors.find(v=>v.review.kind==='STATUTES')!.review as GovernedBill;
     f.componentRef.setInput('bill',bill);f.detectChanges();const text=f.nativeElement.textContent;
-    expect(text).toContain('Governed NAV (USD)');expect(text).toContain('$75,000');
+    expect(text).toContain('Collection value');expect(text).toContain('$75,000');
     expect(text).toContain(bill.statutes!.key);expect(text).toContain('0 → 1');
-    expect(text).toContain('does not change token supply, quorum');f.destroy();
+    expect(text).toContain('Allocation cap');expect(text).toContain('Deed-to-SOLS swaps');f.destroy();
   });
 });

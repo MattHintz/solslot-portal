@@ -52,7 +52,7 @@ interface DeskTask {
         <a routerLink="/admin/collections"><span>01 · Prepare</span><strong>Create SmartDeeds</strong><small>Start with a property and its documents</small></a>
         <a routerLink="/admin/mint"><span>02 · Track</span><strong>Mint proposals</strong><small>Follow voting, execution, and confirmation</small></a>
         <a routerLink="/admin/sgt-allocations"><span>03 · Allocate</span><strong>SGT sales & grants</strong><small>Prepare an allocation for team review</small></a>
-        <a routerLink="/committee"><span>04 · Participate</span><strong>Committee desk</strong><small>Read the current proposal and voting status</small></a>
+        <a routerLink="/committee"><span>04 · Participate</span><strong>Committee desk</strong><small>Review what your wallet will approve, then check your receipt</small></a>
       </nav>
 
       <section class="next-action" aria-labelledby="next-action-title">

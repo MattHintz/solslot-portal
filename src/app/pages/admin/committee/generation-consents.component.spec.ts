@@ -6,6 +6,8 @@ import { GenerationConsentService,GenerationConsentReview,GenerationConsentSigni
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { environment } from '../../../../environments/environment';
 import valuation from '../../../../environments/eastmoreland-testnet-valuation.json';
+import { committeeDate,committeeDollars,committeeProposalTitle } from '../../../utils/committee-decision-labels';
+import { StatuteReview } from '../../../utils/generation-governed-bill';
 import vector from '../../../utils/generation-consent.fixture.json';
 
 describe('Saved administrator consent UX',()=>{
@@ -27,12 +29,59 @@ describe('Saved administrator consent UX',()=>{
   it('makes the assigned wallet action prominent and polls without asking for a signature',fakeAsync(()=>{
     const f=create();flushMicrotasks();f.detectChanges();
     const buttons=[...f.nativeElement.querySelectorAll('button')] as HTMLButtonElement[];
-    expect(buttons.find(b=>b.textContent?.includes('Approve publication in wallet'))?.classList).toContain('primary');
-    expect(f.nativeElement.textContent).toContain('Your assigned action');expect(f.nativeElement.textContent).toContain('Approve by');
-    expect(f.nativeElement.textContent).toContain('24 hours');expect(f.nativeElement.textContent).toContain('15,000 required');
+    expect(buttons.find(b=>b.textContent?.includes('Approve for holder vote'))?.classList).toContain('primary');
+    expect(f.nativeElement.textContent).toContain('Your signature is needed');expect(f.nativeElement.textContent).toContain('Approve by');
+    expect(f.nativeElement.textContent).toContain('one-hour vote');expect(f.nativeElement.textContent).toContain('15,000 SGT voting yes');
     tick(5000);flushMicrotasks();expect(api.list).toHaveBeenCalledTimes(2);
     expect(api.sign).not.toHaveBeenCalled();expect(api.prepare).not.toHaveBeenCalled();expect(api.preparePause).not.toHaveBeenCalled();f.destroy();
   }));
+  function collectionReview():GenerationConsentReview {
+    const base=review();
+    const start=Number(valuation.statutes.record[4]);
+    return {...base,generationId:valuation.generationId,requestKey:valuation.requestKey,
+      createdAt:start,issuedAt:start,expiresAt:Number(valuation.statutes.record[5])+1900,
+      proposal:{...base.proposal!,kind:'STATUTES',upgrade:undefined,statutes:structuredClone(valuation.statutes) as StatuteReview},
+      signatures:[{slot:0,signedAt:start+5}]};
+  }
+  it('shows the second administrator the property, exact decision, effective cutoff and their own wallet values',fakeAsync(()=>{
+    const r=collectionReview(),second=r.challenges.find(c=>c.slot===1)!;
+    spyOn(Date,'now').and.returnValue((r.createdAt+10)*1000);
+    session.authoritySlot=()=>1;session.pubkey=()=>second.publicKey;
+    api.list.and.resolveTo([r]);
+    const f=create();flushMicrotasks();f.detectChanges();
+    const article=f.nativeElement.querySelector('.review') as HTMLElement;
+    expect(article.querySelector('h3')!.textContent).toBe('127 Eastmoreland St · $75,000');
+    expect(article.textContent).toContain('Let SGT holders vote on a $75,000 collection value');
+    expect(article.textContent).toContain('pool could hold up to $75,000');
+    expect(article.textContent).toContain('1 of 2 approvals recorded');
+    expect(article.querySelector('.wallet-impact')!.textContent).toContain('0 TXCH');
+    expect(article.querySelector('.wallet-impact')!.textContent).toContain('SGT locked by signing0 SGT');
+    expect(article.querySelector('.wallet-impact')!.textContent).toContain(committeeDate(Number(valuation.statutes.record[5])));
+    expect(article.querySelectorAll('button.primary').length).toBe(1);
+    const match=article.querySelector('.wallet-match')!;
+    expect(match.textContent).toContain('Chia Coin Spend');
+    expect(match.textContent).toContain(second.coinId);
+    expect(match.textContent).toContain(second.delegatedPuzzleHash);
+    expect(match.textContent).not.toContain(r.challenges[0].coinId);
+    expect(api.sign).not.toHaveBeenCalled();
+    f.componentInstance.refresh.now.set(Number(valuation.statutes.record[5])*1000);
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('.review')).toBeNull();
+    f.nativeElement.querySelector('.history-toggle').click();f.detectChanges();
+    expect(f.nativeElement.querySelector('.review button.primary')).toBeNull();
+    expect(f.nativeElement.textContent).toContain('Approval recorded');
+    f.destroy();
+  }));
+  it('uses the reviewed value and avoids naming unrelated collection, authority or generation records',()=>{
+    const r=collectionReview(),bill=r.proposal!,s=bill.statutes!;
+    s.record[1]=50_490_001;
+    expect(committeeProposalTitle(r.generationId,bill)).toBe('127 Eastmoreland St · $50.490001');
+    expect(committeeProposalTitle('other generation',bill)).toBe('Collection valuation · $50.490001');
+    expect(committeeProposalTitle(r.generationId,{...bill,statutes:{...s,key:'another collection'}})).toBe('Collection valuation · $50.490001');
+    expect(committeeProposalTitle(r.generationId,{...bill,statutes:{...s,launcherId:'another authority'}})).toBe('Collection valuation · $50.490001');
+    expect(committeeDollars(Number.MAX_SAFE_INTEGER)).toBe('$9,007,199,254.740991');
+    expect(committeeDate(Date.UTC(2026,6,8,12)/1000)).toContain('7:00 AM CDT');
+  });
   it('offers the authorized valuation only for its generation, live inputs, assigned admin and date',fakeAsync(()=>{
     const runtime=environment.solslotProtocol as typeof environment.solslotProtocol & {generationId?:string};
     const priorGeneration=runtime.generationId;
@@ -71,7 +120,7 @@ describe('Saved administrator consent UX',()=>{
     api.sign.and.returnValue(new Promise(resolve=>complete=resolve));
     const f=create();flushMicrotasks();const r=f.componentInstance.reviews()[0];
     void f.componentInstance.sign(r);void f.componentInstance.sign(r);flushMicrotasks();f.detectChanges();
-    expect(api.sign).toHaveBeenCalledTimes(1);expect(f.nativeElement.textContent).toContain('Open your administrator wallet and approve the pending signature request.');
+    expect(api.sign).toHaveBeenCalledTimes(1);expect(f.nativeElement.textContent).toContain('Waiting for your administrator wallet.');
     expect(f.nativeElement.querySelector('button.primary').disabled).toBeTrue();
     tick(5000);flushMicrotasks();expect(api.list).toHaveBeenCalledTimes(1);
     complete(confirmed(r,0));flushMicrotasks();f.detectChanges();
@@ -97,7 +146,7 @@ describe('Saved administrator consent UX',()=>{
       const f=create();flushMicrotasks();f.detectChanges();const original=structuredClone(f.componentInstance.reviews()[0]);
       api.sign.and.rejectWith(failure);
       const button=([...f.nativeElement.querySelectorAll('button')] as HTMLButtonElement[])
-        .find(b=>b.textContent?.includes('Approve publication in wallet'))!;
+        .find(b=>b.textContent?.includes('Approve for holder vote'))!;
       button.click();flushMicrotasks();f.detectChanges();
       expect(api.sign).toHaveBeenCalledOnceWith(original);
       expect(f.nativeElement.textContent).toContain(failure.message);
@@ -160,7 +209,7 @@ describe('Saved administrator consent UX',()=>{
   it('disables expired approval locally and cannot revive a saved expiry on a stale poll',fakeAsync(()=>{
     const f=create();flushMicrotasks();const r=f.componentInstance.reviews()[0];
     f.componentInstance.refresh.now.set(r.expiresAt*1000);f.detectChanges();
-    expect(f.nativeElement.textContent).toContain('Review expired');expect(f.nativeElement.textContent).not.toContain('Approve publication in wallet');
+    expect(f.nativeElement.textContent).toContain('Show 1 expired review');f.nativeElement.querySelector('.history-toggle').click();f.detectChanges();expect(f.nativeElement.textContent).toContain('Review expired');expect(f.nativeElement.textContent).not.toContain('Approve for holder vote');
     void f.componentInstance.sign(r);flushMicrotasks();expect(api.sign).not.toHaveBeenCalled();
     api.list.and.resolveTo([{...r,stage:'EXPIRED'}]);void f.componentInstance.refresh.refresh();flushMicrotasks();
     api.list.and.resolveTo([r]);void f.componentInstance.refresh.refresh();flushMicrotasks();
@@ -170,9 +219,9 @@ describe('Saved administrator consent UX',()=>{
     const r=review();session.authoritySlot=()=>2;session.pubkey=()=>r.challenges[0].publicKey;
     api.list.and.resolveTo([confirmed(confirmed(r,0),1)]);
     const f=create();flushMicrotasks();f.detectChanges();
-    expect(f.nativeElement.textContent).not.toContain('Approve publication in wallet');
-    expect(f.nativeElement.textContent).toContain('holders sponsor the proposal with at least 10,000 SGT');
-    expect(f.nativeElement.textContent).toContain('These approvals add no voting weight');
+    expect(f.nativeElement.textContent).not.toContain('Approve for holder vote');
+    expect(f.nativeElement.textContent).toContain('Holders can now sponsor the opening with at least 10,000 SGT');
+    expect(f.nativeElement.textContent).toContain('Both administrator approvals are recorded');
     expect(api.preparePause).not.toHaveBeenCalled();f.destroy();
   }));
   it('offers recovery of a failed new review even when an older review was selected',fakeAsync(()=>{

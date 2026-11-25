@@ -36,8 +36,8 @@ describe('Sealed edition administrator actions in the native property flow',()=>
     const f=component();f.detectChanges();flushMicrotasks();f.detectChanges();
     expect(f.componentInstance.reviews().length).toBe(1);expect(f.componentInstance.reviews()[0].mintSource?.packageId).toBe(vector.mintSource.packageId);
     expect(f.nativeElement.textContent).toContain(vector.mintSource.canonicalMetadata.title);
-    expect(f.nativeElement.textContent).toContain('25 deeds');expect(f.nativeElement.textContent).toContain('Approve publication in wallet');
-    expect(f.nativeElement.textContent).toContain('Approve test SmartDeed mint publication');expect(f.nativeElement.textContent).not.toContain('mint_test_only');
+    expect(f.nativeElement.textContent).toContain('25 deeds');expect(f.nativeElement.textContent).toContain('Approve for holder vote');
+    expect(f.nativeElement.textContent).toContain('Create 25 test SmartDeeds');expect(f.nativeElement.textContent).not.toContain('mint_test_only');
     expect(f.nativeElement.textContent).not.toContain('Governed upgrade rehearsal');expect(api.sign).not.toHaveBeenCalled();f.destroy();
   }));
   it('saves one exact source request and recovers it after response loss without a wallet prompt',fakeAsync(()=>{
@@ -73,6 +73,6 @@ describe('Sealed edition administrator actions in the native property flow',()=>
     const r=f.componentInstance.reviews()[0];void f.componentInstance.sign(r);flushMicrotasks();
     expect(f.componentInstance.reviews()[0].packageId).toBe(vector.packageId);expect(api.sign).not.toHaveBeenCalled();
     const button=[...f.nativeElement.querySelectorAll('button')] as HTMLButtonElement[];
-    expect(button.find(b=>b.textContent?.includes('Approve publication in wallet'))?.disabled).toBeTrue();f.destroy();
+    expect(button.find(b=>b.textContent?.includes('Approve for holder vote'))?.disabled).toBeTrue();f.destroy();
   }));
 });
