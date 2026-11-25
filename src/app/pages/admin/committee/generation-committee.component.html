@@ -3,7 +3,7 @@
     <p class="eyebrow">SOLSLOT · TESTNET11 GOVERNANCE</p>
     <h1>Committee desk</h1>
     <p>Follow administrator consent, holder voting and execution in one place.</p>
-    <nav aria-label="Committee navigation"><a routerLink="/admin/genesis">Setup &amp; launch</a><a routerLink="/admin/collections">Properties</a><a href="/my-solslot">My Solslot</a></nav>
+    <nav aria-label="Committee navigation"><a routerLink="/admin">Admin desk</a><a routerLink="/admin/genesis">Setup &amp; launch</a><a routerLink="/admin/collections">Properties</a><a href="/my-solslot">My Solslot</a></nav>
   </header>
   <ol class="stages" aria-label="Governance stages">
     <li><span>01</span><div><strong>Administrator consent</strong><small>24 hours to approve publication</small></div></li>
@@ -12,7 +12,6 @@
     <li><span>04</span><div><strong>Execute &amp; confirm</strong><small>Separate from approval and voting</small></div></li>
   </ol>
   <solslot-admin-refresh-status [state]="refresh" />
-  <solslot-generation-sols-batches [maximumFee]="operations()?.maximumFeeMojos ?? '0'" [executionEnabled]="!!operations()?.executionEnabled" />
   <solslot-generation-consents [snapshot]="snapshot()" [isCurrent]="isCurrent()"
     [available]="!!operations()?.available" [maximumFee]="operations()?.maximumFeeMojos ?? '0'" (preparedPause)="resumeSaved($event)" (sponsorReview)="sponsorshipConsent.set($event)" />
   <solslot-generation-ballots [snapshot]="snapshot()" [consent]="sponsorshipConsent()" [isCurrent]="isCurrent()"
@@ -235,4 +234,5 @@
       }
     </section>
   }
+  <solslot-generation-sols-batches [maximumFee]="operations()?.maximumFeeMojos ?? '0'" [executionEnabled]="!!operations()?.executionEnabled" />
 </main>

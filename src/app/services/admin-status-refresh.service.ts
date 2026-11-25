@@ -78,7 +78,9 @@ export class AdminStatusRefresh {
     } catch {
       if (!this.disposed) {
         this.failures += 1;
-        this.error.set('Could not update. Previous results are still shown; retrying automatically.');
+        this.error.set(this.lastUpdated()
+          ? 'Could not refresh. Previous results are still shown. We’re retrying automatically.'
+          : 'Could not load status. We’re retrying automatically.');
       }
     } finally {
       if (deadline) clearTimeout(deadline);

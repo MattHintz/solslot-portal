@@ -68,6 +68,7 @@ describe('Read-only administrator refresh', () => {
     read.and.rejectWith(new Error('service unavailable'));
     tick(30_000); expect(read).toHaveBeenCalledTimes(2);
     expect(refresh.lastUpdated()).toBe(previous);
+    expect(refresh.error()).toContain('Previous results are still shown');
     expect(refresh.error()).toContain('retrying automatically');
     tick(59_999); expect(read).toHaveBeenCalledTimes(2);
     tick(1); expect(read).toHaveBeenCalledTimes(3);
@@ -101,6 +102,7 @@ describe('Read-only administrator refresh', () => {
     const read=jasmine.createSpy('suspended status GET').and.returnValue(new Promise<void>(()=>{}));
     refresh.start(read);tick(45_000);flushMicrotasks();
     expect(refresh.refreshing()).toBeFalse();
+    expect(refresh.error()).toContain('Could not load status');
     expect(refresh.error()).toContain('retrying automatically');
     read.and.resolveTo();
     page.dispatchEvent(new Event('visibilitychange'));flushMicrotasks();
