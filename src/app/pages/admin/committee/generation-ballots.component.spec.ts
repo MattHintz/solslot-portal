@@ -152,7 +152,15 @@ describe('Holder voting lifecycle UX',()=>{
     const f=create();flushMicrotasks();f.detectChanges();
     expect(f.nativeElement.textContent).toContain(review().holders[0].context.vault.launcherId);
     expect(f.nativeElement.textContent).toContain('15,000 quorum at 50%');expect(f.nativeElement.textContent).toContain('Each selected holding counts in full');
-    expect(f.nativeElement.textContent).toContain('Your selected holding');
+    expect(f.nativeElement.textContent).toContain('Your signature is needed');
+    const card=f.nativeElement.querySelector('article.review');
+    expect(card.querySelector('.holder-effect').textContent).toContain('your 10,000 SGT counts toward approval and locks in your vault');
+    expect(card.querySelector('button.primary').textContent).toContain('Sponsor with 10,000 SGT');
+    const fields=card.querySelector('details.wallet-match').textContent;
+    if(review().holders[0].request.typedData){
+      expect(fields).toContain('Solslot Vault');
+      expect(fields).toContain(review().holders[0].request.vaultCoinId);
+    }
     expect(f.nativeElement.textContent).toContain(review().proposal.upgrade!.sourceManifestHash);
     expect(f.nativeElement.textContent).toContain(review().proposal.upgrade!.changes[0].newModuleHash);
     expect(f.nativeElement.textContent).toContain('24-hour on-chain wait after ratification');
@@ -167,7 +175,7 @@ describe('Holder voting lifecycle UX',()=>{
     const card=f.nativeElement.querySelector('.review') as HTMLElement;
     expect(action.textContent).toContain('Review 10,000 SGT');
     expect(action.compareDocumentPosition(f.nativeElement.querySelector('.select-holdings')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(card.querySelector('.assigned-action')!.textContent).toContain(r.holders[1].context.vault.launcherId);
+    expect(card.querySelector('.assigned-action + .wallet-match')!.textContent).toContain(r.holders[1].context.vault.launcherId);
     expect(f.componentInstance.reviews()[0].holders.map(h=>h.request.sgtCoinId)).toEqual(r.holders.map(h=>h.request.sgtCoinId));
     const scroll=spyOn(card,'scrollIntoView');action.click();f.detectChanges();
     expect(document.activeElement).toBe(card);action.click();f.detectChanges();expect(scroll).toHaveBeenCalledTimes(2);

@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy,Component,input,computed } from '@angular/core';
 import { GovernedBill } from '../../utils/generation-governed-bill';
+import { committeeDate,committeeDollars } from '../../utils/committee-decision-labels';
 
 /** Shared read-only presentation after the service verifies the bill hash. */
 @Component({selector:'solslot-generation-asset-intent',standalone:true,imports:[CommonModule],
@@ -18,11 +19,11 @@ import { GovernedBill } from '../../utils/generation-governed-bill';
     }
     @if(bill().statutes; as s){
       <section class="asset-intent" aria-label="Exact governed economic fact">
-        <h4>{{s.recordKind | titlecase}} update</h4>
-        <p>Review these exact values before signing. This changes one economic record; it does not change token supply, quorum, identity requirements or the upgrade delay.</p>
-        <dl><dt>Record commitment</dt><dd><code>{{s.key}}</code></dd>
-          @for(row of factRows(); track row.label){<dt>{{row.label}}</dt><dd>{{row.value}}</dd>}
-          <dt>Authority revision</dt><dd>{{s.revision}} → {{s.revision+1}}</dd></dl>
+        <h4>{{s.recordKind==='COLLECTION'?'Proposed terms':(s.recordKind | titlecase)+' terms'}}</h4>
+        <dl class="terms">@for(row of factRows(); track row.label){<dt>{{row.label}}</dt><dd>{{row.value}}</dd>}</dl>
+        <details><summary>Verify the on-chain record</summary><dl><dt>Record commitment</dt><dd><code>{{s.key}}</code></dd>
+          <dt>Authority revision</dt><dd>{{s.revision}} → {{s.revision+1}}</dd>
+          @if(s.recordKind==='COLLECTION'){<dt>Valuation version</dt><dd>{{s.record[3]}}</dd><dt>Protocol status code</dt><dd>{{s.record[6]}}</dd>}</dl></details>
       </section>
     }
     @if(bill().grant; as g){
@@ -56,18 +57,30 @@ import { GovernedBill } from '../../utils/generation-governed-bill';
     h4{margin:.5rem 0;font-size:1.1rem}.badge{font-size:.8rem;font-weight:700;letter-spacing:.04em;color:var(--admin-accent,#85dfb0)}
     .muted,dt,li span{color:var(--admin-muted,#abc4b8)}dl{display:grid;gap:.35rem}dd{margin:0 0 .75rem;min-width:0}
     code{display:block;overflow-wrap:anywhere;font-size:.85rem}li{padding:.75rem 0}li span{display:block;margin:.35rem 0}
-    ol{padding-left:1.25rem}p{line-height:1.6}`],
+    ol{padding-left:1.25rem}p{line-height:1.6}.terms{grid-template-columns:minmax(7rem,1fr) minmax(0,2fr);gap:.55rem 1.25rem}
+    .terms dd{overflow-wrap:anywhere;margin:0;font-variant-numeric:tabular-nums}details{margin-top:1rem}
+    summary{cursor:pointer;font-size:.88rem}summary:focus-visible{outline:2px solid var(--admin-accent,#85dfb0);outline-offset:3px}
+    @media(max-width:520px){.terms{grid-template-columns:minmax(6rem,.9fr) minmax(0,1.2fr);column-gap:.6rem}}`],
 })
 export class GenerationAssetIntentComponent {
   readonly bill=input.required<GovernedBill>();
   readonly factRows=computed(()=>{
     const s=this.bill().statutes;if(!s)return [];
-    const labels={COLLECTION:['Collection','Governed NAV (USD)','Allocation ceiling (USD)','NAV version','Valid from (chain seconds)','Valid until (chain seconds)','Status'],
-      ORACLE:['Asset','Price (USD)','Observed at (chain seconds)','Valid until (chain seconds)','Round','Sources commitment','Source count','Haircut (basis points)','Stable minimum (basis points)','Stable maximum (basis points)'],
+    if(s.recordKind==='COLLECTION'){
+      const [,value,cap,,start,end,status]=s.record;
+      return [
+        {label:'Collection value',value:committeeDollars(Number(value))},
+        {label:'Allocation cap',value:committeeDollars(Number(cap))},
+        {label:'Valid from',value:committeeDate(Number(start))},
+        {label:'Valid until',value:committeeDate(Number(end))},
+        {label:'Deed-to-SOLS swaps',value:status===1?'Permitted by the proposed status':'Blocked by the proposed status'},
+      ];
+    }
+    const labels={ORACLE:['Asset','Price (USD)','Observed at','Valid until','Round','Sources commitment','Source count','Haircut (basis points)','Stable minimum (basis points)','Stable maximum (basis points)'],
       ROUTE:['Route','Source chain','Destination chain','Asset','Remote asset','Decimals','Active'],
       LIQUIDITY:['Venue','Chain','Protocol','Factory','Pool','Base asset','Quote asset','Pool code','Active']}[s.recordKind];
     return s.record.slice(1).map((value,index)=>({label:labels[index+1],
-      value:((s.recordKind==='COLLECTION' && [1,2].includes(index+1)) || (s.recordKind==='ORACLE' && index===0))?
-        new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:6}).format(Number(value)/1_000_000):String(value)}));
+      value:s.recordKind==='ORACLE' && index===0 ? committeeDollars(Number(value)) :
+        s.recordKind==='ORACLE' && (index===1 || index===2) ? committeeDate(Number(value)) : String(value)}));
   });
 }

@@ -1,21 +1,25 @@
 <section class="consent-desk" aria-labelledby="consent-title" [attr.aria-busy]="!!busy()">
-  <header><p class="eyebrow">Step 1 · administrator consent</p><h2 id="consent-title">Review and approve the exact action</h2>
-    <p>Both assigned administrators approve here. Publication consent gives holders 24 hours to open the vote; it does not execute the proposal.</p></header>
+  <header><p class="eyebrow">Step 1 · administrator consent</p><h2 id="consent-title">Administrator approvals</h2></header>
   <solslot-admin-refresh-status [state]="refresh" />
   @if(busy()){
     <p class="active-wait" role="status"><span class="spinner" aria-hidden="true"></span>
-      {{busy()==='SIGNING'?'Open your administrator wallet and approve the pending signature request.':busy()==='PREPARING'?'Checking the exact confirmed inputs and saving your review…':'Saving the reviewed pause. Submission is a separate step…'}}</p>
+      {{busy()==='SIGNING'?'Waiting for your administrator wallet. After you sign, your receipt will appear beside your role.':busy()==='PREPARING'?'Checking the exact confirmed inputs and saving your review…':'Saving the reviewed pause. Submission is a separate step…'}}</p>
   }
   @if(error()){<p class="notice" role="status">{{error()}}</p>}
   @if(request() && !selected() && !busy()){<button type="button" (click)="prepareSameReview()">Recover this saved review</button>}
-  @for(r of reviews(); track r.packageId){
-    <article class="review" [class.expired]="expired(r)">
-      <p class="eyebrow">{{r.kind==='PUBLICATION_APPROVAL'?'Proposal publication':'Scoped emergency pause'}} · Testnet11</p>
-      <h3>{{r.kind==='PUBLICATION_APPROVAL'?'Approve '+proposalLabel(r.proposal!.kind)+' publication':'Pause selected new operations'}}</h3>
-      <p class="deadline">{{expired(r)?'Review expired':'Approve by'}} {{r.expiresAt*1000 | date:'MMM d, h:mm a'}} · your local time</p>
+  @for(r of displayedReviews(); track r.packageId){
+    <article class="review" [id]="'admin-review-'+r.packageId" [class.expired]="expired(r)">
+      <div class="review-meta"><p class="eyebrow">{{r.kind==='PUBLICATION_APPROVAL'?'Proposal for SGT holders':'Emergency pause'}} · Chia Testnet11</p>
+        <span class="approval-count">{{r.signatures.length}} of {{r.challenges.length}} approvals recorded</span></div>
+      <h3 class="decision-title">{{r.proposal?proposalTitle(r.generationId,r.proposal):'Pause selected new operations'}}</h3>
       @if(r.kind==='PUBLICATION_APPROVAL'){
-        <p>{{r.eligibleSupply | number}} eligible holder SGT · {{r.requiredVotes | number}} required. The one-hour vote begins at confirmed opening.</p>
-        <solslot-generation-asset-intent [bill]="r.proposal!" />
+        <p class="decision-purpose">@if(r.proposal!.statutes?.recordKind==='COLLECTION'){
+          Let SGT holders vote on a {{dollars(+r.proposal!.statutes!.record[1])}} collection value for test SOLS swaps.
+          The pool could hold up to {{dollars(+r.proposal!.statutes!.record[2])}} in deeds from this collection.
+        }@else{Your signature authorizes SGT holders to vote on this proposal.}</p>
+        <dl class="wallet-impact"><dt>Cost to sign</dt><dd>0 TXCH</dd><dt>SGT locked by signing</dt><dd>0 SGT</dd>
+          <dt>{{expired(r)?'Review expired':'Approve by'}}</dt><dd>{{chicagoDate(approvalDeadline(r))}}</dd></dl>
+        @if(r.proposal!.statutes?.recordKind!=='COLLECTION'){<solslot-generation-asset-intent [bill]="r.proposal!" />}
         @if(r.mintSource; as m){<h4>{{m.canonicalMetadata.title}}</h4>
           <p>Sealed revision {{m.request.revision}} · {{m.funding.length}} deeds. This exact saved batch includes the approved preview, dollar economics, sealed XCH price receipt and fixed launcher funding.</p>
           <dl><dt>Metadata root</dt><dd><code>{{m.request.metadataRoot}}</code></dd>
@@ -32,32 +36,50 @@
           <ul>@for(scope of scopes; track scope.mask){@if(includesScope(r.scope,scope.mask)){<li>{{scope.label}}</li>}}</ul>
         }
       }@else{
+        <p class="decision-purpose">Your signature authorizes the emergency pause below. The second administrator’s signature and an on-chain submission are required to put it into effect.</p>
+        <dl class="wallet-impact"><dt>Cost to sign</dt><dd>0 TXCH</dd><dt>{{expired(r)?'Review expired':'Approve by'}}</dt><dd>{{chicagoDate(approvalDeadline(r))}}</dd></dl>
         <ul>@for(scope of scopes; track scope.mask){@if(includesScope(r.scope,scope.mask)){<li>{{scope.label}}</li>}}</ul>
         <p>SGT voting, transfers, unlocks, funded redemptions and earned claims stay available. Reopening needs holder ratification and 24 hours on chain.</p>
       }
-      @for(c of r.challenges; track c.slot){
-        <div class="assigned-action"><div><strong>{{role(c.slot)}}</strong><code>{{c.publicKey}}</code>
-          <small>{{approved(r,c.slot)?'Approval recorded':assigned(r,c.slot)?'Your assigned action':'Waiting for this administrator'}}</small></div>
-          @if(approved(r,c.slot)){<span class="approved">✓ Approved</span>}
+      @for(c of displayChallenges(r); track c.slot){
+        <div class="assigned-action"><div><strong>{{role(c.slot)}}{{assigned(r,c.slot)?' · You':''}}</strong>
+          <small>@if(approved(r,c.slot)){Approval recorded}@else if(expired(r)){Window closed}@else if(assigned(r,c.slot)){Your signature is needed}@else{Awaiting signature}</small></div>
+          @if(approved(r,c.slot)){<span class="approved">✓ Signed</span>}
           @else if(assigned(r,c.slot) && !expired(r)){
-            <button class="primary" type="button" [disabled]="!!busy() || !available() || !isCurrent()" (click)="sign(r)">Approve {{r.kind==='PUBLICATION_APPROVAL'?'publication':'this pause'}} in wallet</button>
+            <button class="primary" type="button" [attr.aria-describedby]="'wallet-match-'+r.packageId"
+              [disabled]="!!busy() || !available() || !isCurrent()" (click)="sign(r)">{{r.kind==='PUBLICATION_APPROVAL'?'Approve for holder vote':'Approve emergency pause'}}</button>
           }
         </div>
+        @if(assigned(r,c.slot) && !approved(r,c.slot) && !expired(r)){
+          <details class="wallet-match" [id]="'wallet-match-'+r.packageId"><summary>Wallet message · Chia Coin Spend</summary>
+            <p>Compare these two values with the message in your wallet. They identify your exact approval.</p>
+            <dl><dt>coin_id</dt><dd><code>{{c.coinId}}</code></dd>
+              <dt>delegated_puzzle_hash</dt><dd><code>{{c.delegatedPuzzleHash}}</code></dd></dl>
+          </details>
+        }
       }
       @if(r.stage==='READY' && !expired(r)){
         @if(r.kind==='PAUSE_NEW_OPERATIONS'){<button class="primary" type="button" [disabled]="!!busy()" (click)="reviewPause(r)">Review exact pause for submission</button>}
-        @else{<p class="next-action" role="status">Publication approvals recorded. Next: holders sponsor the proposal with at least 10,000 SGT to open its vote. These approvals add no voting weight.</p>
+        @else{<p class="next-action" role="status">Both administrator approvals are recorded. Holders can now sponsor the opening with at least 10,000 SGT.</p>
           <button class="primary" type="button" [disabled]="!!busy()" (click)="sponsorReview.emit(r)">Select holder sponsorship for this proposal</button>}
       }
-      <details><summary>Authority and saved review</summary><dl><dt>Exact package</dt><dd>{{r.packageId}}</dd><dt>Administrator authority</dt><dd>{{r.authorityLauncherId}}</dd>
+      @if(r.kind==='PUBLICATION_APPROVAL' && !expired(r)){
+        <p class="voting-next">After both administrators sign, holders can sponsor the opening. Chia confirmation starts the one-hour vote. It takes {{r.requiredVotes | number}} SGT voting yes to pass. @if(r.proposal!.statutes?.recordKind==='COLLECTION'){The approved valuation takes effect when it is applied on-chain.}</p>
+      }
+      @if(r.proposal?.statutes?.recordKind==='COLLECTION'){<solslot-generation-asset-intent [bill]="r.proposal!" />}
+      <details><summary>Saved review and signer details</summary><dl><dt>Exact package</dt><dd>{{r.packageId}}</dd><dt>Administrator authority</dt><dd>{{r.authorityLauncherId}}</dd>
         <dt>Current authority version</dt><dd>{{r.authorityVersion}}</dd><dt>Proposal</dt><dd>{{r.proposalId ?? 'Scoped pause'}}</dd>
-        <dt>Maximum network fee</dt><dd>{{r.feeCapMojos}} mojos</dd></dl></details>
+        @for(c of r.challenges; track c.slot){<dt>{{role(c.slot)}} public key</dt><dd><code>{{c.publicKey}}</code></dd>}
+        <dt>Signature expires</dt><dd>{{chicagoDate(r.expiresAt)}}</dd>
+        <dt>Maximum transaction fee</dt><dd>{{r.feeCapMojos}} mojos</dd></dl></details>
     </article>
   }
+  @if(expiredCount()){<button class="history-toggle" type="button" [attr.aria-expanded]="showHistory()" (click)="showHistory.set(!showHistory())">
+    {{showHistory()?'Hide':'Show'}} {{expiredCount()}} expired {{expiredCount()===1?'review':'reviews'}}</button>}
   @if(showValuation()){
     <section class="new-review prepare-kind"><h3>127 Eastmoreland St · Testnet valuation</h3>
       <p>Collection value {{+valuationRecord[1]/1000000 | currency:'USD':'symbol':'1.0-0'}} · Allocation cap {{+valuationRecord[2]/1000000 | currency:'USD':'symbol':'1.0-0'}}.</p>
-      <p>{{ +valuationRecord[4]*1000 | date:'MMM d, y, h:mm a':'-0600' }} to {{ +valuationRecord[5]*1000 | date:'MMM d, y, h:mm a':'-0600' }} Chicago time. Saving this review costs zero and makes it available for both administrators to sign.</p>
+      <p>{{chicagoDate(+valuationRecord[4])}} to {{chicagoDate(+valuationRecord[5])}}. Saving this review costs zero and makes it available for both administrators to sign.</p>
       <button type="button" class="primary" [disabled]="!canSaveValuation()" (click)="saveValuation()">Save unsigned valuation review</button>
     </section>
   }

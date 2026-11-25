@@ -10,6 +10,7 @@ import { GenerationMintReview,validateMintReview } from '../../../utils/generati
 import { GenerationAssetIntentComponent } from '../../../components/admin-workspace/generation-asset-intent.component';
 import valuation from '../../../../environments/eastmoreland-testnet-valuation.json';
 import { deploymentGeneration } from '../../../utils/deployment-generation';
+import { committeeDate,committeeDollars,committeeProposalTitle,isEastmorelandValuation } from '../../../utils/committee-decision-labels';
 import { governedBillLabel,RedemptionIntent,redemptionReviewBill } from '../../../utils/generation-governed-bill';
 import { GenerationRedemptionFormComponent } from '../../../components/admin-workspace/generation-redemption-form.component';
 
@@ -18,6 +19,10 @@ import { GenerationRedemptionFormComponent } from '../../../components/admin-wor
   changeDetection:ChangeDetectionStrategy.OnPush})
 export class GenerationConsentsComponent implements OnInit {
   readonly proposalLabel=governedBillLabel;
+  readonly proposalTitle=committeeProposalTitle;
+  readonly chicagoDate=committeeDate;
+  readonly dollars=committeeDollars;
+  readonly showHistory=signal(false);
   private readonly api=inject(GenerationConsentService);
   readonly session=inject(AdminSessionService);
   readonly refresh=inject(AdminStatusRefresh);
@@ -30,6 +35,16 @@ export class GenerationConsentsComponent implements OnInit {
   readonly preparedPause=output<GenerationOperationStatus>();
   readonly sponsorReview=output<GenerationConsentReview>();
   readonly reviews=signal<GenerationConsentReview[]>([]);
+  readonly expiredCount=computed(()=>this.reviews().filter(r=>this.expired(r)).length);
+  readonly displayedReviews=computed(()=>{
+    const priority=(r:GenerationConsentReview):number=>{
+      if(this.expired(r))return 2;
+      const needsMe=r.challenges.some(c=>this.assigned(r,c.slot) && !this.approved(r,c.slot));
+      return needsMe?0:1;
+    };
+    return this.reviews().filter(r=>this.showHistory() || !this.expired(r))
+      .sort((a,b)=>priority(a)-priority(b) || b.createdAt-a.createdAt);
+  });
   readonly selected=signal<GenerationConsentReview|null>(null);
   readonly busy=signal<'PREPARING'|'SIGNING'|'SAVING_PAUSE'|null>(null);
   readonly error=signal<string|null>(null);
@@ -151,10 +166,20 @@ export class GenerationConsentsComponent implements OnInit {
     this.reviews.update(rows=>[next,...rows.filter(r=>r.packageId!==next.packageId)].slice(0,50));this.selected.set(next);
     if(this.request()?.requestKey===next.requestKey)this.saveRequest(null);
   }
-  expired(review:GenerationConsentReview):boolean {return review.stage==='EXPIRED' || this.refresh.now()>=review.expiresAt*1000;}
+  approvalDeadline(review:GenerationConsentReview):number {
+    if(review.requestKey===valuation.requestKey && review.proposal &&
+        isEastmorelandValuation(review.generationId,review.proposal)){
+      return Math.min(review.expiresAt,Number(valuation.statutes.record[5]));
+    }
+    return review.expiresAt;
+  }
+  expired(review:GenerationConsentReview):boolean {return review.stage==='EXPIRED' || this.refresh.now()>=this.approvalDeadline(review)*1000;}
   approved(review:GenerationConsentReview,slot:number):boolean {return review.signatures.some(s=>s.slot===slot);}
   assigned(review:GenerationConsentReview,slot:number):boolean {
     return this.session.authoritySlot()===slot && review.challenges.find(c=>c.slot===slot)?.publicKey===this.session.pubkey();
+  }
+  displayChallenges(review:GenerationConsentReview):GenerationConsentReview['challenges'] {
+    return [...review.challenges].sort((a,b)=>Number(this.assigned(review,b.slot))-Number(this.assigned(review,a.slot)));
   }
   role(slot:number):string {return slot===0?'Owner administrator':`Coadministrator ${slot+1}`;}
   includesScope(scope:number|null,mask:number):boolean {return !!(scope!==null && (scope&mask));}

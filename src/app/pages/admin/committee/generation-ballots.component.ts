@@ -1,4 +1,5 @@
 import { CommonModule,DOCUMENT } from '@angular/common';
+import { committeeDate,committeeProposalTitle } from '../../../utils/committee-decision-labels';
 import { ChangeDetectionStrategy,Component,computed,effect,inject,input,OnInit,output,signal,untracked } from '@angular/core';
 import { GenerationBallotService,GenerationBallotReview,HolderBallotRequest,HolderCatalog,HolderRow,GenerationBallotSigningError } from '../../../services/generation-ballot.service';
 import { GenerationConsentReview } from '../../../services/generation-consent.service';
@@ -16,6 +17,8 @@ import { governedBillLabel } from '../../../utils/generation-governed-bill';
   templateUrl:'./generation-ballots.component.html',styleUrl:'./generation-ballots.component.scss',changeDetection:ChangeDetectionStrategy.OnPush})
 export class GenerationBallotsComponent implements OnInit {
   readonly proposalLabel=governedBillLabel;
+  readonly proposalTitle=committeeProposalTitle;
+  readonly chicagoDate=committeeDate;
   private readonly api=inject(GenerationBallotService);
   private readonly document=inject(DOCUMENT);
   readonly session=inject(AdminSessionService);
