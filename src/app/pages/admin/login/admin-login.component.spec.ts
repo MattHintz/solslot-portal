@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { AdminLoginComponent } from './admin-login.component';
 import { AdminSessionService } from '../../../services/admin-session.service';
 import { AdminBackendAuthService } from '../../../services/admin-backend-auth.service';
@@ -46,6 +46,19 @@ describe('Administrator browser wallet selection', () => {
     window.removeEventListener('eip6963:requestProvider', respond);
     if (ethereum) Object.defineProperty(window, 'ethereum', ethereum);
     else Reflect.deleteProperty(window, 'ethereum');
+  });
+
+  it('returns an already signed-in administrator to the original committee review', () => {
+    const route = TestBed.inject(ActivatedRoute);
+    const session = TestBed.inject(AdminSessionService);
+    const router = TestBed.inject(Router);
+    const destination = '/committee#consent-title';
+    route.snapshot.queryParams = {returnTo: destination};
+    spyOn(session, 'isAuthenticated').and.returnValue(true);
+    const navigate = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+    const returned = TestBed.createComponent(AdminLoginComponent);
+    expect(navigate).toHaveBeenCalledOnceWith(destination);
+    returned.destroy();
   });
 
   it('uses the selected extension when another provider owns the read-only default', async () => {

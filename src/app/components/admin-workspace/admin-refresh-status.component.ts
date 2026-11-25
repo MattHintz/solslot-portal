@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { AdminStatusRefresh } from '../../services/admin-status-refresh.service';
 
 @Component({
@@ -19,7 +19,7 @@ import { AdminStatusRefresh } from '../../services/admin-status-refresh.service'
         } @else {
           <small>Waiting for the first successful check</small>
         }
-        @if (state().pausedReason()?.startsWith('Sign in')) { <a routerLink="/admin/login">Sign in again</a> }
+        @if (state().pausedReason()?.startsWith('Sign in')) { <a routerLink="/admin/login" [queryParams]="{returnTo: router.url}">Sign in</a> }
       </div>
       <button type="button" (click)="state().refresh()"
         [disabled]="state().refreshing() || !!state().pausedReason()">
@@ -36,5 +36,6 @@ import { AdminStatusRefresh } from '../../services/admin-status-refresh.service'
   `],
 })
 export class AdminRefreshStatusComponent {
+  readonly router = inject(Router);
   readonly state = input.required<AdminStatusRefresh>();
 }

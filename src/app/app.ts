@@ -9,6 +9,7 @@ import {
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
+import { deploymentGeneration } from './utils/deployment-generation';
 import { HeaderComponent } from './layout/header/header.component';
 import { FooterComponent } from './layout/footer/footer.component';
 import { AlphaDisclosureComponent } from './layout/alpha-disclosure/alpha-disclosure.component';
@@ -84,6 +85,7 @@ export class App {
 
   private isAdminUrl(url: string): boolean {
     const path = url.split(/[?#]/, 1)[0];
-    return path === '/' || path === '/admin' || path.startsWith('/admin/');
+    return path === '/' || path === '/admin' || path.startsWith('/admin/') ||
+      (path === '/committee' && !!deploymentGeneration());
   }
 }

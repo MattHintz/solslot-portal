@@ -225,7 +225,7 @@ export class AdminLoginComponent {
     // them straight to the dashboard.  Avoids the awkward "you're already
     // signed in but the page still shows the connect screen" state.
     if (this.session.isAuthenticated()) {
-      this.router.navigate([this.targetUrl()]);
+      this.router.navigateByUrl(this.targetUrl());
     }
   }
 
@@ -319,7 +319,7 @@ export class AdminLoginComponent {
       });
 
       this.status.set('Signed in. Opening your task list...');
-      await this.router.navigate([this.targetUrl()]);
+      await this.router.navigateByUrl(this.targetUrl());
     } catch (e) {
       this.journey.noteAssetFailure(e);
       this.error.set(formatError(e));
@@ -332,12 +332,14 @@ export class AdminLoginComponent {
   /**
    * Resolve where the user should land after a successful sign-in.  The
    * guard pushes the original URL into `?returnTo=`; we honour that as
-   * long as it points back into the admin tree (don't trust open
-   * redirects to external hosts).
+   * long as it points to the committee or the admin workspace.
    */
   private targetUrl(): string {
     const raw = this.activatedRoute.snapshot.queryParamMap.get('returnTo');
-    if (raw && raw.startsWith('/admin') && !raw.startsWith('/admin/login')) {
+    if (!raw) return '/admin';
+    const path = raw.split(/[?#]/, 1)[0];
+    if (path === '/committee') return raw;
+    if ((path === '/admin' || path.startsWith('/admin/')) && !path.startsWith('/admin/login')) {
       return raw;
     }
     return '/admin';

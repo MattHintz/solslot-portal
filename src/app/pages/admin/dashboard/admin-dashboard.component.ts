@@ -55,14 +55,6 @@ interface DeskTask {
         <a routerLink="/committee"><span>04 · Participate</span><strong>Committee desk</strong><small>Read the current proposal and voting status</small></a>
       </nav>
 
-      @if (error()) {
-        <div class="notice notice--error" role="alert">
-          <strong>Some operations could not be loaded</strong>
-          <span>{{ error() }}</span>
-          <button type="button" (click)="reload()">Retry</button>
-        </div>
-      }
-
       <section class="next-action" aria-labelledby="next-action-title">
         @if (loading()) {
           <div>
@@ -70,7 +62,8 @@ interface DeskTask {
             <h2 id="next-action-title">Checking your assignments...</h2>
           </div>
         } @else if (error()) {
-          <div><span class="eyebrow">Refresh needed</span><h2 id="next-action-title">Your task list may be incomplete</h2><p>Some records could not be checked. Retry above before relying on these counts.</p></div>
+          <div role="status"><h2 id="next-action-title">Some tasks could not be loaded</h2><p>{{ error() }}</p></div>
+          <button type="button" class="retry-tasks" (click)="reload()">Retry loading tasks</button>
         } @else if (primaryTask(); as task) {
           <div>
             <span class="eyebrow">Next action</span>
@@ -251,6 +244,7 @@ interface DeskTask {
       .notice button,.icon-button { border:0; background:none; color:#67e7ad; cursor:pointer; }
       .next-action { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:24px; margin-top:20px; padding:22px; border:1px solid #3d7965; background:#0d251e; }
       .next-action > div { display:grid; gap:5px; } .next-action p { margin:0; }
+      .retry-tasks { padding:11px 15px; border:1px solid #67e7ad; background:transparent; color:#8bf0bd; cursor:pointer; }
       .next-action > a { padding:11px 15px; border:1px solid #67e7ad; background:#67e7ad; color:#04110d; font-weight:700; text-decoration:none; }
       .safety-reminder { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:14px; align-items:start; margin-top:12px; padding:13px 15px; border-left:3px solid #7dc9ec; background:#091a1a; font-size:12px; }
       .safety-reminder span,.safety-reminder p { color:#a9c2b8; }

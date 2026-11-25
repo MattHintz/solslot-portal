@@ -43,6 +43,9 @@
           },
           "configurations": {
             "production": {
+              "optimization": {
+                "styles": { "inlineCritical": false }
+              },
               "budgets": [
                 {
                   "type": "initial",
@@ -59,7 +62,8 @@
             },
             "staging": {
               "optimization": {
-                "fonts": false
+                "fonts": false,
+                "styles": { "inlineCritical": false }
               },
               "fileReplacements": [
                 {
@@ -71,7 +75,8 @@
             },
             "ceremony": {
               "optimization": {
-                "fonts": false
+                "fonts": false,
+                "styles": { "inlineCritical": false }
               },
               "fileReplacements": [
                 {
@@ -84,7 +89,8 @@
             },
             "ceremony-locked": {
               "optimization": {
-                "fonts": false
+                "fonts": false,
+                "styles": { "inlineCritical": false }
               },
               "fileReplacements": [
                 {
@@ -102,7 +108,8 @@
             },
             "rc28-testnet": {
               "optimization": {
-                "fonts": false
+                "fonts": false,
+                "styles": { "inlineCritical": false }
               },
               "fileReplacements": [
                 {
