@@ -1,6 +1,6 @@
-import { HttpClient,HttpHeaders } from '@angular/common/http';
+import { HttpClient,HttpErrorResponse,HttpHeaders } from '@angular/common/http';
 import { Injectable,inject } from '@angular/core';
-import { firstValueFrom,timeout } from 'rxjs';
+import { firstValueFrom,timeout,TimeoutError } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AdminSessionService } from './admin-session.service';
 import { EvmWalletService } from './evm-wallet.service';
@@ -38,13 +38,15 @@ export interface HolderCatalog {
 
 /** Fixed local messages only: never render provider or upstream response bodies. */
 export class GenerationBallotSigningError extends Error {
-  constructor(readonly reason:'WALLET_PENDING'|'WALLET_REJECTED'|'WALLET_UNAVAILABLE'|'WRONG_ACCOUNT'|'REVIEW_CHANGED'|'SIGNING_FAILED',expectedAddress?:string) {
+  constructor(readonly reason:'WALLET_PENDING'|'WALLET_REJECTED'|'WALLET_UNAVAILABLE'|'WRONG_ACCOUNT'|'REVIEW_CHANGED'|'INPUT_CHECK_UNAVAILABLE'|'RECEIPT_UNCONFIRMED'|'SIGNING_FAILED',expectedAddress?:string) {
     const messages={
       WALLET_PENDING:'A wallet request is already waiting. Open your holder wallet and finish or dismiss it, then retry this saved review.',
       WALLET_REJECTED:'You declined the wallet request. Your saved review is unchanged. Choose its SGT approval button again when you are ready.',
       WALLET_UNAVAILABLE:'Reconnect your holder wallet through Vault Connect, then return to this saved review without reloading the page.',
       WRONG_ACCOUNT:'Switch to the holder account assigned to this review, then choose its SGT approval button again.',
       REVIEW_CHANGED:'Your sign-in, deployment or saved review is no longer current. Refresh this review and sign in again if requested before approving it.',
+      INPUT_CHECK_UNAVAILABLE:'Solslot could not verify the selected holdings on Chia. Check the saved review for its current status.',
+      RECEIPT_UNCONFIRMED:'Your wallet returned an approval. Solslot could not confirm a saved signature for this holding. Refresh this review to check the receipt.',
       SIGNING_FAILED:'The wallet could not finish this SGT approval. Open your holder wallet, check pending requests and the requested signing network, then retry this saved review.',
     };
     super(messages[reason]+(reason==='WRONG_ACCOUNT' && expectedAddress ? ` Expected account: ${expectedAddress}.` : ''));
@@ -59,6 +61,11 @@ function holderWalletFailure(error:unknown,connecting:boolean):GenerationBallotS
   if(codes.some(code=>code===4001 || code==='4001' || code==='ACTION_REJECTED'))return new GenerationBallotSigningError('WALLET_REJECTED');
   if(codes.some(code=>code===-32002 || code==='-32002'))return new GenerationBallotSigningError('WALLET_PENDING');
   return new GenerationBallotSigningError(connecting?'WALLET_UNAVAILABLE':'SIGNING_FAILED');
+}
+
+function interruptedRequest(error:unknown):boolean {
+  return error instanceof TimeoutError || (error instanceof HttpErrorResponse &&
+    [0,408,500,502,503,504].includes(error.status));
 }
 
 @Injectable({providedIn:'root'})
@@ -139,8 +146,20 @@ export class GenerationBallotService {
     assertOwner();
     const check=async()=>{
       assertOwner();
-      const v=await firstValueFrom(this.http.post<{generationId:string;packageId:string;unchanged:boolean}>(`${this.base}/${review.packageId}/check-inputs`,{},
+      const readInputs=()=>firstValueFrom(this.http.post<{generationId:string;packageId:string;unchanged:boolean}>(`${this.base}/${review.packageId}/check-inputs`,{},
         {headers:this.headers()}).pipe(timeout(25_000)));
+      let v;
+      try {
+        v=await readInputs();
+      } catch(error) {
+        assertOwner();
+        if(!interruptedRequest(error))throw new GenerationBallotSigningError('REVIEW_CHANGED');
+        try { v=await readInputs(); }
+        catch(retryError) {
+          assertOwner();
+          throw new GenerationBallotSigningError(interruptedRequest(retryError)?'INPUT_CHECK_UNAVAILABLE':'REVIEW_CHANGED');
+        }
+      }
       assertOwner();
       if(v.generationId!==review.generationId || v.packageId!==review.packageId || v.unchanged!==true)
         throw new GenerationBallotSigningError('REVIEW_CHANGED');
@@ -150,10 +169,35 @@ export class GenerationBallotService {
       (await this.chia.signGenerationSgt(row.request,row.context,check)).aggregatedSignature;}
     catch(error){throw holderWalletFailure(error,false);}
     assertOwner();
-    const result=validateGenerationBallot(await firstValueFrom(this.http.post<GenerationBallotReview>(`${this.base}/${review.packageId}/sign`,{coinId,signature},
-      {headers:this.headers()}).pipe(timeout(25_000))));
-    if(result.packageId!==review.packageId || result.requestDigest!==review.requestDigest)throw new Error('Returned signature belongs to another review.');
-    return result;
+    const url=`${this.base}/${review.packageId}`;
+    const save=()=>firstValueFrom(this.http.post<GenerationBallotReview>(url+'/sign',{coinId,signature},
+      {headers:this.headers()}).pipe(timeout(25_000)));
+    const receipt=(value:GenerationBallotReview)=>{
+      const result=validateGenerationBallot(value);
+      if(result.packageId!==review.packageId || result.requestDigest!==review.requestDigest)
+        throw new GenerationBallotSigningError('REVIEW_CHANGED');
+      return result.signatures.some(s=>s.coinId===coinId)?result:null;
+    };
+    try {
+      const saved=receipt(await save());
+      if(saved)return saved;
+    } catch(error) {
+      if(error instanceof GenerationBallotSigningError)throw error;
+      if(!interruptedRequest(error))throw new GenerationBallotSigningError('RECEIPT_UNCONFIRMED');
+    }
+    // Read the journal before repeating a write. The server stores a signature once per package and coin.
+    assertOwner();
+    try {
+      const recorded=receipt(await firstValueFrom(this.http.get<GenerationBallotReview>(url,
+        {headers:this.headers()}).pipe(timeout(20_000))));
+      if(recorded)return recorded;
+      assertOwner();
+      const saved=receipt(await save());
+      if(saved)return saved;
+    } catch(error) {
+      if(error instanceof GenerationBallotSigningError)throw error;
+    }
+    throw new GenerationBallotSigningError('RECEIPT_UNCONFIRMED');
   }
   async assemble(review:GenerationBallotReview):Promise<GenerationOperationStatus> {
     validateGenerationBallot(review);

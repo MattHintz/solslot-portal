@@ -50,6 +50,71 @@ describe('Durable holder signature service',()=>{
     http.expectOne(base+'/'+r.packageId+'/check-inputs').flush({generationId:r.generationId,packageId:r.packageId,unchanged:false});flushMicrotasks();
     expect(rejected).toBeTrue();http.expectNone(base+'/'+r.packageId+'/sign');
   }));
+  it('recovers an interrupted Chia check after the wallet returns without another wallet request',fakeAsync(()=>{
+    const r=review(),coin=r.request.selected[0].coinId,url=base+'/'+r.packageId;
+    const valid={generationId:r.generationId,packageId:r.packageId,unchanged:true};
+    let saved:GenerationBallotReview|undefined;
+    wallet.signGenerationSgt.and.callFake(async(_r:any,_c:any,check:()=>Promise<void>)=>{
+      await check();
+      await check();
+      return '0x'+'11'.repeat(65);
+    });
+    void service.sign(r,coin).then(v=>saved=v);flushMicrotasks();
+    http.expectOne(url+'/check-inputs').flush(valid);flushMicrotasks();
+    http.expectOne(url+'/check-inputs').flush(null,{status:503,statusText:'Unavailable'});flushMicrotasks();
+    http.expectOne(url+'/check-inputs').flush(valid);flushMicrotasks();
+    http.expectOne(url+'/sign').flush({...r,signatures:[{coinId:coin,signedAt:r.createdAt+10}]});flushMicrotasks();
+    expect(saved?.signatures[0].coinId).toBe(coin);expect(wallet.signGenerationSgt).toHaveBeenCalledTimes(1);
+  }));
+  it('reports the failing Chia check when both reads fail',fakeAsync(()=>{
+    const r=review(),url=base+'/'+r.packageId;let error:GenerationBallotSigningError|undefined;
+    void service.sign(r,r.request.selected[0].coinId).catch(e=>error=e);flushMicrotasks();
+    for(let attempt=0;attempt<2;attempt++){
+      http.expectOne(url+'/check-inputs').flush(null,{status:504,statusText:'Timeout'});flushMicrotasks();
+    }
+    expect(error?.reason).toBe('INPUT_CHECK_UNAVAILABLE');http.expectNone(url+'/sign');
+  }));
+  for(const alreadySaved of [true,false]){
+    it('reconciles the exact holder after losing the save response, recorded='+alreadySaved,fakeAsync(()=>{
+      const r=review(),coin=r.request.selected[0].coinId,url=base+'/'+r.packageId;
+      const receipt={...r,signatures:[{coinId:coin,signedAt:r.createdAt+10}]};
+      let saved:GenerationBallotReview|undefined;
+      void service.sign(r,coin).then(v=>saved=v);flushMicrotasks();
+      http.expectOne(url+'/check-inputs').flush({generationId:r.generationId,packageId:r.packageId,unchanged:true});flushMicrotasks();
+      const first=http.expectOne(url+'/sign');
+      first.flush(null,{status:502,statusText:'Bad gateway'});flushMicrotasks();
+      const lookup=http.expectOne(url);expect(lookup.request.method).toBe('GET');
+      lookup.flush(alreadySaved?receipt:r);flushMicrotasks();
+      if(alreadySaved)http.expectNone(url+'/sign');
+      else {
+        const repeat=http.expectOne(url+'/sign');
+        expect(repeat.request.body).toEqual(first.request.body);
+        repeat.flush(receipt);flushMicrotasks();
+      }
+      expect(saved?.signatures[0].coinId).toBe(coin);expect(wallet.signGenerationSgt).toHaveBeenCalledTimes(1);
+    }));
+  }
+  it('ends the retry if the account changes while reading a missing receipt',fakeAsync(()=>{
+    const r=review(),coin=r.request.selected[0].coinId,url=base+'/'+r.packageId;
+    let error:GenerationBallotSigningError|undefined;
+    void service.sign(r,coin).catch(e=>error=e);flushMicrotasks();
+    http.expectOne(url+'/check-inputs').flush({generationId:r.generationId,packageId:r.packageId,unchanged:true});flushMicrotasks();
+    http.expectOne(url+'/sign').flush(null,{status:502,statusText:'Bad gateway'});flushMicrotasks();
+    wallet.address.and.returnValue(r.holders[1].context.owner.address);
+    http.expectOne(url).flush(r);flushMicrotasks();
+    expect(error?.reason).toBe('WRONG_ACCOUNT');http.expectNone(url+'/sign');
+  }));
+  it('requires an actual saved signature for the selected input before reporting success',fakeAsync(()=>{
+    const r=review(),coin=r.request.selected[0].coinId,url=base+'/'+r.packageId;
+    const other={...r,signatures:[{coinId:r.request.selected[1].coinId,signedAt:r.createdAt+10}]};
+    let error:GenerationBallotSigningError|undefined;
+    void service.sign(r,coin).catch(e=>error=e);flushMicrotasks();
+    http.expectOne(url+'/check-inputs').flush({generationId:r.generationId,packageId:r.packageId,unchanged:true});flushMicrotasks();
+    http.expectOne(url+'/sign').flush(other);flushMicrotasks();
+    http.expectOne(url).flush(other);flushMicrotasks();
+    http.expectOne(url+'/sign').flush(other);flushMicrotasks();
+    expect(error?.reason).toBe('RECEIPT_UNCONFIRMED');expect(wallet.signGenerationSgt).toHaveBeenCalledTimes(1);
+  }));
   it('rejects another holder, changed frozen bindings and expired requests before opening the wallet',fakeAsync(()=>{
     const r=review();session.pubkey=()=>r.holders[1].context.owner.publicKey;let failures=0;
     void service.sign(r,r.request.selected[0].coinId).catch(()=>failures++);flushMicrotasks();
